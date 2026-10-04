@@ -8,6 +8,8 @@
 
 中文名 **企智搭**，英文 **QIZHIDA**，产品线 **智能体平台 / Agent Platform**。技术包名与环境变量用 **QZDAP**（QiZhiDa Agent Platform）。
 
+图形：两块圆角方块层叠咬合，白色间隙表示「搭」。
+
 | 色板 | 色值 | 用途 |
 |---|---|---|
 | 品牌紫 | `#6828D8` | 后层方块、中文名、工作台主色 `--brand` |
@@ -15,25 +17,24 @@
 | 间隙白 | `#FFFFFF` | 两块方块之间的咬合缝 |
 | 单色深 | `#1A1A1A` / `#3A3A3A` | 印刷、反白底上的单色组合 |
 
-<p>
-  <img src="frontend/web/public/favicon.svg" width="72" alt="图标标识" />
-  &nbsp;&nbsp;
-  <img src="frontend/web/public/logo-lockup.svg" height="72" alt="横向组合" />
-  &nbsp;&nbsp;
-  <img src="frontend/web/public/logo-mono.svg" height="72" alt="单色版本" />
-</p>
+| 图标标识 | 横向组合 | 单色版本 |
+|---|---|---|
+| <img src="frontend/web/public/favicon.svg" width="64" alt="图标标识" /> | <img src="frontend/web/public/logo-lockup.svg" height="56" alt="企智搭 智能体平台" /> | <img src="frontend/web/public/logo-mono.svg" height="56" alt="企智搭 智能体平台 单色" /> |
+| 紫底方块，favicon / 侧栏收起 | 图形 + 企智搭 + 智能体平台，侧栏展开 | 深色印刷 / 反白 |
 
-![主标识](frontend/web/public/logo-wordmark.svg)
+主标识（图形 + 企智搭 + QIZHIDA），用于文档与对外物料：
+
+<p align="left"><img src="docs/images/brand/logo-wordmark.png" height="160" alt="企智搭 QIZHIDA" /></p>
 
 | 版本 | 构图 | 出现位置 | 文件 |
 |---|---|---|---|
 | 图标标识 | 紫底圆角方块 + 浅紫/橙叠合方块 | 浏览器 favicon、侧栏收起 | `frontend/web/public/favicon.svg` |
 | 横向组合 | 图形在左；右为「企智搭」+ 小字「智能体平台」 | 侧栏展开 | `frontend/web/public/logo-lockup.svg` |
-| 登录组合 | 同上，再加一行橙色 `QIZHIDA` | 登录页左侧品牌区 | 由 `BrandLogo` 拼装 |
-| 主标识 | 图形 + 企智搭 + QIZHIDA 纵向 | 文档、对外物料 | `frontend/web/public/logo-wordmark.svg` |
+| 登录组合 | 同上，再加一行橙色 `QIZHIDA` | 登录页左侧品牌区 | `BrandLogo` 组件拼装 |
+| 主标识 | 图形 + 企智搭 + QIZHIDA | 文档、对外物料 | `frontend/web/public/logo-wordmark.svg` |
 | 单色版本 | 深色叠合方块 + 企智搭 + 智能体平台 | 单色印刷 | `frontend/web/public/logo-mono.svg` |
 
-界面实现：`frontend/web/src/components/feedback/BrandLogo.tsx`（`variant`: `mark` / `icon` / `mono`；登录页横向 lockup 带 `caption="QIZHIDA"`）。不要把 Logo 拉变形，间隙必须保留白色、不可填色。
+界面实现：`frontend/web/src/components/feedback/BrandLogo.tsx`（`variant`: `mark` / `icon` / `mono`）。不要把 Logo 拉变形，间隙必须留白、不可填色。
 
 前端是 React 18 + Vite 工作台（用户侧 + 管理侧）；后端是 Python 3.12 + FastAPI 模块化单体。默认联调路径：
 
