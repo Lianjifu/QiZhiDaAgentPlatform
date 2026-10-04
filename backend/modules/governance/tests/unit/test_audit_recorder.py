@@ -7,10 +7,10 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from _governance_unit_in_memory import FixedClock, InMemoryAuditLog
-from eos_schema.ids import TenantId
+from qzdap_schema.ids import TenantId
 
-from deos.modules.governance.adapter.subscribers import audit_subscriber
-from deos.modules.governance.application.audit_recorder import (
+from qzdap.modules.governance.adapter.subscribers import audit_subscriber
+from qzdap.modules.governance.application.audit_recorder import (
     AuditRecorder,
     build_default_topics,
 )

@@ -19,16 +19,21 @@ import { BatchToolbar } from './components/BatchToolbar';
 
 type ViewId = 'list' | 'ticket' | 'topic' | 'rule';
 
+const EMPTY_FEEDBACK: Feedback[] = [];
+const EMPTY_TICKETS: Ticket[] = [];
+const EMPTY_TOPICS: TopicCluster[] = [];
+const EMPTY_RULES: RoutingRule[] = [];
+
 export default function FeedbackPage() {
   const navigate = useNavigate();
   const remoteList = useFeedbackList();
   const remoteTickets = useFeedbackTickets();
   const remoteTopics = useFeedbackTopics();
   const remoteRules = useFeedbackRules();
-  const feedbackData = remoteList.data ?? [];
-  const ticketsData = remoteTickets.data ?? [];
-  const topicsData = remoteTopics.data ?? [];
-  const rulesData = remoteRules.data ?? [];
+  const feedbackData = remoteList.data ?? EMPTY_FEEDBACK;
+  const ticketsData = remoteTickets.data ?? EMPTY_TICKETS;
+  const topicsData = remoteTopics.data ?? EMPTY_TOPICS;
+  const rulesData = remoteRules.data ?? EMPTY_RULES;
 
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -46,10 +51,10 @@ export default function FeedbackPage() {
   const [notice, setNotice] = useState('');
   const [page, setPage] = useState(1);
 
-  useEffect(() => { setFeedback(feedbackData); }, [feedbackData]);
-  useEffect(() => { setTickets(ticketsData); }, [ticketsData]);
-  useEffect(() => { setTopics(topicsData); }, [topicsData]);
-  useEffect(() => { setRules(rulesData); }, [rulesData]);
+  useEffect(() => { setFeedback(feedbackData); }, [remoteList.data]);
+  useEffect(() => { setTickets(ticketsData); }, [remoteTickets.data]);
+  useEffect(() => { setTopics(topicsData); }, [remoteTopics.data]);
+  useEffect(() => { setRules(rulesData); }, [remoteRules.data]);
 
   const counts = useMemo(() => {
     const total = feedback.length;

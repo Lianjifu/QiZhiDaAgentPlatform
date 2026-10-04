@@ -3,8 +3,8 @@
 * `pg_session` and `redis_client` start pgvector/Redis testcontainers only
   when the `integration` or `contract` marker is requested; for plain unit
   tests they stay unused and no containers are spawned.
-* `_ensure_eos_env` autouse fixture sets safe defaults for any test that
-  reads EOS_-prefixed settings without going through an env file.
+* `_ensure_qzdap_env` autouse fixture sets safe defaults for any test that
+  reads QZDAP_-prefixed settings without going through an env file.
 """
 
 from __future__ import annotations
@@ -19,13 +19,13 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _ensure_eos_env() -> None:
+def _ensure_qzdap_env() -> None:
     """Set safe defaults for tests that don't go through env files."""
-    os.environ.setdefault("EOS_ENV", "test")
-    os.environ.setdefault("EOS_JWT_SECRET", "test-secret-not-for-production-use-only")
-    os.environ.setdefault("EOS_LLM_PROVIDER", "mock")
-    os.environ.setdefault("EOS_BAN_MOCK_TOKEN", "1")
-    os.environ.setdefault("EOS_ALLOW_DEMO_TOKEN", "0")
+    os.environ.setdefault("QZDAP_ENV", "test")
+    os.environ.setdefault("QZDAP_JWT_SECRET", "test-secret-not-for-production-use-only")
+    os.environ.setdefault("QZDAP_LLM_PROVIDER", "mock")
+    os.environ.setdefault("QZDAP_BAN_MOCK_TOKEN", "1")
+    os.environ.setdefault("QZDAP_ALLOW_DEMO_TOKEN", "0")
 
 
 # ── Async event loop (pytest-asyncio in auto mode handles this; kept for
@@ -96,7 +96,7 @@ def pg_session(pg_dsn: str):
 
     Yields nothing — tests build their own AsyncSession via SessionFactory.
     """
-    from eos_persistence.session_factory import SessionFactory
+    from qzdap_persistence.session_factory import SessionFactory
 
     sf = SessionFactory(_async_url(pg_dsn))
     try:

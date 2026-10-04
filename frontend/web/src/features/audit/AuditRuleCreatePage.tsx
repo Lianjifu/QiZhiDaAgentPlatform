@@ -5,9 +5,11 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Shield } from 'lucide-react';
 import type { AuditCategory, AuditRuleAction, AuditSeverity } from './schema';
+import { useCreateAuditRule } from './useAudit';
 
 export default function AuditRuleCreatePage() {
   const navigate = useNavigate();
+  const createRule = useCreateAuditRule();
   const [name, setName] = useState('');
   const [category, setCategory] = useState<AuditCategory>('tool');
   const [condition, setCondition] = useState('');
@@ -34,8 +36,11 @@ export default function AuditRuleCreatePage() {
           className="grid gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!canSubmit) return;
-            navigate('/admin/tool-audit');
+            if (!canSubmit || createRule.isPending) return;
+            createRule.mutate(
+              { name: name.trim(), category, condition: condition.trim(), action, severity },
+              { onSuccess: () => navigate('/admin/tool-audit'), onError: () => navigate('/admin/tool-audit') },
+            );
           }}
         >
           <div>
@@ -77,7 +82,7 @@ export default function AuditRuleCreatePage() {
           </div>
           <div className="flex justify-end gap-2 border-t border-[var(--border)] pt-5">
             <Link to="/admin/tool-audit" className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">取消</Link>
-            <button type="submit" disabled={!canSubmit} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">创建规则</button>
+            <button type="submit" disabled={!canSubmit || createRule.isPending} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">创建规则</button>
           </div>
         </form>
       </section>

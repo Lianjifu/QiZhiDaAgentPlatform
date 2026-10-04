@@ -6,8 +6,8 @@ from uuid import uuid4
 
 import pytest
 
-from deos.modules.platform.application.services import PlatformService
-from deos.modules.platform.fixtures.default_plans import (
+from qzdap.modules.platform.application.services import PlatformService
+from qzdap.modules.platform.fixtures.default_plans import (
     DEFAULT_PLANS,
     build_default_plan,
 )
@@ -22,14 +22,14 @@ from ._in_memory import (
 
 @pytest.fixture
 def tenant_id() -> object:
-    from eos_schema.ids import TenantId
+    from qzdap_schema.ids import TenantId
 
     return TenantId(uuid4())
 
 
 @pytest.fixture
 def other_tenant_id() -> object:
-    from eos_schema.ids import TenantId
+    from qzdap_schema.ids import TenantId
 
     return TenantId(uuid4())
 

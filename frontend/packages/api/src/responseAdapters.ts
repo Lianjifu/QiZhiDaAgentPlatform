@@ -56,6 +56,9 @@ function adaptLogin(rawData: unknown): LoginAdapterOutput | unknown {
       : emailKey.startsWith('audit@')
         ? 'auditor'
         : 'user';
+  const workspaceId = typeof u.workspace_id === 'string'
+    ? u.workspace_id
+    : typeof u.workspaceId === 'string' ? u.workspaceId : '';
   const permissions = Array.isArray(u.permissions) ? u.permissions.filter((item): item is string => typeof item === 'string') : [];
   return {
     token: tokenRaw,
@@ -66,8 +69,12 @@ function adaptLogin(rawData: unknown): LoginAdapterOutput | unknown {
       tenantId,
       name: displayName,
       permissions,
+      workspaceId,
+      workspaceIds: workspaceId ? [workspaceId] : [],
+      environmentScopes: [],
+      mfaEnabled: false,
     },
-    expiresAt: typeof expiresRaw === 'string' ? expiresRaw : '',
+    expiresAt: typeof expiresRaw === 'string' ? expiresRaw : (typeof expiresRaw === 'number' ? String(expiresRaw) : ''),
   };
 }
 
@@ -75,7 +82,7 @@ const PASSTHROUGH = (raw: unknown): unknown => raw;
 void PASSTHROUGH;
 
 /**
- * 把后端 `eos_kernel` 错误码映射到前端 `E_*` 编码空间。
+ * 把后端 `qzdap_kernel` 错误码映射到前端 `E_*` 编码空间。
  *
  * 后端 errors.py 的稳定码是 plain UPPER_SNAKE (`AUTHENTICATION_FAILED`,
  * `FORBIDDEN`, `NOT_FOUND`, ...); 前端约定使用 `E_AUTH_FAILED`,

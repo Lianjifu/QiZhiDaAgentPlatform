@@ -11,7 +11,7 @@ from uuid import uuid4
 
 import httpx
 
-BASE = os.environ.get("EOS_SMOKE_BASE_URL", "http://127.0.0.1:8100")
+BASE = os.environ.get("QZDAP_SMOKE_BASE_URL", "http://127.0.0.1:8100")
 
 
 def main() -> int:
@@ -52,7 +52,7 @@ def main() -> int:
         # 5. metrics
         r = c.get(f"{BASE}/metrics")
         assert r.status_code == 200, r.text
-        assert b"eos_http_requests_total" in r.content
+        assert b"qzdap_http_requests_total" in r.content
         print("[smoke] /metrics OK")
 
     print("[smoke] all green")

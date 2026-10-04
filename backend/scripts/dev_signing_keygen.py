@@ -2,12 +2,12 @@
 """Generate a development Ed25519 keypair for skill-pack signing.
 
 Writes ``<prefix>.priv.pem`` and ``<prefix>.pub.pem`` to ``-o/--out-dir``
-(default ``./.eos/skill-trust``) and prints the ``signer_key_id``
+(default ``./.qzdap/skill-trust``) and prints the ``signer_key_id``
 (= ``sha256(pub_pem).hexdigest()``) so the operator can paste it into a
 trust store or update CI secrets.
 
 This script is for dev / staging ONLY.  Production keys are managed by
-``eos_vault`` and resolved via ``VaultBackedSkillVetter`` (Tier B).
+``qzdap_vault`` and resolved via ``VaultBackedSkillVetter`` (Tier B).
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT))
 sys.path.insert(0, str(_REPO_ROOT / "libs" / "pack_signing" / "src"))
 
-from eos_pack_signing import (  # noqa: E402 — sys.path tweak above
+from qzdap_pack_signing import (  # noqa: E402 — sys.path tweak above
     private_key_to_pem,
     public_key_id,
     public_key_to_pem,
@@ -35,13 +35,13 @@ def main() -> int:
     parser.add_argument(
         "-o",
         "--out-dir",
-        default="./.eos/skill-trust",
+        default="./.qzdap/skill-trust",
         help="directory to write the keypair into (created if missing)",
     )
     parser.add_argument(
         "-p",
         "--prefix",
-        default="eos-office-dev",
+        default="qzdap-office-dev",
         help="file prefix; writes <prefix>.priv.pem and <prefix>.pub.pem",
     )
     args = parser.parse_args()

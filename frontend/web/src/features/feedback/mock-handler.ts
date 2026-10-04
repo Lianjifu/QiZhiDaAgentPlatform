@@ -11,8 +11,33 @@ export function wrapMockHandlerWithAdminFeedback<F extends Handler<F>>(fallback:
     if (path === '/api/admin/feedback/list' && (!opts?.method || opts.method === 'GET')) {
       return mockFeedbackList;
     }
-    if (path === '/api/admin/feedback/tickets' && (!opts?.method || opts.method === 'GET')) {
-      return mockFeedbackTickets;
+    if (path === '/api/admin/feedback/tickets' && opts?.method === 'POST') {
+      const body = (opts.body ?? {}) as Record<string, unknown>;
+      return {
+        id: `tk-${Date.now()}`,
+        title: body.title || '未命名工单',
+        feedbackIds: body.feedbackIds || [],
+        owner: body.owner || '产品组',
+        priority: body.priority || 'medium',
+        status: 'triaged',
+        topic: body.topic || '其他',
+        description: body.description || '由管理员手动创建',
+        createdAt: '刚刚',
+        dueAt: body.dueAt || '本周内',
+      };
+    }
+    if (path === '/api/admin/feedback/rules' && opts?.method === 'POST') {
+      const body = (opts.body ?? {}) as Record<string, unknown>;
+      return {
+        id: `rl-${Date.now()}`,
+        name: body.name || '未命名规则',
+        matchTopic: body.matchTopic || '',
+        matchSentiment: body.matchSentiment || 'all',
+        action: body.action || 'create-ticket',
+        target: body.target || '产品组',
+        enabled: true,
+        description: body.description || '由管理员手动创建',
+      };
     }
     if (path === '/api/admin/feedback/topics' && (!opts?.method || opts.method === 'GET')) {
       return mockFeedbackTopics;

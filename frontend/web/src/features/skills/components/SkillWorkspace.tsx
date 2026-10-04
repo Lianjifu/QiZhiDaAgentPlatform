@@ -5,7 +5,7 @@ import { DRAWER_NAV_ITEMS, RISK_BADGE, STATUS_BADGE, TYPE_META } from './constan
 import type { DrawerPanel } from './constants';
 import {
   DrawerPanelAgents, DrawerPanelAudit, DrawerPanelBasic, DrawerPanelMonitor,
-  DrawerPanelPermission, DrawerPanelSchema, DrawerPanelVersions,
+  DrawerPanelPermission, DrawerPanelRuntime, DrawerPanelSchema, DrawerPanelVersions,
 } from './DrawerPanels';
 
 export function SkillWorkspace({
@@ -95,6 +95,7 @@ export function SkillWorkspace({
             {panel === 'basic' && <DrawerPanelBasic draft={skill} onChange={onChange} />}
             {panel === 'schema' && <DrawerPanelSchema draft={skill} onChange={onChange} />}
             {panel === 'permission' && <DrawerPanelPermission draft={skill} onChange={onChange} />}
+            {panel === 'runtime' && <DrawerPanelRuntime draft={skill} onChange={onChange} />}
             {panel === 'versions' && <DrawerPanelVersions draft={skill} />}
             {panel === 'monitor' && <DrawerPanelMonitor draft={skill} />}
             {panel === 'agents' && <DrawerPanelAgents draft={skill} />}

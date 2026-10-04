@@ -39,30 +39,30 @@ cd backend
 
 # 1. (one-time) Generate a dev keypair
 uv run --frozen python scripts/dev_signing_keygen.py \
-    -o .eos/skill-trust -p eos-office-dev
+    -o .qzdap/skill-trust -p qzdap-office-dev
 
 # 2. (one-time) Seed the trust stores with the public half
 uv run --frozen python scripts/pack_trust_seed.py \
-    .eos/skill-trust/eos-office-dev.pub.pem .eos/skill-trust
-mkdir -p .eos/knowledge-trust .eos/plan-trust
-cp .eos/skill-trust/<key_id>.pub.pem .eos/knowledge-trust/
-cp .eos/skill-trust/<key_id>.pub.pem .eos/plan-trust/
+    .qzdap/skill-trust/qzdap-office-dev.pub.pem .qzdap/skill-trust
+mkdir -p .qzdap/knowledge-trust .qzdap/plan-trust
+cp .qzdap/skill-trust/<key_id>.pub.pem .qzdap/knowledge-trust/
+cp .qzdap/skill-trust/<key_id>.pub.pem .qzdap/plan-trust/
 
 # 3. (per-pack change) Sign every pack of the relevant kind
-for d in packs/office/skills/*/;     do uv run --frozen python scripts/pack_sign.py skill     "$d" -k .eos/skill-trust/eos-office-dev.priv.pem; done
-for d in packs/office/knowledge/*/;  do uv run --frozen python scripts/pack_sign.py knowledge "$d" -k .eos/skill-trust/eos-office-dev.priv.pem; done
-for d in packs/office/plans/*/;      do uv run --frozen python scripts/pack_sign.py plan      "$d" -k .eos/skill-trust/eos-office-dev.priv.pem; done
+for d in packs/office/skills/*/;     do uv run --frozen python scripts/pack_sign.py skill     "$d" -k .qzdap/skill-trust/qzdap-office-dev.priv.pem; done
+for d in packs/office/knowledge/*/;  do uv run --frozen python scripts/pack_sign.py knowledge "$d" -k .qzdap/skill-trust/qzdap-office-dev.priv.pem; done
+for d in packs/office/plans/*/;      do uv run --frozen python scripts/pack_sign.py plan      "$d" -k .qzdap/skill-trust/qzdap-office-dev.priv.pem; done
 
 # 4. (one-time) Migration + boot
 alembic upgrade head   # picks up 0016_skill_signing, 0018_knowledge_signing, 0019_plan_signing
 
-EOS_SKILL_SIGNING_MODE=local     EOS_SKILL_TRUST_DIR=./.eos/skill-trust \
-EOS_KNOWLEDGE_SIGNING_MODE=local EOS_KNOWLEDGE_TRUST_DIR=./.eos/knowledge-trust \
-EOS_PLAN_SIGNING_MODE=local      EOS_PLAN_TRUST_DIR=./.eos/plan-trust \
-EOS_PLATFORM_SEED_OFFICE_SKILL_PACKS=true     EOS_PLATFORM_OFFICE_SKILL_PACKS_ROOT=$(pwd)/packs/office/skills \
-EOS_PLATFORM_SEED_OFFICE_KNOWLEDGE_PACKS=true EOS_PLATFORM_OFFICE_KNOWLEDGE_PACKS_ROOT=$(pwd)/packs/office/knowledge \
-EOS_PLATFORM_SEED_OFFICE_PLAN_PACKS=true      EOS_PLATFORM_OFFICE_PLAN_PACKS_ROOT=$(pwd)/packs/office/plans \
-    uv run --frozen python -m deos.composition.main
+QZDAP_SKILL_SIGNING_MODE=local     QZDAP_SKILL_TRUST_DIR=./.qzdap/skill-trust \
+QZDAP_KNOWLEDGE_SIGNING_MODE=local QZDAP_KNOWLEDGE_TRUST_DIR=./.qzdap/knowledge-trust \
+QZDAP_PLAN_SIGNING_MODE=local      QZDAP_PLAN_TRUST_DIR=./.qzdap/plan-trust \
+QZDAP_PLATFORM_SEED_OFFICE_SKILL_PACKS=true     QZDAP_PLATFORM_OFFICE_SKILL_PACKS_ROOT=$(pwd)/packs/office/skills \
+QZDAP_PLATFORM_SEED_OFFICE_KNOWLEDGE_PACKS=true QZDAP_PLATFORM_OFFICE_KNOWLEDGE_PACKS_ROOT=$(pwd)/packs/office/knowledge \
+QZDAP_PLATFORM_SEED_OFFICE_PLAN_PACKS=true      QZDAP_PLATFORM_OFFICE_PLAN_PACKS_ROOT=$(pwd)/packs/office/plans \
+    uv run --frozen python -m qzdap.composition.main
 # Expected logs:
 #   "seeded 4 office skill packs (vetter=local, ...)"
 #   "seeded 2 office knowledge packs (vetter=local, ...)"
@@ -73,21 +73,21 @@ EOS_PLATFORM_SEED_OFFICE_PLAN_PACKS=true      EOS_PLATFORM_OFFICE_PLAN_PACKS_ROO
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `EOS_SKILL_SIGNING_MODE` | `disabled` | `disabled` / `local` / `vault`. `vault` = `VaultBackedSkillVetter` (Tier B). |
-| `EOS_SKILL_TRUST_DIR` | `./.eos/skill-trust` | Local trust dir for `local` mode. |
-| `EOS_VAULT_SKILL_TRUST_REF` | `vault:secret/data/eos/skill-trust/keys` | KV v2 ref pulled by `vault` mode (TTL = `EOS_VAULT_SKILL_TRUST_REFRESH_SECONDS`). |
-| `EOS_VAULT_SKILL_TRUST_REFRESH_SECONDS` | `300` | TTL for vault-cached keys. |
-| `EOS_VAULT_SKILL_TRUST_MIN_KEYS` | `1` | Boot fails if Vault returns fewer than this many keys. |
-| `EOS_KNOWLEDGE_SIGNING_MODE` | `disabled` | `disabled` or `local`. (vault-mode for knowledge is out of scope.) |
-| `EOS_KNOWLEDGE_TRUST_DIR` | `./.eos/knowledge-trust` | Local trust dir for `local` mode. |
-| `EOS_PLAN_SIGNING_MODE` | `disabled` | `disabled` or `local`. |
-| `EOS_PLAN_TRUST_DIR` | `./.eos/plan-trust` | Local trust dir for `local` mode. |
-| `EOS_PLATFORM_SEED_OFFICE_SKILL_PACKS` | `true` | If `true`, lifespan walker registers every pack in `EOS_PLATFORM_OFFICE_SKILL_PACKS_ROOT`. |
-| `EOS_PLATFORM_OFFICE_SKILL_PACKS_ROOT` | `packs/office/skills` | Pack root for the skill walker. |
-| `EOS_PLATFORM_SEED_OFFICE_KNOWLEDGE_PACKS` | `true` | Enable / disable the knowledge walker. |
-| `EOS_PLATFORM_OFFICE_KNOWLEDGE_PACKS_ROOT` | `packs/office/knowledge` | Pack root for the knowledge walker. |
-| `EOS_PLATFORM_SEED_OFFICE_PLAN_PACKS` | `true` | Enable / disable the plan walker. |
-| `EOS_PLATFORM_OFFICE_PLAN_PACKS_ROOT` | `packs/office/plans` | Pack root for the plan walker. |
+| `QZDAP_SKILL_SIGNING_MODE` | `disabled` | `disabled` / `local` / `vault`. `vault` = `VaultBackedSkillVetter` (Tier B). |
+| `QZDAP_SKILL_TRUST_DIR` | `./.qzdap/skill-trust` | Local trust dir for `local` mode. |
+| `QZDAP_VAULT_SKILL_TRUST_REF` | `vault:secret/data/qzdap/skill-trust/keys` | KV v2 ref pulled by `vault` mode (TTL = `QZDAP_VAULT_SKILL_TRUST_REFRESH_SECONDS`). |
+| `QZDAP_VAULT_SKILL_TRUST_REFRESH_SECONDS` | `300` | TTL for vault-cached keys. |
+| `QZDAP_VAULT_SKILL_TRUST_MIN_KEYS` | `1` | Boot fails if Vault returns fewer than this many keys. |
+| `QZDAP_KNOWLEDGE_SIGNING_MODE` | `disabled` | `disabled` or `local`. (vault-mode for knowledge is out of scope.) |
+| `QZDAP_KNOWLEDGE_TRUST_DIR` | `./.qzdap/knowledge-trust` | Local trust dir for `local` mode. |
+| `QZDAP_PLAN_SIGNING_MODE` | `disabled` | `disabled` or `local`. |
+| `QZDAP_PLAN_TRUST_DIR` | `./.qzdap/plan-trust` | Local trust dir for `local` mode. |
+| `QZDAP_PLATFORM_SEED_OFFICE_SKILL_PACKS` | `true` | If `true`, lifespan walker registers every pack in `QZDAP_PLATFORM_OFFICE_SKILL_PACKS_ROOT`. |
+| `QZDAP_PLATFORM_OFFICE_SKILL_PACKS_ROOT` | `packs/office/skills` | Pack root for the skill walker. |
+| `QZDAP_PLATFORM_SEED_OFFICE_KNOWLEDGE_PACKS` | `true` | Enable / disable the knowledge walker. |
+| `QZDAP_PLATFORM_OFFICE_KNOWLEDGE_PACKS_ROOT` | `packs/office/knowledge` | Pack root for the knowledge walker. |
+| `QZDAP_PLATFORM_SEED_OFFICE_PLAN_PACKS` | `true` | Enable / disable the plan walker. |
+| `QZDAP_PLATFORM_OFFICE_PLAN_PACKS_ROOT` | `packs/office/plans` | Pack root for the plan walker. |
 
 ## Trust store mechanics
 
@@ -99,9 +99,9 @@ cache.  Empty / missing directories fail boot — there is no silent
 
 `VaultBackedSkillVetter` (Tier B, Skill only) re-reads the configured
 KV v2 ref on first call and then refreshes every
-`EOS_VAULT_SKILL_TRUST_REFRESH_SECONDS`.  Rotation latency is bounded
+`QZDAP_VAULT_SKILL_TRUST_REFRESH_SECONDS`.  Rotation latency is bounded
 by that TTL.  First-call failure (Vault unreachable, ref denied,
-returned key count below `EOS_VAULT_SKILL_TRUST_MIN_KEYS`) maps to
+returned key count below `QZDAP_VAULT_SKILL_TRUST_MIN_KEYS`) maps to
 `SkillSignerUntrusted` so the platform boots closed.
 
 ## Runtime gate
@@ -121,7 +121,7 @@ inline with `# TODO A6` markers.
 
 ## Shared signing library
 
-The `eos_pack_signing` workspace lib
+The `qzdap_pack_signing` workspace lib
 ([`backend/libs/pack_signing/`](../../libs/pack_signing/)) owns the
 generic Ed25519 + canonical-JSON plumbing (`canonical_payload`,
 `sign_payload`, `verify_signature`, `public_key_id`,

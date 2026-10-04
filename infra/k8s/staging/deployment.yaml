@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: eos-app-stable
-  namespace: eos-staging
+  name: qzdap-app-stable
+  namespace: qzdap-staging
   labels:
-    app: eos
+    app: qzdap
     ring: stable
 spec:
   replicas: 3
@@ -16,12 +16,12 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: eos
+      app: qzdap
       ring: stable
   template:
     metadata:
       labels:
-        app: eos
+        app: qzdap
         ring: stable
       annotations:
         prometheus.io/scrape: "true"
@@ -37,7 +37,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: app
-          image: eos-app:prod
+          image: qzdap-app:prod
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -46,13 +46,13 @@ spec:
               containerPort: 9102
           envFrom:
             - configMapRef:
-                name: eos-app-config
+                name: qzdap-app-config
             - secretRef:
-                name: eos-app-secret
+                name: qzdap-app-secret
           env:
-            - name: EOS_RING
+            - name: QZDAP_RING
               value: "stable"
-            - name: EOS_INSTANCE_ID
+            - name: QZDAP_INSTANCE_ID
               valueFrom:
                 fieldRef: { fieldPath: metadata.name }
           startupProbe:
@@ -88,10 +88,10 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: eos-app-canary
-  namespace: eos-staging
+  name: qzdap-app-canary
+  namespace: qzdap-staging
   labels:
-    app: eos
+    app: qzdap
     ring: canary
 spec:
   replicas: 1
@@ -103,12 +103,12 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: eos
+      app: qzdap
       ring: canary
   template:
     metadata:
       labels:
-        app: eos
+        app: qzdap
         ring: canary
       annotations:
         prometheus.io/scrape: "true"
@@ -122,7 +122,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: app
-          image: eos-app:prod
+          image: qzdap-app:prod
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -131,13 +131,13 @@ spec:
               containerPort: 9102
           envFrom:
             - configMapRef:
-                name: eos-app-config
+                name: qzdap-app-config
             - secretRef:
-                name: eos-app-secret
+                name: qzdap-app-secret
           env:
-            - name: EOS_RING
+            - name: QZDAP_RING
               value: "canary"
-            - name: EOS_INSTANCE_ID
+            - name: QZDAP_INSTANCE_ID
               valueFrom:
                 fieldRef: { fieldPath: metadata.name }
           startupProbe:

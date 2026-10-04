@@ -12,7 +12,7 @@ import { UseModal } from './components/UseModal';
 
 interface RecentUseItem { id: string; name: string; type: CapabilityType; time: string }
 
-const CHOSEN_STORAGE_KEY = 'qzd.user.skills.chosen';
+const CHOSEN_STORAGE_KEY = 'qzdap.user.skills.chosen';
 
 const TYPE_META = {
   Skill: { icon: Sparkles, tone: 'bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300', label: '工作技能' },

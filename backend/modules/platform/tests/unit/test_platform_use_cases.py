@@ -7,8 +7,8 @@ from uuid import uuid4
 
 import pytest
 
-from deos.modules.platform.application.services import PlatformService
-from deos.modules.platform.application.use_cases import (
+from qzdap.modules.platform.application.services import PlatformService
+from qzdap.modules.platform.application.use_cases import (
     assign_subscription,
     get_plan,
     get_subscription,
@@ -16,8 +16,8 @@ from deos.modules.platform.application.use_cases import (
     list_settings,
     upsert_setting,
 )
-from deos.modules.platform.domain.errors import PlanNotFound
-from deos.modules.platform.domain.value_objects import (
+from qzdap.modules.platform.domain.errors import PlanNotFound
+from qzdap.modules.platform.domain.value_objects import (
     PlanStatus,
     SubscriptionStatus,
 )
@@ -30,13 +30,13 @@ from ._in_memory import (
 
 
 def _tenant_id():
-    from eos_schema.ids import TenantId
+    from qzdap_schema.ids import TenantId
 
     return TenantId(uuid4())
 
 
 def _user_id():
-    from eos_schema.ids import UserId
+    from qzdap_schema.ids import UserId
 
     return UserId(uuid4())
 
@@ -285,7 +285,7 @@ class TestUpsertSetting:
 
 class TestAggregateCosts:
     async def test_returns_empty(self, service: PlatformService) -> None:
-        from deos.modules.platform.application.use_cases import (
+        from qzdap.modules.platform.application.use_cases import (
             aggregate_costs,
         )
 
@@ -339,7 +339,7 @@ class TestCrossTenantIsolation:
 
 class TestPortCompliance:
     def test_in_memory_repos_satisfy_protocols(self) -> None:
-        from deos.modules.platform.application.ports import (
+        from qzdap.modules.platform.application.ports import (
             PlanRepository,
             SubscriptionRepository,
             TenantSettingRepository,

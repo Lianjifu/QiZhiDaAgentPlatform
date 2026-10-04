@@ -6,7 +6,7 @@
  * 鉴权副作用全部委托给 useLogin。
  */
 import { ShieldCheck, Sun, Moon, UserRound, Shield, ScrollText, Gauge, Lock, Bot } from 'lucide-react';
-import { toast } from '@de/web-ui';
+import { toast } from '@qzdap/web-ui';
 import { BrandLogo } from '@/components/feedback/BrandLogo';
 import { useUiStore } from '@/stores/uiStore';
 import { useT } from '@/i18n';
@@ -135,8 +135,13 @@ export default function LoginPage() {
           <div className="flex flex-1 items-start justify-center px-6 py-16 sm:px-8 md:items-center xl:px-12 2xl:px-16">
             <div className="w-full max-w-[26rem] xl:max-w-[28rem]">
               <div className="mb-8 flex items-center gap-2.5 md:hidden">
-                <BrandLogo size={32} className="text-[var(--login-orange)]" ariaLabel="企智搭 · 智能体平台" />
-                <span className="text-sm font-medium text-[var(--text)]">{t('login.brand.product')}</span>
+                <BrandLogo
+                  size={36}
+                  withWordmark
+                  wordmark="企智搭"
+                  subtitle="智能体平台"
+                  ariaLabel="企智搭 · 智能体平台"
+                />
               </div>
               {step === 'credentials' ? (
                 <header className="mb-8">

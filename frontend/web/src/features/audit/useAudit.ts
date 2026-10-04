@@ -2,10 +2,10 @@
  * AdminToolAudit hooks — 5 个列表查询(entries/risks/rules/scopes/stats)。
  * 收藏 / 选中 / 风险解决等乐观更新保持在 page 层 local state。
  */
-import { useApiQuery } from '@/services/query';
+import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';
 import type {
-  AuditEntry, AuditStats, AuditRule, PermissionScope, RiskEvent,
+  AuditEntry, AuditStats, AuditRule, CreateAuditRuleInput, PermissionScope, RiskEvent,
 } from './schema';
 
 export function useAuditEntries() {
@@ -24,6 +24,14 @@ export function useAuditRules() {
   return useApiQuery<AuditRule[]>([...qk.admin.audit.rules], '/api/admin/audit/rules', undefined, {
     staleTime: 60_000,
   });
+}
+
+export function useCreateAuditRule() {
+  return useApiMutation<AuditRule, CreateAuditRuleInput>(
+    () => '/api/admin/audit/rules',
+    { invalidateKeys: [qk.admin.audit.rules] },
+    'POST',
+  );
 }
 
 export function usePermissionScopes() {

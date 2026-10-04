@@ -7,7 +7,7 @@ import { mockFlows } from '@/features/workflows/fixtures';
 import { projectOpenWorkflows } from '@/features/user/catalog/mappers';
 import { qk } from '@/api/shared/query-keys';
 
-const CHOSEN_STORAGE_KEY = 'qzd.user.automations.chosen';
+const CHOSEN_STORAGE_KEY = 'qzdap.user.automations.chosen';
 
 afterEach(() => cleanup());
 beforeEach(() => sessionStorage.removeItem(CHOSEN_STORAGE_KEY));

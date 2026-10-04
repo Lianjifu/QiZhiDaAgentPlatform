@@ -1,4 +1,4 @@
-import { useApiQuery } from '@/services/query';
+import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';
 import type { EvalResult, EvalSuite, EvalSuiteStats } from './schema';
 
@@ -17,6 +17,14 @@ export function useEvalResults() {
     '/api/admin/evaluations/results',
     undefined,
     { staleTime: 60_000 },
+  );
+}
+
+export function useCreateEvalSuite() {
+  return useApiMutation<EvalSuite, Partial<EvalSuite>>(
+    () => '/api/admin/evaluations/suites',
+    { invalidateKeys: [qk.admin.evaluations.list] },
+    'POST',
   );
 }
 

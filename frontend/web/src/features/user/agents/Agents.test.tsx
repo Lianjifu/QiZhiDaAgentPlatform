@@ -8,7 +8,7 @@ import { mockAgents as adminAgents } from '@/features/agents/fixtures';
 import { projectOpenAgents } from '@/features/user/catalog/mappers';
 import { qk } from '@/api/shared/query-keys';
 
-const CHOSEN_STORAGE_KEY = 'qzd.user.agents.chosen';
+const CHOSEN_STORAGE_KEY = 'qzdap.user.agents.chosen';
 
 afterEach(() => cleanup());
 beforeEach(() => sessionStorage.removeItem(CHOSEN_STORAGE_KEY));
@@ -89,7 +89,7 @@ describe('智能体库', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
-  it('starts conversation from browse drawer and records a local demo reply', () => {
+  it('starts conversation from browse drawer and records a local demo reply', async () => {
     renderDirectory();
     fireEvent.click(screen.getByRole('button', { name: '浏览并选用' }));
     const drawer = screen.getByRole('dialog', { name: '浏览并选用智能体' });
@@ -97,7 +97,7 @@ describe('智能体库', () => {
     expect(screen.getByRole('heading', { name: '与客户沟通助手对话' })).toBeTruthy();
     expect(screen.getByText('当前智能体：客户沟通助手')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '分析这份资料并提炼结论' }));
-    expect(screen.getByText(/尚未连接真实智能体服务/)).toBeTruthy();
+    expect(await screen.findByText(/尚未连接真实智能体服务/)).toBeTruthy();
     expect(screen.getByRole('link', { name: '更换智能体' }).getAttribute('href')).toBe('/agents');
   });
 

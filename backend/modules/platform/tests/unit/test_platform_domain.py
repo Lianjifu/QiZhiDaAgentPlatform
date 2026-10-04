@@ -8,38 +8,38 @@ from uuid import uuid4
 
 import pytest
 
-from deos.modules.platform.domain.entities import (
+from qzdap.modules.platform.domain.entities import (
     Plan,
     Subscription,
     TenantSetting,
 )
-from deos.modules.platform.domain.errors import PlanNotFound
-from deos.modules.platform.domain.value_objects import (
+from qzdap.modules.platform.domain.errors import PlanNotFound
+from qzdap.modules.platform.domain.value_objects import (
     PlanStatus,
     SubscriptionStatus,
 )
 
 
 def _tenant_id():
-    from eos_schema.ids import TenantId
+    from qzdap_schema.ids import TenantId
 
     return TenantId(uuid4())
 
 
 def _plan_id():
-    from eos_schema.ids import PlanId
+    from qzdap_schema.ids import PlanId
 
     return PlanId(uuid4())
 
 
 def _user_id():
-    from eos_schema.ids import UserId
+    from qzdap_schema.ids import UserId
 
     return UserId(uuid4())
 
 
 def _workspace_id():
-    from eos_schema.ids import WorkspaceId
+    from qzdap_schema.ids import WorkspaceId
 
     return WorkspaceId(uuid4())
 
@@ -199,13 +199,13 @@ class TestTenantSetting:
 class TestErrors:
     def test_plan_not_found_is_not_found_error(self) -> None:
         err = PlanNotFound("missing")
-        from eos_kernel.errors import NotFoundError
+        from qzdap_kernel.errors import NotFoundError
 
         assert isinstance(err, NotFoundError)
         assert err.code == "PLAN_NOT_FOUND"
 
     def test_all_have_codes(self) -> None:
-        from deos.modules.platform.domain.errors import (
+        from qzdap.modules.platform.domain.errors import (
             PlanAlreadyExists,
             SubscriptionInvalidTransition,
             TenantSettingConflict,
@@ -225,14 +225,14 @@ class TestErrors:
 
 class TestDefaultPlansFixture:
     def test_three_default_specs(self) -> None:
-        from deos.modules.platform.fixtures.default_plans import DEFAULT_PLANS
+        from qzdap.modules.platform.fixtures.default_plans import DEFAULT_PLANS
 
         assert len(DEFAULT_PLANS) == 3
         codes = {s.code for s in DEFAULT_PLANS}
         assert codes == {"free", "pro", "enterprise"}
 
     def test_build_default_plan(self) -> None:
-        from deos.modules.platform.fixtures.default_plans import (
+        from qzdap.modules.platform.fixtures.default_plans import (
             DEFAULT_PLANS,
             build_default_plan,
         )

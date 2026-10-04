@@ -1,5 +1,5 @@
 [project]
-name = "eos-pack-signing"
+name = "qzdap-pack-signing"
 version = "0.1.0"
 description = "Generic Ed25519 pack signing primitives + trust-store scanner (used by Skill / Knowledge / Plan pack vetters)"
 requires-python = ">=3.12"
@@ -12,7 +12,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/eos_pack_signing"]
+packages = ["src/qzdap_pack_signing"]
 
 [tool.ruff]
 src = ["src"]

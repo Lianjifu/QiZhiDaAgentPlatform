@@ -1,16 +1,16 @@
-name: eos-postgres-dev
+name: qzdap-postgres-dev
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: eos-postgres
+    container_name: qzdap-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: eos_dev
+      POSTGRES_DB: qzdap_dev
     ports:
       - "5432:5432"
     volumes:
-      - eos_postgres:/var/lib/postgresql/data
+      - qzdap_postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -19,12 +19,12 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: eos-redis
+    container_name: qzdap-redis
     command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
       - "6379:6379"
     volumes:
-      - eos_redis:/data
+      - qzdap_redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -33,7 +33,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: eos-minio
+    container_name: qzdap-minio
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -42,7 +42,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - eos_minio:/data
+      - qzdap_minio:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -51,9 +51,9 @@ services:
 
   kafka:
     # A5: audit bus broker. KRaft single-node for dev (no ZK).
-    # Switch EOS_AUDIT_MODE=direct to bypass in dev.
+    # Switch QZDAP_AUDIT_MODE=direct to bypass in dev.
     image: bitnami/kafka:3.7
-    container_name: eos-kafka
+    container_name: qzdap-kafka
     ports:
       - "9092:9092"
     environment:
@@ -74,6 +74,6 @@ services:
       retries: 10
 
 volumes:
-  eos_postgres:
-  eos_redis:
-  eos_minio:
+  qzdap_postgres:
+  qzdap_redis:
+  qzdap_minio:

@@ -1,7 +1,7 @@
-# Enterprise Agent OS · 新项目蓝图澄清
+# 企智搭 · 智能体平台 · 新项目蓝图澄清
 
 > 修正日期：2026-09-19
-> **澄清**：enterprise-agent-os 是**全新项目**（greenfield），不是对现有 `backend/` `frontend/` 的重构。
+> **澄清**：qizhida-agent-platform 是**全新项目**（greenfield），不是对现有 `backend/` `frontend/` 的重构。
 
 ---
 
@@ -10,7 +10,7 @@
 | 路径 | 含义 |
 |---|---|
 | `backend/` `frontend/` | **旧项目遗留代码**（Go+Python+React）；保留作为**契约参考**与**业务灵感来源** |
-| `docs/enterprise-agent-os/` | **新项目方案**（独立仓库或独立目录规划）；4D 架构从头设计 |
+| `docs/qizhida-agent-platform/` | **新项目方案**（独立仓库或独立目录规划）；4D 架构从头设计 |
 
 **两个项目无强绑定关系**：
 - 新项目可以借鉴旧项目的业务模型（如 Skill / Tool / Knowledge 等概念）
@@ -37,11 +37,11 @@
 | Next.js + RSC | SSR 简单 | ❌ 与 4D 冲突 |
 | CRA | 简单 | ❌ 旧时代 |
 
-### 2.3 包命名（`@eos/*`）
+### 2.3 包命名（`@qzdap/*`）
 
 | 选择 | 理由 |
 |---|---|
-| **`@eos/*` 前缀** | Enterprise OS 缩写；区别于旧项目 `@de/*`（Digital Employee） |
+| **`@qzdap/*` 前缀** | Enterprise OS 缩写；区别于旧项目 `@de/*`（Digital Employee） |
 
 ### 2.4 UI 库
 
@@ -63,8 +63,8 @@
 └─────────────────────────────────────────┘
                   ↓ 借鉴业务模型
 ┌─────────────────────────────────────────┐
-│    新项目（enterprise-agent-os/）         │
-│  - Python FastAPI + 4D 前端 @eos/*        │
+│    新项目（qizhida-agent-platform/）         │
+│  - Python FastAPI + 4D 前端 @qzdap/*        │
 │  - 从 0 开始设计                           │
 │  - 文档完整定义 13 节架构                  │
 └─────────────────────────────────────────┘
@@ -74,7 +74,7 @@
 
 ## 4. 文档立场确认
 
-**`docs/enterprise-agent-os/{backend,web}/` 13 节文档**：
+**`docs/qizhida-agent-platform/{backend,web}/` 13 节文档**：
 
 - ✅ 是新项目的**目标态架构定义**（不是对现状的描述）
 - ✅ 不依赖旧项目代码；可以从 0 实施
@@ -101,7 +101,7 @@
 新项目仓库结构（建议）：
 
 ```
-enterprise-agent-os/         ← 新独立仓库（或新目录）
+qizhida-agent-platform/         ← 新独立仓库（或新目录）
 ├── backend/                  ← Python FastAPI + 模块化单体
 │   ├── modules/
 │   │   ├── agent_runtime/
@@ -116,30 +116,30 @@ enterprise-agent-os/         ← 新独立仓库（或新目录）
 │   └── main.py
 ├── web/                      ← pnpm + FSD + DDD + Hex
 │   ├── packages/
-│   │   ├── web-api/         # @eos/web-api
-│   │   ├── web-mock/        # @eos/web-mock
-│   │   ├── web-types/       # @eos/web-types
-│   │   ├── web-hooks/       # @eos/web-hooks
-│   │   ├── web-ui/          # @eos/web-ui
-│   │   └── web-utils/       # @eos/web-utils
+│   │   ├── web-api/         # @qzdap/web-api
+│   │   ├── web-mock/        # @qzdap/web-mock
+│   │   ├── web-types/       # @qzdap/web-types
+│   │   ├── web-hooks/       # @qzdap/web-hooks
+│   │   ├── web-ui/          # @qzdap/web-ui
+│   │   └── web-utils/       # @qzdap/web-utils
 │   └── src/
 │       └── features/<8 BC>/
-├── docs/                     ← 即 docs/enterprise-agent-os/
+├── docs/                     ← 即 docs/qizhida-agent-platform/
 ├── deploy/
 ├── scripts/
 └── README.md
 ```
 
 **与本仓库（旧项目）平行的位置**：
-- 新项目仓库：`~/projects/enterprise-agent-os/`（独立）
-- 或：本仓库下新建 `enterprise-agent-os/` 子目录（如果要求同 monorepo）
+- 新项目仓库：`~/projects/qizhida-agent-platform/`（独立）
+- 或：本仓库下新建 `qizhida-agent-platform/` 子目录（如果要求同 monorepo）
 
 ---
 
 ## 7. 文档目录最终定位
 
 ```
-docs/enterprise-agent-os/        ← 新项目方案（独立可用）
+docs/qizhida-agent-platform/        ← 新项目方案（独立可用）
 ├── README.md                     ← 顶层索引
 ├── REVIEW.md                     ← 本文档（澄清）
 ├── backend/                      ← 后端 13 节方案（Python FastAPI）

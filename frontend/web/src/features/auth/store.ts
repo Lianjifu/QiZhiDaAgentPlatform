@@ -3,7 +3,7 @@
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { User, Permission, Role } from '@de/web-types';
+import type { User, Permission, Role } from '@qzdap/web-types';
 
 interface AuthState {
   user: User | null;
@@ -38,6 +38,6 @@ export const useAuthStore = create<AuthState>()(
         return !!r && roles.includes(r);
       },
     }),
-    { name: 'de-auth' },
+    { name: 'qzdap-auth' },
   ),
 );

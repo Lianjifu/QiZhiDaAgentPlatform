@@ -12,19 +12,19 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from deos.modules.governance.application.ports import (
+from qzdap.modules.governance.application.ports import (
     ApprovalRepository,
     AuditLogPort,
     DecisionEventRepo,
     PolicyRepository,
 )
-from deos.modules.governance.domain.entities import (
+from qzdap.modules.governance.domain.entities import (
     Approval,
     AuditLogEntry,
     DecisionEvent,
     PolicyRule,
 )
-from deos.modules.governance.domain.value_objects import ApprovalStatus
+from qzdap.modules.governance.domain.value_objects import ApprovalStatus
 
 # ── PolicyRepository ────────────────────────────────────────────────────────
 

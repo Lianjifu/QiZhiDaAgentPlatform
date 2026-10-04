@@ -21,13 +21,13 @@ cd backend
 make run-app   # port 8102
 
 # 2. mint admin token + create a session/workspace
-export EOS_BENCH_TOKEN=$(uv run python -c 'from libs.auth.scripts.mint_admin import main; main()' 2>/dev/null || \
+export QZDAP_BENCH_TOKEN=$(uv run python -c 'from libs.auth.scripts.mint_admin import main; main()' 2>/dev/null || \
     uv run python -c 'from libs.auth import mint_admin_token; print(mint_admin_token())')
-export EOS_BENCH_TENANT=$(uuidgen)
-export EOS_BENCH_WORKSPACE=$(uuidgen)
-export EOS_BENCH_AGENT_ID=$(curl -fsS -X POST http://127.0.0.1:8102/v1/agents \
-    -H "Authorization: Bearer $EOS_BENCH_TOKEN" \
-    -H "X-Tenant-Id: $EOS_BENCH_TENANT" \
+export QZDAP_BENCH_TENANT=$(uuidgen)
+export QZDAP_BENCH_WORKSPACE=$(uuidgen)
+export QZDAP_BENCH_AGENT_ID=$(curl -fsS -X POST http://127.0.0.1:8102/v1/agents \
+    -H "Authorization: Bearer $QZDAP_BENCH_TOKEN" \
+    -H "X-Tenant-Id: $QZDAP_BENCH_TENANT" \
     -H "Content-Type: application/json" \
     -d '{"name":"bencher","template_id":"default"}' | jq -r .id)
 
@@ -40,7 +40,7 @@ uv run python -m tests.perf.bench_turn_latency --concurrency 10 --turns 5
 To measure canary pool:
 
 ```bash
-EOS_BENCH_RING=canary \
+QZDAP_BENCH_RING=canary \
     uv run python -m tests.perf.bench_turn_latency --concurrency 5 --turns 3
 ```
 
@@ -59,7 +59,7 @@ uv run python -m tests.perf.bench_observability_ingest --events 5000 --warmup 20
 
 Both scripts return exit code 1 on threshold breach. A nightly CI job
 can run them against staging and post P95 to the Grafana
-`eos-overview` panel via the `/metrics` pushgateway.
+`qzdap-overview` panel via the `/metrics` pushgateway.
 
 ## SLO mapping
 

@@ -7,7 +7,7 @@ import { BrowseAndUseDrawer } from './components/BrowseAndUseDrawer';
 import { useAgents } from './useAgents';
 import type { Agent, AgentCategory } from './schema';
 
-const CHOSEN_STORAGE_KEY = 'qzd.user.agents.chosen';
+const CHOSEN_STORAGE_KEY = 'qzdap.user.agents.chosen';
 
 const ICON_BY_CATEGORY: Record<AgentCategory, typeof UsersRound> = {
   '销售支持': UsersRound,
@@ -93,7 +93,13 @@ export default function AgentsPage() {
     if (!chosenIds.includes(agent.id)) {
       setChosenIds((current) => [...current, agent.id]);
     }
-    navigate('/copilot', { state: { agentId: agent.id, agentName: agent.name, agentExample: agent.example } });
+    navigate('/copilot', {
+      state: {
+        agentId: agent.id,
+        agentName: agent.name,
+        agentExample: agent.example,
+      },
+    });
   };
   const resetFilters = () => { setQuery(''); setCategory('all'); setOnlyFavorites(false); };
 

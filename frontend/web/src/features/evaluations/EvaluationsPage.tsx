@@ -19,12 +19,15 @@ import { CaseTab, ResultTab, TemplateTab } from './components/tabs/Tabs';
 
 type ViewId = 'suite' | 'result' | 'case' | 'template';
 
+const EMPTY_SUITES: EvalSuite[] = [];
+const EMPTY_RESULTS: EvalResult[] = [];
+
 export default function EvaluationsPage() {
   const navigate = useNavigate();
   const remoteSuites = useEvalSuites();
   const remoteResults = useEvalResults();
-  const suitesData = remoteSuites.data ?? [];
-  const resultsData = remoteResults.data ?? [];
+  const suitesData = remoteSuites.data ?? EMPTY_SUITES;
+  const resultsData = remoteResults.data ?? EMPTY_RESULTS;
 
   const [suites, setSuites] = useState<EvalSuite[]>([]);
   const [view, setView] = useState<ViewId>('suite');
@@ -41,7 +44,7 @@ export default function EvaluationsPage() {
 
   const stats = useEvalSuiteStats(suites);
 
-  useEffect(() => { setSuites(suitesData); }, [suitesData]);
+  useEffect(() => { setSuites(suitesData); }, [remoteSuites.data]);
 
   const visibleSuites = useMemo(() => {
     const q = search.trim().toLowerCase();

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from eos_schema.ids import (
+from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
     EvalRunId,
@@ -14,7 +14,7 @@ from eos_schema.ids import (
     WorkspaceId,
 )
 
-from deos.modules.agent_factory.application.ports import (
+from qzdap.modules.agent_factory.application.ports import (
     AgentFactoryEventPublisher,
     AgentTemplateRepository,
     AgentVersionRepository,
@@ -22,7 +22,7 @@ from deos.modules.agent_factory.application.ports import (
     EvaluationQueryPort,
     ReleaseRepository,
 )
-from deos.modules.agent_factory.domain.entities import (
+from qzdap.modules.agent_factory.domain.entities import (
     AgentTemplate,
     AgentVersion,
     Release,

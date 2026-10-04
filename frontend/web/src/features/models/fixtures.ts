@@ -5,7 +5,7 @@ import type { Model, Provider, RouteRule, HealthEvent } from './schema';
 
 export const mockProviders: Provider[] = [
   { id: 'pv-openai', name: 'OpenAI 官方', region: 'global', status: 'healthy', baseUrl: 'https://api.openai.com/v1', apiKeyMasked: 'sk-••••••••3aF2', errorRate: 0.4, avgLatencyMs: 480, qps: 120 },
-  { id: 'pv-azure', name: 'Azure OpenAI', region: 'eastasia', status: 'healthy', baseUrl: 'https://eos.openai.azure.com', apiKeyMasked: '••••••••b821', errorRate: 0.3, avgLatencyMs: 520, qps: 80 },
+  { id: 'pv-azure', name: 'Azure OpenAI', region: 'eastasia', status: 'healthy', baseUrl: 'https://qzdap.openai.azure.com', apiKeyMasked: '••••••••b821', errorRate: 0.3, avgLatencyMs: 520, qps: 80 },
   { id: 'pv-anthropic', name: 'Anthropic Claude', region: 'us-east', status: 'degraded', baseUrl: 'https://api.anthropic.com', apiKeyMasked: 'sk-ant-•••••7Cd1', errorRate: 1.6, avgLatencyMs: 610, qps: 45 },
   { id: 'pv-qwen', name: '通义千问', region: 'china', status: 'healthy', baseUrl: 'https://dashscope.aliyuncs.com', apiKeyMasked: 'sk-••••••e9a0', errorRate: 0.5, avgLatencyMs: 410, qps: 200 },
   { id: 'pv-deepseek', name: 'DeepSeek', region: 'china', status: 'down', baseUrl: 'https://api.deepseek.com', apiKeyMasked: 'sk-••••••44ac', errorRate: 4.8, avgLatencyMs: 0, qps: 0 },

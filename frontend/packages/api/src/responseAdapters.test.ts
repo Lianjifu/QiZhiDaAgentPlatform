@@ -16,6 +16,10 @@ describe('applyResponseAdapter', () => {
         tenantId: '',
         name: '',
         permissions: [],
+        workspaceId: '',
+        workspaceIds: [],
+        environmentScopes: [],
+        mfaEnabled: false,
       },
       expiresAt: '2026-09-25T12:00:00Z',
     });

@@ -11,18 +11,18 @@ const admin = {
 };
 
 describe('mock data-flow consistency', () => {
-  it('tasks reference existing digital employees and agent kernels', async () => {
+  it('tasks reference existing agent profiles and agent kernels', async () => {
     const [tasks, employees, agents] = await Promise.all([
       mockHandler('/api/tasks', { method: 'GET', headers: admin }) as Promise<any[]>,
-      mockHandler('/api/digital-employees', { method: 'GET', headers: admin }) as Promise<any[]>,
+      mockHandler('/api/agent-profiles', { method: 'GET', headers: admin }) as Promise<any[]>,
       mockHandler('/api/agents', { method: 'GET', headers: admin }) as Promise<any[]>,
     ]);
     const employeeIds = new Set(employees.map((e) => e.id));
     const agentIds = new Set(agents.map((a) => a.id));
     for (const task of tasks) {
-      expect(employeeIds.has(task.digitalEmployeeId), `task ${task.id} → ${task.digitalEmployeeId}`).toBe(true);
+      expect(employeeIds.has(task.agentProfileId), `task ${task.id} → ${task.agentProfileId}`).toBe(true);
       if (task.agentId) expect(agentIds.has(task.agentId), `task ${task.id} agent ${task.agentId}`).toBe(true);
-      const employee = employees.find((e) => e.id === task.digitalEmployeeId);
+      const employee = employees.find((e) => e.id === task.agentProfileId);
       if (employee?.capabilities?.agentId && task.agentId) {
         expect(task.agentId).toBe(employee.capabilities.agentId);
       }
@@ -31,8 +31,8 @@ describe('mock data-flow consistency', () => {
 
   it('employee capability names resolve into capability catalog', async () => {
     const [employees, catalog, agents] = await Promise.all([
-      mockHandler('/api/digital-employees', { method: 'GET', headers: admin }) as Promise<any[]>,
-      mockHandler('/api/digital-employee-capability-catalog', { method: 'GET', headers: admin }) as Promise<any>,
+      mockHandler('/api/agent-profiles', { method: 'GET', headers: admin }) as Promise<any[]>,
+      mockHandler('/api/agent-capability-catalog', { method: 'GET', headers: admin }) as Promise<any>,
       mockHandler('/api/agents', { method: 'GET', headers: admin }) as Promise<any[]>,
     ]);
     const names = (items: Array<{ name: string }>) => new Set(items.map((item) => item.name));
@@ -90,8 +90,8 @@ describe('mock data-flow consistency', () => {
     for (const relation of relations) expect(docIds.has(relation.sourceDocId), `relation → ${relation.sourceDocId}`).toBe(true);
     for (const binding of bindings) {
       expect(packageIds.has(binding.packageId), `binding package ${binding.packageId}`).toBe(true);
-      if (binding.consumerType === 'digital_employee') {
-        const employees = await mockHandler('/api/digital-employees', { method: 'GET', headers: admin }) as any[];
+      if (binding.consumerType === 'agent') {
+        const employees = await mockHandler('/api/agent-profiles', { method: 'GET', headers: admin }) as any[];
         expect(employees.some((e) => e.id === binding.consumerId)).toBe(true);
       }
       if (binding.consumerType === 'workflow') {
@@ -117,7 +117,7 @@ describe('mock data-flow consistency', () => {
   it('memory records reference existing employees and task/workflow sources', async () => {
     const [records, employees, tasks, workflows] = await Promise.all([
       mockHandler('/api/memory/records', { method: 'GET', headers: admin }) as Promise<any[]>,
-      mockHandler('/api/digital-employees', { method: 'GET', headers: admin }) as Promise<any[]>,
+      mockHandler('/api/agent-profiles', { method: 'GET', headers: admin }) as Promise<any[]>,
       mockHandler('/api/tasks', { method: 'GET', headers: admin }) as Promise<any[]>,
       mockHandler('/api/workflows', { method: 'GET', headers: admin }) as Promise<any[]>,
     ]);
@@ -125,13 +125,13 @@ describe('mock data-flow consistency', () => {
     const taskIds = new Set(tasks.map((t) => t.id));
     const workflowIds = new Set(workflows.map((w) => w.id));
     for (const record of records) {
-      if (record.digitalEmployeeId) expect(employeeIds.has(record.digitalEmployeeId)).toBe(true);
+      if (record.agentProfileId) expect(employeeIds.has(record.agentProfileId)).toBe(true);
       if (record.sourceType === 'task') expect(taskIds.has(record.sourceId), `memory ${record.id} task ${record.sourceId}`).toBe(true);
       if (record.sourceType === 'workflow') expect(workflowIds.has(record.sourceId), `memory ${record.id} workflow ${record.sourceId}`).toBe(true);
     }
   });
 
-  it('workspace partners returns digital employees not legacy nicknames', async () => {
+  it('workspace partners returns agent profiles not legacy nicknames', async () => {
     const partners = await mockHandler('/api/workspaces/w1/partners', { method: 'GET', headers: admin }) as any[];
     expect(partners.length).toBeGreaterThan(0);
     expect(partners.every((item) => item.id?.startsWith('de-') && item.name && item.role)).toBe(true);

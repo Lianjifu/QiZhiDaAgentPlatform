@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from deos.runtimes.embedding_runtime.adapters.noop_adapter import NoOpAdapter
-from deos.runtimes.embedding_runtime.app import create_app
-from deos.runtimes.embedding_runtime.routes import build_router
+from qzdap.runtimes.embedding_runtime.adapters.noop_adapter import NoOpAdapter
+from qzdap.runtimes.embedding_runtime.app import create_app
+from qzdap.runtimes.embedding_runtime.routes import build_router
 
 # NoOp ----------------------------------------------------------------------
 
@@ -78,16 +78,16 @@ def test_openai_app_embeds_via_mock_client() -> None:
 
 def test_openai_without_key_raises_at_startup() -> None:
     # Reset module-level Settings cache + os.environ for this test
-    from deos.runtimes.embedding_runtime.settings import reset_settings_cache
+    from qzdap.runtimes.embedding_runtime.settings import reset_settings_cache
 
-    os.environ.pop("EOS_OPENAI_API_KEY", None)
+    os.environ.pop("QZDAP_OPENAI_API_KEY", None)
     reset_settings_cache()
-    with pytest.raises(RuntimeError, match="EOS_OPENAI_API_KEY required"):
+    with pytest.raises(RuntimeError, match="QZDAP_OPENAI_API_KEY required"):
         create_app(provider="openai")
 
 
 def test_unknown_provider_raises() -> None:
-    with pytest.raises(RuntimeError, match="unknown EOS_EMBEDDING_PROVIDER"):
+    with pytest.raises(RuntimeError, match="unknown QZDAP_EMBEDDING_PROVIDER"):
         create_app(provider="bogus")
 
 

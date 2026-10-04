@@ -20,6 +20,10 @@ import { L1Tab } from './components/tabs/L1Tab';
 import { L2Tab } from './components/tabs/L2Tab';
 import { L3Tab } from './components/tabs/L3Tab';
 
+const EMPTY_L1: L1Session[] = [];
+const EMPTY_L2: L2Fact[] = [];
+const EMPTY_L3: L3Entry[] = [];
+
 export default function MemoryPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<MemoryTabId>('l1');
@@ -45,17 +49,20 @@ export default function MemoryPage() {
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [promoteIds, setPromoteIds] = useState<string[]>([]);
 
-  const remoteL1 = useL1Sessions().data ?? [];
-  const remoteL2 = useL2Facts().data ?? [];
-  const remoteL3 = useL3Entries().data ?? [];
+  const l1QueryRemote = useL1Sessions();
+  const l2QueryRemote = useL2Facts();
+  const l3QueryRemote = useL3Entries();
+  const remoteL1 = l1QueryRemote.data ?? EMPTY_L1;
+  const remoteL2 = l2QueryRemote.data ?? EMPTY_L2;
+  const remoteL3 = l3QueryRemote.data ?? EMPTY_L3;
   const remotePromotions = usePromotions().data ?? [];
 
   const [l1, setL1] = useState<L1Session[]>(remoteL1);
   const [l2, setL2] = useState<L2Fact[]>(remoteL2);
   const [l3, setL3] = useState<L3Entry[]>(remoteL3);
-  useEffect(() => setL1(remoteL1), [remoteL1]);
-  useEffect(() => setL2(remoteL2), [remoteL2]);
-  useEffect(() => setL3(remoteL3), [remoteL3]);
+  useEffect(() => setL1(remoteL1), [l1QueryRemote.data]);
+  useEffect(() => setL2(remoteL2), [l2QueryRemote.data]);
+  useEffect(() => setL3(remoteL3), [l3QueryRemote.data]);
 
   const stats = useMemoryStats(l1, l2, l3, remotePromotions);
   const counts = useMemo(() => ({ l1: stats.l1Active, l2: stats.l2Confirmed, l3: stats.l3Published }), [stats]);

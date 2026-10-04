@@ -126,7 +126,7 @@ export const mockDocs: Doc[] = [
   {
     id: 'doc-012', name: '业务术语表 v2.csv', type: 'faq', kbId: 'kb-glossary', sourceId: 'src-4', status: 'parsed', sizeKb: 24, chunks: 24, updatedAt: '上周', citations: 184,
     chunksPreview: [
-      { index: 1, heading: 'EOS', snippet: 'Enterprise Operating System — 企业级智能体操作系统,本平台产品代号。', citations: 24, tokens: 92 },
+      { index: 1, heading: '企智搭', snippet: 'QiZhiDa · Agent Platform — 企智搭 · 智能体平台,本产品对外品牌名称。', citations: 24, tokens: 92 },
       { index: 2, heading: 'KB', snippet: 'Knowledge Base — 知识库,一组具有相同可见范围与检索策略的文档集合。', citations: 18, tokens: 88 },
       { index: 3, heading: 'Chunk', snippet: '切片 — 文档按语义切分后的最小检索单元,通常 200~500 tokens。', citations: 14, tokens: 84 },
       { index: 4, heading: 'MRR', snippet: 'Mean Reciprocal Rank — 检索评价指标,首条命中位置的倒数,值越高越好。', citations: 8, tokens: 96 },

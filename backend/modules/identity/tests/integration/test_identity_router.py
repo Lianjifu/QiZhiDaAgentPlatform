@@ -23,17 +23,17 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from deos.modules.identity.adapter.http.router import build_router
-from deos.modules.identity.application.services import IdentityService
-from deos.modules.identity.domain import Tenant, User
+from qzdap.modules.identity.adapter.http.router import build_router
+from qzdap.modules.identity.application.services import IdentityService
+from qzdap.modules.identity.domain import Tenant, User
 
 
 class _ErrorEnvelopeMiddleware(BaseHTTPMiddleware):
-    """Mirrors the prod eos_http.error_envelope_middleware — converts
+    """Mirrors the prod qzdap_http.error_envelope_middleware — converts
     AppError subclasses into JSON envelopes with the right status code."""
 
     async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
-        from eos_kernel.errors import AppError
+        from qzdap_kernel.errors import AppError
 
         try:
             return await call_next(request)

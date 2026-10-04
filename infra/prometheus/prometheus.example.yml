@@ -1,7 +1,7 @@
-# Example Prometheus configuration for EnterpriseAgentOS.
+# Example Prometheus configuration for 企智搭 · 智能体平台.
 #
 # Drop this into /etc/prometheus/prometheus.yml (or mount via
-# docker-compose) so Prometheus scrapes the app and loads EOS
+# docker-compose) so Prometheus scrapes the app and loads QZDAP
 # rules.  This file is documentation; production deploys MUST
 # review and customize before use.
 
@@ -9,7 +9,7 @@ global:
   scrape_interval: 15s
   evaluation_interval: 30s
   external_labels:
-    cluster: eos-dev
+    cluster: qzdap-dev
 
 # Alertmanager wiring (out of scope for P9-6; placeholder).
 # alerting:
@@ -21,19 +21,19 @@ rule_files:
   - /etc/prometheus/rules/*.yaml
 
 scrape_configs:
-  # ── EOS backend HTTP /metrics endpoint ────────────────────────────────
+  # ── QZDAP backend HTTP /metrics endpoint ────────────────────────────────
   # The ``/metrics`` endpoint is exposed by the FastAPI app once
   # the prometheus_client instrumentation middleware is registered
   # (planned for P10+; P9-6 only provisions the rules + dashboards
   # so the panels become live once middleware lands).
-  - job_name: eos-backend
+  - job_name: qzdap-backend
     metrics_path: /metrics
     scheme: http
     static_configs:
       - targets:
-          - eos-app:8102
+          - qzdap-app:8102
         labels:
-          service: eos-backend
+          service: qzdap-backend
           env: development
 
   # ── Prometheus self ──────────────────────────────────────────────────

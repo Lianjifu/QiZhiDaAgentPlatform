@@ -2,13 +2,13 @@
 
 Usage:
     # 1. start app + point to it
-    export EOS_BENCH_URL=http://127.0.0.1:8102
+    export QZDAP_BENCH_URL=http://127.0.0.1:8102
     # token minted by libs.auth.mint_admin_token
-    export EOS_BENCH_TOKEN=$(
+    export QZDAP_BENCH_TOKEN=$(
         uv run python -c "from libs.auth import mint_admin_token; print(mint_admin_token())"
     )
-    export EOS_BENCH_TENANT=<uuid>
-    export EOS_BENCH_WORKSPACE=<uuid>
+    export QZDAP_BENCH_TENANT=<uuid>
+    export QZDAP_BENCH_WORKSPACE=<uuid>
 
     # 2. run bench (10 concurrent x 5 turns = 50 requests)
     uv run python -m tests.perf.bench_turn_latency --concurrency 10 --turns 5
@@ -84,7 +84,7 @@ async def _one_turn(
         "Accept": "text/event-stream",
     }
     if ring:
-        headers["X-EOS-Ring"] = ring
+        headers["X-QZDAP-Ring"] = ring
     t0 = time.perf_counter()
     try:
         async with client.stream(
@@ -112,12 +112,12 @@ async def _one_turn(
 
 
 async def _run(args: argparse.Namespace) -> list[Sample]:
-    base = _env("EOS_BENCH_URL")
-    token = _env("EOS_BENCH_TOKEN")
-    tenant = _env("EOS_BENCH_TENANT")
-    workspace = _env("EOS_BENCH_WORKSPACE")
-    agent_id = _env("EOS_BENCH_AGENT_ID")
-    ring = os.environ.get("EOS_BENCH_RING")
+    base = _env("QZDAP_BENCH_URL")
+    token = _env("QZDAP_BENCH_TOKEN")
+    tenant = _env("QZDAP_BENCH_TENANT")
+    workspace = _env("QZDAP_BENCH_WORKSPACE")
+    agent_id = _env("QZDAP_BENCH_AGENT_ID")
+    ring = os.environ.get("QZDAP_BENCH_RING")
 
     limits = httpx.Limits(max_keepalive_connections=args.concurrency * 2)
     async with httpx.AsyncClient(limits=limits) as client:

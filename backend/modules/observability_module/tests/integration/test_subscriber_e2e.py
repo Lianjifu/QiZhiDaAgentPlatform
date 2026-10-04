@@ -21,16 +21,16 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from eos_messaging.domain_event import EventEnvelope
-from eos_messaging.in_process import InProcessBus
-from eos_schema.ids import TenantId, WorkspaceId
+from qzdap_messaging.domain_event import EventEnvelope
+from qzdap_messaging.in_process import InProcessBus
+from qzdap_schema.ids import TenantId, WorkspaceId
 
-from deos.modules.observability_module.application.pricing import PricingCatalog
-from deos.modules.observability_module.application.recorder import (
+from qzdap.modules.observability_module.application.pricing import PricingCatalog
+from qzdap.modules.observability_module.application.recorder import (
     ObservabilityRecorder,
     install,
 )
-from deos.modules.observability_module.domain.value_objects import (
+from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunType,
 )

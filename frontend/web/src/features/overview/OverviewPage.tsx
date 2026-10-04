@@ -1,8 +1,8 @@
 /**
  * AdminOverview — 运营总览编排:Hero + 6 KPI + 趋势图 + 告警 + 服务 + Top 智能体。
  */
-import { useMemo, useState } from 'react';
-import { BellRing, Filter, Gauge } from 'lucide-react';
+import { useState } from 'react';
+import { Filter, Gauge } from 'lucide-react';
 import { SideDrawer } from '@/components/feedback/SideDrawer';
 import { TimeRangeDropdown } from '@/components/TimeRangeDropdown';
 import {
@@ -64,11 +64,13 @@ export default function OverviewPage() {
       </section>
 
       <section aria-label="核心指标" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-        {summaryQuery.isLoading && kpiTiles.length === 0
-          ? Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-[148px] animate-pulse rounded-2xl border border-[var(--border)] bg-[var(--surface-1)]" />
-            ))
-          : kpiTiles.map((tile) => <KpiTileCard key={tile.label} tile={tile} />)}
+        {summaryQuery.isError
+          ? <p className="col-span-full rounded-2xl border border-dashed border-[var(--border)] p-6 text-sm text-[var(--text-muted)]">运营概览接口不可用，请确认已登录管理端。</p>
+          : summaryQuery.isLoading && kpiTiles.length === 0
+            ? Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-[148px] animate-pulse rounded-2xl border border-[var(--border)] bg-[var(--surface-1)]" />
+              ))
+            : kpiTiles.map((tile) => <KpiTileCard key={tile.label} tile={tile} />)}
       </section>
 
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
@@ -91,21 +93,15 @@ export default function OverviewPage() {
             </div>
           </div>
           <div className="mt-6">
-            {trendQuery.data
-              ? <TrendChart series={trendQuery.data} />
-              : <div className="h-[260px] animate-pulse rounded-2xl bg-[var(--bg-elevated)]" />}
+            {trendQuery.isError
+              ? <p className="rounded-xl border border-dashed border-[var(--border)] p-6 text-sm text-[var(--text-muted)]">趋势接口不可用。</p>
+              : trendQuery.data
+                ? <TrendChart series={trendQuery.data} />
+                : <div className="h-[260px] animate-pulse rounded-2xl bg-[var(--bg-elevated)]" />}
           </div>
         </section>
 
-        <div>
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-base font-semibold">实时告警与待处理事件</h3>
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--danger-bg)] text-[var(--danger)]">
-              <BellRing className="h-4 w-4" />
-            </span>
-          </div>
-          <AlertsPanel alerts={alerts} onSelect={setActiveAlert} />
-        </div>
+        <AlertsPanel alerts={alerts} onSelect={setActiveAlert} />
       </div>
 
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
@@ -134,7 +130,7 @@ export default function OverviewPage() {
         {activeAlert && <AlertDetail alert={activeAlert} />}
       </SideDrawer>
 
-      <p className="text-center text-xs text-[var(--text-muted)]">本页为前端演示数据，生产环境将接入实时指标流。</p>
+      <p className="text-center text-xs text-[var(--text-muted)]">数据来自 /api/admin/overview，随工作空间指标与告警更新。</p>
     </div>
   );
 }

@@ -1,0 +1,20 @@
+# Grafana provisioning — dashboard provider.
+#
+# Tells Grafana to auto-load dashboards from
+# ``/etc/grafana/dashboards/`` on boot.  Pairs with the static
+# ``qzdap-overview.json`` + ``qzdap-costs.json`` committed in this
+# directory.
+
+apiVersion: 1
+
+providers:
+  - name: QiZhiDa
+    orgId: 1
+    folder: QiZhiDa
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

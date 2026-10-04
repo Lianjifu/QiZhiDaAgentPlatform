@@ -1,7 +1,7 @@
 [project]
-name = "enterprise-agent-os"
+name = "qizhida-agent-platform"
 version = "0.1.0"
-description = "Enterprise Agent OS — modular monolith on FastAPI + uv workspace"
+description = "企智搭 · 智能体平台 — modular monolith on FastAPI + uv workspace"
 requires-python = ">=3.12"
 dependencies = [
     "python-multipart>=0.0.32",
@@ -37,35 +37,34 @@ members = [
 ]
 
 [tool.uv.sources]
-eos-kernel = { workspace = true }
-eos-schema = { workspace = true }
-eos-persistence = { workspace = true }
-eos-observability = { workspace = true }
-eos-auth = { workspace = true }
-eos-messaging = { workspace = true }
-eos-llm = { workspace = true }
-eos-sandbox = { workspace = true }
-eos-vector = { workspace = true }
-eos-vault = { workspace = true }
-eos-pack-signing = { workspace = true }
-eos-http = { workspace = true }
-eos-embedding-runtime = { workspace = true }
-eos-skill-runtime = { workspace = true }
-deos-identity = { workspace = true }
-deos-agent-runtime = { workspace = true }
-deos-tool = { workspace = true }
-deos-skill = { workspace = true }
-deos-memory = { workspace = true }
-deos-governance = { workspace = true }
-deos-model = { workspace = true }
-deos-channel = { workspace = true }
-deos-knowledge = { workspace = true }
-deos-orchestration = { workspace = true }
-deos-agent-factory = { workspace = true }
-deos-evaluation = { workspace = true }
-deos-observability-module = { workspace = true }
-deos-platform = { workspace = true }
-deos-self-evolution = { workspace = true }
+qzdap-kernel = { workspace = true }
+qzdap-schema = { workspace = true }
+qzdap-persistence = { workspace = true }
+qzdap-observability = { workspace = true }
+qzdap-auth = { workspace = true }
+qzdap-messaging = { workspace = true }
+qzdap-llm = { workspace = true }
+qzdap-vector = { workspace = true }
+qzdap-vault = { workspace = true }
+qzdap-pack-signing = { workspace = true }
+qzdap-http = { workspace = true }
+qzdap-embedding-runtime = { workspace = true }
+qzdap-sandbox-runtime = { workspace = true }
+qzdap-identity = { workspace = true }
+qzdap-agent-runtime = { workspace = true }
+qzdap-tool = { workspace = true }
+qzdap-skill = { workspace = true }
+qzdap-memory = { workspace = true }
+qzdap-governance = { workspace = true }
+qzdap-model = { workspace = true }
+qzdap-channel = { workspace = true }
+qzdap-knowledge = { workspace = true }
+qzdap-orchestration = { workspace = true }
+qzdap-agent-factory = { workspace = true }
+qzdap-evaluation = { workspace = true }
+qzdap-observability-module = { workspace = true }
+qzdap-platform = { workspace = true }
+qzdap-self-evolution = { workspace = true }
 
 [tool.ruff]
 target-version = "py312"
@@ -103,7 +102,7 @@ ignore = [
 "lifespan.py" = ["PYI034"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["eos_*", "deos"]
+known-first-party = ["qzdap_*", "qzdap"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -120,8 +119,8 @@ warn_unused_ignores = false
 plugins = ["pydantic.mypy"]
 # Each mypy_path entry MUST be the deepest directory that contains an
 # __init__.py; otherwise mypy sees the same file as two modules
-# (e.g. `identity.domain` AND `deos.modules.identity.domain`).
-mypy_path = "libs/kernel/src:libs/auth/src:libs/observability/src:libs/persistence/src:libs/messaging/src:libs/http/src:libs/schema/src:libs/llm/src:libs/sandbox/src:libs/vector/src:libs/vault/src:libs/pack_signing/src:modules/identity/src/deos:modules/agent_runtime/src/deos:modules/tool/src/deos:modules/governance/src/deos:modules/channel/src/deos:modules/knowledge/src/deos:modules/orchestration/src/deos:modules/agent_factory/src/deos:modules/evaluation/src/deos:modules/platform/src/deos:modules/self_evolution/src/deos:composition/eos_app/src/deos"
+# (e.g. `identity.domain` AND `qzdap.modules.identity.domain`).
+mypy_path = "libs/kernel/src:libs/auth/src:libs/observability/src:libs/persistence/src:libs/messaging/src:libs/http/src:libs/schema/src:libs/llm/src:libs/sandbox/src:libs/vector/src:libs/vault/src:libs/pack_signing/src:modules/identity/src/qzdap:modules/agent_runtime/src/qzdap:modules/tool/src/qzdap:modules/governance/src/qzdap:modules/channel/src/qzdap:modules/knowledge/src/qzdap:modules/orchestration/src/qzdap:modules/agent_factory/src/qzdap:modules/evaluation/src/qzdap:modules/platform/src/qzdap:modules/self_evolution/src/qzdap:composition/qzdap_app/src/qzdap"
 
 [[tool.mypy.overrides]]
 # Tests + generated migrations are exempt from strict checks.
@@ -137,34 +136,34 @@ ignore_errors = true
 # tighten this list as `py.typed` markers land. We turn off `strict` rather
 # than `ignore_errors` so per-file issues still surface, just at low priority.
 module = [
-    "deos.composition",
-    "deos.modules.identity",
-    "deos.modules.agent_runtime",
-    "deos.modules.tool",
-    "deos.modules.knowledge",
-    "deos.modules.orchestration",
-    "deos.modules.agent_factory",
-    "deos.modules.evaluation",
+    "qzdap.composition",
+    "qzdap.modules.identity",
+    "qzdap.modules.agent_runtime",
+    "qzdap.modules.tool",
+    "qzdap.modules.knowledge",
+    "qzdap.modules.orchestration",
+    "qzdap.modules.agent_factory",
+    "qzdap.modules.evaluation",
 ]
 disallow_untyped_defs = false
 warn_return_any = false
 
 [[tool.mypy.overrides]]
 # The OTLP gRPC exporter is an optional runtime dependency; ignore its
-# stub-absence so the rest of `eos_observability` still type-checks.
-module = ["eos_observability.tracing"]
+# stub-absence so the rest of `qzdap_observability` still type-checks.
+module = ["qzdap_observability.tracing"]
 ignore_errors = true
 
 [[tool.mypy.overrides]]
 # Allow missing type arguments and ambiguous suppression on libraries whose
 # source predates the strict rollout.
 module = [
-    "eos_auth.*",
-    "eos_http.*",
-    "eos_messaging.*",
-    "eos_observability.*",
-    "eos_persistence.*",
-    "eos_llm.*",
+    "qzdap_auth.*",
+    "qzdap_http.*",
+    "qzdap_messaging.*",
+    "qzdap_observability.*",
+    "qzdap_persistence.*",
+    "qzdap_llm.*",
 ]
 disallow_untyped_defs = false
 
@@ -180,36 +179,35 @@ pythonpath = [
     "libs/http/src",
     "libs/schema/src",
     "libs/llm/src",
-    "libs/sandbox/src",
     "libs/vector/src",
     "libs/vault/src",
     "libs/pack_signing/src",
     "tests",
-    "modules/identity/src/deos",
-    "modules/agent_runtime/src/deos",
-    "modules/tool/src/deos",
-    "modules/skill/src/deos",
-    "modules/memory/src/deos",
-    "modules/governance/src/deos",
-    "modules/model/src/deos",
+    "modules/identity/src/qzdap",
+    "modules/agent_runtime/src/qzdap",
+    "modules/tool/src/qzdap",
+    "modules/skill/src/qzdap",
+    "modules/memory/src/qzdap",
+    "modules/governance/src/qzdap",
+    "modules/model/src/qzdap",
     "modules/model/tests/unit",
-    "modules/channel/src/deos",
+    "modules/channel/src/qzdap",
     "modules/channel/tests/unit",
-    "modules/knowledge/src/deos",
-    "modules/orchestration/src/deos",
+    "modules/knowledge/src/qzdap",
+    "modules/orchestration/src/qzdap",
     "modules/orchestration/tests/unit",
-    "modules/agent_factory/src/deos",
+    "modules/agent_factory/src/qzdap",
     "modules/agent_factory/tests/unit",
-    "modules/evaluation/src/deos",
+    "modules/evaluation/src/qzdap",
     "modules/evaluation/tests/unit",
-    "modules/platform/src/deos",
+    "modules/platform/src/qzdap",
     "modules/platform/tests/unit",
-    "modules/self_evolution/src/deos",
-    "runtimes/embedding_runtime/src/deos",
-    "runtimes/skill_runtime/src/deos",
-    "composition/eos_app/src/deos",
+    "modules/self_evolution/src/qzdap",
+    "runtimes/embedding_runtime/src/qzdap",
+    "runtimes/sandbox_runtime/src/qzdap",
+    "composition/qzdap_app/src/qzdap",
 ]
-addopts = "-ra --strict-markers --strict-config --import-mode=importlib --cov=eos_kernel --cov=eos_auth --cov=eos_observability --cov=eos_persistence --cov=eos_messaging --cov=eos_http --cov=eos_schema --cov=eos_llm --cov=eos_sandbox --cov=eos_vector --cov=eos_vault --cov=deos --cov-report=term-missing"
+addopts = "-ra --strict-markers --strict-config --import-mode=importlib --cov=qzdap_kernel --cov=qzdap_auth --cov=qzdap_observability --cov=qzdap_persistence --cov=qzdap_messaging --cov=qzdap_http --cov=qzdap_schema --cov=qzdap_llm --cov=qzdap_vector --cov=qzdap_vault --cov=qzdap --cov-report=term-missing"
 markers = [
     "integration: marks integration tests (require DB/Redis)",
     "contract: marks contract tests",

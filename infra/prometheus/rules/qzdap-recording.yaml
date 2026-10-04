@@ -1,0 +1,30 @@
+# Prometheus recording rules for 企智搭 · 智能体平台.
+#
+# Pre-aggregates raw ``qzdap_*`` metrics into 5m / 1h rollups so
+# dashboards and alerts query pre-computed series instead of
+# computing on every scrape.
+#
+# Loaded alongside alerting rules in ``prometheus.yml``.
+
+groups:
+  - name: qzdap-recording
+    interval: 30s
+    rules:
+      # ── Cost rollup per tenant (1h) ──────────────────────────────────
+      - record: qzdap:cost_usd_per_tenant_1h
+        expr: sum by (tenant) (qzdap_cost_usd_total)
+
+      # ── Cost rollup per (tenant, cost_type) (1h) ─────────────────────
+      - record: qzdap:cost_usd_per_tenant_cost_type_1h
+        expr: sum by (tenant, cost_type) (qzdap_cost_usd_total)
+
+      # ── LLM request rate per (tenant, model) (5m) ────────────────────
+      - record: qzdap:llm_request_rate_5m
+        expr: sum by (tenant, model) (rate(qzdap_llm_invocations_total[5m]))
+
+      # ── HTTP error ratio per tenant (5m) ─────────────────────────────
+      - record: qzdap:http_error_ratio_5m
+        expr: |
+          sum by (tenant) (rate(qzdap_http_requests_total{status=~"5.."}[5m]))
+          /
+          sum by (tenant) (rate(qzdap_http_requests_total[5m]))

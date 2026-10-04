@@ -100,7 +100,7 @@ export default function MetricDetailPage() {
         </div>
       </section>
 
-      <p className="text-center text-xs text-[var(--text-muted)]">本页为前端演示数据,生产环境将接入 EOS 指标中台。</p>
+      <p className="text-center text-xs text-[var(--text-muted)]">本页为前端演示数据,生产环境将接入企智搭指标中台。</p>
     </div>
   );
 }

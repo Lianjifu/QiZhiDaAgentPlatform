@@ -25,7 +25,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
-from eos_messaging import InProcessBus
+from qzdap_messaging import InProcessBus
 
 # observability_module's test in-memory doubles live in the module's own
 # tests/unit tree (not under backend/tests/). Add that path so this bench
@@ -41,11 +41,11 @@ from modules.observability_module.tests.unit._in_memory import (  # noqa: E402
     InMemoryRunRecordRepository,
 )
 
-from deos.modules.observability_module.application.pricing import (  # noqa: E402
+from qzdap.modules.observability_module.application.pricing import (  # noqa: E402
     DEFAULT_LLM_PRICING,
     PricingCatalog,
 )
-from deos.modules.observability_module.application.recorder import (  # noqa: E402
+from qzdap.modules.observability_module.application.recorder import (  # noqa: E402
     ObservabilityRecorder,
 )
 

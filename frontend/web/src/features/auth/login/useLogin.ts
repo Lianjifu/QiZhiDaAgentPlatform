@@ -12,10 +12,12 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { applyResponseAdapter } from '@qzdap/web-api';
 import { useApiMutation, useApiQuery } from '@/services/query';
 import { useAuthStore } from '@/features/auth';
+import { resolvePostLoginRoute } from '@/features/auth/roleRoutes';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
-import type { User, Workspace } from '@de/web-types';
+import type { User, Workspace } from '@qzdap/web-types';
 
 export interface LoginMutationOutput {
   token: string;
@@ -42,12 +44,6 @@ export interface UseLoginOpts {
 
 const MFA_EMAIL_PATTERN = /_mfa@acme\.com$/i;
 const MFA_CODE_PATTERN = /^\d{6}$/;
-
-function defaultRouteForRole(role?: User['role']): string {
-  if (role === 'admin') return '/admin/overview';
-  if (role === 'auditor') return '/audit-center';
-  return '/home';
-}
 
 function readBuildVersion(): string {
   return ((import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
@@ -77,7 +73,7 @@ function sessionFromControlPlane(payload: unknown): LoginMutationOutput | null {
 }
 
 async function loginViaControlPlane(email: string, password: string): Promise<LoginMutationOutput> {
-  const res = await fetch('/api/auth/login', {
+  const res = await fetch('/v1/identity/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -89,12 +85,13 @@ async function loginViaControlPlane(email: string, password: string): Promise<Lo
     throw new Error('控制面登录响应无法解析');
   }
   if (!res.ok) {
-    const message = json && typeof json === 'object' && 'error' in json
-      ? (json as { error?: { message?: string } }).error?.message
-      : undefined;
+    const message = json && typeof json === 'object' && 'message' in json
+      ? String((json as { message?: string }).message || '')
+      : '';
     throw new Error(message || '登录失败');
   }
-  const session = sessionFromControlPlane(json);
+  const adapted = applyResponseAdapter('POST', '/v1/identity/login', json);
+  const session = sessionFromControlPlane(adapted);
   if (!session) throw new Error('登录响应缺少用户信息');
   return session;
 }
@@ -181,7 +178,7 @@ export function useLogin(opts: UseLoginOpts = {}) {
       }
     }
     const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
-    navigate(from ?? defaultRouteForRole(data.user.role), { replace: true });
+    navigate(resolvePostLoginRoute(data.user.role, from), { replace: true });
   }, [authLogin, location.state, meQuery, navigate, opts, searchParams]);
 
   const mut = useApiMutation<LoginMutationOutput, { email: string; password: string }>(
@@ -212,7 +209,7 @@ export function useLogin(opts: UseLoginOpts = {}) {
   useEffect(() => {
     if (!isAuthed) return;
     const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
-    navigate(from ?? defaultRouteForRole(user?.role), { replace: true });
+    navigate(resolvePostLoginRoute(user?.role, from), { replace: true });
   }, [isAuthed, navigate, location.state, user?.role]);
 
   const submit = useCallback(
@@ -237,10 +234,12 @@ export function useLogin(opts: UseLoginOpts = {}) {
   );
 
   const chooseRole = useCallback((nextEmail: string) => {
+    const nextPassword = 'dev-admin-password-change-me';
     setEmail(nextEmail);
-    setPassword('dev-admin-password-change-me');
+    setPassword(nextPassword);
     setMfa('');
-  }, []);
+    mut.mutate({ email: nextEmail, password: nextPassword });
+  }, [mut]);
 
   const goBack = useCallback(() => {
     setStep('credentials');

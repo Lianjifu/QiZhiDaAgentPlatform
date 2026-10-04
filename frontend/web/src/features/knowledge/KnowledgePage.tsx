@@ -250,7 +250,7 @@ export default function KnowledgePage() {
         </section>
       )}
 
-      <p className="text-center text-xs text-[var(--text-muted)]">本页为前端演示数据,生产环境将接入 EOS 知识中台。</p>
+      <p className="text-center text-xs text-[var(--text-muted)]">本页为前端演示数据,生产环境将接入企智搭知识中台。</p>
     </div>
   );
 }

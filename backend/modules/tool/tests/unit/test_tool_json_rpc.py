@@ -8,11 +8,11 @@ from typing import Any
 import httpx
 import pytest
 
-from deos.modules.tool.adapter.adapters.mcp_runtime import (
+from qzdap.modules.tool.adapter.adapters.mcp_runtime import (
     MCPRuntimeAdapter,
     _parse_sse_jsonrpc,
 )
-from deos.modules.tool.domain import AuthConfig, AuthConfigType
+from qzdap.modules.tool.domain import AuthConfig, AuthConfigType
 
 
 def _make_handler(responses: list[httpx.Response]) -> httpx.MockTransport:

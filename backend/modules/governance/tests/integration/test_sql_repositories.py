@@ -25,7 +25,7 @@ from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
-from eos_schema.ids import (
+from qzdap_schema.ids import (
     DecisionEventId,
     TenantId,
     UserId,
@@ -33,28 +33,28 @@ from eos_schema.ids import (
 )
 from sqlalchemy import text
 
-from deos.modules.governance.adapter.persistence.repositories import (
+from qzdap.modules.governance.adapter.persistence.repositories import (
     SqlApprovalRepository,
     SqlAuditLogAdapter,
     SqlDecisionEventRepo,
     SqlPolicyRepository,
 )
-from deos.modules.governance.adapter.subscribers.audit_subscriber import (
+from qzdap.modules.governance.adapter.subscribers.audit_subscriber import (
     install as install_audit,
 )
-from deos.modules.governance.application.approval_service import ApprovalService
-from deos.modules.governance.application.audit_recorder import AuditRecorder
-from deos.modules.governance.application.policy_service import PolicyService
-from deos.modules.governance.application.ports import (
+from qzdap.modules.governance.application.approval_service import ApprovalService
+from qzdap.modules.governance.application.audit_recorder import AuditRecorder
+from qzdap.modules.governance.application.policy_service import PolicyService
+from qzdap.modules.governance.application.ports import (
     ClockPort,
     IdGeneratorPort,
 )
-from deos.modules.governance.domain.entities import (
+from qzdap.modules.governance.domain.entities import (
     Approval,
     DecisionEvent,
     PolicyRule,
 )
-from deos.modules.governance.domain.value_objects import (
+from qzdap.modules.governance.domain.value_objects import (
     ApprovalStatus,
     PolicyEffect,
     PolicySubject,
@@ -464,7 +464,7 @@ async def test_policy_service_tenant_isolation_blocks(policy_repo):
         action_pattern="tool:execute:reverse",
         effect=PolicyEffect.DENY,
     )
-    from deos.modules.governance.domain.errors import PolicyNotFound
+    from qzdap.modules.governance.domain.errors import PolicyNotFound
 
     with pytest.raises(PolicyNotFound):
         await svc.get(tenant_id=TENANT_B, rule_id=rule.id)

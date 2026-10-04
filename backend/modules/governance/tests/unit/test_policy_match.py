@@ -13,18 +13,18 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from eos_schema.ids import PolicyId, TenantId, WorkspaceId
-from eos_vault.actor import ActorContext
+from qzdap_schema.ids import PolicyId, TenantId, WorkspaceId
+from qzdap_vault.actor import ActorContext
 
-from deos.modules.governance.domain.entities import PolicyRule
-from deos.modules.governance.domain.policy_match import (
+from qzdap.modules.governance.domain.entities import PolicyRule
+from qzdap.modules.governance.domain.policy_match import (
     _glob_match,
     _resource_matches,
     _subject_matches,
     action_precedence,
     match,
 )
-from deos.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
+from qzdap.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
 
 TID = TenantId(UUID("00000000-0000-0000-0000-000000000001"))
 WID = WorkspaceId(UUID("00000000-0000-0000-0000-000000000002"))

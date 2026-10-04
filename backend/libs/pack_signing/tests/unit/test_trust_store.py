@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`eos_pack_signing.trust_store`.
+"""Unit tests for :mod:`qzdap_pack_signing.trust_store`.
 
 Covers:
 
@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from eos_pack_signing import (
+from qzdap_pack_signing import (
     public_key_id,
     public_key_to_pem,
     scan_trust_dir,

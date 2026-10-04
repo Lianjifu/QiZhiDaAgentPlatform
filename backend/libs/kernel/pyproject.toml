@@ -1,7 +1,7 @@
 [project]
-name = "eos-kernel"
+name = "qzdap-kernel"
 version = "0.1.0"
-description = "Enterprise Agent OS — kernel: principal, contexts, error hierarchy"
+description = "企智搭 · 智能体平台 — kernel: principal, contexts, error hierarchy"
 requires-python = ">=3.12"
 dependencies = []
 
@@ -10,7 +10,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/eos_kernel"]
+packages = ["src/qzdap_kernel"]
 
 [tool.ruff]
 src = ["src"]

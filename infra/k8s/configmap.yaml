@@ -1,22 +1,22 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: eos-app-config
-  namespace: eos-prod
+  name: qzdap-app-config
+  namespace: qzdap-prod
 data:
-  EOS_ENV: "production"
-  EOS_APP_PORT: "8102"
-  EOS_LOG_LEVEL: "INFO"
-  EOS_CANARY_HEADER: "X-EOS-Ring"
-  EOS_BAN_MOCK_TOKEN: "1"
-  EOS_ALLOW_DEMO_TOKEN: "0"
-  EOS_RUNTIME_MODE: "remote"
-  EOS_VAULT_MODE: "kms"
-  EOS_GUNICORN_WORKERS: "4"
-  EOS_GUNICORN_THREADS: "2"
-  EOS_GUNICORN_TIMEOUT: "60"
+  QZDAP_ENV: "production"
+  QZDAP_APP_PORT: "8102"
+  QZDAP_LOG_LEVEL: "INFO"
+  QZDAP_CANARY_HEADER: "X-QZDAP-Ring"
+  QZDAP_BAN_MOCK_TOKEN: "1"
+  QZDAP_ALLOW_DEMO_TOKEN: "0"
+  QZDAP_RUNTIME_MODE: "remote"
+  QZDAP_VAULT_MODE: "kms"
+  QZDAP_GUNICORN_WORKERS: "4"
+  QZDAP_GUNICORN_THREADS: "2"
+  QZDAP_GUNICORN_TIMEOUT: "60"
   # Pricing & SLO defaults (overridable per-tenant via TenantSetting)
-  EOS_CURRENCY: "USD"
-  EOS_EVAL_SCORE_MIN: "0.7"
-  EOS_EVAL_RECALL_MIN: "0.7"
-  EOS_DEFAULT_TENANT_PLAN: "free"
+  QZDAP_CURRENCY: "USD"
+  QZDAP_EVAL_SCORE_MIN: "0.7"
+  QZDAP_EVAL_RECALL_MIN: "0.7"
+  QZDAP_DEFAULT_TENANT_PLAN: "free"

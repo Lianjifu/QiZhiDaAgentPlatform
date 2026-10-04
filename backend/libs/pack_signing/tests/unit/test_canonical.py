@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`eos_pack_signing.canonical`.
+"""Unit tests for :mod:`qzdap_pack_signing.canonical`.
 
 Covers:
 
@@ -24,7 +24,7 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_public_key,
 )
 
-from eos_pack_signing import (
+from qzdap_pack_signing import (
     canonical_payload,
     load_private_key_pem,
     load_public_key_pem,

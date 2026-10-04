@@ -1,4 +1,4 @@
-"""Unit tests for ``eos_messaging.kafka_audit``.
+"""Unit tests for ``qzdap_messaging.kafka_audit``.
 
 No broker required: ``AIOKafkaProducer`` / ``AIOKafkaConsumer`` are
 replaced with ``_FakeAIOKafkaProducer`` / ``_FakeAIOKafkaConsumer`` via
@@ -14,10 +14,10 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from eos_schema.ids import TenantId, UserId
+from qzdap_schema.ids import TenantId, UserId
 
-from eos_messaging import kafka_audit
-from eos_messaging.kafka_audit import (
+from qzdap_messaging import kafka_audit
+from qzdap_messaging.kafka_audit import (
     KafkaAuditConsumer,
     KafkaAuditPublisher,
     resolve_consumer_group,
@@ -235,7 +235,7 @@ class TestProducer:
         self, fake_producer: dict[str, _FakeAIOKafkaProducer]
     ) -> None:
         pub = KafkaAuditPublisher(
-            bootstrap_servers="fake:9092", topic="eos.audit.events", dlq_topic="dlq"
+            bootstrap_servers="fake:9092", topic="qzdap.audit.events", dlq_topic="dlq"
         )
         await pub.start()
         try:
@@ -256,7 +256,7 @@ class TestProducer:
             sent = fake_producer["instance"]._sent
             assert len(sent) == 1
             topic, value, key = sent[0]
-            assert topic == "eos.audit.events"
+            assert topic == "qzdap.audit.events"
             assert key == str(tid)
             # Value should have been JSON-serialized then deserialized
             # by the fake serializer pair... we stored the dict directly.
@@ -531,7 +531,7 @@ def test_resolve_consumer_group_explicit_wins() -> None:
 def test_resolve_consumer_group_env_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("EOS_AUDIT_KAFKA_CONSUMER_GROUP", "env-value")
+    monkeypatch.setenv("QZDAP_AUDIT_KAFKA_CONSUMER_GROUP", "env-value")
     assert resolve_consumer_group() == "env-value"
 
 
@@ -540,13 +540,13 @@ def test_resolve_consumer_group_hostname_fallback() -> None:
 
     import os
 
-    os.environ.pop("EOS_AUDIT_KAFKA_CONSUMER_GROUP", None)
+    os.environ.pop("QZDAP_AUDIT_KAFKA_CONSUMER_GROUP", None)
     g = resolve_consumer_group()
-    assert g.startswith("eos-audit-")
+    assert g.startswith("qzdap-audit-")
 
 
 def test_resolve_consumer_group_explicit_overrides_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("EOS_AUDIT_KAFKA_CONSUMER_GROUP", "env-value")
+    monkeypatch.setenv("QZDAP_AUDIT_KAFKA_CONSUMER_GROUP", "env-value")
     assert resolve_consumer_group("explicit") == "explicit"

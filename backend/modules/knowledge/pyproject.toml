@@ -1,14 +1,15 @@
 [project]
-name = "deos-knowledge"
+name = "qzdap-knowledge"
 version = "0.1.0"
-description = "Knowledge catalog: admin KBs/docs/sources and user-side published projection"
+description = "Knowledge catalog with chunk embeddings and RAG retrieval"
 requires-python = ">=3.12"
 dependencies = [
-    "eos-kernel",
-    "eos-schema",
-    "eos-persistence",
-    "eos-auth",
-    "eos-http",
+    "qzdap-kernel",
+    "qzdap-schema",
+    "qzdap-persistence",
+    "qzdap-auth",
+    "qzdap-http",
+    "qzdap-vector",
     "fastapi>=0.115.0",
     "pydantic>=2.9",
 ]
@@ -18,7 +19,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/deos"]
+packages = ["src/qzdap"]
 
 [tool.ruff]
 src = ["src"]

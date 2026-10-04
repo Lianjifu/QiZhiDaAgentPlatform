@@ -12,19 +12,19 @@ from _self_evolution_unit_in_memory import (
     Uuid4IdGenerator,
 )
 
-from deos.modules.self_evolution.application.apply_guard import (
+from qzdap.modules.self_evolution.application.apply_guard import (
     ApplyGuard,
     ApplyOutcome,
     DirectApplyGuard,
 )
-from deos.modules.self_evolution.application.evolution_service import (
+from qzdap.modules.self_evolution.application.evolution_service import (
     EvolutionCandidateService,
 )
-from deos.modules.self_evolution.domain.errors import (
+from qzdap.modules.self_evolution.domain.errors import (
     EvolveCandidateAlreadyDecided,
     EvolveCandidateNotFound,
 )
-from deos.modules.self_evolution.domain.value_objects import (
+from qzdap.modules.self_evolution.domain.value_objects import (
     EvolveKind,
     EvolveStatus,
 )
@@ -174,7 +174,7 @@ async def test_approve_rejects_when_signer_equals_requester(
         trigger_reason="x",
         requester_id=USER_ADMIN,
     )
-    from deos.modules.self_evolution.domain.errors import SignerMustDiffer
+    from qzdap.modules.self_evolution.domain.errors import SignerMustDiffer
 
     with pytest.raises(SignerMustDiffer):
         await svc.approve(

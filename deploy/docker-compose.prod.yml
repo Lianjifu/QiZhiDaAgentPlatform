@@ -2,13 +2,13 @@
 # Two app pools (stable + canary), single PG/Redis/MinIO.
 # Image built from infra/docker/Dockerfile.app.
 
-name: eos-prod
+name: qzdap-prod
 
 x-app-defaults: &app-defaults
   build:
     context: ..
     dockerfile: infra/docker/Dockerfile.app
-  image: eos-app:prod
+  image: qzdap-app:prod
   restart: unless-stopped
   env_file: .env.prod
   healthcheck:
@@ -30,40 +30,40 @@ x-app-defaults: &app-defaults
     options: { max-size: "20m", max-file: "5" }
 
 services:
-  eos-app-stable:
+  qzdap-app-stable:
     <<: *app-defaults
-    container_name: eos-app-stable
+    container_name: qzdap-app-stable
     ports:
       - "8102:8102"
     environment:
-      EOS_RING: stable
-      EOS_GUNICORN_BIND: 0.0.0.0:8102
+      QZDAP_RING: stable
+      QZDAP_GUNICORN_BIND: 0.0.0.0:8102
     profiles: ["prod"]
 
-  eos-app-canary:
+  qzdap-app-canary:
     <<: *app-defaults
-    container_name: eos-app-canary
+    container_name: qzdap-app-canary
     ports:
       - "8103:8102"
     environment:
-      EOS_RING: canary
-      EOS_GUNICORN_BIND: 0.0.0.0:8102
+      QZDAP_RING: canary
+      QZDAP_GUNICORN_BIND: 0.0.0.0:8102
     profiles: ["prod"]
 
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: eos-postgres
+    container_name: qzdap-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: eos
-      POSTGRES_USER: eos
+      POSTGRES_DB: qzdap
+      POSTGRES_USER: qzdap
       POSTGRES_PASSWORD_FILE: /run/secrets/pg_pass
     secrets:
       - pg_pass
     volumes:
-      - eos_pgdata:/var/lib/postgresql/data
+      - qzdap_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U eos"]
+      test: ["CMD-SHELL", "pg_isready -U qzdap"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -74,11 +74,11 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: eos-redis
+    container_name: qzdap-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - eos_redis:/data
+      - qzdap_redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -88,7 +88,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: eos-minio
+    container_name: qzdap-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -98,7 +98,7 @@ services:
       - minio_user
       - minio_pass
     volumes:
-      - eos_minio:/data
+      - qzdap_minio:/data
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -113,21 +113,21 @@ services:
   # In production prefer the k8s ingress (infra/k8s/ingress.yaml)
   ingress:
     image: nginx:1.27-alpine
-    container_name: eos-ingress
+    container_name: qzdap-ingress
     restart: unless-stopped
     ports:
       - "8080:80"
     volumes:
       - ../infra/envoy/nginx.compose.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      eos-app-stable: { condition: service_healthy }
-      eos-app-canary: { condition: service_healthy }
+      qzdap-app-stable: { condition: service_healthy }
+      qzdap-app-canary: { condition: service_healthy }
     profiles: ["prod", "with-ingress"]
 
 volumes:
-  eos_pgdata:
-  eos_redis:
-  eos_minio:
+  qzdap_pgdata:
+  qzdap_redis:
+  qzdap_minio:
 
 secrets:
   pg_pass:

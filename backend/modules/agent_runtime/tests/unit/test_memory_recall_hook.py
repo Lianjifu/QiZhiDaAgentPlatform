@@ -10,14 +10,14 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from _ar_unit_in_memory import make_dependencies
-from eos_schema.ids import (
+from qzdap_schema.ids import (
     AgentId,
     TenantId,
     UserId,
     WorkspaceId,
 )
 
-from deos.modules.agent_runtime.application.services import AgentRuntimeService
+from qzdap.modules.agent_runtime.application.services import AgentRuntimeService
 
 
 class _RecordingMemoryPort:
@@ -95,7 +95,7 @@ async def test_memory_port_called_with_user_input_and_top_k() -> None:
 
 
 async def test_recall_failure_does_not_break_turn() -> None:
-    from eos_kernel.errors import AppError
+    from qzdap_kernel.errors import AppError
 
     deps = make_dependencies()
     memory = _RecordingMemoryPort(

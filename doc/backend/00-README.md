@@ -1,8 +1,8 @@
 # Enterprise-Agent-OS · 方案文档集
 
-> 面向企业构建统一的 AI Agent / 数字员工基础平台。
+> 面向企业构建统一的 AI 智能体基础平台。
 > 提供 Agent 创建、运行、编排、知识、技能、工具、模型、记忆、治理与运行监控等核心能力，形成从 Agent 构建 → 任务执行 → 过程管理 → 运行观测 → 安全治理 → 效果评估 的完整闭环。
-> 平台以 **Agent Runtime** 为核心，通过统一的 Session / Context / Memory / Tool / Skill / Knowledge / Governance 能力，为企业数字员工提供标准化、可复用、可治理的运行基础设施。
+> 平台以 **Agent Runtime** 为核心，通过统一的 Session / Context / Memory / Tool / Skill / Knowledge / Governance 能力，为企业智能体提供标准化、可复用、可治理的运行基础设施。
 
 ---
 

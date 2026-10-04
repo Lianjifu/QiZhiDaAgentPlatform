@@ -212,9 +212,9 @@ export interface Task {
   status: TaskStatus;
   assignee?: string;
   /** 绑定的在岗智能体（主对象） */
-  digitalEmployeeId?: ID;
-  /** 展示用岗位专家名称；以员工档案为准，列表可缓存 */
-  digitalEmployeeName?: string;
+  agentProfileId?: ID;
+  /** 展示用智能体名称；以档案为准，列表可缓存 */
+  agentName?: string;
   /** @deprecated 执行内核；由智能体 capabilities.agentId 派生，不对外主称 */
   agentId?: ID;
   /** 发起调度的部门负责人智能体 */
@@ -320,12 +320,12 @@ export interface Agent {
  * 智能体是面向业务岗位的一等对象；Agent 仅是其底层执行内核之一。
  * 业务身份、职责边界、受控能力、上岗状态和运行证据均收敛在此对象。
  */
-export type DigitalEmployeeLifecycle = 'draft' | 'testing' | 'pending_approval' | 'active' | 'paused' | 'quarantined';
-export type DigitalEmployeeRisk = 'low' | 'medium' | 'high';
-export type DigitalEmployeeTemplateSource = 'platform' | 'department';
-export type DigitalEmployeeTemplateStatus = 'certified' | 'review' | 'deprecated';
+export type AgentProfileLifecycle = 'draft' | 'testing' | 'pending_approval' | 'active' | 'paused' | 'quarantined';
+export type AgentProfileRisk = 'low' | 'medium' | 'high';
+export type AgentTemplateSource = 'platform' | 'department';
+export type AgentTemplateStatus = 'certified' | 'review' | 'deprecated';
 
-export interface DigitalEmployeeCapabilities {
+export interface AgentProfileCapabilities {
   agentId?: ID;
   model: string;
   knowledge: string[];
@@ -349,8 +349,8 @@ export interface DigitalEmployeeCapabilities {
  * 岗位授权契约：将智能体的业务职责、可执行范围和人工升级条件结构化，
  * 而不是以不可审计的大段自由文本保存。
  */
-export type DigitalEmployeeExecutionMode = 'recommend' | 'approval_required' | 'execute' | 'prohibited';
-export interface DigitalEmployeeResponsibility {
+export type AgentExecutionMode = 'recommend' | 'approval_required' | 'execute' | 'prohibited';
+export interface AgentResponsibility {
   id: ID;
   title: string;
   objective: string;
@@ -359,14 +359,14 @@ export interface DigitalEmployeeResponsibility {
   evidenceRequired: boolean;
   workflowRef?: string;
 }
-export interface DigitalEmployeeCapabilityBoundary {
+export interface AgentCapabilityBoundary {
   capabilityType: 'tool' | 'workflow' | 'skill';
   capabilityName: string;
-  mode: DigitalEmployeeExecutionMode;
+  mode: AgentExecutionMode;
 }
-export interface DigitalEmployeeBoundaryPolicy {
-  responsibilities: DigitalEmployeeResponsibility[];
-  capabilityModes: DigitalEmployeeCapabilityBoundary[];
+export interface AgentBoundaryPolicy {
+  responsibilities: AgentResponsibility[];
+  capabilityModes: AgentCapabilityBoundary[];
   dataClassification: 'internal' | 'confidential' | 'restricted';
   allowedEnvironments: WorkspaceEnvironmentKind[];
   handoff: {
@@ -377,7 +377,7 @@ export interface DigitalEmployeeBoundaryPolicy {
   };
 }
 
-export interface DigitalEmployee {
+export interface AgentProfile {
   id: ID;
   workspaceId: ID;
   name: string;
@@ -389,23 +389,23 @@ export interface DigitalEmployee {
   serviceObject: string;
   version: string;
   environment: WorkspaceEnvironmentKind;
-  lifecycle: DigitalEmployeeLifecycle;
-  risk: DigitalEmployeeRisk;
+  lifecycle: AgentProfileLifecycle;
+  risk: AgentProfileRisk;
   /** Optional portrait URL; when absent UI renders a deterministic illustrated avatar. */
   avatarUrl?: string;
   responsibilities: string[];
   prohibitedActions: string[];
   handoffPolicy?: { triggers: string[]; approvalRequiredFor: string[] };
-  /** 新版岗位授权契约；历史字段保留以兼容已发布员工与模板。 */
-  boundaryPolicy?: DigitalEmployeeBoundaryPolicy;
-  capabilities: DigitalEmployeeCapabilities;
+  /** 新版授权契约；历史字段保留以兼容已发布智能体与模板。 */
+  boundaryPolicy?: AgentBoundaryPolicy;
+  capabilities: AgentProfileCapabilities;
   memoryPolicy: { shortTermHours: number; workingDays: number; longTermCadence: 'daily' | 'weekly'; knowledgePromotion: 'approval_required' | 'disabled' };
   runtime: { calls24h: number; successRate: number; p95Ms: number; costToday: number; handoffs24h: number; anomalies: number };
   evaluation: { status: 'not_started' | 'passed' | 'failed' | 'running'; score?: number; lastRunAt?: ISODate };
   release: {
     status: 'not_released' | 'pending_approval' | 'released';
     releasedAt?: ISODate;
-    /** 上岗申请提交人（花名/展示名） */
+    /** 发布申请提交人（展示名） */
     requestedBy?: string;
     requestedById?: string;
     /** 双重审批批准人；不得与 requestedById 相同 */
@@ -427,8 +427,8 @@ export interface DigitalEmployee {
   updatedAt: ISODate;
 }
 
-/** 员工配置的不可变版本记录；生产或高风险变更需先进入受控审批。 */
-export interface DigitalEmployeeConfigurationVersion {
+/** 智能体配置的不可变版本记录；生产或高风险变更需先进入受控审批。 */
+export interface AgentConfigurationVersion {
   id: ID;
   employeeId: ID;
   version: string;
@@ -441,8 +441,8 @@ export interface DigitalEmployeeConfigurationVersion {
   updatedAt: ISODate;
 }
 
-/** 可复用岗位蓝图；采用后会创建独立员工草稿并锁定模板版本。 */
-export interface DigitalEmployeeTemplate {
+/** 可复用岗位蓝图；采用后会创建独立智能体草稿并锁定模板版本。 */
+export interface AgentTemplate {
   id: ID;
   name: string;
   role: string;
@@ -450,14 +450,14 @@ export interface DigitalEmployeeTemplate {
   description: string;
   serviceObject: string;
   version: string;
-  risk: DigitalEmployeeRisk;
+  risk: AgentProfileRisk;
   responsibilities: string[];
   prohibitedActions: string[];
-  capabilities: DigitalEmployeeCapabilities;
-  memoryPolicy: DigitalEmployee['memoryPolicy'];
-  source: DigitalEmployeeTemplateSource;
+  capabilities: AgentProfileCapabilities;
+  memoryPolicy: AgentProfile['memoryPolicy'];
+  source: AgentTemplateSource;
   sourceName: string;
-  status: DigitalEmployeeTemplateStatus;
+  status: AgentTemplateStatus;
   scope: 'organization' | 'workspace';
   /** 工作区模板必须绑定工作区；组织模板由平台统一维护。 */
   workspaceId?: ID;
@@ -469,14 +469,14 @@ export interface DigitalEmployeeTemplate {
   updatedAt: ISODate;
 }
 
-export interface DigitalEmployeeTemplateAdoption {
+export interface AgentTemplateAdoption {
   id: ID;
   templateId: ID;
   templateVersion: string;
   employeeId: ID;
   workspaceId: ID;
   adoptedBy: string;
-  status: DigitalEmployeeLifecycle;
+  status: AgentProfileLifecycle;
   createdAt: ISODate;
 }
 
@@ -607,7 +607,7 @@ export interface KnowledgeRetrievalResult {
 /** 可被智能体和工作流引用的知识交付单元，而非浮动的原始文档集合。 */
 export type KnowledgePackageStatus = 'draft' | 'review' | 'published' | 'deprecated' | 'archived';
 export type KnowledgeChunkStrategy = 'structured' | 'semantic' | 'fixed' | 'table';
-export type KnowledgeConsumerType = 'agent' | 'workflow' | 'digital_employee';
+export type KnowledgeConsumerType = 'agent' | 'workflow';
 
 export interface KnowledgePackageVersion {
   id: ID;
@@ -723,7 +723,7 @@ export interface MemoryRecord {
   workspaceId: ID;
   ownerId: ID;
   /** 关联智能体；用于岗位维度检索与策略对照。 */
-  digitalEmployeeId?: ID;
+  agentProfileId?: ID;
   layer: MemoryLayer;
   scope: MemoryScope;
   title: string;
@@ -1306,7 +1306,7 @@ export interface Conversation {
   ownerId?: ID;
   correlationId?: string;
   /** 绑定的智能体（主对象） */
-  digitalEmployeeId?: ID;
+  agentProfileId?: ID;
   /** @deprecated 执行内核；由智能体 capabilities.agentId 派生 */
   agentId: ID;
   title: string;

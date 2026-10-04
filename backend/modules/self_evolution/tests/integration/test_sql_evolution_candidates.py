@@ -13,17 +13,17 @@ from uuid import UUID
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from deos.modules.self_evolution.adapter.persistence.mappers import (
+from qzdap.modules.self_evolution.adapter.persistence.mappers import (
     candidate_to_orm,
 )
-from deos.modules.self_evolution.adapter.persistence.models import (
+from qzdap.modules.self_evolution.adapter.persistence.models import (
     EvolveCandidateORM,
 )
-from deos.modules.self_evolution.adapter.persistence.repositories import (
+from qzdap.modules.self_evolution.adapter.persistence.repositories import (
     SqlEvolutionCandidateRepository,
 )
-from deos.modules.self_evolution.domain.entities import EvolveCandidate
-from deos.modules.self_evolution.domain.value_objects import (
+from qzdap.modules.self_evolution.domain.entities import EvolveCandidate
+from qzdap.modules.self_evolution.domain.value_objects import (
     EvolveKind,
     EvolveStatus,
 )

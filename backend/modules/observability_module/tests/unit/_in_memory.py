@@ -12,7 +12,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from eos_schema.ids import (
+from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
     CostRecordId,
@@ -21,16 +21,16 @@ from eos_schema.ids import (
     WorkspaceId,
 )
 
-from deos.modules.observability_module.application.ports import (
+from qzdap.modules.observability_module.application.ports import (
     CostRecordRepository,
     EvalRunQueryPort,
     RunRecordRepository,
 )
-from deos.modules.observability_module.domain.entities import (
+from qzdap.modules.observability_module.domain.entities import (
     CostRecord,
     RunRecord,
 )
-from deos.modules.observability_module.domain.value_objects import (
+from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunType,
 )

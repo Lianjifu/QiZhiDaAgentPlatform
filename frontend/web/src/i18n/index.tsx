@@ -10,7 +10,7 @@ type Dict = Record<string, string>;
 
 const zh: Dict = {
   'app.title': '企智搭 · 智能体平台',
-  'app.shortName': 'EA',
+  'app.shortName': '搭',
   'nav.home': '运营总览',
   'nav.copilot': '对话',
   'nav.copilot.auditor': '协作记录',
@@ -261,8 +261,8 @@ const zh: Dict = {
 };
 
 const en: Dict = {
-  'app.title': 'Enterprise Agent OS',
-  'app.shortName': 'EA',
+  'app.title': 'QiZhiDa · Agent Platform',
+  'app.shortName': 'QZ',
   'nav.home': 'Overview',
   'nav.copilot': 'Chat',
   'nav.copilot.auditor': 'Collab Log',

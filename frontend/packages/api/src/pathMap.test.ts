@@ -25,9 +25,9 @@ describe('translateApiPath', () => {
   });
 
   it('passes through unknown paths with matched=false', () => {
-    const out = translateApiPath('/api/digital-employees/abc123', 'GET');
+    const out = translateApiPath('/api/agent-profiles/abc123', 'GET');
     expect(out.matched).toBe(false);
-    expect(out.backendPath).toBe('/api/digital-employees/abc123');
+    expect(out.backendPath).toBe('/api/agent-profiles/abc123');
     expect(out.method).toBe('GET');
   });
 
@@ -43,10 +43,9 @@ describe('translateApiPath', () => {
     expect(out.method).toBe('POST');
   });
 
-  it('matches the longest prefix first', () => {
+  it('does not rewrite retired /api/memory sandbox routes', () => {
     const out = translateApiPath('/api/memory/records/mem-1', 'GET');
-    expect(out.backendPath).toBe('/v1/memories/mem-1');
-    expect(out.matched).toBe(true);
+    expect(out.matched).toBe(false);
   });
 
   it('does not rewrite retired /api/skills sandbox routes', () => {
@@ -58,6 +57,15 @@ describe('translateApiPath', () => {
     const out = translateApiPath('/api/admin/skills', 'GET');
     expect(out.matched).toBe(false);
     expect(out.backendPath).toBe('/api/admin/skills');
+  });
+
+  it('maps copilot session routes onto /api/sessions', () => {
+    expect(translateApiPath('/api/sessions', 'GET').backendPath).toBe('/api/sessions');
+    expect(translateApiPath('/api/sessions', 'POST').backendPath).toBe('/api/sessions');
+    expect(translateApiPath('/api/sessions/s1', 'GET').backendPath).toBe('/api/sessions/s1');
+    expect(translateApiPath('/api/sessions/s1/turns/stream', 'POST').backendPath).toBe(
+      '/api/sessions/s1/turns/stream',
+    );
   });
 
   it('rewrites PATCH /api/agents/:id → PATCH /v1/agents/:id', () => {
@@ -78,21 +86,21 @@ describe('translateApiPath', () => {
     expect(out.backendPath).toBe('/api/tenant/profile');
   });
 
-  it('rewrites /api/memory/policy GET → /v1/memories/policy', () => {
+  it('does not rewrite retired /api/memory/policy', () => {
     const out = translateApiPath('/api/memory/policy', 'GET');
-    expect(out.matched).toBe(true);
-    expect(out.backendPath).toBe('/v1/memories/policy');
+    expect(out.matched).toBe(false);
   });
 
-  it('rewrites /api/memory/policy PATCH → /v1/memories/policy', () => {
-    const out = translateApiPath('/api/memory/policy', 'PATCH');
-    expect(out.backendPath).toBe('/v1/memories/policy');
-    expect(out.method).toBe('PATCH');
+  it('passthroughs /api/admin/memory catalog routes', () => {
+    const out = translateApiPath('/api/admin/memory/l1', 'GET');
+    expect(out.matched).toBe(false);
+    expect(out.backendPath).toBe('/api/admin/memory/l1');
   });
 
-  it('rewrites /api/workflows/:id/run → /v1/orchestration/plans/:id/runs', () => {
+  it('does not rewrite retired /api/workflows to /v1/orchestration', () => {
     const out = translateApiPath('/api/workflows/wf-1/run', 'POST');
-    expect(out.backendPath).toBe('/v1/orchestration/plans/wf-1/runs');
+    expect(out.matched).toBe(false);
+    expect(out.backendPath).toBe('/api/workflows/wf-1/run');
   });
 
   it('passthroughs /api/admin/knowledge and /api/catalog/knowledge', () => {
@@ -107,15 +115,13 @@ describe('translateApiPath', () => {
     expect(docs.backendPath).toBe('/api/knowledge/docs');
   });
 
-  it('picks method-aware rule for same path', () => {
+  it('falls through retired /api/memory/records', () => {
     const get = translateApiPath('/api/memory/records', 'GET');
-    expect(get.backendPath).toBe('/v1/memories');
+    expect(get.matched).toBe(false);
     const post = translateApiPath('/api/memory/records', 'POST');
-    expect(post.backendPath).toBe('/v1/memories');
-    // DELETE /api/memory/records → 已接通,backend /v1/memories/:id
+    expect(post.matched).toBe(false);
     const delete_ = translateApiPath('/api/memory/records/mem-1', 'DELETE');
-    expect(delete_.matched).toBe(true);
-    expect(delete_.backendPath).toBe('/v1/memories/mem-1');
+    expect(delete_.matched).toBe(false);
   });
 
   it('rule count grows as we add batches', () => {
@@ -133,14 +139,22 @@ describe('translateApiPath', () => {
     expect(out.backendPath).toBe('/v1/policies');
   });
 
-  it('rewrites /api/model-providers → /v1/model-credentials', () => {
+  it('does not rewrite retired /api/model-providers', () => {
     const out = translateApiPath('/api/model-providers', 'GET');
-    expect(out.backendPath).toBe('/v1/model-credentials');
+    expect(out.matched).toBe(false);
+    expect(out.backendPath).toBe('/api/model-providers');
   });
 
-  it('rewrites /api/model-routing/policies → /v1/routing-policies', () => {
+  it('does not rewrite retired /api/model-routing/policies', () => {
     const out = translateApiPath('/api/model-routing/policies', 'GET');
-    expect(out.backendPath).toBe('/v1/routing-policies');
+    expect(out.matched).toBe(false);
+    expect(out.backendPath).toBe('/api/model-routing/policies');
+  });
+
+  it('passthroughs /api/admin/models catalog routes', () => {
+    const out = translateApiPath('/api/admin/models', 'GET');
+    expect(out.matched).toBe(false);
+    expect(out.backendPath).toBe('/api/admin/models');
   });
 
   it('rewrites /api/tools/:id/invoke → /v1/tools/:id/invoke', () => {
@@ -182,13 +196,10 @@ describe('translateApiPath', () => {
     }
   });
 
-  // ── batch 3:orchestration runs 修正 ─────────────────────────────────
-  it('rewrites GET /api/workflows/:id/runs → GET /v1/orchestration/runs (global list, ?plan_id filter)', () => {
-    // backend 列 runs 是全局 /v1/orchestration/runs,用 query param ?plan_id 过滤
-    // 不是 /v1/orchestration/plans/:id/runs(无此端点)
+  it('falls through GET /api/workflows/:id/runs (plan DSL retired)', () => {
     const out = translateApiPath('/api/workflows/wf-1/runs', 'GET');
-    expect(out.matched).toBe(true);
-    expect(out.backendPath).toBe('/v1/orchestration/runs');
+    expect(out.matched).toBe(false);
+    expect(out.backendPath).toBe('/api/workflows/wf-1/runs');
   });
 
   // ── batch 3:agents phantom rules 移除 ──────────────────────────────
@@ -297,13 +308,11 @@ describe('translateApiPath', () => {
       expect(out.matched).toBe(false);
     });
 
-    it('wires /api/memory/policy (wired in batch 3)', () => {
+    it('falls through /api/memory/policy (package API retired)', () => {
       const getOut = translateApiPath('/api/memory/policy', 'GET');
-      expect(getOut.matched).toBe(true);
-      expect(getOut.backendPath).toBe('/v1/memories/policy');
+      expect(getOut.matched).toBe(false);
       const patchOut = translateApiPath('/api/memory/policy', 'PATCH');
-      expect(patchOut.matched).toBe(true);
-      expect(patchOut.backendPath).toBe('/v1/memories/policy');
+      expect(patchOut.matched).toBe(false);
     });
   });
 
@@ -384,10 +393,9 @@ describe('translateApiPath', () => {
   });
 
   // ── batch 7:知识/记忆/编排 单项端点的反向补强 ────────────────────────
-  it('rewrites GET /api/memory/records/:id → GET /v1/memories/:id', () => {
+  it('falls through GET /api/memory/records/:id (package API retired)', () => {
     const out = translateApiPath('/api/memory/records/mem-1', 'GET');
-    expect(out.matched).toBe(true);
-    expect(out.backendPath).toBe('/v1/memories/mem-1');
+    expect(out.matched).toBe(false);
   });
 
   it('falls through GET /api/skills/invocations (sandbox skill API retired)', () => {
@@ -400,21 +408,27 @@ describe('translateApiPath', () => {
     expect(out.matched).toBe(false);
   });
 
-  it('rewrites POST /api/workflows/:id/runs/:runId/cancel → POST /v1/orchestration/runs/:runId/cancel', () => {
+  it('falls through POST /api/workflows/:id/runs/:runId/cancel (plan DSL retired)', () => {
     const out = translateApiPath('/api/workflows/wf-1/runs/run-1/cancel', 'POST');
-    expect(out.matched).toBe(true);
-    expect(out.backendPath).toBe('/v1/orchestration/runs/run-1/cancel');
+    expect(out.matched).toBe(false);
   });
 
-  it('rewrites GET /api/workflows/:id/runs/:runId → GET /v1/orchestration/runs/:runId', () => {
+  it('falls through GET /api/workflows/:id/runs/:runId (plan DSL retired)', () => {
     const out = translateApiPath('/api/workflows/wf-1/runs/run-1', 'GET');
-    expect(out.matched).toBe(true);
-    expect(out.backendPath).toBe('/v1/orchestration/runs/run-1');
+    expect(out.matched).toBe(false);
   });
 
-  it('rewrites POST /api/workflows → POST /v1/orchestration/plans', () => {
+  it('falls through POST /api/workflows (plan DSL retired)', () => {
     const out = translateApiPath('/api/workflows', 'POST');
-    expect(out.matched).toBe(true);
-    expect(out.backendPath).toBe('/v1/orchestration/plans');
+    expect(out.matched).toBe(false);
+  });
+
+  it('passthroughs /api/admin/workflows and /api/catalog/workflows', () => {
+    const admin = translateApiPath('/api/admin/workflows', 'GET');
+    expect(admin.matched).toBe(false);
+    expect(admin.backendPath).toBe('/api/admin/workflows');
+    const catalog = translateApiPath('/api/catalog/workflows', 'GET');
+    expect(catalog.matched).toBe(false);
+    expect(catalog.backendPath).toBe('/api/catalog/workflows');
   });
 });

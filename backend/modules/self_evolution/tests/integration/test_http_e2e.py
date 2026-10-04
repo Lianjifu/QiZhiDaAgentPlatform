@@ -24,24 +24,24 @@ from _self_evolution_unit_in_memory import (
     InMemoryEvolutionCandidateRepository,
     Uuid4IdGenerator,
 )
-from eos_http.error_envelope import error_envelope_middleware
-from eos_schema.ids import TenantId, UserId, WorkspaceId
-from eos_vault.actor import ActorContext
+from qzdap_http.error_envelope import error_envelope_middleware
+from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+from qzdap_vault.actor import ActorContext
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from deos.modules.self_evolution.adapter.http.factory import (
+from qzdap.modules.self_evolution.adapter.http.factory import (
     make_evolution_service,
 )
-from deos.modules.self_evolution.adapter.http.router import (
+from qzdap.modules.self_evolution.adapter.http.router import (
     _require_actor,
     _require_admin,
 )
-from deos.modules.self_evolution.adapter.http.router import (
+from qzdap.modules.self_evolution.adapter.http.router import (
     router as evolution_router,
 )
-from deos.modules.self_evolution.application.evolution_service import (
+from qzdap.modules.self_evolution.application.evolution_service import (
     EvolutionCandidateService,
 )
 
@@ -133,7 +133,7 @@ class _DirectApplyGuardStub:
         self.applies: list[tuple[UUID, UUID, str]] = []
 
     async def apply(self, *, tenant_id: TenantId, candidate) -> object:
-        from deos.modules.self_evolution.application.apply_guard import (
+        from qzdap.modules.self_evolution.application.apply_guard import (
             ApplyOutcome,
         )
 
@@ -186,7 +186,7 @@ async def test_create_candidate_returns_201_and_persists() -> None:
     rows = await ctx["repo"].list_by_status(
         tenant_id=TENANT_A,
         status=__import__(
-            "deos.modules.self_evolution.domain.value_objects",
+            "qzdap.modules.self_evolution.domain.value_objects",
             fromlist=["EvolveStatus"],
         ).EvolveStatus.PENDING,
     )
@@ -270,7 +270,7 @@ async def test_approve_returns_200_and_transitions_to_approved() -> None:
     cand = await ctx["svc"].create(
         tenant_id=TENANT_A,
         kind=__import__(
-            "deos.modules.self_evolution.domain.value_objects",
+            "qzdap.modules.self_evolution.domain.value_objects",
             fromlist=["EvolveKind"],
         ).EvolveKind.ROUTING_HINT,
         payload={"route": "r-1"},
@@ -297,7 +297,7 @@ async def test_approve_returns_409_when_already_approved() -> None:
     cand = await ctx["svc"].create(
         tenant_id=TENANT_A,
         kind=__import__(
-            "deos.modules.self_evolution.domain.value_objects",
+            "qzdap.modules.self_evolution.domain.value_objects",
             fromlist=["EvolveKind"],
         ).EvolveKind.ROUTING_HINT,
         payload={"route": "r-2"},
@@ -319,7 +319,7 @@ async def test_reject_returns_200_and_transitions_to_rejected() -> None:
     cand = await ctx["svc"].create(
         tenant_id=TENANT_A,
         kind=__import__(
-            "deos.modules.self_evolution.domain.value_objects",
+            "qzdap.modules.self_evolution.domain.value_objects",
             fromlist=["EvolveKind"],
         ).EvolveKind.DREAM,
         payload={"topic": "t-1"},
@@ -348,7 +348,7 @@ async def test_apply_returns_200_with_summary_after_approval() -> None:
     cand = await ctx["svc"].create(
         tenant_id=TENANT_A,
         kind=__import__(
-            "deos.modules.self_evolution.domain.value_objects",
+            "qzdap.modules.self_evolution.domain.value_objects",
             fromlist=["EvolveKind"],
         ).EvolveKind.MEMORY_PROMOTE,
         payload={"memory_id": "m-2"},
@@ -379,7 +379,7 @@ async def test_apply_returns_409_when_not_yet_approved() -> None:
     cand = await ctx["svc"].create(
         tenant_id=TENANT_A,
         kind=__import__(
-            "deos.modules.self_evolution.domain.value_objects",
+            "qzdap.modules.self_evolution.domain.value_objects",
             fromlist=["EvolveKind"],
         ).EvolveKind.MEMORY_PROMOTE,
         payload={"memory_id": "m-3"},
@@ -477,7 +477,7 @@ async def test_apply_uses_injected_guard_not_default_direct() -> None:
             self.calls = 0
 
         async def apply(self, *, tenant_id: TenantId, candidate) -> object:
-            from deos.modules.self_evolution.application.apply_guard import (
+            from qzdap.modules.self_evolution.application.apply_guard import (
                 ApplyOutcome,
             )
 
@@ -503,7 +503,7 @@ async def test_apply_uses_injected_guard_not_default_direct() -> None:
     cand = await svc.create(
         tenant_id=TENANT_A,
         kind=__import__(
-            "deos.modules.self_evolution.domain.value_objects",
+            "qzdap.modules.self_evolution.domain.value_objects",
             fromlist=["EvolveKind"],
         ).EvolveKind.MEMORY_PROMOTE,
         payload={"memory_id": "m-x"},

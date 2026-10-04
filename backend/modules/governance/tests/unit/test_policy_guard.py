@@ -12,14 +12,14 @@ from _governance_unit_in_memory import (
     RecordingPublisher,
     SequenceIds,
 )
-from eos_kernel.errors import ActionDeniedError, ApprovalRequiredError
-from eos_schema.ids import TenantId, UserId
-from eos_vault.actor import ActorContext
+from qzdap_kernel.errors import ActionDeniedError, ApprovalRequiredError
+from qzdap_schema.ids import TenantId, UserId
+from qzdap_vault.actor import ActorContext
 
-from deos.modules.governance.adapter.guard.policy_guard import PolicyGuard
-from deos.modules.governance.application.policy_evaluator import PolicyEvaluator
-from deos.modules.governance.domain.entities import PolicyRule
-from deos.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
+from qzdap.modules.governance.adapter.guard.policy_guard import PolicyGuard
+from qzdap.modules.governance.application.policy_evaluator import PolicyEvaluator
+from qzdap.modules.governance.domain.entities import PolicyRule
+from qzdap.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
 
 TID = TenantId(UUID("00000000-0000-0000-0000-000000000001"))
 USER = UserId(UUID("00000000-0000-0000-0000-00000000000a"))
@@ -64,8 +64,8 @@ async def test_check_allow_passes_silently():
 
 
 async def test_check_deny_raises_action_denied():
-    from deos.modules.governance.domain.entities import PolicyRule
-    from deos.modules.governance.domain.value_objects import PolicySubject
+    from qzdap.modules.governance.domain.entities import PolicyRule
+    from qzdap.modules.governance.domain.value_objects import PolicySubject
 
     deny_rule = PolicyRule.create(
         tenant_id=TID,
@@ -88,7 +88,7 @@ async def test_check_deny_raises_action_denied():
 
 
 async def test_check_approval_raises_approval_required():
-    from deos.modules.governance.domain.entities import PolicyRule
+    from qzdap.modules.governance.domain.entities import PolicyRule
 
     ap_rule = PolicyRule.create(
         tenant_id=TID,
@@ -110,7 +110,7 @@ async def test_check_approval_raises_approval_required():
 
 
 async def test_check_approval_error_has_202_status():
-    from deos.modules.governance.domain.entities import PolicyRule
+    from qzdap.modules.governance.domain.entities import PolicyRule
 
     ap_rule = PolicyRule.create(
         tenant_id=TID,

@@ -8,7 +8,7 @@ import { mockKbs, mockDocs } from '@/features/knowledge/fixtures';
 import { projectKnowledgeDocs } from '@/features/user/catalog/mappers';
 import { qk } from '@/api/shared/query-keys';
 
-const CHOSEN_STORAGE_KEY = 'qzd.user.knowledge.chosen';
+const CHOSEN_STORAGE_KEY = 'qzdap.user.knowledge.chosen';
 
 afterEach(() => cleanup());
 beforeEach(() => sessionStorage.removeItem(CHOSEN_STORAGE_KEY));

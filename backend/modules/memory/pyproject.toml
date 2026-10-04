@@ -1,15 +1,18 @@
 [project]
-name = "deos-memory"
+name = "qzdap-memory"
 version = "0.1.0"
-description = "Memory module — vector-backed recall with pgvector; P4 of doc 12."
+description = "Memory catalog: admin L1/L2/L3 layers and vector recall"
 requires-python = ">=3.12"
 dependencies = [
-    "eos-kernel",
-    "eos-schema",
-    "eos-persistence",
-    "eos-vector",
-    "eos-messaging",
+    "qzdap-kernel",
+    "qzdap-schema",
+    "qzdap-persistence",
+    "qzdap-vector",
+    "qzdap-auth",
+    "qzdap-http",
+    "fastapi>=0.115.0",
     "pydantic>=2.9",
+    "httpx>=0.28.0",
 ]
 
 [build-system]
@@ -17,7 +20,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/deos"]
+packages = ["src/qzdap"]
 
 [tool.ruff]
 src = ["src"]

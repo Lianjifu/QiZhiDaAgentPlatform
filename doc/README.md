@@ -1,13 +1,13 @@
-# Enterprise Agent OS · 文档总览
+# 企智搭 · 智能体平台 · 文档总览
 
-> **新项目（greenfield）** 方案。Enterprise Agent OS 是新一代企业级数字员工平台，**前端 4D 架构**（pnpm Workspace Monorepo + FSD + DDD + Hexagonal Ports & Adapters）与**后端 Python FastAPI 模块化单体**平行的统一设计。
+> **新项目（greenfield）** 方案。企智搭 · 智能体平台 是新一代企业级智能体平台，**前端 4D 架构**（pnpm Workspace Monorepo + FSD + DDD + Hexagonal Ports & Adapters）与**后端 Python FastAPI 模块化单体**平行的统一设计。
 >
 > ⚠️ **项目关系澄清**：本文档是独立新项目方案，**与本仓库现有 `backend/` `frontend/` 旧项目无强绑定**；仅借鉴业务概念，不沿用技术栈。详见 [REVIEW.md](REVIEW.md)。
 
 ## 目录结构
 
 ```
-docs/enterprise-agent-os/
+docs/qizhida-agent-platform/
 ├── README.md                  ← 本文档（总索引）
 ├── backend/                   ← 后端 13 节方案
 │   ├── 00-README.md
@@ -79,7 +79,7 @@ docs/enterprise-agent-os/
 ### 1. 单一真理源（DTO 类型契约）
 
 - 后端 `openapi.yaml` 是所有 DTO 的**单一真理源**
-- 前端通过 OpenAPI Codegen 从后端生成 TypeScript 类型到 `@eos/web-types`
+- 前端通过 OpenAPI Codegen 从后端生成 TypeScript 类型到 `@qzdap/web-types`
 - Mock 与 API 共享同一份类型契约 → Contract Test 保证一致
 
 ### 2. SSE Turn 流式协议
@@ -114,12 +114,12 @@ docs/enterprise-agent-os/
 
 ## 8. 与本仓库旧项目的关系
 
-本仓库当前 `backend/` `frontend/` 是**旧项目遗留**（Go + Python + React `@de/*`），与 enterprise-agent-os **无强绑定**：
+本仓库当前 `backend/` `frontend/` 是**旧项目遗留**（Go + Python + React `@de/*`），与 qizhida-agent-platform **无强绑定**：
 
 | 维度 | 旧项目 | 新项目 |
 |---|---|---|
 | 后端栈 | Go monolith + Python sidecar | Python FastAPI 模块化单体 |
-| 前端包名 | `@de/*` | `@eos/*` |
+| 前端包名 | `@de/*` | `@qzdap/*` |
 | UI 库 | shadcn/ui + tailwind | antd |
 | API 前缀 | `/api/*` 信封 | `/v1/*` 严格状态码 |
 | 状态 | 已运行多年 | 设计阶段 |
@@ -140,4 +140,4 @@ docs/enterprise-agent-os/
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | 1.0 | 2026-09-19 | 顶层 README + backend/ 子目录 + web/ 子目录（14 篇 × 2） |
-| 1.1 | 2026-09-19 | 澄清 enterprise-agent-os 是**新项目**（非重构旧项目）；新增"与本仓库旧项目的关系"章节；新增 [REVIEW.md](REVIEW.md) |
+| 1.1 | 2026-09-19 | 澄清 qizhida-agent-platform 是**新项目**（非重构旧项目）；新增"与本仓库旧项目的关系"章节；新增 [REVIEW.md](REVIEW.md) |

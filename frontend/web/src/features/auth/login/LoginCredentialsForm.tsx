@@ -2,7 +2,7 @@
  * LoginCredentialsForm — Step 1: 邮箱 / 密码 / MFA(可选) + 演示角色
  */
 import { Eye, EyeOff } from 'lucide-react';
-import { Button, Input } from '@de/web-ui';
+import { Button, Input } from '@qzdap/web-ui';
 import { useState, type ComponentProps } from 'react';
 import { LoginDemoChips, type LoginDemoRole } from './LoginDemoChips';
 

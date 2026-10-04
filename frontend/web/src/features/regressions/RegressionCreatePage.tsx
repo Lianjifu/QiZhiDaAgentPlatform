@@ -8,12 +8,12 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { GitBranch } from 'lucide-react';
-import type { RegressionTrack } from './schema';
-import { uid } from './components/constants';
 import { StepIndicator } from './components/Primitives';
+import { useCreateRegressionTrack } from './useRegressions';
 
 export default function RegressionCreatePage() {
   const navigate = useNavigate();
+  const createTrack = useCreateRegressionTrack();
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [agent, setAgent] = useState('');
@@ -25,29 +25,18 @@ export default function RegressionCreatePage() {
 
   const canNext = name.trim().length > 0 && agent.trim().length > 0;
   const handleCreate = () => {
-    const track: RegressionTrack = {
-      id: uid('track'),
-      name: name.trim(),
-      agent: agent.trim(),
-      owner,
-      status: 'stable',
-      risk: 'low',
-      baselineVersion: baseline,
-      currentVersion: current,
-      passRateDelta: 0, latencyDelta: 0, costDelta: 0, scoreDelta: 0,
-      baseline: { passRate: 95, avgScore: 4.4, latencyMs: 1200, cost: 10 },
-      current: { passRate: 95, avgScore: 4.4, latencyMs: 1200, cost: 10 },
-      passRateTrend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      latencyTrend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      costTrend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      lastCheckedAt: '未运行',
-      cases: 0, starred: false, schedule, tags: [],
-      notes: notes.trim() || '新创建的回归追踪',
-      history: [],
-      casesList: [],
-    };
-    void track;
-    navigate('/admin/regressions');
+    createTrack.mutate(
+      {
+        name: name.trim(),
+        agent: agent.trim(),
+        owner,
+        baselineVersion: baseline,
+        currentVersion: current,
+        schedule,
+        notes: notes.trim() || '新创建的回归追踪',
+      },
+      { onSuccess: () => navigate('/admin/regressions'), onError: () => navigate('/admin/regressions') },
+    );
   };
 
   return (
@@ -134,7 +123,7 @@ export default function RegressionCreatePage() {
           {step > 1 && <button type="button" onClick={() => setStep((s) => Math.max(1, s - 1))} className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">上一步</button>}
           <Link to="/admin/regressions" className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">取消</Link>
           {step < 3 && <button type="button" onClick={() => setStep((s) => s + 1)} disabled={step === 1 && !canNext} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">下一步</button>}
-          {step === 3 && <button type="button" onClick={handleCreate} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white">创建追踪</button>}
+          {step === 3 && <button type="button" onClick={handleCreate} disabled={createTrack.isPending} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">创建追踪</button>}
         </div>
       </section>
     </div>

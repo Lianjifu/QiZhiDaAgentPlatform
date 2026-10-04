@@ -6,14 +6,14 @@ from uuid import UUID
 
 import pytest
 
-from deos.modules.tool.domain import (
+from qzdap.modules.tool.domain import (
     AuthConfig,
     AuthConfigType,
     SpecOperation,
     Tool,
     ToolProtocol,
 )
-from deos.modules.tool.domain.errors import InvalidToolSpec
+from qzdap.modules.tool.domain.errors import InvalidToolSpec
 
 TID = UUID("00000000-0000-0000-0000-000000000001")
 WID = UUID("00000000-0000-0000-0000-000000000002")
@@ -371,7 +371,7 @@ class TestToolUpdate:
 
 class TestToolCallLifecycle:
     def test_create_running(self) -> None:
-        from deos.modules.tool.domain import ToolCall, ToolCallStatus
+        from qzdap.modules.tool.domain import ToolCall, ToolCallStatus
 
         call = ToolCall.create(
             id=UUID(int=1),
@@ -386,7 +386,7 @@ class TestToolCallLifecycle:
         assert call.error_code is None
 
     def test_succeed(self) -> None:
-        from deos.modules.tool.domain import ToolCall, ToolCallStatus
+        from qzdap.modules.tool.domain import ToolCall, ToolCallStatus
 
         call = ToolCall.create(
             id=UUID(int=1),
@@ -402,7 +402,7 @@ class TestToolCallLifecycle:
         assert succ.finished_at is not None
 
     def test_fail(self) -> None:
-        from deos.modules.tool.domain import ToolCall, ToolCallStatus
+        from qzdap.modules.tool.domain import ToolCall, ToolCallStatus
 
         call = ToolCall.create(
             id=UUID(int=1),
@@ -418,7 +418,7 @@ class TestToolCallLifecycle:
 
     def test_arguments_defensively_copied(self) -> None:
         # Mutating the caller's dict must not leak into the persisted call.
-        from deos.modules.tool.domain import ToolCall
+        from qzdap.modules.tool.domain import ToolCall
 
         args = {"k": 1}
         call = ToolCall.create(
@@ -435,7 +435,7 @@ class TestToolCallLifecycle:
     def test_fail_with_none_latency(self) -> None:
         # latency_ms is optional for failures (we may not know how long
         # we waited if the call was rejected synchronously).
-        from deos.modules.tool.domain import ToolCall, ToolCallStatus
+        from qzdap.modules.tool.domain import ToolCall, ToolCallStatus
 
         call = ToolCall.create(
             id=UUID(int=3),
@@ -451,7 +451,7 @@ class TestToolCallLifecycle:
 
     def test_succeed_zero_latency_is_ok(self) -> None:
         # Sub-millisecond calls round to 0 — must not be rejected.
-        from deos.modules.tool.domain import ToolCall, ToolCallStatus
+        from qzdap.modules.tool.domain import ToolCall, ToolCallStatus
 
         call = ToolCall.create(
             id=UUID(int=4),
@@ -466,7 +466,7 @@ class TestToolCallLifecycle:
 
     def test_state_transitions_are_terminal(self) -> None:
         # succeed() / fail() cannot be called twice on the same call.
-        from deos.modules.tool.domain import ToolCall
+        from qzdap.modules.tool.domain import ToolCall
 
         call = ToolCall.create(
             id=UUID(int=5),
@@ -486,7 +486,7 @@ class TestToolCallLifecycle:
 
     def test_fail_preserves_arguments(self) -> None:
         # Even on failure the original arguments are kept for debugging.
-        from deos.modules.tool.domain import ToolCall
+        from qzdap.modules.tool.domain import ToolCall
 
         call = ToolCall.create(
             id=UUID(int=6),
@@ -560,7 +560,7 @@ class TestEventEmission:
         assert ev.version == 2
 
     def test_invoked_completed_failed_event_payloads(self) -> None:
-        from deos.modules.tool.domain import ToolCall
+        from qzdap.modules.tool.domain import ToolCall
 
         call = ToolCall.create(
             id=UUID(int=7),

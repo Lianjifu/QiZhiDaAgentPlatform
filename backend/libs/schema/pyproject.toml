@@ -1,10 +1,10 @@
 [project]
-name = "eos-schema"
+name = "qzdap-schema"
 version = "0.1.0"
 description = "Cross-module IDs and DTOs shared between libs and modules"
 requires-python = ">=3.12"
 dependencies = [
-    "eos-kernel",
+    "qzdap-kernel",
     "pydantic>=2.9",
 ]
 
@@ -13,7 +13,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/eos_schema"]
+packages = ["src/qzdap_schema"]
 
 [tool.ruff]
 src = ["src"]

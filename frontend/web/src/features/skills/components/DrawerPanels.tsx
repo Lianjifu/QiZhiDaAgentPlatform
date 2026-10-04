@@ -6,6 +6,7 @@ import {
   Clock, GitBranch, History, Plus, ShieldCheck, Sparkles, Trash2, Zap,
 } from 'lucide-react';
 import type { SchemaField, Skill, SkillType } from '../schema';
+import { DEFAULT_SKILL_RUNTIME } from '../schema';
 import { RISK_BADGE, formatCalls } from './constants';
 import { Sparkline } from './Sparkline';
 
@@ -370,6 +371,91 @@ export function DrawerPanelAudit({ draft }: { draft: Skill }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+export function DrawerPanelRuntime({ draft, onChange }: { draft: Skill; onChange: (patch: Partial<Skill>) => void }) {
+  const runtime = { ...DEFAULT_SKILL_RUNTIME, ...draft.runtime };
+  const update = (patch: Partial<typeof runtime>) => onChange({ runtime: { ...runtime, ...patch } });
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
+        <div>
+          <p className="text-xs font-semibold">在 gVisor 沙箱中执行</p>
+          <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">仅已发布且开启运行时的技能会被智能体调用。</p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={runtime.enabled}
+          onClick={() => update({ enabled: !runtime.enabled })}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${runtime.enabled ? 'bg-[var(--brand)]' : 'bg-[var(--bg-hover)]'}`}
+        >
+          <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${runtime.enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">镜像</label>
+          <input
+            type="text"
+            value={runtime.image}
+            onChange={(event) => update({ image: event.target.value })}
+            className="mt-1.5 h-10 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-sm font-mono outline-none focus:border-[var(--brand)]"
+          />
+        </div>
+        <div>
+          <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">入口文件</label>
+          <input
+            type="text"
+            value={runtime.entry}
+            onChange={(event) => update({ entry: event.target.value })}
+            className="mt-1.5 h-10 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-sm font-mono outline-none focus:border-[var(--brand)]"
+          />
+        </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div>
+          <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">超时 (ms)</label>
+          <input
+            type="number"
+            value={runtime.timeoutMs}
+            onChange={(event) => update({ timeoutMs: Number(event.target.value) || 30000 })}
+            className="mt-1.5 h-10 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-sm outline-none focus:border-[var(--brand)]"
+          />
+        </div>
+        <div>
+          <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">内存 (MB)</label>
+          <input
+            type="number"
+            value={runtime.memoryMb}
+            onChange={(event) => update({ memoryMb: Number(event.target.value) || 256 })}
+            className="mt-1.5 h-10 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-sm outline-none focus:border-[var(--brand)]"
+          />
+        </div>
+        <div>
+          <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">网络</label>
+          <select
+            value={runtime.network}
+            onChange={(event) => update({ network: event.target.value as 'none' | 'bridge' })}
+            className="mt-1.5 h-10 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-sm outline-none focus:border-[var(--brand)]"
+          >
+            <option value="none">none</option>
+            <option value="bridge">bridge</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Python 源码</label>
+        <textarea
+          value={runtime.source}
+          onChange={(event) => update({ source: event.target.value })}
+          rows={12}
+          placeholder={"import json\nprint(json.load(open('/work/input.json')))"}
+          className="mt-1.5 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 py-2 font-mono text-xs outline-none focus:border-[var(--brand)]"
+        />
+      </div>
     </div>
   );
 }

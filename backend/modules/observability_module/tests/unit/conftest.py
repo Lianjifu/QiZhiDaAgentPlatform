@@ -12,18 +12,18 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from eos_schema.ids import TenantId, WorkspaceId
+from qzdap_schema.ids import TenantId, WorkspaceId
 
-from deos.modules.observability_module.application.pricing import (
+from qzdap.modules.observability_module.application.pricing import (
     DEFAULT_LLM_PRICING,
     ModelPricing,
     PricingCatalog,
 )
-from deos.modules.observability_module.domain.entities import (
+from qzdap.modules.observability_module.domain.entities import (
     CostRecord,
     RunRecord,
 )
-from deos.modules.observability_module.domain.value_objects import (
+from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunStatus,
     RunType,

@@ -1,10 +1,10 @@
 /**
  * AdminMetrics hooks — 5 个列表查询(models/latency/cost/dashboards/thresholds)+ stats helper。
  */
-import { useApiQuery } from '@/services/query';
+import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';
 import type {
-  CostBreakdown, LatencyPoint, MetricsDashboard, MetricsStats, ModelMetric, ThresholdRule,
+  CostBreakdown, LatencyPoint, MetricsDashboard, MetricsStats, MetricsTimeRange, ModelMetric, ThresholdRule,
 } from './schema';
 
 export function useModelMetrics() {
@@ -35,6 +35,14 @@ export function useThresholdRules() {
   return useApiQuery<ThresholdRule[]>([...qk.admin.metrics.thresholds], '/api/admin/metrics/thresholds', undefined, {
     staleTime: 30_000,
   });
+}
+
+export function useCreateDashboard() {
+  return useApiMutation<MetricsDashboard, { name: string; range: MetricsTimeRange; description?: string }>(
+    () => '/api/admin/metrics/dashboards',
+    { invalidateKeys: [qk.admin.metrics.dashboards] },
+    'POST',
+  );
 }
 
 export function useMetricsStats(models: ModelMetric[]): MetricsStats {

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from eos_schema.ids import (
+from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
     EvalDatasetId,
@@ -16,13 +16,13 @@ from eos_schema.ids import (
     WorkspaceId,
 )
 
-from deos.modules.evaluation.application.ports import (
+from qzdap.modules.evaluation.application.ports import (
     EvalDatasetRepository,
     EvalRunRepository,
     EvaluationEventPublisher,
     SubAgentPort,
 )
-from deos.modules.evaluation.domain.entities import (
+from qzdap.modules.evaluation.domain.entities import (
     EvalCase,
     EvalDataset,
     EvalRun,

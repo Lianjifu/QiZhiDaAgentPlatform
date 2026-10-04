@@ -3,8 +3,8 @@
 # infra/k8s/ingress.yaml. Use when running Envoy as the only ingress
 # (no ingress-nginx) or when layering it behind a layer-4 LB.
 #
-# Match X-EOS-Ring: canary  → eos_canary cluster (port 8103)
-# Otherwise                  → eos_stable cluster (port 8102)
+# Match X-QZDAP-Ring: canary  → qzdap_canary cluster (port 8103)
+# Otherwise                  → qzdap_stable cluster (port 8102)
 
 static_resources:
   listeners:
@@ -18,49 +18,49 @@ static_resources:
             - name: envoy.filters.network.http_connection_manager
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-                stat_prefix: eos_ingress
+                stat_prefix: qzdap_ingress
                 codec_type: AUTO
                 route_config:
                   virtual_hosts:
-                    - name: eos
+                    - name: qzdap
                       domains: ["*"]
                       routes:
                         - match:
                             headers:
-                              - name: x-eos-ring
+                              - name: x-qzdap-ring
                                 exact_match: canary
                           route:
-                            cluster: eos_canary
+                            cluster: qzdap_canary
                             timeout: 60s
                         - match:
                             prefix: /
                           route:
-                            cluster: eos_stable
+                            cluster: qzdap_stable
                             timeout: 60s
                 http_filters:
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
   clusters:
-    - name: eos_stable
+    - name: qzdap_stable
       type: STRICT_DNS
       load_assignment:
-        cluster_name: eos_stable
+        cluster_name: qzdap_stable
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
-                      address: eos-app-stable
+                      address: qzdap-app-stable
                       port_value: 8102
-    - name: eos_canary
+    - name: qzdap_canary
       type: STRICT_DNS
       load_assignment:
-        cluster_name: eos_canary
+        cluster_name: qzdap_canary
         endpoints:
           - lb_endpoints:
               - endpoint:
                   address:
                     socket_address:
-                      address: eos-app-canary
+                      address: qzdap-app-canary
                       port_value: 8102

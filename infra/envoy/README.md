@@ -11,8 +11,8 @@ envoy image).
 
 | Header | Cluster |
 |---|---|
-| `X-EOS-Ring: canary` | `eos_canary` (port 8103 → 8102) |
-| (any other / missing) | `eos_stable` (port 8102 → 8102) |
+| `X-QZDAP-Ring: canary` | `qzdap_canary` (port 8103 → 8102) |
+| (any other / missing) | `qzdap_stable` (port 8102 → 8102) |
 
 ## Run with docker-compose
 
@@ -27,8 +27,8 @@ Add to `docker-compose.prod.yml`:
     ports:
       - "10000:10000"
     depends_on:
-      - eos-app-stable
-      - eos-app-canary
+      - qzdap-app-stable
+      - qzdap-app-canary
     profiles: ["prod"]
 ```
 
@@ -44,7 +44,7 @@ docker run --rm -p 10000:10000 \
 
 ```bash
 curl -fsS http://127.0.0.1:10000/livez                        # stable
-curl -fsS -H "X-EOS-Ring: canary" http://127.0.0.1:10000/livez  # canary
+curl -fsS -H "X-QZDAP-Ring: canary" http://127.0.0.1:10000/livez  # canary
 ```
 
 ## Why this is an alternative

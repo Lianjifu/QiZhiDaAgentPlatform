@@ -94,6 +94,7 @@ export default function SkillDetailPage() {
         starred: draft.starred,
         inputSchema: draft.inputSchema,
         outputSchema: draft.outputSchema,
+        runtime: draft.runtime,
       },
     }, {
       onSuccess: () => {

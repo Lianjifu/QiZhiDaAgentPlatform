@@ -41,11 +41,18 @@ export function LoginBrandPanel(props: LoginBrandPanelProps) {
       <div className="relative z-10 flex h-full min-h-full flex-col justify-center px-10 py-10 lg:px-14 xl:px-16 2xl:px-24">
         <div className="login-rise login-copy w-full max-w-[40rem] xl:ml-auto 2xl:max-w-[44rem]">
           <div className="flex items-center gap-3">
-            <BrandLogo size={36} className="text-[var(--login-accent)]" ariaLabel="企智搭 · 智能体平台" />
-            <div className="leading-tight">
-              <div className="text-[15px] font-medium text-[var(--login-fg)]">{props.product}</div>
-              <div className="mt-0.5 text-[12px] text-[var(--login-fg-muted)]">{props.tagline}</div>
-            </div>
+          <div>
+            <BrandLogo
+              size={48}
+              withWordmark
+              wordmark="企智搭"
+              subtitle="智能体平台 · QiZhiDa Agent Platform"
+              wordmarkClassName="text-[22px] font-bold tracking-tight text-[var(--login-fg)]"
+              subtitleClassName="mt-0.5 truncate text-[11px] tracking-wide text-[var(--login-fg-muted)]"
+              ariaLabel={props.product}
+            />
+            <p className="mt-2 text-[12px] text-[var(--login-fg-muted)]">{props.tagline}</p>
+          </div>
           </div>
 
           <p className="login-kicker mt-14 text-[var(--login-fg-muted)]">{props.badge}</p>

@@ -1,4 +1,4 @@
-"""Integration test for ``eos_messaging.kafka_audit`` against a real
+"""Integration test for ``qzdap_messaging.kafka_audit`` against a real
 Kafka KRaft broker (testcontainers-python).
 
 * Real ``AIOKafkaProducer`` / ``AIOKafkaConsumer`` end-to-end
@@ -18,9 +18,9 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from eos_schema.ids import TenantId, UserId
+from qzdap_schema.ids import TenantId, UserId
 
-from eos_messaging.kafka_audit import (
+from qzdap_messaging.kafka_audit import (
     KafkaAuditConsumer,
     KafkaAuditPublisher,
     resolve_consumer_group,

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from deos.modules.observability_module.application.pricing import (
+from qzdap.modules.observability_module.application.pricing import (
     DEFAULT_LLM_PRICING,
     DEFAULT_TOOL_UNIT_COST,
     ModelPricing,

@@ -23,12 +23,12 @@ from _governance_unit_in_memory import (
     RecordingPublisher,
     SequenceIds,
 )
-from eos_schema.ids import TenantId
-from eos_vault.actor import ActorContext
+from qzdap_schema.ids import TenantId
+from qzdap_vault.actor import ActorContext
 
-from deos.modules.governance.application.policy_evaluator import PolicyEvaluator
-from deos.modules.governance.domain.entities import PolicyRule
-from deos.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
+from qzdap.modules.governance.application.policy_evaluator import PolicyEvaluator
+from qzdap.modules.governance.domain.entities import PolicyRule
+from qzdap.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
 
 TID = TenantId(UUID("00000000-0000-0000-0000-000000000001"))
 USER = UUID("00000000-0000-0000-0000-00000000000a")
@@ -236,7 +236,7 @@ async def test_evaluate_disabled_rule_ignored():
 
 async def test_evaluate_workspace_scoped_rule_filters():
     """Rule pinned to workspace A must not match resource carrying workspace B."""
-    from eos_schema.ids import WorkspaceId
+    from qzdap_schema.ids import WorkspaceId
 
     ev, repo, _, _, _ = _evaluator()
     a = WorkspaceId(uuid4())

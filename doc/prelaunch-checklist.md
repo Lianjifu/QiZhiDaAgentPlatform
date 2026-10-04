@@ -13,8 +13,8 @@
 - [ ] **G2. 双实例 `/readyz` 200**
   - 命令：
     ```bash
-    curl -fsS https://eos-stable.example.com/readyz   # → 200
-    curl -fsS https://eos-canary.example.com/readyz   # → 200
+    curl -fsS https://qzdap-stable.example.com/readyz   # → 200
+    curl -fsS https://qzdap-canary.example.com/readyz   # → 200
     ```
   - 阈值：两实例 `status: ready`；DB / Redis 可达。
   - 出错处置：[runbook.md §R-Health 503](./runbook.md)
@@ -33,7 +33,7 @@
 - [ ] **G5. secret 全部走 `*_REF`（无明文）**
   - 命令：`gitleaks detect --no-git --source .`
   - 阈值：0 finding；`infra/k8s/secret.example.yaml` 不含明文 secret。
-  - 出错处置：把所有 secret 改为 `EOS_*_REF=<vault-path>`；
+  - 出错处置：把所有 secret 改为 `QZDAP_*_REF=<vault-path>`；
     真实值由 vault 注入。
 
 - [ ] **G6. Prometheus rule 部署**
@@ -41,16 +41,16 @@
     ```bash
     promtool check rules infra/prometheus/rules/*.yaml
     ```
-  - 阈值：4 条 alert rule + 4 条 recording rule 全部合法；`EOS_RING` 维度
+  - 阈值：4 条 alert rule + 4 条 recording rule 全部合法；`QZDAP_RING` 维度
     label 已加。
   - 出错处置：参考 [infra/prometheus/README.md](../../infra/prometheus/README.md)。
 
 - [ ] **G7. Grafana dashboard 加载**
   - 命令：
     ```bash
-    curl -fsS https://grafana.example.com/api/dashboards/uid/eos-overview
+    curl -fsS https://grafana.example.com/api/dashboards/uid/qzdap-overview
     ```
-  - 阈值：`eos-overview` + `eos-costs` 两个 dashboard 加载成功；
+  - 阈值：`qzdap-overview` + `qzdap-costs` 两个 dashboard 加载成功；
     `tenant_id` 模板变量有 ≥ 1 个候选值。
   - 出错处置：参考 [infra/grafana/README.md](../../infra/grafana/README.md)。
 

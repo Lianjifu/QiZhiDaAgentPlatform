@@ -49,7 +49,7 @@ export const mockChannels: NotificationChannel[] = [
     lastUsed: '昨天',
     successRate: 60.5,
     sentToday: 0,
-    config: { corpId: 'ww-eos', agentId: '1000002', secret: 'wx-****', token: 'tk-****', encodingAesKey: '' },
+    config: { corpId: 'ww-qzdap', agentId: '1000002', secret: 'wx-****', token: 'tk-****', encodingAesKey: '' },
     starred: false,
     scope: ['客服'],
     template: '你好，我是企业微信客服助手。',
@@ -117,7 +117,7 @@ export const mockChannels: NotificationChannel[] = [
 ];
 
 export const mockWebhooks: WebhookEntry[] = [
-  { id: 'wh-001', name: 'CRM 同步', url: 'https://crm.example.com/api/eos', method: 'POST', secret: 'whsec-****-a3f1', eventFilter: ['agent.session.completed', 'agent.session.failed'], enabled: true, lastDelivery: '1 分钟前', status: 'success', retry: 0 },
+  { id: 'wh-001', name: 'CRM 同步', url: 'https://crm.example.com/api/qzdap', method: 'POST', secret: 'whsec-****-a3f1', eventFilter: ['agent.session.completed', 'agent.session.failed'], enabled: true, lastDelivery: '1 分钟前', status: 'success', retry: 0 },
   { id: 'wh-002', name: '审计日志归档', url: 'https://audit.example.com/ingest', method: 'POST', secret: 'whsec-****-b4e2', eventFilter: ['audit.*'], enabled: false, lastDelivery: '—', status: 'pending', retry: 0 },
   { id: 'wh-003', name: '告警回写服务', url: 'https://alert.example.com/callback', method: 'PUT', secret: 'whsec-****-c8d0', eventFilter: ['alert.fired'], enabled: true, lastDelivery: '昨天', status: 'failed', retry: 3 },
 ];

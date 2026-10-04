@@ -23,9 +23,9 @@ P95 / 错误率 / 多租户隔离是否仍然达标。
 
 ## Decision
 
-1. **同代码双实例 gray A/B**：用 `EOS_RING` 环境变量（取值 `stable` /
+1. **同代码双实例 gray A/B**：用 `QZDAP_RING` 环境变量（取值 `stable` /
    `canary`，默认 `stable`）标识实例角色；ingress 层按 HTTP header
-   `X-EOS-Ring: canary` 把流量路由到 canary 副本池，未带 header 的默认
+   `X-QZDAP-Ring: canary` 把流量路由到 canary 副本池，未带 header 的默认
    走 stable。
    - k8s：nginx ingress + `canary-by-header` 注解
      （[infra/k8s/ingress.yaml](../../infra/k8s/ingress.yaml)）。
@@ -65,7 +65,7 @@ P95 / 错误率 / 多租户隔离是否仍然达标。
 - 灰度期 canary 流量低，单独错误样本不足以做 SLO 评估；必须等
   canary 流量 > 1% 才有效。
 - k8s 部署需要 SRE 上手（manifest 维护 / ingress-nginx 升级路径）。
-- EOS_RING env 注入是手工流程；缺 helm chart 自动化。
+- QZDAP_RING env 注入是手工流程；缺 helm chart 自动化。
 
 ## Alternatives considered
 
@@ -81,5 +81,5 @@ P95 / 错误率 / 多租户隔离是否仍然达标。
 - 实施计划：[doc/backend/12-实施计划.md §P10](../../doc/backend/12-实施计划.md)
 - 验收清单：[doc/backend/13-风险与验收.md §13.10 P10 上线验收](../../doc/backend/13-风险与验收.md)
 - 部署：[doc/backend/11-部署与运行.md](../../doc/backend/11-部署与运行.md)
-- 告警基线：[infra/prometheus/rules/eos-alerts.yaml](../../infra/prometheus/rules/eos-alerts.yaml)
-- 面板：[infra/grafana/dashboards/eos-overview.json](../../infra/grafana/dashboards/eos-overview.json)
+- 告警基线：[infra/prometheus/rules/qzdap-alerts.yaml](../../infra/prometheus/rules/qzdap-alerts.yaml)
+- 面板：[infra/grafana/dashboards/qzdap-overview.json](../../infra/grafana/dashboards/qzdap-overview.json)

@@ -1,12 +1,12 @@
 """In-memory test doubles for the channel application ports.
 
 These fakes implement the Protocols from
-``deos.modules.channel.application.ports`` so use cases can be
+``qzdap.modules.channel.application.ports`` so use cases can be
 unit-tested without SQLAlchemy / cryptography / httpx. Mirrors
 ``_memory_in_memory.py`` so the test-side shape is consistent
 across modules.
 
-The factory functions in :mod:`deos.modules.channel.application.services`
+The factory functions in :mod:`qzdap.modules.channel.application.services`
 take these three repos (plus cipher / publisher / adapters); tests
 can mix-and-match — e.g. ``InMemoryChannelRepo`` with the SQL
 ``WebhookSecretRepository`` — when only some paths are under test.
@@ -19,19 +19,19 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from deos.modules.channel.application.ports import (
+from qzdap.modules.channel.application.ports import (
     ChannelDeliveryRepository,
     ChannelRepository,
     WebhookSecretRepository,
 )
-from deos.modules.channel.domain.value_objects import (
+from qzdap.modules.channel.domain.value_objects import (
     ChannelStatus,
     ChannelType,
 )
 
 if TYPE_CHECKING:
-    from deos.modules.channel.domain.entities import Channel, ChannelDelivery
-    from eos_schema.ids import ChannelId, TenantId
+    from qzdap.modules.channel.domain.entities import Channel, ChannelDelivery
+    from qzdap_schema.ids import ChannelId, TenantId
 
 # ── ChannelRepository ──────────────────────────────────────────────────────
 

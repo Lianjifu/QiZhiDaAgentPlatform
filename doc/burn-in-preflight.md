@@ -31,7 +31,7 @@
 
 - [ ] `git log --oneline origin/main..HEAD` 为空（已在 main）。
 - [ ] `cd backend && make verify` 本地全绿（ruff / importlinter / mypy / pytest）。
-- [ ] 镜像：`docker build -t eos-app:<sha> -f infra/docker/Dockerfile.app .`
+- [ ] 镜像：`docker build -t qzdap-app:<sha> -f infra/docker/Dockerfile.app .`
   （`<sha>` = `git rev-parse --short HEAD`）。
 
 ### A.2 配置文件 (`.env.prod`)
@@ -42,11 +42,11 @@
 
 ```bash
 # ✅ 推荐
-EOS_DATABASE_PASSWORD_REF=vault:secret/data/eos/prod/db#password
-EOS_REDIS_PASSWORD_REF=csi:REDIS_PASSWORD
+QZDAP_DATABASE_PASSWORD_REF=vault:secret/data/qzdap/prod/db#password
+QZDAP_REDIS_PASSWORD_REF=csi:REDIS_PASSWORD
 
 # ❌ 严禁（gitleaks G5 会失败）
-EOS_DATABASE_PASSWORD=hunter2
+QZDAP_DATABASE_PASSWORD=hunter2
 ```
 
 完整支持的 ref 方案见 [deploy/README.md §Secrets](../deploy/README.md)：
@@ -56,15 +56,15 @@ EOS_DATABASE_PASSWORD=hunter2
 | `vault:secret/data/<path>` | `HashicorpVaultSecretsResolver` | 中心化 secret、TTL、自动 rotate |
 | `csi:<KEY_NAME>` | `CSIVaultSecretsResolver` | k8s 集群内；CSI 驱动挂 `/vault/secrets/<KEY>` |
 
-非敏感配置可走 `.env` 直填（如 `EOS_RING=stable`、`EOS_LOG_LEVEL=info`）。
+非敏感配置可走 `.env` 直填（如 `QZDAP_RING=stable`、`QZDAP_LOG_LEVEL=info`）。
 
 ### A.3 k8s 命名空间
 
 ```bash
 kubectl apply -f infra/k8s/namespace.yaml
 # 验证
-kubectl get ns eos-prod
-kubectl label ns eos-prod name=eos-prod --overwrite
+kubectl get ns qzdap-prod
+kubectl label ns qzdap-prod name=qzdap-prod --overwrite
 ```
 
 ### A.4 Secrets (k8s)
@@ -73,7 +73,7 @@ kubectl label ns eos-prod name=eos-prod --overwrite
 # SecretProviderClass 模板：infra/k8s/secret.example.yaml
 cp infra/k8s/secret.example.yaml infra/k8s/secret.yaml
 $EDITOR infra/k8s/secret.yaml      # 填 Vault address / role / path
-kubectl apply -f infra/k8s/secret.yaml -n eos-prod
+kubectl apply -f infra/k8s/secret.yaml -n qzdap-prod
 ```
 
 注：实际接入后 `infra/k8s/secret.yaml` 加进 `.gitignore`（gitleaks 兜底）。
@@ -89,22 +89,22 @@ kubectl apply -f infra/k8s/hpa.yaml                # HPA: stable 3-10, canary 1-
 ### A.6 镜像推送
 
 ```bash
-docker tag eos-app:<sha> <registry>/eos-app:<sha>
-docker push <registry>/eos-app:<sha>
+docker tag qzdap-app:<sha> <registry>/qzdap-app:<sha>
+docker push <registry>/qzdap-app:<sha>
 # 同时更新 :stable :canary 别名
-docker tag eos-app:<sha> <registry>/eos-app:stable
-docker tag eos-app:<sha> <registry>/eos-app:canary
-docker push <registry>/eos-app:stable
-docker push <registry>/eos-app:canary
+docker tag qzdap-app:<sha> <registry>/qzdap-app:stable
+docker tag qzdap-app:<sha> <registry>/qzdap-app:canary
+docker push <registry>/qzdap-app:stable
+docker push <registry>/qzdap-app:canary
 ```
 
 ### A.7 数据库迁移
 
 ```bash
 # 在稳定的 PG 上跑 migration（业务 pod 还没起，安全）
-kubectl run -n eos-prod migrator --rm -it --restart=Never \
-  --image=<registry>/eos-app:<sha> \
-  --overrides='{"spec":{"serviceAccountName":"eos-app"}}' \
+kubectl run -n qzdap-prod migrator --rm -it --restart=Never \
+  --image=<registry>/qzdap-app:<sha> \
+  --overrides='{"spec":{"serviceAccountName":"qzdap-app"}}' \
   -- alembic upgrade head
 # 验证：SELECT * FROM alembic_version; → 0017
 ```
@@ -117,7 +117,7 @@ kubectl apply -f infra/prometheus/prometheus.example.yml   # 适配后
 kubectl apply -f infra/prometheus/rules/                  # 4 alert + 4 recording
 
 # Grafana: dashboards + provisioning
-kubectl apply -f infra/grafana/dashboards/                # eos-overview + eos-costs
+kubectl apply -f infra/grafana/dashboards/                # qzdap-overview + qzdap-costs
 kubectl apply -f infra/grafana/provisioning/              # datasource + provider yaml
 ```
 
@@ -131,30 +131,30 @@ kubectl apply -f infra/grafana/provisioning/              # datasource + provide
 kubectl apply -f infra/k8s/service.yaml
 kubectl apply -f infra/k8s/deployment.yaml
 # 默认 replicas=3 for stable, replicas=1 for canary
-kubectl scale deploy/eos-app-canary --replicas=0 -n eos-prod
-kubectl rollout status deploy/eos-app-stable -n eos-prod
+kubectl scale deploy/qzdap-app-canary --replicas=0 -n qzdap-prod
+kubectl rollout status deploy/qzdap-app-stable -n qzdap-prod
 ```
 
 ### B.2 配置 URL
 
 ```bash
-export EOS_STABLE_URL=https://eos-stable.example.com
-export EOS_CANARY_URL=https://eos-canary.example.com
+export QZDAP_STABLE_URL=https://qzdap-stable.example.com
+export QZDAP_CANARY_URL=https://qzdap-canary.example.com
 
 # G3 还需要 tenant 域 env vars（bootstrapped by smoke / staging seed）
-export EOS_BENCH_TOKEN=<admin-bearer>
-export EOS_BENCH_TENANT=<tenant-uuid>
-export EOS_BENCH_WORKSPACE=<workspace-uuid>
-export EOS_BENCH_AGENT_ID=<agent-uuid>
+export QZDAP_BENCH_TOKEN=<admin-bearer>
+export QZDAP_BENCH_TENANT=<tenant-uuid>
+export QZDAP_BENCH_WORKSPACE=<workspace-uuid>
+export QZDAP_BENCH_AGENT_ID=<agent-uuid>
 ```
 
-如果 `EOS_BENCH_*` 缺，runner 会以 ⊘ skip G3（而非 ✗ fail），exit code 仍
+如果 `QZDAP_BENCH_*` 缺，runner 会以 ⊘ skip G3（而非 ✗ fail），exit code 仍
 是 0 — 即 Stage B 仍可退出，但 G3 需要补 stage 或在凭据就绪后单跑。
 
 G8 smoke (`backend/tests/e2e/smoke.py`) 以无 `Authorization` header
 请求 `/v1/identity/tenants`，因此**仅在 dev-mode deployment
-(`EOS_AUTH_MODE=disabled`) 下可跑**。生产环境下应把 smoke 放到 staging
-ring（`EOS_RING=stable` 但 `auth=disabled` 的旁路），或在 prod gate 上
+(`QZDAP_AUTH_MODE=disabled`) 下可跑**。生产环境下应把 smoke 放到 staging
+ring（`QZDAP_RING=stable` 但 `auth=disabled` 的旁路），或在 prod gate 上
 显式标记 ⊘。
 
 ### B.3 跑 burn-in runner（一条命令覆盖 G2/G3/G5/G6/G7/G8）
@@ -170,9 +170,9 @@ cd backend && make burn-in
 ```
 [✓] G5 secret-scan (gitleaks)              ← 0 leaks
 [✓] G6 prometheus rules + config           ← 4 alert + 4 recording VALID
-[✓] G7 grafana dashboards JSON + live load ← eos-overview 5 panels, eos-costs 3 panels
+[✓] G7 grafana dashboards JSON + live load ← qzdap-overview 5 panels, qzdap-costs 3 panels
 [✓] G2 /readyz 200 (stable + canary)       ← 200/200
-[✓] G3 bench P95 ≤ 10s                     ← P95 < 10s（需要 EOS_BENCH_*）
+[✓] G3 bench P95 ≤ 10s                     ← P95 < 10s（需要 QZDAP_BENCH_*）
 [✓] G8 smoke happy path (stable + canary)  ← session/turn/tool/memory 全绿
 === 0 failed, 0 skipped ===
 ```
@@ -184,8 +184,8 @@ G3 / G8 在缺少前置 env 时会 ⊘ skip 而非 ✗ fail（exit code 仍 = 0�
 ### B.4 部署 canary
 
 ```bash
-kubectl scale deploy/eos-app-canary --replicas=1 -n eos-prod
-kubectl rollout status deploy/eos-app-canary -n eos-prod
+kubectl scale deploy/qzdap-app-canary --replicas=1 -n qzdap-prod
+kubectl rollout status deploy/qzdap-app-canary -n qzdap-prod
 
 # 重跑 burn-in
 make burn-in
@@ -194,10 +194,10 @@ make burn-in
 
 ### B.5 故障联动确认（dry-run）
 
-- [ ] `kubectl logs deploy/eos-app-stable -n eos-prod | grep "seeded"`
+- [ ] `kubectl logs deploy/qzdap-app-stable -n qzdap-prod | grep "seeded"`
       → 看到 `seeded N office skill packs (vetter=local, trust_keys=1)`（如果开启 seeder）
-- [ ] `curl https://eos-stable.example.com/v1/skills -H "Authorization: Bearer $ADMIN"`
-      → 4 条 `skp.office.*`（前提是 `EOS_PLATFORM_SEED_OFFICE_SKILL_PACKS=true`）
+- [ ] `curl https://qzdap-stable.example.com/v1/skills -H "Authorization: Bearer $ADMIN"`
+      → 4 条 `skp.office.*`（前提是 `QZDAP_PLATFORM_SEED_OFFICE_SKILL_PACKS=true`）
 
 ---
 
@@ -205,12 +205,12 @@ make burn-in
 
 ### C.1 灰度策略
 
-按 `X-EOS-Ring` header 路由（[infra/k8s/ingress.yaml](../../infra/k8s/ingress.yaml)）：
+按 `X-QZDAP-Ring` header 路由（[infra/k8s/ingress.yaml](../../infra/k8s/ingress.yaml)）：
 
 | Header | 路由 |
 |---|---|
 | （无）| stable (3 pods) |
-| `X-EOS-Ring: canary` | canary (1 pod) |
+| `X-QZDAP-Ring: canary` | canary (1 pod) |
 
 ### C.2 四阶段进度
 
@@ -231,7 +231,7 @@ make burn-in
 # 例：nginx.ingress.kubernetes.io/canary-weight: "<PERCENT>"
 
 # Phase 1 (1%)
-kubectl patch ingress eos-app -n eos-prod \
+kubectl patch ingress qzdap-app -n qzdap-prod \
   --type=json -p='[{"op":"add","path":"/spec/rules/0/http/paths/-","value":{...canary...}}]'
 # 或在 helmfile/argocd 中调 canary-weight: "1"
 
@@ -243,7 +243,7 @@ make burn-in   # G2/G3/G8 应持续 ✅
 
 ### C.4 每日运维（持续 7 天）
 
-- [ ] 上午 09:00 / 下午 17:00 各看一次 Grafana [`eos-overview`](../../infra/grafana/dashboards/eos-overview.json)：
+- [ ] 上午 09:00 / 下午 17:00 各看一次 Grafana [`qzdap-overview`](../../infra/grafana/dashboards/qzdap-overview.json)：
   - Panel #2 (P95 Turn Latency)
   - Panel #3 (HTTP error rate)
   - Panel #5 (Cross-tenant violations — 必须 0)
@@ -264,7 +264,7 @@ make burn-in   # G2/G3/G8 应持续 ✅
 - [ ] 无未关闭的 P0/P1 事故
 - [ ] on-call 签字 + 架构师签字（[prelaunch-checklist.md §Sign-off](./prelaunch-checklist.md)）
 
-→ 移除 `X-EOS-Ring` header 路由（默认全走 stable），归档 7 天 burn-in 报告。
+→ 移除 `X-QZDAP-Ring` header 路由（默认全走 stable），归档 7 天 burn-in 报告。
 
 ---
 
@@ -277,7 +277,7 @@ make burn-in   # G2/G3/G8 应持续 ✅
 1. **回流量**（P95 突增 / 错误率尖峰 / SSE 超时 场景）：
    ```bash
    # 把 canary weight 改回 0%（即全走 stable）
-   kubectl patch ingress eos-app -n eos-prod --type=json \
+   kubectl patch ingress qzdap-app -n qzdap-prod --type=json \
      -p='[{"op":"replace","path":"/spec/rules/0/http/paths/.../canary-weight","value":"0"}]'
    ```
 2. **保留现场**：不要立刻重启 pod；保留 logs / traces。
@@ -287,11 +287,11 @@ make burn-in   # G2/G3/G8 应持续 ✅
 3. 拉 `kubectl logs` + Grafana 锁定根因（LLM / Tool / Memory / Skill 沙箱）。
 4. 如果 stable 也异常：
    ```bash
-   kubectl scale deploy/eos-app-stable --replicas=1 -n eos-prod
+   kubectl scale deploy/qzdap-app-stable --replicas=1 -n qzdap-prod
    ```
 6. 仍异常 → 触发 [doc/backend/13-风险与验收.md §13.5 应急回滚](../../doc/backend/13-风险与验收.md)：
    - 回滚镜像到上一个 `<sha>` tag
-   - `kubectl rollout undo deploy/eos-app-stable`
+   - `kubectl rollout undo deploy/qzdap-app-stable`
 
 ### 24 小时内
 
@@ -309,4 +309,4 @@ make burn-in   # G2/G3/G8 应持续 ✅
 - [deploy/burn_in.py](../deploy/burn_in.py) — G2/G3/G5/G6/G7/G8 编排脚本
 - [infra/k8s/](../../infra/k8s/) — k8s manifests（deployment / ingress / service / hpa / secret / configmap / networkpolicy）
 - [infra/prometheus/rules/](../../infra/prometheus/rules/) — 4 alert + 4 recording rules
-- [infra/grafana/dashboards/](../../infra/grafana/dashboards/) — eos-overview + eos-costs
+- [infra/grafana/dashboards/](../../infra/grafana/dashboards/) — qzdap-overview + qzdap-costs

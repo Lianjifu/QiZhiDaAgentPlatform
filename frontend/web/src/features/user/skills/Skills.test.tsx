@@ -9,12 +9,12 @@ import { mockAgents as adminAgents } from '@/features/agents/fixtures';
 import { projectOpenSkills, projectOpenAgents } from '@/features/user/catalog/mappers';
 import { qk } from '@/api/shared/query-keys';
 
-const CHOSEN_STORAGE_KEY = 'qzd.user.skills.chosen';
+const CHOSEN_STORAGE_KEY = 'qzdap.user.skills.chosen';
 
 afterEach(() => cleanup());
 beforeEach(() => {
   sessionStorage.removeItem(CHOSEN_STORAGE_KEY);
-  sessionStorage.removeItem('qzd.user.agents.chosen');
+  sessionStorage.removeItem('qzdap.user.agents.chosen');
 });
 
 function renderSkills(chosen: string[] = []) {

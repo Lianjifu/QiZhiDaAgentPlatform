@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from eos_kernel.contexts import TenantWorkspaceContext, WorkspaceContext
-from eos_kernel.contextvars import bind_trace_id, current_trace_id, new_trace_id
-from eos_kernel.errors import (
+from qzdap_kernel.contexts import TenantWorkspaceContext, WorkspaceContext
+from qzdap_kernel.contextvars import bind_trace_id, current_trace_id, new_trace_id
+from qzdap_kernel.errors import (
     AppError,
     AuthenticationError,
     BusinessRuleError,
@@ -18,7 +18,7 @@ from eos_kernel.errors import (
     RateLimitError,
     ValidationError,
 )
-from eos_kernel.principal import Principal, PrincipalType
+from qzdap_kernel.principal import Principal, PrincipalType
 
 # ── contextvars ──────────────────────────────────────────────────────────────
 

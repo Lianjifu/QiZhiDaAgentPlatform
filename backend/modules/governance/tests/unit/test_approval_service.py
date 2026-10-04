@@ -11,16 +11,16 @@ from _governance_unit_in_memory import (
     RecordingPublisher,
     SequenceIds,
 )
-from eos_schema.ids import TenantId, UserId
+from qzdap_schema.ids import TenantId, UserId
 
-from deos.modules.governance.application.approval_service import ApprovalService
-from deos.modules.governance.domain.entities import Approval
-from deos.modules.governance.domain.errors import (
+from qzdap.modules.governance.application.approval_service import ApprovalService
+from qzdap.modules.governance.domain.entities import Approval
+from qzdap.modules.governance.domain.errors import (
     ApprovalAlreadyDecided,
     ApprovalExpired,
     ApproverMustDiffer,
 )
-from deos.modules.governance.domain.value_objects import ApprovalStatus
+from qzdap.modules.governance.domain.value_objects import ApprovalStatus
 
 TID = TenantId(UUID("00000000-0000-0000-0000-000000000001"))
 USER_A = UserId(UUID("00000000-0000-0000-0000-00000000000a"))

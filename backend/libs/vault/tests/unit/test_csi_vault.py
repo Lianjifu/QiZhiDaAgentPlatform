@@ -12,7 +12,7 @@ from uuid import UUID
 
 import pytest
 
-from eos_vault import (
+from qzdap_vault import (
     ActorContext,
     CSIVaultSecretsResolver,
     InvalidSecretRef,
@@ -34,7 +34,7 @@ async def test_csi_resolver_reads(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "API_TOKEN").write_text("supersecret\n")
-    monkeypatch.setenv("EOS_CSI_VAULT_ROOT", str(tmp_path))
+    monkeypatch.setenv("QZDAP_CSI_VAULT_ROOT", str(tmp_path))
 
     r = CSIVaultSecretsResolver()
     payload = await r.resolve("csi:API_TOKEN", actor=_actor())
@@ -46,7 +46,7 @@ async def test_csi_resolver_missing_file_raises(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("EOS_CSI_VAULT_ROOT", str(tmp_path))
+    monkeypatch.setenv("QZDAP_CSI_VAULT_ROOT", str(tmp_path))
     r = CSIVaultSecretsResolver()
     with pytest.raises(SecretNotFound):
         await r.resolve("csi:NEVER_MOUNTED", actor=_actor())
@@ -58,7 +58,7 @@ async def test_csi_resolver_empty_file_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     (tmp_path / "EMPTY").write_text("   \n")
-    monkeypatch.setenv("EOS_CSI_VAULT_ROOT", str(tmp_path))
+    monkeypatch.setenv("QZDAP_CSI_VAULT_ROOT", str(tmp_path))
     r = CSIVaultSecretsResolver()
     with pytest.raises(SecretNotFound):
         await r.resolve("csi:EMPTY", actor=_actor())
@@ -69,7 +69,7 @@ async def test_csi_resolver_rejects_absolute_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("EOS_CSI_VAULT_ROOT", str(tmp_path))
+    monkeypatch.setenv("QZDAP_CSI_VAULT_ROOT", str(tmp_path))
     r = CSIVaultSecretsResolver()
     with pytest.raises(InvalidSecretRef):
         await r.resolve("csi:/etc/passwd", actor=_actor())
@@ -85,7 +85,7 @@ async def test_csi_resolver_rejects_traversal(
     sibling = tmp_path.parent / "EVIL.txt"
     sibling.write_text("evil")
 
-    monkeypatch.setenv("EOS_CSI_VAULT_ROOT", str(tmp_path))
+    monkeypatch.setenv("QZDAP_CSI_VAULT_ROOT", str(tmp_path))
     r = CSIVaultSecretsResolver()
     # CSI addresses are bare key names — `..` is rejected up-front
     # (path-traversal is a defence-in-depth that follows in the resolve).
@@ -102,7 +102,7 @@ async def test_csi_resolver_rejects_non_csi_ref(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("EOS_CSI_VAULT_ROOT", str(tmp_path))
+    monkeypatch.setenv("QZDAP_CSI_VAULT_ROOT", str(tmp_path))
     r = CSIVaultSecretsResolver()
     with pytest.raises(InvalidSecretRef):
         await r.resolve("env:HOME", actor=_actor())
@@ -118,7 +118,7 @@ async def test_csi_resolve_value_helper(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     (tmp_path / "KEY").write_text("the-value")
-    monkeypatch.setenv("EOS_CSI_VAULT_ROOT", str(tmp_path))
+    monkeypatch.setenv("QZDAP_CSI_VAULT_ROOT", str(tmp_path))
     r = CSIVaultSecretsResolver()
     out = await resolve_value(r, "csi:KEY", actor=_actor())
     assert out == "the-value"

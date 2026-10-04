@@ -18,28 +18,28 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from eos_messaging.domain_event import EventEnvelope
-from eos_messaging.redis_stream import RedisStreamBus, _resolve_consumer_name
+from qzdap_messaging.domain_event import EventEnvelope
+from qzdap_messaging.redis_stream import RedisStreamBus, _resolve_consumer_name
 
 # ── _resolve_consumer_name ──────────────────────────────────────────────
 
 
 def test_resolve_consumer_name_explicit_wins(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("EOS_EVENT_REDIS_CONSUMER_NAME", raising=False)
+    monkeypatch.delenv("QZDAP_EVENT_REDIS_CONSUMER_NAME", raising=False)
     assert _resolve_consumer_name("explicit-name") == "explicit-name"
 
 
 def test_resolve_consumer_name_env_wins_over_hostname(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("EOS_EVENT_REDIS_CONSUMER_NAME", "from-env")
+    monkeypatch.setenv("QZDAP_EVENT_REDIS_CONSUMER_NAME", "from-env")
     assert _resolve_consumer_name("") == "from-env"
 
 
 def test_resolve_consumer_name_falls_back_to_uuid_when_hostname_blank(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("EOS_EVENT_REDIS_CONSUMER_NAME", raising=False)
+    monkeypatch.delenv("QZDAP_EVENT_REDIS_CONSUMER_NAME", raising=False)
     import socket
 
     monkeypatch.setattr(socket, "gethostname", lambda: "")
@@ -235,7 +235,7 @@ async def test_handler_exception_retries_then_dlqs() -> None:
         env = _envelope()
         await bus.publish(env)
         # wait until DLQ has 1 entry — i.e., max_retries exhausted
-        dlq_key = b"eos:events:dlq"
+        dlq_key = b"qzdap:events:dlq"
         for _ in range(100):
             if fake.streams.get(dlq_key):
                 break
@@ -249,7 +249,7 @@ async def test_handler_exception_retries_then_dlqs() -> None:
         # retry_count must exceed max_retries (3 attempts: 0 → 1 → 2 → DLQ at next_count=3)
         assert int(fields[b"retry_count"]) > 2
         # Source stream should be empty after retries finished
-        src = fake.streams[b"eos:events:00000000-0000-0000-0000-000000000001"]
+        src = fake.streams[b"qzdap:events:00000000-0000-0000-0000-000000000001"]
         assert all(int(f.get(b"retry_count", b"0")) <= 2 for _, f in src.entries), (
             "retry_count must not exceed max_retries in source stream"
         )
@@ -282,8 +282,8 @@ async def test_handler_eventually_succeeds_within_retry_budget() -> None:
         assert fake.xack_calls, "should have ACK'd the eventually-successful event"
         # No DLQ
         assert (
-            b"eos:events:dlq" not in fake.streams
-            or not fake.streams[b"eos:events:dlq"].entries
+            b"qzdap:events:dlq" not in fake.streams
+            or not fake.streams[b"qzdap:events:dlq"].entries
         )
     finally:
         await bus.stop()
@@ -339,7 +339,7 @@ async def test_two_buses_with_distinct_names_fan_out() -> None:
 def test_consumer_name_property_reflects_resolved_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("EOS_EVENT_REDIS_CONSUMER_NAME", raising=False)
+    monkeypatch.delenv("QZDAP_EVENT_REDIS_CONSUMER_NAME", raising=False)
     fake = _FakeRedis()
     bus = RedisStreamBus(fake, consumer_name="")  # type: ignore[arg-type]
     assert bus.consumer_name != ""

@@ -1,11 +1,11 @@
-# Enterprise Agent OS — Makefile
+# 企智搭 · 智能体平台 — Makefile
 # All commands assume cwd = backend/.
 
 .PHONY: help install sync lock lint format import-lint type-check test test-unit test-contract smoke bench bench-turn-latency bench-obs-ingest db-upgrade db-downgrade db-stamp run-app run-app-debug clean verify
 
 UV        ?= uv
 PYTHON   ?= python3.12
-APP      ?= deos.composition.main:create_app
+APP      ?= qzdap.composition.main:create_app
 HOST     ?= 0.0.0.0
 PORT     ?= 8100
 
@@ -73,7 +73,7 @@ bench-obs-ingest:
 
 # ---------- Burn-in runner ----------
 # Runs G5 (gitleaks) + G6 (promtool) + G7 (grafana JSON) locally.
-# Set EOS_STABLE_URL + EOS_CANARY_URL to also run G2 / G3 / G8.
+# Set QZDAP_STABLE_URL + QZDAP_CANARY_URL to also run G2 / G3 / G8.
 burn-in:
 	$(UV) run python ../deploy/burn_in.py
 

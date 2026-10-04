@@ -6,16 +6,16 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from deos.modules.self_evolution.domain.entities import (
+from qzdap.modules.self_evolution.domain.entities import (
     EvolveCandidate,
     compute_fingerprint,
 )
-from deos.modules.self_evolution.domain.errors import (
+from qzdap.modules.self_evolution.domain.errors import (
     EvolveCandidateAlreadyDecided,
     InvalidEvolveCandidate,
     SignerMustDiffer,
 )
-from deos.modules.self_evolution.domain.value_objects import (
+from qzdap.modules.self_evolution.domain.value_objects import (
     EvolveKind,
     EvolveStatus,
     is_terminal,

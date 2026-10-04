@@ -26,6 +26,8 @@ htmlcov/
 venv/
 env/
 ENV/
+.tmp_venv/
+.tmp_pkgs/
 
 # uv
 uv.lock.local
@@ -72,12 +74,12 @@ data/
 .docker-data/
 
 # Skill pack trust store — priv keys never enter the repo
-# `**/.eos/...` matches anywhere in the tree (backend/.eos/, frontend/.eos/,
-# or a future top-level .eos/). The inner `**` then matches nested
-# trust subdirs (e.g. backend/.eos/skill-trust/*.priv.pem). Public keys
+# `**/.qzdap/...` matches anywhere in the tree (backend/.qzdap/, frontend/.qzdap/,
+# or a future top-level .qzdap/). The inner `**` then matches nested
+# trust subdirs (e.g. backend/.qzdap/skill-trust/*.priv.pem). Public keys
 # (*.pub.pem) remain trackable so shared dev trust stores can be committed.
-**/.eos/**/*.priv.pem
-**/.eos/**/*.priv
+**/.qzdap/**/*.priv.pem
+**/.qzdap/**/*.priv
 # Real SecretProviderClass / Secret rendered from infra/k8s/secret.example.yaml
 # (per doc/burn-in-preflight.md §A.4 — gitleaks G5 will catch any leak).
 infra/k8s/secret.yaml
@@ -104,8 +106,19 @@ frontend/.DS_Store
 # sibling frontend/packages/* subtree where local .gitignore can't.
 frontend/packages/**/src/*.js
 
-# EAOS dev-stack runtime (logs + pid files; scripts checked in)
-bin/eaos-stack/logs/
+# Local pnpm content-addressable store (never commit)
+.pnpm-store/
+
+# Embedded / leftover local Postgres data directories
+backend/.pgdata*/
+backend/.pgdata-eos/
+
+# Legacy skill-trust keys under .eos (priv never enter the repo)
+**/.eos/**/*.priv.pem
+**/.eos/**/*.priv
+
+# QZDAP dev-stack runtime (logs + pid files; scripts checked in)
+bin/qzdap-stack/logs/
 
 # Monorepo workspaces install into nested node_modules
 node_modules/

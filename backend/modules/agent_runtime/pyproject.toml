@@ -1,17 +1,20 @@
 [project]
-name = "deos-agent-runtime"
+name = "qzdap-agent-runtime"
 version = "0.1.0"
 description = "Agent runtime module: sessions, turns, LLM streaming, SSE"
 requires-python = ">=3.12"
 dependencies = [
-    "eos-kernel",
-    "eos-schema",
-    "eos-persistence",
-    "eos-auth",
-    "eos-messaging",
-    "eos-llm",
+    "qzdap-kernel",
+    "qzdap-schema",
+    "qzdap-persistence",
+    "qzdap-auth",
+    "qzdap-messaging",
+    "qzdap-llm",
     "fastapi>=0.115.0",
     "pydantic>=2.9",
+    "httpx>=0.28.0",
+    "langgraph>=0.2.28",
+    "langchain-core>=0.3.0",
 ]
 
 [build-system]
@@ -19,7 +22,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/deos"]
+packages = ["src/qzdap"]
 
 [tool.ruff]
 src = ["src"]

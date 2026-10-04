@@ -2,7 +2,7 @@
  * LoginMfaStep — Step 2: 多因素验证
  */
 import { ArrowLeft, RotateCw } from 'lucide-react';
-import { Button, Input, toast } from '@de/web-ui';
+import { Button, Input, toast } from '@qzdap/web-ui';
 import type { ComponentProps } from 'react';
 
 interface LoginMfaStepProps {

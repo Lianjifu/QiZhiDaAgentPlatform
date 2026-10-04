@@ -1,5 +1,5 @@
 /**
- * Mock → 真实 EOS 后端路径翻译表。
+ * Mock → 真实后端路径翻译表。
  *
  * 仅显式列出已**确认 backend 存在对应端点**的映射;其余路径原样透传,
  * 由消费方在真模式下触发 404 后逐步补齐(本计划 Phase B 的 proof-of-pattern
@@ -22,7 +22,7 @@
  * 留在 mock.ts 内继续可用(mock 模式行为不变)。
  *
  * Batch 7 audit 标准: 路径对应 `@router.<verb>("<path>")` 必须存在于
- * `backend/modules/{module}/src/deos/modules/{module}/adapter/http/router.py`
+ * `backend/modules/{module}/src/qzdap/modules/{module}/adapter/http/router.py`
  * 之一(注意前缀可能不在文件里,而在 `APIRouter(prefix="/v1/...")` 中)。
  */
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -112,7 +112,7 @@ const ROUTE_TABLE: Array<{ key: string; rule: RouteRule }> = [
   { key: '/api/api-keys', rule: { method: 'GET', backendPath: '/v1/identity/users/<<USER_ID>>/api-keys', note: '需要当前用户 uid' } },
 
   // ── skill catalog: frontend already calls /api/admin/skills + /api/catalog/skills
-  // (passthrough to eos-app). Old /api/skills → /v1/skills sandbox routes are gone.
+  // (passthrough to qzdap-app). Old /api/skills → /v1/skills sandbox routes are gone.
   { key: '/api/skills/:id/invoke', rule: { method: 'POST', backendPath: '', unmatched: true } },
   { key: '/api/skills/:id/install', rule: { method: 'POST', backendPath: '', unmatched: true } },
   { key: '/api/skills/:id/uninstall', rule: { method: 'POST', backendPath: '', unmatched: true } },
@@ -125,16 +125,14 @@ const ROUTE_TABLE: Array<{ key: string; rule: RouteRule }> = [
   { key: '/api/skills', rule: { method: 'POST', backendPath: '', unmatched: true } },
   { key: '/api/skills', rule: { method: 'GET', backendPath: '', unmatched: true } },
 
-  // ── memory(prefix=/v1/memories)─────────────────────────────────────
-  // backend 实际端点: POST "" / POST "/recall" / GET|DELETE "/{memory_id}" / GET ""
-  // 无 /audit /policy —— 走 passthrough
-  { key: '/api/memory/records/:id', rule: { method: 'DELETE', backendPath: '/v1/memories/:id' } },
-  { key: '/api/memory/records/:id', rule: { method: 'GET', backendPath: '/v1/memories/:id' } },
-  { key: '/api/memory/policy', rule: { method: 'PATCH', backendPath: '/v1/memories/policy' } },
-  { key: '/api/memory/policy', rule: { method: 'GET', backendPath: '/v1/memories/policy' } },
-  { key: '/api/memory/recall', rule: { method: 'POST', backendPath: '/v1/memories/recall' } },
-  { key: '/api/memory/records', rule: { method: 'POST', backendPath: '/v1/memories' } },
-  { key: '/api/memory/records', rule: { method: 'GET', backendPath: '/v1/memories' } },
+  // ── memory catalog: /api/admin/memory  (old /api/memory → /v1/memories retired)
+  { key: '/api/memory/records/:id', rule: { method: 'DELETE', backendPath: '', unmatched: true } },
+  { key: '/api/memory/records/:id', rule: { method: 'GET', backendPath: '', unmatched: true } },
+  { key: '/api/memory/policy', rule: { method: 'PATCH', backendPath: '', unmatched: true } },
+  { key: '/api/memory/policy', rule: { method: 'GET', backendPath: '', unmatched: true } },
+  { key: '/api/memory/recall', rule: { method: 'POST', backendPath: '', unmatched: true } },
+  { key: '/api/memory/records', rule: { method: 'POST', backendPath: '', unmatched: true } },
+  { key: '/api/memory/records', rule: { method: 'GET', backendPath: '', unmatched: true } },
 
   // ── knowledge catalog: /api/admin/knowledge + /api/catalog/knowledge
   // Old /api/knowledge → /v1/knowledge package/asset routes are gone.
@@ -147,19 +145,14 @@ const ROUTE_TABLE: Array<{ key: string; rule: RouteRule }> = [
   { key: '/api/knowledge/packages', rule: { method: 'GET', backendPath: '', unmatched: true } },
   { key: '/api/knowledge/retrieve', rule: { method: 'POST', backendPath: '', unmatched: true } },
 
-  // ── orchestration(prefix=/v1/orchestration)────────────────────────
-  // backend 实际端点: POST|GET "/plans", GET "/plans/{id}",
-  // POST "/plans/{id}/runs", GET "/runs", GET "/runs/{id}", POST "/runs/{id}/cancel"
-  // 注意:backend 列 runs 是全局 /v1/orchestration/runs(?plan_id 过滤),
-  // 不是 /v1/orchestration/plans/:id/runs(后者无对应端点)
-  // 无 /plans/:id/{audit,versions,validate,draft} —— 走 passthrough
-  { key: '/api/workflows/:id/runs/:runId/cancel', rule: { method: 'POST', backendPath: '/v1/orchestration/runs/:runId/cancel' } },
-  { key: '/api/workflows/:id/runs/:runId', rule: { method: 'GET', backendPath: '/v1/orchestration/runs/:runId' } },
-  { key: '/api/workflows/:id/runs', rule: { method: 'GET', backendPath: '/v1/orchestration/runs', note: 'backend 列全局 runs,?plan_id 过滤' } },
-  { key: '/api/workflows/:id/run', rule: { method: 'POST', backendPath: '/v1/orchestration/plans/:id/runs' } },
-  { key: '/api/workflows/:id', rule: { method: 'GET', backendPath: '/v1/orchestration/plans/:id' } },
-  { key: '/api/workflows', rule: { method: 'POST', backendPath: '/v1/orchestration/plans' } },
-  { key: '/api/workflows', rule: { method: 'GET', backendPath: '/v1/orchestration/plans' } },
+  // ── workflows: catalog lives on /api/admin/workflows + /api/catalog/workflows
+  { key: '/api/workflows/:id/runs/:runId/cancel', rule: { method: 'POST', backendPath: '', unmatched: true } },
+  { key: '/api/workflows/:id/runs/:runId', rule: { method: 'GET', backendPath: '', unmatched: true } },
+  { key: '/api/workflows/:id/runs', rule: { method: 'GET', backendPath: '', unmatched: true } },
+  { key: '/api/workflows/:id/run', rule: { method: 'POST', backendPath: '', unmatched: true } },
+  { key: '/api/workflows/:id', rule: { method: 'GET', backendPath: '', unmatched: true } },
+  { key: '/api/workflows', rule: { method: 'POST', backendPath: '', unmatched: true } },
+  { key: '/api/workflows', rule: { method: 'GET', backendPath: '', unmatched: true } },
 
   // ── agent_factory(prefix=/v1/agents,inline paths 实际是 /v1/agents/{aid}/*)──
   // 注:agent_factory router 只有 {aid}, {aid}/versions, {aid}/versions/{vid}/{publish,release,retire,notes}
@@ -172,13 +165,14 @@ const ROUTE_TABLE: Array<{ key: string; rule: RouteRule }> = [
   { key: '/api/agents/:id', rule: { method: 'GET', backendPath: '/v1/agents/:id' } },
   { key: '/api/agents', rule: { method: 'GET', backendPath: '/v1/agents' } },
 
-  // ── agent_runtime(prefix=/v1,sessions)─────────────────────────────
-  // backend 实际端点: POST "/sessions/{sid}/close", POST "/sessions/{sid}/turn/stream",
-  // POST "/agents/{aid}/sessions", GET "/sessions/{sid}"
-  // POST /api/sessions 协议错配:web 不传 aid,backend 要求 /agents/{aid}/sessions —— passthrough
-  { key: '/api/sessions/:id', rule: { method: 'DELETE', backendPath: '/v1/sessions/:id/close' } },
-  { key: '/api/sessions/:id', rule: { method: 'GET', backendPath: '/v1/sessions/:id' } },
-  { key: '/api/sessions', rule: { method: 'GET', backendPath: '/v1/sessions' } },
+  // ── copilot sessions: backend exposes /api/sessions* (catalog-style passthrough)
+  { key: '/api/sessions/:id/turns/stream', rule: { method: 'POST', backendPath: '/api/sessions/:id/turns/stream' } },
+  { key: '/api/sessions/:id/approvals/:approvalId/approve', rule: { method: 'POST', backendPath: '/api/sessions/:id/approvals/:approvalId/approve' } },
+  { key: '/api/sessions/:id/approvals/:approvalId/deny', rule: { method: 'POST', backendPath: '/api/sessions/:id/approvals/:approvalId/deny' } },
+  { key: '/api/sessions/:id', rule: { method: 'DELETE', backendPath: '/api/sessions/:id' } },
+  { key: '/api/sessions/:id', rule: { method: 'GET', backendPath: '/api/sessions/:id' } },
+  { key: '/api/sessions', rule: { method: 'POST', backendPath: '/api/sessions' } },
+  { key: '/api/sessions', rule: { method: 'GET', backendPath: '/api/sessions' } },
 
   // ── channel(prefix=/v1,paths "/channels/*")────────────────────────
   // backend 实际端点: POST|GET "/channels", GET|PATCH "/channels/{id}",
@@ -236,22 +230,17 @@ const ROUTE_TABLE: Array<{ key: string; rule: RouteRule }> = [
   { key: '/api/tools', rule: { method: 'POST', backendPath: '/v1/tools' } },
   { key: '/api/tools', rule: { method: 'GET', backendPath: '/v1/tools' } },
 
-  // ── model(prefix=/v1, paths "/models", "/model-credentials", "/routing-policies")──
-  // backend 实际端点: GET|POST "/model-credentials", POST "/model-credentials/{id}/rotate",
-  // GET "/models", GET|PATCH "/models/{id}", POST "/models/{id}/invoke",
-  // GET|POST "/routing-policies"
-  // 无 /model-credentials/{id}/rotate(实际有,前面列出);/discover-models /test-connection /:id/impact
-  //   /:id/draft /:id/validate /:id/publish —— 走 passthrough
-  { key: '/api/model-providers/:id/rotate', rule: { method: 'POST', backendPath: '/v1/model-credentials/:id/rotate' } },
-  { key: '/api/model-providers/:id', rule: { method: 'PATCH', backendPath: '/v1/model-credentials/:id' } },
-  { key: '/api/model-providers/:id', rule: { method: 'DELETE', backendPath: '/v1/model-credentials/:id' } },
-  { key: '/api/model-providers', rule: { method: 'POST', backendPath: '/v1/model-credentials' } },
-  { key: '/api/model-providers', rule: { method: 'GET', backendPath: '/v1/model-credentials' } },
-  { key: '/api/models/:id/invoke', rule: { method: 'POST', backendPath: '/v1/models/:id/invoke' } },
-  { key: '/api/models/:id', rule: { method: 'GET', backendPath: '/v1/models/:id' } },
-  { key: '/api/models', rule: { method: 'GET', backendPath: '/v1/models' } },
-  { key: '/api/model-routing/policies', rule: { method: 'POST', backendPath: '/v1/routing-policies' } },
-  { key: '/api/model-routing/policies', rule: { method: 'GET', backendPath: '/v1/routing-policies' } },
+  // ── models: catalog lives on /api/admin/models
+  { key: '/api/model-providers/:id/rotate', rule: { method: 'POST', backendPath: '', unmatched: true } },
+  { key: '/api/model-providers/:id', rule: { method: 'PATCH', backendPath: '', unmatched: true } },
+  { key: '/api/model-providers/:id', rule: { method: 'DELETE', backendPath: '', unmatched: true } },
+  { key: '/api/model-providers', rule: { method: 'POST', backendPath: '', unmatched: true } },
+  { key: '/api/model-providers', rule: { method: 'GET', backendPath: '', unmatched: true } },
+  { key: '/api/models/:id/invoke', rule: { method: 'POST', backendPath: '', unmatched: true } },
+  { key: '/api/models/:id', rule: { method: 'GET', backendPath: '', unmatched: true } },
+  { key: '/api/models', rule: { method: 'GET', backendPath: '', unmatched: true } },
+  { key: '/api/model-routing/policies', rule: { method: 'POST', backendPath: '', unmatched: true } },
+  { key: '/api/model-routing/policies', rule: { method: 'GET', backendPath: '', unmatched: true } },
 
   // ── self_evolution(prefix-less, paths 都是 /v1/evolve/candidates)──
   // backend 实际端点: GET|POST "/v1/evolve/candidates", GET|POST "/v1/evolve/candidates/{id}",

@@ -1,12 +1,12 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: eos-app
-  namespace: eos-staging
+  name: qzdap-app
+  namespace: qzdap-staging
 spec:
   podSelector:
     matchLabels:
-      app: eos
+      app: qzdap
   policyTypes:
     - Ingress
     - Egress

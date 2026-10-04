@@ -7,13 +7,13 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from eos_schema.ids import TenantId, UserId, WorkspaceId
+from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
-from deos.modules.observability_module.domain.entities import (
+from qzdap.modules.observability_module.domain.entities import (
     CostRecord,
     RunRecord,
 )
-from deos.modules.observability_module.domain.value_objects import (
+from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunStatus,
     RunType,

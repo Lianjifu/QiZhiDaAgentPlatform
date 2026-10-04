@@ -316,7 +316,7 @@ export default function EvaluationDetailPage() {
         </div>
       </section>
 
-      <p className="text-center text-xs text-[var(--text-muted)]">本页为前端演示数据,生产环境将接入 EOS 评测中台。</p>
+      <p className="text-center text-xs text-[var(--text-muted)]">本页为前端演示数据,生产环境将接入企智搭评测中台。</p>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './app/App';
 import { I18nProvider } from './i18n';
 import './styles/global.css';
-import { setApiClient, ApiClient, mockHandlerWithAdapters } from '@de/web-api';
+import { setApiClient, ApiClient, mockHandlerWithAdapters } from '@qzdap/web-api';
 import { useAuthStore } from './features/auth';
 import { apiBaseURL, isDemoApiMode } from './lib/api-mode';
 import { resolveWorkspaceHeader } from './lib/workspace-header';
@@ -99,7 +99,7 @@ function installApiClient() {
         };
       },
       // 仅当 401 来自身份相关端点时,才视为会话失效并退出登录;
-      // 其他端点(de-app 旧路由等)的 401 不应当场抹掉 token — 由各页面处理
+      // 其他端点的 401 不应当场抹掉 token — 由各页面处理
       (request: { path: string; status: number }) => {
         const lower = request.path.toLowerCase();
         const isAuthEndpoint =

@@ -1,0 +1,91 @@
+# Prometheus alert rules for 企智搭 · 智能体平台.
+#
+# Consumed by Prometheus when loaded via ``rule_files`` in
+# ``prometheus.yml``:
+#
+#     rule_files:
+#       - /etc/prometheus/rules/*.yaml
+#
+# Conventions:
+# - All QZDAP business metrics use the ``qzdap_`` prefix
+# - All business metrics MUST carry a ``tenant`` label (post P9-6
+#   instrumentation; metric middleware is the injection point)
+# - Severity: ``warning`` (operator triage) | ``critical`` (page)
+# - ``for`` durations are tuned for noise: 5m baseline + 30m for
+#   rate-spike (cost) so we don't fire on bursty workloads
+
+groups:
+  - name: qzdap-business
+    interval: 30s
+    rules:
+      # ── LLM error rate per tenant ────────────────────────────────────
+      - alert: EosHighLLMErrorRate
+        expr: |
+          (
+            sum by (tenant) (rate(qzdap_llm_invocations_total{status="error"}[5m]))
+            /
+            sum by (tenant) (rate(qzdap_llm_invocations_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: ai-platform
+        annotations:
+          summary: "Tenant {{ $labels.tenant }} LLM error rate > 5%"
+          description: |
+            Tenant {{ $labels.tenant }} has sustained an LLM error rate above
+            5% for 5 minutes.  Check provider status, key validity, and
+            recent model changes.
+          runbook: "https://internal/runbooks/qzdap-high-llm-error-rate"
+
+      # ── Turn P95 latency per tenant ──────────────────────────────────
+      - alert: EosHighTurnP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, tenant) (rate(qzdap_turn_latency_ms_bucket[5m]))
+          ) > 10000
+        for: 5m
+        labels:
+          severity: warning
+          team: ai-platform
+        annotations:
+          summary: "Tenant {{ $labels.tenant }} turn P95 > 10s"
+          description: |
+            Tenant {{ $labels.tenant }} turn P95 latency exceeds 10 seconds
+            for 5 minutes.  Investigate slow LLM calls, tool latencies, or
+            RAG retrieval times.
+
+      # ── Eval gate failure spike ──────────────────────────────────────
+      - alert: EosEvalGateFailureSpike
+        expr: |
+          sum by (tenant) (rate(qzdap_eval_gate_total{result="failed"}[5m])) > 0.166
+        for: 5m
+        labels:
+          severity: warning
+          team: ai-platform
+        annotations:
+          summary: "Tenant {{ $labels.tenant }} eval gate failing > 10/min"
+          description: |
+            Tenant {{ $labels.tenant }} is failing the eval gate at more
+            than 10 failures per minute (sustained 5m).  Recent template
+            or model changes are likely culprits.
+
+      # ── Hourly cost > 2x 24h baseline (cost spike) ───────────────────
+      - alert: EosCostSpikePerTenant
+        expr: |
+          (
+            sum by (tenant) (rate(qzdap_cost_usd_total[1h]))
+            >
+            2 * sum by (tenant) (rate(qzdap_cost_usd_total[24h] offset 24h))
+          )
+        for: 30m
+        labels:
+          severity: critical
+          team: ai-platform
+        annotations:
+          summary: "Tenant {{ $labels.tenant }} hourly cost > 2x 24h baseline"
+          description: |
+            Tenant {{ $labels.tenant }} is spending at more than 2x its
+            normal hourly rate (vs 24h-ago baseline) for 30 minutes.  This
+            is a billing-impacting spike — page on-call immediately.

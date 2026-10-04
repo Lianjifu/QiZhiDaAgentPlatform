@@ -12,10 +12,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from deos.modules.memory.adapter.embedding.http_adapter import HttpEmbeddingAdapter
-from deos.modules.memory.adapter.embedding.noop_adapter import NoOpEmbedding
-from deos.modules.memory.adapter.embedding.openai_adapter import OpenAIEmbeddingAdapter
-from deos.modules.memory.domain.entities import EMBEDDING_DIM
+from qzdap.modules.memory.adapter.embedding.http_adapter import HttpEmbeddingAdapter
+from qzdap.modules.memory.adapter.embedding.noop_adapter import NoOpEmbedding
+from qzdap.modules.memory.adapter.embedding.openai_adapter import OpenAIEmbeddingAdapter
+from qzdap.modules.memory.domain.entities import EMBEDDING_DIM
 
 
 def _fake_response(payload: dict[str, Any]) -> MagicMock:

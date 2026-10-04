@@ -69,7 +69,7 @@ export const mockTrendByRange: Record<string, TrendSeries> = {
 };
 
 export const mockAlerts: OverviewAlert[] = [
-  { id: 'a1', severity: 'high', title: '模型 eos-gpt-4o 错误率突增', time: '2 分钟前', affected: '客户沟通助手 · 销售支持', suggestion: '建议临时切换到 eos-deepseek-v3 并下发限流保护。' },
+  { id: 'a1', severity: 'high', title: '模型 qzdap-gpt-4o 错误率突增', time: '2 分钟前', affected: '客户沟通助手 · 销售支持', suggestion: '建议临时切换到 qzdap-deepseek-v3 并下发限流保护。' },
   { id: 'a2', severity: 'medium', title: '工具「企查查」连续 3 次超时', time: '8 分钟前', affected: '数据洞察助手', suggestion: '已自动重试 2 次，建议人工介入确认供应商限流。' },
   { id: 'a3', severity: 'low', title: '知识库「产品手册 v3」需要重建索引', time: '1 小时前', affected: '全平台', suggestion: '预计重建耗时 12 分钟，可在低峰期执行。' },
   { id: 'a4', severity: 'info', title: '3 个智能体版本待审核', time: '2 小时前', affected: '智能体管理', suggestion: '运营总览待办 → 智能体管理 → 待审核。' },
@@ -80,7 +80,7 @@ export const mockServices: OverviewService[] = [
   { name: '模型服务', status: 'ok', latency: '42 ms', detail: '10 个模型 · 平均可用率 99.95%' },
   { name: '知识检索', status: 'ok', latency: '87 ms', detail: '32 个索引 · 平均召回 0.91' },
   { name: '工具网关', status: 'ok', latency: '23 ms', detail: '128 个工具在线' },
-  { name: '模型降级池', status: 'degraded', latency: '—', detail: '1 个模型触发降级 · eos-gpt-4o 切到 eos-deepseek-v3' },
+  { name: '模型降级池', status: 'degraded', latency: '—', detail: '1 个模型触发降级 · qzdap-gpt-4o 切到 qzdap-deepseek-v3' },
   { name: '审计服务', status: 'ok', latency: '—', detail: '实时落库 · 队列 12 / 10000' },
 ];
 

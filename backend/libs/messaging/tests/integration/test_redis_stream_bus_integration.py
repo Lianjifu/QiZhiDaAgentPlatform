@@ -20,8 +20,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from eos_messaging.domain_event import EventEnvelope
-from eos_messaging.redis_stream import RedisStreamBus
+from qzdap_messaging.domain_event import EventEnvelope
+from qzdap_messaging.redis_stream import RedisStreamBus
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 

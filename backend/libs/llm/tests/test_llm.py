@@ -1,13 +1,13 @@
-"""Tests for libs/eos_llm (mock + router + wire parsing)."""
+"""Tests for libs/qzdap_llm (mock + router + wire parsing)."""
 
 from __future__ import annotations
 
 import pytest
 
-from eos_llm.client import ChatMessage, ChatRequest, ChatResponse, LLMChunk, LLMClient
-from eos_llm.config import LLMConfig, LLMProvider
-from eos_llm.mock import MockLLMClient
-from eos_llm.router import LLMRouter
+from qzdap_llm.client import ChatMessage, ChatRequest, ChatResponse, LLMChunk, LLMClient
+from qzdap_llm.config import LLMConfig, LLMProvider
+from qzdap_llm.mock import MockLLMClient
+from qzdap_llm.router import LLMRouter
 
 
 @pytest.mark.asyncio
@@ -54,7 +54,7 @@ async def test_router_chat_uses_primary() -> None:
 
 @pytest.mark.asyncio
 async def test_router_failover_on_error() -> None:
-    from eos_kernel.errors import ExternalServiceError
+    from qzdap_kernel.errors import ExternalServiceError
 
     class Failing(LLMClient):
         name = "failing"

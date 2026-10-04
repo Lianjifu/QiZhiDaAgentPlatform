@@ -14,7 +14,7 @@ from _evaluation_unit_in_memory import (  # type: ignore[import-not-found]
     make_case,
     make_dataset,
 )
-from eos_schema.ids import (
+from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
     EvalRunId,
@@ -23,9 +23,9 @@ from eos_schema.ids import (
     WorkspaceId,
 )
 
-from deos.modules.evaluation.application.runner import EvalRunner
-from deos.modules.evaluation.application.services import EvaluationService
-from deos.modules.evaluation.domain.value_objects import EvalRunStatus
+from qzdap.modules.evaluation.application.runner import EvalRunner
+from qzdap.modules.evaluation.application.services import EvaluationService
+from qzdap.modules.evaluation.domain.value_objects import EvalRunStatus
 
 _TENANT = TenantId(uuid4())
 _WORKSPACE = WorkspaceId(uuid4())
@@ -183,7 +183,7 @@ async def test_runner_app_error_per_case_does_not_abort_run() -> None:
     class FlakySubAgent(FakeSubAgentPort):
         async def run_turn_to_completion(self, **kwargs):  # type: ignore[no-untyped-def]
             if kwargs["user_input"] == "boom":
-                from eos_kernel.errors import ExternalServiceError
+                from qzdap_kernel.errors import ExternalServiceError
 
                 raise ExternalServiceError("upstream timeout")
             return await super().run_turn_to_completion(**kwargs)
@@ -298,10 +298,10 @@ async def test_runner_marks_errored_when_dataset_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_get_run_unknown_returns_404() -> None:
-    from deos.modules.evaluation.application.use_cases.get_run import (
+    from qzdap.modules.evaluation.application.use_cases.get_run import (
         GetEvalRunUseCase,
     )
-    from deos.modules.evaluation.domain.errors import EvalRunNotFound
+    from qzdap.modules.evaluation.domain.errors import EvalRunNotFound
 
     svc, _ds, run_repo, *_ = _service()
     uc: GetEvalRunUseCase = svc.get_run  # type: ignore[assignment]

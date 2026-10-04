@@ -6,9 +6,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, LayoutDashboard } from 'lucide-react';
 import type { MetricsTimeRange } from './schema';
 import { TIME_RANGES } from './components/constants';
+import { useCreateDashboard } from './useMetrics';
 
 export default function DashboardCreatePage() {
   const navigate = useNavigate();
+  const createDashboard = useCreateDashboard();
   const [name, setName] = useState('');
   const [range, setRange] = useState<MetricsTimeRange>('24h');
   const [desc, setDesc] = useState('');
@@ -33,10 +35,11 @@ export default function DashboardCreatePage() {
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!canSubmit) return;
-            void range;
-            void desc;
-            navigate('/admin/metrics');
+            if (!canSubmit || createDashboard.isPending) return;
+            createDashboard.mutate(
+              { name: name.trim(), range, description: desc.trim() || undefined },
+              { onSuccess: () => navigate('/admin/metrics'), onError: () => navigate('/admin/metrics') },
+            );
           }}
         >
           <div>
@@ -55,7 +58,7 @@ export default function DashboardCreatePage() {
           </div>
           <div className="flex justify-end gap-2 border-t border-[var(--border)] pt-5">
             <Link to="/admin/metrics" className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">取消</Link>
-            <button type="submit" disabled={!canSubmit} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">创建</button>
+            <button type="submit" disabled={!canSubmit || createDashboard.isPending} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">创建</button>
           </div>
         </form>
       </section>

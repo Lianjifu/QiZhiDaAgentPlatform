@@ -4,6 +4,7 @@ import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { childPageTitle, PageCrumbNav } from './pageCrumb';
 import { BrandLogo } from '@/components/feedback/BrandLogo';
 import { useAuthStore } from '@/features/auth';
+import { defaultRouteForRole, pathAllowedForRole } from '@/features/auth/roleRoutes';
 import { useUiStore } from '@/stores/uiStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { adminNavigationSections, adminUtilityNavigation, utilityNavigation, workspaceNavigation, type NavigationItem } from './navigation';
@@ -62,6 +63,10 @@ export function WorkspaceShell() {
   if (!isAuthed) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
+  const homeHref = defaultRouteForRole(user?.role);
+  if (!pathAllowedForRole(location.pathname, user?.role)) {
+    return <Navigate to={homeHref} replace />;
+  }
   const isAdmin = user?.role === 'admin';
   const workspaceName = workspace?.name ?? '默认工作区';
   const isAdminArea = isAdmin && location.pathname.startsWith('/admin');
@@ -74,7 +79,7 @@ export function WorkspaceShell() {
   const sidebar = (
     <aside className={`flex h-full flex-col border-r border-[var(--border)] bg-[var(--surface-1)] px-3 py-4 ${sidebarCollapsed ? 'w-[76px]' : 'w-[248px]'}`}>
       <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} px-2`}>
-        <NavLink to="/home" className="flex items-center gap-2.5" aria-label="返回首页">
+        <NavLink to={homeHref} className="flex items-center gap-2.5" aria-label="返回首页">
           {sidebarCollapsed ? (
             <BrandLogo size={36} className="text-[var(--brand)]" ariaLabel="企智搭 · 智能体平台" />
           ) : (

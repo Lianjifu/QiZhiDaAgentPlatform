@@ -19,7 +19,7 @@ Use `grimp` + `lint-imports` to codify five contracts in
    `libs.*` is the kernel; it must remain general-purpose.
 2. **`domain-purity`** — every `modules/*/domain/` must NOT import any
    framework (FastAPI, SQLAlchemy, asyncpg, redis, httpx, pydantic),
-   nor any other `eos_*` library. Domain code is pure.
+   nor any other `qzdap_*` library. Domain code is pure.
 3. **`layered-modules`** — the 14 modules have an explicit
    dependency order. Higher layers may depend on lower; never the
    reverse.

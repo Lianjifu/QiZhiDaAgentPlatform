@@ -104,7 +104,7 @@ def upgrade() -> None:
 
     # memory_embeddings — sibling table, holds the pgvector column.
     # Registered on `postgresql.base.ischema_names` by
-    # ``eos_persistence.pgvector.register_pgvector``.
+    # ``qzdap_persistence.pgvector.register_pgvector``.
     op.create_table(
         "memory_embeddings",
         sa.Column(

@@ -26,8 +26,8 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from deos.modules.tool.adapter.http.router import build_router, tool_dependency
-from deos.modules.tool.application.services import ToolService
+from qzdap.modules.tool.adapter.http.router import build_router, tool_dependency
+from qzdap.modules.tool.application.services import ToolService
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
 WORKSPACE = UUID("00000000-0000-0000-0000-000000000002")
@@ -55,7 +55,7 @@ def _build_test_app() -> tuple[FastAPI, dict]:
     )
 
     app = FastAPI(title="tool-test")
-    from eos_http.error_envelope import error_envelope_middleware
+    from qzdap_http.error_envelope import error_envelope_middleware
 
     app.add_middleware(BaseHTTPMiddleware, dispatch=error_envelope_middleware)  # type: ignore[arg-type]
     app.include_router(build_router())
@@ -175,7 +175,7 @@ async def test_list_filters_by_tenant(client_ctx) -> None:
             name="ghost",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.CUSTOM,
             spec={},
             auth_config=None,
@@ -192,7 +192,7 @@ async def test_list_filters_by_tenant(client_ctx) -> None:
             name="echo",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.CUSTOM,
             spec={},
             auth_config=None,
@@ -229,7 +229,7 @@ async def test_update_with_matching_if_match(client_ctx) -> None:
             name="echo",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.CUSTOM,
             spec={},
             auth_config=None,
@@ -258,7 +258,7 @@ async def test_update_with_stale_if_match_returns_412(client_ctx) -> None:
             name="echo",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.CUSTOM,
             spec={},
             auth_config=None,
@@ -288,7 +288,7 @@ async def test_delete_returns_204(client_ctx) -> None:
             name="echo",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.CUSTOM,
             spec={},
             auth_config=None,
@@ -314,7 +314,7 @@ async def test_invoke_custom_returns_200(client_ctx) -> None:
             name="echo",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.CUSTOM,
             spec={},
             auth_config=None,
@@ -356,7 +356,7 @@ async def test_invoke_openapi_without_operation_id_returns_422(client_ctx) -> No
             name="api",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.OPENAPI,
             spec={
                 "servers": [{"url": "https://api.example.com"}],
@@ -389,7 +389,7 @@ async def test_batch_invoke_returns_207(client_ctx) -> None:
             name="echo",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.CUSTOM,
             spec={},
             auth_config=None,
@@ -545,7 +545,7 @@ async def test_invoke_empty_arguments_ok(client_ctx) -> None:
             name="echo",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.CUSTOM,
             spec={},
             auth_config=None,
@@ -576,7 +576,7 @@ async def test_invoke_extra_field_rejected(client_ctx) -> None:
             name="echo",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.CUSTOM,
             spec={},
             auth_config=None,
@@ -634,7 +634,7 @@ async def test_batch_invoke_at_max_length_ok(client_ctx) -> None:
             name="echo",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.CUSTOM,
             spec={},
             auth_config=None,
@@ -666,7 +666,7 @@ async def test_invoke_disabled_returns_409(client_ctx) -> None:
             name="echo",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.CUSTOM,
             spec={},
             auth_config=None,
@@ -749,7 +749,7 @@ async def test_update_with_extra_field_rejected(client_ctx) -> None:
             name="echo",
             description="",
             protocol=__import__(
-                "deos.modules.tool.domain", fromlist=["ToolProtocol"]
+                "qzdap.modules.tool.domain", fromlist=["ToolProtocol"]
             ).ToolProtocol.CUSTOM,
             spec={},
             auth_config=None,

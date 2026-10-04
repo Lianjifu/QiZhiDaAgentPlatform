@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from eos_schema.ids import (
+from qzdap_schema.ids import (
     PlanId,
     SubscriptionId,
     TenantId,
@@ -17,13 +17,13 @@ from eos_schema.ids import (
     WorkspaceId,
 )
 
-from deos.modules.platform.application.ports import (
+from qzdap.modules.platform.application.ports import (
     PlanRepository,
     PlatformEventPublisher,
     SubscriptionRepository,
     TenantSettingRepository,
 )
-from deos.modules.platform.domain.entities import (
+from qzdap.modules.platform.domain.entities import (
     Plan,
     Subscription,
     TenantSetting,

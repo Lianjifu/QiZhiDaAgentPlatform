@@ -1,7 +1,7 @@
 """Entry-point for ``skp.office.doc_summarizer``.
 
 Generates a TLDR + action items list from a document. When the sandbox
-provides ``EOS_LLM_HTTP_URL`` + ``EOS_LLM_API_KEY`` + ``EOS_LLM_MODEL``
+provides ``QZDAP_LLM_HTTP_URL`` + ``QZDAP_LLM_API_KEY`` + ``QZDAP_LLM_MODEL``
 the entry-point asks the LLM to draft the summary (returned as JSON
 ``{"tldr": ..., "action_items": [...]}``); without those env vars it
 falls back to a deterministic placeholder and tags the result with
@@ -18,9 +18,9 @@ import urllib.request
 
 
 def _llm_env() -> tuple[str, str, str] | None:
-    base = os.environ.get("EOS_LLM_HTTP_URL", "").rstrip("/")
-    key = os.environ.get("EOS_LLM_API_KEY", "")
-    model = os.environ.get("EOS_LLM_MODEL", "")
+    base = os.environ.get("QZDAP_LLM_HTTP_URL", "").rstrip("/")
+    key = os.environ.get("QZDAP_LLM_API_KEY", "")
+    model = os.environ.get("QZDAP_LLM_MODEL", "")
     if not base or not key or not model:
         return None
     return base, key, model

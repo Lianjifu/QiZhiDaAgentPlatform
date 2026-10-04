@@ -15,11 +15,11 @@ from _identity_unit_in_memory import (
     InMemoryWorkspaceRepository,
 )
 
-from deos.modules.identity.application.services import IdentityService
-from deos.modules.identity.application.use_cases.create_tenant import (
+from qzdap.modules.identity.application.services import IdentityService
+from qzdap.modules.identity.application.use_cases.create_tenant import (
     CreateTenantUseCase,
 )
-from deos.modules.identity.domain.errors import (
+from qzdap.modules.identity.domain.errors import (
     InvalidCredentials,
     TenantAlreadyExists,
     UserAlreadyExists,
@@ -50,7 +50,7 @@ def test_register_user_creates_with_hashed_password() -> None:
     async def run() -> None:
         t = await tenants.add.__self__ if False else None  # noqa
         # direct add — repos are simple
-        from deos.modules.identity.domain import Tenant
+        from qzdap.modules.identity.domain import Tenant
 
         t_obj = Tenant.create(id=uuid4(), slug="acme", display_name="Acme")
         await tenants.add(t_obj)
@@ -79,7 +79,7 @@ def test_register_user_creates_with_hashed_password() -> None:
 
 def test_issue_api_key_returns_raw_secret() -> None:
     async def run() -> None:
-        from deos.modules.identity.domain import Tenant, User
+        from qzdap.modules.identity.domain import Tenant, User
 
         tenants = InMemoryTenantRepository()
         users = InMemoryUserRepository()
@@ -109,7 +109,7 @@ def test_issue_api_key_returns_raw_secret() -> None:
 
 def test_login_with_bad_password() -> None:
     async def run() -> None:
-        from deos.modules.identity.domain import Tenant, User
+        from qzdap.modules.identity.domain import Tenant, User
 
         tenants = InMemoryTenantRepository()
         users = InMemoryUserRepository()
@@ -152,7 +152,7 @@ def test_revoke_unknown_key_raises() -> None:
             hasher=FakeHasher(),
             issuer=FakeAccessTokenIssuer(),
         )
-        from deos.modules.identity.domain.errors import APIKeyNotFound
+        from qzdap.modules.identity.domain.errors import APIKeyNotFound
 
         with pytest.raises(APIKeyNotFound):
             await svc.revoke_api_key().execute(api_key_id=uuid4())
@@ -186,7 +186,7 @@ def test_register_user_requires_existing_tenant() -> None:
             hasher=FakeHasher(),
             issuer=FakeAccessTokenIssuer(),
         )
-        from deos.modules.identity.domain.errors import TenantNotFound
+        from qzdap.modules.identity.domain.errors import TenantNotFound
 
         with pytest.raises(TenantNotFound):
             await svc.register_user().execute(

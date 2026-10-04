@@ -5,16 +5,16 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from eos_schema.ids import (
+from qzdap_schema.ids import (
     EvalDatasetId,
     TenantId,
     UserId,
     WorkspaceId,
 )
 
-from deos.modules.evaluation.application.scoring import score_case
-from deos.modules.evaluation.domain.entities import EvalCase, EvalDataset, EvalRun
-from deos.modules.evaluation.domain.value_objects import (
+from qzdap.modules.evaluation.application.scoring import score_case
+from qzdap.modules.evaluation.domain.entities import EvalCase, EvalDataset, EvalRun
+from qzdap.modules.evaluation.domain.value_objects import (
     EvalDatasetKind,
     EvalDatasetStatus,
     EvalRunStatus,
@@ -103,10 +103,10 @@ def test_run_queue_starts_in_queued_state() -> None:
         workspace_id=_WORKSPACE,
         dataset_id=EvalDatasetId(uuid4()),
         template_id=__import__(
-            "eos_schema.ids", fromlist=["AgentTemplateId"]
+            "qzdap_schema.ids", fromlist=["AgentTemplateId"]
         ).AgentTemplateId(uuid4()),
         version_id=__import__(
-            "eos_schema.ids", fromlist=["AgentVersionId"]
+            "qzdap_schema.ids", fromlist=["AgentVersionId"]
         ).AgentVersionId(uuid4()),
         case_count=10,
         triggered_by=_USER,
@@ -119,7 +119,7 @@ def test_run_queue_starts_in_queued_state() -> None:
 
 
 def test_run_mark_running_then_computed() -> None:
-    from eos_schema.ids import AgentTemplateId, AgentVersionId
+    from qzdap_schema.ids import AgentTemplateId, AgentVersionId
 
     run = EvalRun.queue(
         tenant_id=_TENANT,
@@ -148,7 +148,7 @@ def test_run_mark_running_then_computed() -> None:
 
 
 def test_run_mark_completed_any_failure_makes_failed() -> None:
-    from eos_schema.ids import AgentTemplateId, AgentVersionId
+    from qzdap_schema.ids import AgentTemplateId, AgentVersionId
 
     run = EvalRun.queue(
         tenant_id=_TENANT,
@@ -172,7 +172,7 @@ def test_run_mark_completed_any_failure_makes_failed() -> None:
 
 
 def test_run_mark_completed_below_threshold_is_failed() -> None:
-    from eos_schema.ids import AgentTemplateId, AgentVersionId
+    from qzdap_schema.ids import AgentTemplateId, AgentVersionId
 
     run = EvalRun.queue(
         tenant_id=_TENANT,
@@ -196,7 +196,7 @@ def test_run_mark_completed_below_threshold_is_failed() -> None:
 
 
 def test_run_mark_errored() -> None:
-    from eos_schema.ids import AgentTemplateId, AgentVersionId
+    from qzdap_schema.ids import AgentTemplateId, AgentVersionId
 
     run = EvalRun.queue(
         tenant_id=_TENANT,

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from eos_schema.ids import (
+from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
     EvalRunId,
@@ -15,16 +15,16 @@ from eos_schema.ids import (
     WorkspaceId,
 )
 
-from deos.modules.agent_factory.domain.entities import (
+from qzdap.modules.agent_factory.domain.entities import (
     AgentTemplate,
     AgentVersion,
     Release,
 )
-from deos.modules.agent_factory.domain.errors import (
+from qzdap.modules.agent_factory.domain.errors import (
     AgentVersionImmutable,
     AgentVersionInvalidTransition,
 )
-from deos.modules.agent_factory.domain.value_objects import (
+from qzdap.modules.agent_factory.domain.value_objects import (
     AgentTemplateStatus,
     AgentVersionStatus,
     ReleaseStatus,

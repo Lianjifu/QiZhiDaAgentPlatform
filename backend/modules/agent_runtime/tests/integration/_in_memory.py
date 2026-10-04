@@ -6,16 +6,16 @@ from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
-from eos_kernel.events import DomainEvent
-from eos_llm.client import ChatRequest, LLMChunk, Usage
+from qzdap_kernel.events import DomainEvent
+from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 
-from deos.modules.agent_runtime.application.ports import (
+from qzdap.modules.agent_runtime.application.ports import (
     EventPublisher,
     LLMPort,
     SessionRepository,
     TurnRepository,
 )
-from deos.modules.agent_runtime.domain import Session, Turn
+from qzdap.modules.agent_runtime.domain import Session, Turn
 
 
 class InMemorySessionRepository(SessionRepository):

@@ -7,9 +7,11 @@ import { ArrowLeft, Plus } from 'lucide-react';
 import type { EvalSuiteType } from './schema';
 import { TYPE_META } from './components/constants';
 import { StepIndicator } from './components/Primitives';
+import { useCreateEvalSuite } from './useEvaluations';
 
 export default function EvalSuiteCreatePage() {
   const navigate = useNavigate();
+  const createSuite = useCreateEvalSuite();
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [type, setType] = useState<EvalSuiteType>('capability');
@@ -98,7 +100,10 @@ export default function EvalSuiteCreatePage() {
           {step > 1 && <button type="button" onClick={() => setStep((s) => s - 1)} className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">上一步</button>}
           <Link to="/admin/evaluations" className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">取消</Link>
           {step < 3 && <button type="button" onClick={() => setStep((s) => s + 1)} disabled={step === 1 && !canNext1} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">下一步</button>}
-          {step === 3 && <button type="button" onClick={() => navigate('/admin/evaluations')} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white">创建套件</button>}
+          {step === 3 && <button type="button" onClick={() => createSuite.mutate(
+            { name: name.trim(), type, target: target.trim(), owner, description: description.trim() || '新创建的评测套件', schedule, criteria: criteriaText.split('\n').filter(Boolean) },
+            { onSuccess: () => navigate('/admin/evaluations'), onError: () => navigate('/admin/evaluations') },
+          )} disabled={createSuite.isPending} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">创建套件</button>}
         </div>
       </section>
     </div>

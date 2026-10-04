@@ -6,19 +6,19 @@ from uuid import UUID, uuid4
 
 import pytest
 from _ar_unit_in_memory import make_dependencies
-from eos_schema.ids import (
+from qzdap_schema.ids import (
     AgentId,
     TenantId,
     UserId,
     WorkspaceId,
 )
 
-from deos.modules.agent_runtime.application.services import AgentRuntimeService
-from deos.modules.agent_runtime.domain import (
+from qzdap.modules.agent_runtime.application.services import AgentRuntimeService
+from qzdap.modules.agent_runtime.domain import (
     SessionStatus,
     TurnStatus,
 )
-from deos.modules.agent_runtime.domain.errors import (
+from qzdap.modules.agent_runtime.domain.errors import (
     SessionClosedError,
     SessionNotFound,
 )
@@ -248,6 +248,68 @@ async def test_run_turn_invokes_tool_port_when_wired() -> None:
     assert tool_result.output == {"echoed": {"hi": "there"}}
     assert tool_result.is_error is False
     assert tool_result.latency_ms >= 0
+
+
+@pytest.mark.asyncio
+async def test_run_turn_routes_sandbox_exec_and_catalog_skill() -> None:
+    from uuid import UUID
+
+    deps = make_dependencies(
+        llm_content="ok",
+        tool_calls=[
+            {
+                "id": "00000000-0000-0000-0000-0000000000bb",
+                "function": {
+                    "name": "sandbox_exec",
+                    "arguments": '{"language":"python","code":"print(1)"}',
+                },
+            },
+            {
+                "id": "00000000-0000-0000-0000-0000000000cc",
+                "function": {
+                    "name": "周报助手",
+                    "arguments": "{}",
+                },
+            },
+        ],
+    )
+    svc = AgentRuntimeService(**deps)
+
+    class _Sandbox:
+        async def exec(self, *, call_id, language, code, timeout_ms=30000):  # type: ignore[no-untyped-def]
+            return {"ok": True, "stdout": "1", "language": language, "code": code}
+
+    class _Skills:
+        async def list_executable(self):  # type: ignore[no-untyped-def]
+            return [{"name": "周报助手", "description": "x", "inputSchema": []}]
+
+        async def invoke(self, *, call_id, skill_name, arguments):  # type: ignore[no-untyped-def]
+            return {"ok": True, "name": skill_name, "arguments": arguments}
+
+    svc.sandbox_port = _Sandbox()
+    svc.skill_port = _Skills()
+    tid, wid, uid, aid = _make_owners()
+    s = await svc.create_session().execute(
+        tenant_id=tid,
+        workspace_id=wid,
+        owner_id=uid,
+        agent_id=aid,
+        agent_version="1.0.0",
+    )
+    chunks = []
+    async for c in svc.run_turn().execute(
+        tenant_id=tid,
+        workspace_id=wid,
+        owner_id=uid,
+        session_id=s.id,
+        user_input="run",
+        model="gpt-4o-mini",
+    ):
+        chunks.append(c)
+    results = [c for c in chunks if c.kind == "tool_result"]
+    assert results[0].output["stdout"] == "1"
+    assert results[1].output["name"] == "周报助手"
+    _ = UUID
 
 
 @pytest.mark.asyncio

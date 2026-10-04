@@ -11,7 +11,7 @@
 - **Backend 现状**: 15 模块共 **111 个 endpoint**;最多的是 agent_factory(12)/knowledge(11)/model(11)/skill(10)。
 - **Web 调用全集**: ~178 个 mock path handler;pathMap 已接 89 真映射 + 33 unmatched + ~60 完全无匹配(passthrough)。
 - **本期可承接范围** (用户选定): **仅补 backend 已有模块的端点** —— 约 50 个 endpoint。
-- **本期不做** (后端无模块承接): zero-trust、数字员工、home aggregator、workspace control、skill governance 子域、knowledge graph/sources/eval 子域、model governance 子域、channel-control 子域、audit center 等 — 见 §4 排除清单。
+- **本期不做** (后端无模块承接): zero-trust、home aggregator、workspace control、skill governance 子域、knowledge graph/sources/eval 子域、model governance 子域、channel-control 子域、audit center 等 — 见 §4 排除清单。
 - **优先级 1 (本期第一批)**: identity.users/me、identity.tenants/current、platform.tenants/me、agent_factory PATCH/POST versions、orchestration sessions POST 修协议错配、skill.uninstall、knowledge docs 顶层 list、knowledge assets GET。
 - **3 个协议错配**: `/api/sessions` POST(backend 要 aid)、`/api/tenant/profile` PATCH(backend 端点不存在)、`/api/auth/me`(backend 端点不存在)。
 
@@ -19,7 +19,7 @@
 
 ## 1. Backend 现状(按模块)
 
-> 文件路径模板:`backend/modules/{module}/src/deos/modules/{module}/adapter/http/router.py`
+> 文件路径模板:`backend/modules/{module}/src/qzdap/modules/{module}/adapter/http/router.py`
 > 扫描方式:`@router.<verb>(...)` 装饰器全部展开
 
 ### 1.1 端点总数
@@ -204,10 +204,11 @@
 | `/api/actions/:id/{approve,execute,reject}` | POST | 缺失 |
 | `/api/sessions` | GET | 已接 |
 | `/api/sessions` | POST | **协议错配**(backend 要 aid) |
-| `/api/digital-employees{,/overview}` | GET/POST | 缺失(agent_factory 仅管 template) |
-| `/api/digital-employees/:id/{evidence,lifecycle,publish,publish-preflight,skills,capabilities,install,uninstall,conversations}` | various | 缺失 |
-| `/api/digital-employee-templates{,/:id/adopt}` | GET/POST | 缺失 |
-| `/api/digital-employee-{capability-catalog,template-adoptions}` | GET | 缺失 |
+| `/api/agent-profiles{,/overview}` | GET/POST | 缺失(agent_factory 仅管 template) |
+| `/api/agent-profiles/:id/{evidence,lifecycle,publish,publish-preflight,skills,capabilities,install,uninstall,conversations}` | various | 缺失 |
+| `/api/agent-templates{,/:id/adopt}` | GET/POST | 缺失 |
+| `/api/agent-capability-catalog` | GET | 缺失 |
+| `/api/agent-template-adoptions` | GET | 缺失 |
 | `/api/tasks{,/:id}` | GET/POST/PATCH | 缺失(整子域) |
 
 ### 2.5 Memory
@@ -431,10 +432,11 @@
 - `/api/zero-trust/{overview,policies*,evaluate,events,authorizations}`
 - `/api/access/{,governance,grants,reviews/complete}`
 
-### 4.2 数字员工 (digital_employee 模块 — 当前不存在)
-- `/api/digital-employees{,/overview}` + `/api/digital-employees/:id/{evidence,lifecycle,publish,publish-preflight,skills,capabilities,install,uninstall,conversations}`
-- `/api/digital-employee-templates{,/:id/adopt}`
-- `/api/digital-employee-{capability-catalog,template-adoptions}`
+### 4.2 已移除的岗位对象（现统一为智能体）
+- `/api/agent-profiles{,/overview}` + `/api/agent-profiles/:id/{evidence,lifecycle,publish,publish-preflight,skills,capabilities,install,uninstall,conversations}`
+- `/api/agent-templates{,/:id/adopt}`
+- `/api/agent-capability-catalog`
+- `/api/agent-template-adoptions`
 - `/api/tasks{,/:id}`
 
 ### 4.3 工作流 AI 生成 (orchestration 需要新增子域)

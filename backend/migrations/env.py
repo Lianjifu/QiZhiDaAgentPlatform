@@ -1,7 +1,7 @@
-"""Alembic env for Enterprise Agent OS.
+"""Alembic env for 企智搭 · 智能体平台.
 
 Imports every module's metadata so `alembic revision --autogenerate` picks
-up new tables. Connection URL comes from env (EOS_DATABASE_URL).
+up new tables. Connection URL comes from env (QZDAP_DATABASE_URL).
 """
 
 from __future__ import annotations
@@ -19,9 +19,9 @@ if TYPE_CHECKING:
     from sqlalchemy.engine import Connection
 
 # Import the global Base; every model attaches itself on import.
-from eos_persistence.base import Base
-import eos_persistence.pgvector
-from eos_persistence.pgvector import register_pgvector
+from qzdap_persistence.base import Base
+import qzdap_persistence.pgvector
+from qzdap_persistence.pgvector import register_pgvector
 from pgvector.sqlalchemy import Vector
 
 register_pgvector()
@@ -33,34 +33,38 @@ from sqlalchemy.dialects import postgresql as _pg
 _pg.VECTOR = Vector  # type: ignore[attr-defined]
 
 # Import each module's models so they register on Base.metadata.
-from deos.modules.identity.adapter.persistence import models as identity_models
-from deos.modules.agent_runtime.adapter.persistence import (
+from qzdap.modules.identity.adapter.persistence import models as identity_models
+from qzdap.modules.agent_runtime.adapter.persistence import (
     models as agent_runtime_models,
 )
-from deos.modules.tool.adapter.persistence import models as tool_models
-from deos.modules.skill.adapter.persistence import models as skill_models
-from deos.modules.knowledge.adapter.persistence import models as knowledge_models
-from deos.modules.orchestration.adapter.persistence import (
+from qzdap.modules.agent_runtime.adapter.persistence import catalog_models as agent_catalog_models
+from qzdap.modules.tool.adapter.persistence import models as tool_models
+from qzdap.modules.skill.adapter.persistence import models as skill_models
+from qzdap.modules.knowledge.adapter.persistence import models as knowledge_models
+from qzdap.modules.memory.adapter.persistence import models as memory_models
+from qzdap.modules.orchestration.adapter.persistence import (
     models as orchestration_models,
 )
-from deos.modules.agent_factory.adapter.persistence import (
+from qzdap.modules.model.adapter.persistence import models as model_models
+from qzdap.modules.agent_factory.adapter.persistence import (
     models as agent_factory_models,
 )
-from deos.modules.evaluation.adapter.persistence import (
+from qzdap.modules.evaluation.adapter.persistence import (
     models as evaluation_models,
 )
-from deos.modules.observability_module.adapter.persistence import (
+from qzdap.modules.observability_module.adapter.persistence import (
     models as observability_models,
 )
-from deos.modules.platform.adapter.persistence import (
+from qzdap.modules.platform.adapter.persistence import (
     models as platform_models,
 )
 
 _ = observability_models  # registered on Base.metadata
 _ = platform_models  # registered on Base.metadata
-
-# Memory, channel, governance, and self_evolution are in-memory adapters
-# only (no SQL metadata), so they have no models to register here.
+_ = memory_models  # registered on Base.metadata
+_ = model_models  # registered on Base.metadata
+_ = agent_runtime_models
+_ = agent_catalog_models
 
 config = context.config
 
@@ -70,21 +74,21 @@ if config.config_file_name is not None:
 # URL from env wins over the placeholder in alembic.ini.
 #
 # alembic runs OUTSIDE the main application process (a separate pod in
-# staging / prod), so it reads the raw ``EOS_DATABASE_URL`` env var
-# rather than going through the ``EOS_*_REF`` indirection. In
+# staging / prod), so it reads the raw ``QZDAP_DATABASE_URL`` env var
+# rather than going through the ``QZDAP_*_REF`` indirection. In
 # production this must be injected by an init container or the
 # secrets manager via the pod spec — never baked into alembic.ini.
 # We deliberately do not raise on a missing value here because the
 # local alembic.ini default (``postgresql+asyncpg://postgres:...
-# @localhost:5432/eos_dev``) is sufficient for sandbox / dev shells.
-database_url = os.environ.get("EOS_DATABASE_URL") or config.get_main_option(
+# @localhost:5432/qzdap_dev``) is sufficient for sandbox / dev shells.
+database_url = os.environ.get("QZDAP_DATABASE_URL") or config.get_main_option(
     "sqlalchemy.url"
 )
 if not database_url:
     raise RuntimeError(
-        "EOS_DATABASE_URL is required for alembic. In prod this is "
+        "QZDAP_DATABASE_URL is required for alembic. In prod this is "
         "injected by the secrets manager / CSI driver; locally set "
-        "EOS_DATABASE_URL or configure sqlalchemy.url in alembic.ini."
+        "QZDAP_DATABASE_URL or configure sqlalchemy.url in alembic.ini."
     )
 config.set_main_option("sqlalchemy.url", database_url)
 

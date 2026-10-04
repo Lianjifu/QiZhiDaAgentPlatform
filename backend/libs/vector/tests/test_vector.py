@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from eos_vector.store import SearchResult, VectorItem
+from qzdap_vector.store import SearchResult, VectorItem
 
 
 def test_vector_item_construction() -> None:

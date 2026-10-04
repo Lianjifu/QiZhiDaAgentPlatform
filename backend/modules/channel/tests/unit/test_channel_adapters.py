@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import pytest
 
-from deos.modules.channel.adapter.crypto.webhook_cipher import (
+from qzdap.modules.channel.adapter.crypto.webhook_cipher import (
     AesGcmWebhookCipher,
     build_cipher_from_env,
 )
-from deos.modules.channel.adapter.inbound import (
+from qzdap.modules.channel.adapter.inbound import (
     DingTalkInboundAdapter,
     FeishuInboundAdapter,
     WebInboundAdapter,
@@ -225,7 +225,7 @@ def test_aes_gcm_cipher_round_trip() -> None:
 
 
 def test_aes_gcm_cipher_wrong_key_fails() -> None:
-    from eos_vault.crypto.aes_gcm import InvalidCiphertext
+    from qzdap_vault.crypto.aes_gcm import InvalidCiphertext
 
     enc = AesGcmWebhookCipher(key=b"k" * 32)
     dec = AesGcmWebhookCipher(key=b"j" * 32)
@@ -262,8 +262,8 @@ def test_aes_gcm_cipher_rejects_bad_key_len() -> None:
 import base64
 from unittest.mock import AsyncMock, MagicMock
 
-from deos.modules.channel.adapter.outbound import WeChatWorkOutboundAdapter
-from deos.modules.channel.domain.errors import ChannelDeliveryFailed
+from qzdap.modules.channel.adapter.outbound import WeChatWorkOutboundAdapter
+from qzdap.modules.channel.domain.errors import ChannelDeliveryFailed
 
 
 def test_wechatwork_send_reply_unconfigured_raises() -> None:
@@ -287,7 +287,7 @@ def test_wechatwork_encrypt_round_trip() -> None:
     """AES-256-CBC encrypt must round-trip when given the right key."""
     import asyncio
 
-    from deos.modules.channel.adapter.outbound.wechatwork import (
+    from qzdap.modules.channel.adapter.outbound.wechatwork import (
         _aes_encrypt,
     )
 
@@ -308,7 +308,7 @@ def test_wechatwork_encrypt_round_trip() -> None:
 
 
 def test_wechatwork_compute_signature_sha1_sorted() -> None:
-    from deos.modules.channel.adapter.outbound.wechatwork import (
+    from qzdap.modules.channel.adapter.outbound.wechatwork import (
         _compute_signature,
     )
 

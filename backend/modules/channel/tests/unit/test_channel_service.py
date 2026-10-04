@@ -32,38 +32,38 @@ from _channel_in_memory import (  # type: ignore[import-not-found]
     SequenceIds,
 )
 
-from deos.modules.channel.application.ports import (
+from qzdap.modules.channel.application.ports import (
     InboundAdapter,
     OutboundAdapter,
     ParsedMessage,
     WebhookSecretCipher,
 )
-from deos.modules.channel.application.services import (
+from qzdap.modules.channel.application.services import (
     DEFAULT_TIMESTAMP_TOLERANCE_SECONDS,
     ChannelService,
 )
-from deos.modules.channel.domain.entities import (
+from qzdap.modules.channel.domain.entities import (
     make_channel,
     make_inbound_delivery,
 )
-from deos.modules.channel.domain.errors import (
+from qzdap.modules.channel.domain.errors import (
     ChannelDeliveryFailed,
     ChannelDisabled,
     ChannelNotFound,
     WebhookSignatureInvalid,
     WebhookTimestampSkew,
 )
-from deos.modules.channel.domain.events import (
+from qzdap.modules.channel.domain.events import (
     ChannelMessageReceived,
     ChannelReplySent,
     ChannelWebhookRejected,
 )
-from deos.modules.channel.domain.value_objects import (
+from qzdap.modules.channel.domain.value_objects import (
     ChannelStatus,
     ChannelType,
     DeliveryStatus,
 )
-from eos_schema.ids import ChannelId, TenantId
+from qzdap_schema.ids import ChannelId, TenantId
 
 
 @dataclass(slots=True)

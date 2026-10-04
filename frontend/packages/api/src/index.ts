@@ -2,7 +2,7 @@
  * API 客户端层 — 默认请求真实后端（粗粒度网关 / Vite 代理）。
  * Mock 适配器仅在应用入口显式注入时启用（VITE_USE_MOCK=true）。
  */
-import type { ApiResponse } from '@de/web-types';
+import type { ApiResponse } from '@qzdap/web-types';
 import { translateApiPath, USER_ID_PLACEHOLDER, type HttpMethod } from './pathMap';
 import { applyResponseAdapter, adaptErrorCode } from './responseAdapters';
 
@@ -34,10 +34,35 @@ function sanitizeHeaderValue(value: string): string {
 function sanitizeHeaders(headers: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) {
-    if (v == null) continue;
+    if (v == null || String(v).trim() === '') continue;
     out[k] = sanitizeHeaderValue(String(v));
   }
   return out;
+}
+
+function extractErrorPayload(json: unknown, fallback: string): { code: string; message: string } {
+  if (!json || typeof json !== 'object') return { code: 'E_UNKNOWN', message: fallback };
+  const root = json as Record<string, unknown>;
+  const nested = root.error && typeof root.error === 'object'
+    ? root.error as Record<string, unknown>
+    : null;
+  const codeRaw = String(nested?.code ?? root.code ?? '');
+  const fromNested = nested?.message;
+  const fromRoot = root.message;
+  let message = fallback;
+  if (typeof fromNested === 'string' && fromNested) message = fromNested;
+  else if (typeof fromRoot === 'string' && fromRoot) message = fromRoot;
+  else if (typeof root.detail === 'string' && root.detail) message = root.detail;
+  else if (Array.isArray(root.detail) && root.detail[0] && typeof root.detail[0] === 'object') {
+    const first = root.detail[0] as { msg?: unknown };
+    if (typeof first.msg === 'string' && first.msg) message = first.msg;
+  }
+  return { code: adaptErrorCode(codeRaw), message };
+}
+
+function isLoginPath(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.includes('/identity/login') || lower.includes('/auth/login');
 }
 
 function resolveRequestURL(baseURL: string, path: string, query?: RequestOptions['query']): string {
@@ -128,11 +153,11 @@ export class ApiClient {
         throw new ApiError('E_BAD_RESPONSE', `控制面返回非 JSON（HTTP ${res.status}）`, res.status);
       }
       if (!res.ok) {
-        const code = adaptErrorCode(json.error?.code ?? '');
-        if (res.status === 401 || code === 'E_IDENTITY_MOCK_FORBIDDEN') {
+        const { code, message } = extractErrorPayload(json, '请求失败');
+        if ((res.status === 401 || code === 'E_IDENTITY_MOCK_FORBIDDEN') && !isLoginPath(backendPath)) {
           this.onUnauthorized?.({ path: backendPath, status: res.status });
         }
-        throw new ApiError(code, json.error?.message ?? '请求失败', res.status);
+        throw new ApiError(code, message, res.status);
       }
       // Envelope-tolerant rawData pick:
       //  - 大多数 endpoint 返回 `{ok, data}` → 取 data 喂 adapter
@@ -216,13 +241,78 @@ export class ApiClient {
         throw new ApiError('E_BAD_RESPONSE', `控制面返回非 JSON（HTTP ${res.status}）`, res.status);
       }
       if (!res.ok || !json.ok) {
-        const code = adaptErrorCode(json.error?.code ?? '');
-        if (res.status === 401 || code === 'E_IDENTITY_MOCK_FORBIDDEN') {
+        const { code, message } = extractErrorPayload(json, '上传失败');
+        if ((res.status === 401 || code === 'E_IDENTITY_MOCK_FORBIDDEN') && !isLoginPath(uploadTranslated.backendPath)) {
           this.onUnauthorized?.({ path: uploadTranslated.backendPath, status: res.status });
         }
-        throw new ApiError(code, json.error?.message ?? '上传失败', res.status);
+        throw new ApiError(code, message, res.status);
       }
       return (json.data ?? null) as T;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  /** SSE 流式读取。mock 模式按 JSON 一次性返回。 */
+  async *streamEvents(
+    path: string,
+    body?: unknown,
+    opts: Omit<RequestOptions, 'method' | 'body'> = {},
+  ): AsyncGenerator<{ event: string; data: unknown }> {
+    const token = this.getAuthToken();
+    const requestHeaders: Record<string, string> = {
+      ...opts.headers,
+      ...this.getContextHeaders(),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    const translated = translateApiPath(path, 'POST');
+    if (this.mockHandler) {
+      const data = await this.mockHandler(path, { ...opts, method: 'POST', headers: requestHeaders, body });
+      yield { event: 'message', data };
+      yield { event: 'done', data: { kind: 'done' } };
+      return;
+    }
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), opts.timeoutMs ?? 120_000);
+    try {
+      const url = resolveRequestURL(this.baseURL, translated.backendPath, opts.query);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          ...sanitizeHeaders(requestHeaders),
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: opts.signal ?? controller.signal,
+      });
+      if (!res.ok || !res.body) {
+        throw new ApiError('E_STREAM', `流式请求失败（HTTP ${res.status}）`, res.status);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const block of parts) {
+          let event = 'message';
+          let dataLine = '';
+          for (const line of block.split('\n')) {
+            if (line.startsWith('event:')) event = line.slice(6).trim();
+            if (line.startsWith('data:')) dataLine += line.slice(5).trim();
+          }
+          if (!dataLine) continue;
+          try {
+            yield { event, data: JSON.parse(dataLine) };
+          } catch {
+            yield { event, data: dataLine };
+          }
+        }
+        if (done) break;
+      }
     } finally {
       clearTimeout(t);
     }

@@ -64,7 +64,7 @@ describe('AdminOverview', () => {
 
   it('renders all 5 alerts from fixture', () => {
     renderPage();
-    expect(screen.getByText(/模型 eos-gpt-4o 错误率突增/)).toBeTruthy();
+    expect(screen.getByText(/模型 qzdap-gpt-4o 错误率突增/)).toBeTruthy();
     expect(screen.getByText(/企查查/)).toBeTruthy();
     expect(screen.getByText(/知识库「产品手册 v3」需要重建索引/)).toBeTruthy();
     expect(screen.getByText(/3 个智能体版本待审核/)).toBeTruthy();
@@ -94,14 +94,14 @@ describe('AdminOverview', () => {
 
   it('opens SideDrawer when an alert row is clicked', () => {
     renderPage();
-    fireEvent.click(screen.getByRole('button', { name: /模型 eos-gpt-4o 错误率突增/ }));
-    const drawer = screen.getByRole('dialog', { name: /模型 eos-gpt-4o 错误率突增/ });
+    fireEvent.click(screen.getByRole('button', { name: /模型 qzdap-gpt-4o 错误率突增/ }));
+    const drawer = screen.getByRole('dialog', { name: /模型 qzdap-gpt-4o 错误率突增/ });
     expect(drawer).toBeTruthy();
     expect(drawer.textContent).toContain('建议处理');
     expect(drawer.textContent).toContain('立即处理');
     // 关闭
     fireEvent.click(screen.getByRole('button', { name: '关闭面板' }));
-    expect(screen.queryByRole('dialog', { name: /模型 eos-gpt-4o 错误率突增/ })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /模型 qzdap-gpt-4o 错误率突增/ })).toBeNull();
   });
 
   it('switches range to 7d and shows weekly labels', () => {

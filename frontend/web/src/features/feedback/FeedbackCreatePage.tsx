@@ -9,9 +9,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus } from 'lucide-react';
-import type { Feedback, FeedbackPriority, Ticket } from './schema';
-import { useFeedbackList } from './useFeedback';
-import { uid } from './components/constants';
+import type { FeedbackPriority } from './schema';
+import { useCreateFeedbackTicket, useFeedbackList } from './useFeedback';
 import { StepIndicator } from './components/Primitives';
 
 export default function FeedbackCreatePage() {
@@ -22,6 +21,7 @@ export default function FeedbackCreatePage() {
   const feedbacks = feedbacksQuery.data ?? [];
   const preset = fromFeedbackId ? feedbacks.find((f) => f.id === fromFeedbackId) : undefined;
 
+  const createTicket = useCreateFeedbackTicket();
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState('');
   const [topic, setTopic] = useState('');
@@ -42,20 +42,18 @@ export default function FeedbackCreatePage() {
   const canNext = title.trim().length > 0 && topic.trim().length > 0;
 
   const handleCreate = () => {
-    const ticket: Ticket = {
-      id: uid('tk'),
-      title: title.trim(),
-      feedbackIds: preset ? [preset.id] : [],
-      owner,
-      priority,
-      status: 'triaged',
-      topic: topic.trim(),
-      description: description.trim() || '由管理员手动创建',
-      createdAt: '今天',
-      dueAt,
-    };
-    void ticket;
-    navigate('/admin/feedback');
+    createTicket.mutate(
+      {
+        title: title.trim(),
+        feedbackIds: preset ? [preset.id] : [],
+        owner,
+        priority,
+        topic: topic.trim(),
+        description: description.trim() || '由管理员手动创建',
+        dueAt,
+      },
+      { onSuccess: () => navigate('/admin/feedback'), onError: () => navigate('/admin/feedback') },
+    );
   };
 
   return (
@@ -148,7 +146,7 @@ export default function FeedbackCreatePage() {
           {step > 1 && <button type="button" onClick={() => setStep((s) => Math.max(1, s - 1))} className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">上一步</button>}
           <Link to="/admin/feedback" className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">取消</Link>
           {step < 3 && <button type="button" onClick={() => setStep((s) => s + 1)} disabled={step === 1 && !canNext} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">下一步</button>}
-          {step === 3 && <button type="button" onClick={handleCreate} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white">创建工单</button>}
+          {step === 3 && <button type="button" onClick={handleCreate} disabled={createTicket.isPending} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">创建工单</button>}
         </div>
       </section>
     </div>

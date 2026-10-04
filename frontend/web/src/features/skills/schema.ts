@@ -29,6 +29,28 @@ export interface AuditEntry {
   action: string;
 }
 
+export interface SkillRuntimeSpec {
+  enabled: boolean;
+  language: 'python';
+  image: string;
+  entry: string;
+  source: string;
+  timeoutMs: number;
+  network: 'none' | 'bridge';
+  memoryMb: number;
+}
+
+export const DEFAULT_SKILL_RUNTIME: SkillRuntimeSpec = {
+  enabled: false,
+  language: 'python',
+  image: 'qzdap/sandbox-python:latest',
+  entry: 'main.py',
+  source: '',
+  timeoutMs: 30000,
+  network: 'none',
+  memoryMb: 256,
+};
+
 export interface Skill {
   id: string;
   name: string;
@@ -54,6 +76,7 @@ export interface Skill {
   trend: number[];
   usedByAgents: string[];
   auditLog: AuditEntry[];
+  runtime?: SkillRuntimeSpec;
 }
 
 export interface TemplateSeed {
@@ -97,7 +120,7 @@ export interface UpdateSkillVars {
   id: string;
   patch: Partial<Pick<Skill,
     'name' | 'description' | 'owner' | 'version' | 'type' | 'status' | 'risk' | 'needConfirm' |
-    'visibleScope' | 'tags' | 'starred' | 'inputSchema' | 'outputSchema'>>;
+    'visibleScope' | 'tags' | 'starred' | 'inputSchema' | 'outputSchema' | 'runtime'>>;
 }
 
 export interface DeleteSkillVars {

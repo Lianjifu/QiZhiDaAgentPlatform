@@ -13,14 +13,14 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from deos.modules.self_evolution.application.ports import (
+from qzdap.modules.self_evolution.application.ports import (
     ClockPort,
     EvolutionCandidateRepository,
     EvolutionEventPublisher,
     IdGeneratorPort,
 )
-from deos.modules.self_evolution.domain.entities import EvolveCandidate
-from deos.modules.self_evolution.domain.value_objects import (
+from qzdap.modules.self_evolution.domain.entities import EvolveCandidate
+from qzdap.modules.self_evolution.domain.value_objects import (
     EvolveStatus,
     is_terminal,
 )

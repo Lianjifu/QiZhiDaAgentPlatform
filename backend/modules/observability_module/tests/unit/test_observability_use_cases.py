@@ -9,24 +9,24 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from eos_kernel.errors import BusinessRuleError
-from eos_schema.ids import TenantId, WorkspaceId
+from qzdap_kernel.errors import BusinessRuleError
+from qzdap_schema.ids import TenantId, WorkspaceId
 
-from deos.modules.observability_module.application.pricing import (
+from qzdap.modules.observability_module.application.pricing import (
     DEFAULT_LLM_PRICING,
     PricingCatalog,
 )
-from deos.modules.observability_module.application.services import (
+from qzdap.modules.observability_module.application.services import (
     ObservabilityService,
 )
-from deos.modules.observability_module.application.use_cases.get_quality_score import (
+from qzdap.modules.observability_module.application.use_cases.get_quality_score import (
     QualityScore,
 )
-from deos.modules.observability_module.domain.entities import (
+from qzdap.modules.observability_module.domain.entities import (
     CostRecord,
     RunRecord,
 )
-from deos.modules.observability_module.domain.value_objects import (
+from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunType,
 )

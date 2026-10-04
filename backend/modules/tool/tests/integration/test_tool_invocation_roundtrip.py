@@ -25,12 +25,12 @@ from _tool_integration_in_memory import (
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from deos.modules.tool.adapter.adapters.mcp_runtime import MCPRuntimeAdapter
-from deos.modules.tool.adapter.adapters.openapi_runtime import (
+from qzdap.modules.tool.adapter.adapters.mcp_runtime import MCPRuntimeAdapter
+from qzdap.modules.tool.adapter.adapters.openapi_runtime import (
     OpenAPIRuntimeAdapter,
 )
-from deos.modules.tool.adapter.http.router import build_router, tool_dependency
-from deos.modules.tool.application.services import ToolService
+from qzdap.modules.tool.adapter.http.router import build_router, tool_dependency
+from qzdap.modules.tool.application.services import ToolService
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
 WORKSPACE = UUID("00000000-0000-0000-0000-000000000002")
@@ -58,7 +58,7 @@ def _build_app(openapi_client: httpx.AsyncClient, mcp_client: httpx.AsyncClient)
         events=events,
     )
     app = FastAPI(title="tool-roundtrip-test")
-    from eos_http.error_envelope import error_envelope_middleware
+    from qzdap_http.error_envelope import error_envelope_middleware
     from starlette.middleware.base import BaseHTTPMiddleware
 
     app.add_middleware(BaseHTTPMiddleware, dispatch=error_envelope_middleware)  # type: ignore[arg-type]

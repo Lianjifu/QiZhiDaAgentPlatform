@@ -1,4 +1,4 @@
-# ADRs — Enterprise Agent OS
+# ADRs — 企智搭 · 智能体平台
 
 Architectural decision records. Each ADR is a short, dated note that
 captures a decision, the context in which it was made, and the

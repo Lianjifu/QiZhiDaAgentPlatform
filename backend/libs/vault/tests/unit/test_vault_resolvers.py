@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from eos_vault import (
+from qzdap_vault import (
     ActorContext,
     EnvVaultSecretsResolver,
     FileVaultSecretsResolver,
@@ -69,17 +69,17 @@ def test_parse_ref_rejects_unknown_scheme() -> None:
 
 @pytest.mark.asyncio
 async def test_env_resolver_reads_var(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("EOS_TEST_SECRET_X", "shh")
+    monkeypatch.setenv("QZDAP_TEST_SECRET_X", "shh")
     r = EnvVaultSecretsResolver()
-    payload = await r.resolve("env:EOS_TEST_SECRET_X", actor=_actor())
-    assert payload == {"EOS_TEST_SECRET_X": "shh"}
+    payload = await r.resolve("env:QZDAP_TEST_SECRET_X", actor=_actor())
+    assert payload == {"QZDAP_TEST_SECRET_X": "shh"}
 
 
 @pytest.mark.asyncio
 async def test_env_resolver_missing_var_raises() -> None:
     r = EnvVaultSecretsResolver()
     with pytest.raises(SecretNotFound):
-        await r.resolve("env:EOS_TEST_SECRET_DEFINITELY_NOT_SET", actor=_actor())
+        await r.resolve("env:QZDAP_TEST_SECRET_DEFINITELY_NOT_SET", actor=_actor())
 
 
 @pytest.mark.asyncio

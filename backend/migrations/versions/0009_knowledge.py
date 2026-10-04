@@ -6,7 +6,7 @@ Adds 3 core tables + 1 vector mirror:
 - ``knowledge_assets``   — uploaded artifact attached to a package
 - ``knowledge_chunks``    — text slice of an asset with the
                             ``embedding vector(1536)`` column + HNSW
-- ``knowledge_chunks_vec`` — mirror managed by ``eos_vector.PgVectorStore``
+- ``knowledge_chunks_vec`` — mirror managed by ``qzdap_vector.PgVectorStore``
                             for payload-filtered retrieval
 
 orchestration tables (plans / workflow_runs / workflow_step_runs) ship
@@ -31,7 +31,7 @@ from sqlalchemy.dialects import postgresql
 
 # Register pgvector's Vector() type so ``postgresql.VECTOR(N)`` resolves
 # the same way the ORM models do.
-from eos_persistence.pgvector import register_pgvector
+from qzdap_persistence.pgvector import register_pgvector
 
 register_pgvector()
 from pgvector.sqlalchemy import Vector
@@ -262,7 +262,7 @@ def upgrade() -> None:
         "WITH (m = 16, ef_construction = 64)"
     )
 
-    # ── knowledge_chunks_vec mirror (managed by eos_vector) ─────────────
+    # ── knowledge_chunks_vec mirror (managed by qzdap_vector) ─────────────
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
     op.execute(
         f"""

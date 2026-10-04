@@ -1,11 +1,11 @@
 [project]
-name = "eos-persistence"
+name = "qzdap-persistence"
 version = "0.1.0"
 description = "SQLAlchemy 2.0 async session, Base, UnitOfWork, tenant guard"
 requires-python = ">=3.12"
 dependencies = [
-    "eos-kernel",
-    "eos-schema",
+    "qzdap-kernel",
+    "qzdap-schema",
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30.0",
     "alembic>=1.14.0",
@@ -17,7 +17,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/eos_persistence"]
+packages = ["src/qzdap_persistence"]
 
 [tool.ruff]
 src = ["src"]

@@ -6,14 +6,14 @@ from collections import defaultdict
 from typing import Any
 from uuid import UUID
 
-from deos.modules.identity.application.ports import (
+from qzdap.modules.identity.application.ports import (
     APIKeyRepository,
     Hasher,
     TenantRepository,
     UserRepository,
     WorkspaceRepository,
 )
-from deos.modules.identity.domain import APIKey, Tenant, User, Workspace
+from qzdap.modules.identity.domain import APIKey, Tenant, User, Workspace
 
 
 class InMemoryTenantRepository(TenantRepository):
@@ -22,7 +22,7 @@ class InMemoryTenantRepository(TenantRepository):
 
     async def add(self, tenant: Tenant) -> None:
         if any(t.slug == tenant.slug for t in self._by_id.values()):
-            from deos.modules.identity.domain.errors import TenantAlreadyExists
+            from qzdap.modules.identity.domain.errors import TenantAlreadyExists
 
             raise TenantAlreadyExists(f"slug {tenant.slug!r} already exists")
         self._by_id[tenant.id] = tenant
@@ -62,7 +62,7 @@ class InMemoryUserRepository(UserRepository):
     async def add(self, user: User) -> None:
         key = (user.tenant_id, user.email)
         if key in self._by_tenant_email:
-            from deos.modules.identity.domain.errors import UserAlreadyExists
+            from qzdap.modules.identity.domain.errors import UserAlreadyExists
 
             raise UserAlreadyExists(f"email {user.email!r} already exists")
         self._by_id[user.id] = user

@@ -12,8 +12,9 @@ export function TrendChart({ series }: { series: TrendSeries }) {
   const calls = data.map((p) => p.calls);
   const success = data.map((p) => p.success);
   const errors = data.map((p) => p.errors);
-  const callsMax = Math.ceil(Math.max(...calls) / 20000) * 20000;
-  const xCount = data.length;
+  const rawMax = calls.length === 0 ? 0 : Math.max(...calls);
+  const callsMax = Math.max(1, Math.ceil(rawMax / 20000) * 20000);
+  const xCount = Math.max(data.length, 1);
   const xStep = (width - padding.left - padding.right) / Math.max(xCount - 1, 1);
   const xAt = (index: number) => padding.left + index * xStep;
   const yCalls = (value: number) => padding.top + ((callsMax - value) / callsMax) * (height - padding.top - padding.bottom);

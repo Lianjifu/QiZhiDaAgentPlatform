@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from eos_schema.ids import SkillId, TenantId, UserId, WorkspaceId
+from qzdap_schema.ids import SkillId, TenantId, UserId, WorkspaceId
 
 UNIT_DIR = Path(__file__).resolve().parents[1] / "unit"
 if str(UNIT_DIR) not in sys.path:

@@ -26,27 +26,27 @@ from _governance_unit_in_memory import (
     InMemoryPolicyRepository,
     SequenceIds,
 )
-from eos_http.error_envelope import error_envelope_middleware
-from eos_kernel.errors import ActionDeniedError, ApprovalRequiredError
-from eos_schema.ids import TenantId, UserId, WorkspaceId
-from eos_vault.actor import ActorContext
+from qzdap_http.error_envelope import error_envelope_middleware
+from qzdap_kernel.errors import ActionDeniedError, ApprovalRequiredError
+from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+from qzdap_vault.actor import ActorContext
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from deos.modules.governance.adapter.guard.policy_guard import PolicyGuard
-from deos.modules.governance.adapter.http import factory as gov_factory
-from deos.modules.governance.adapter.http.router import (
+from qzdap.modules.governance.adapter.guard.policy_guard import PolicyGuard
+from qzdap.modules.governance.adapter.http import factory as gov_factory
+from qzdap.modules.governance.adapter.http.router import (
     _require_actor,
     _require_admin,
 )
-from deos.modules.governance.adapter.http.router import (
+from qzdap.modules.governance.adapter.http.router import (
     router as governance_router,
 )
-from deos.modules.governance.application.approval_service import ApprovalService
-from deos.modules.governance.application.policy_evaluator import PolicyEvaluator
-from deos.modules.governance.application.policy_service import PolicyService
-from deos.modules.governance.application.ports import PolicyEventPublisher
+from qzdap.modules.governance.application.approval_service import ApprovalService
+from qzdap.modules.governance.application.policy_evaluator import PolicyEvaluator
+from qzdap.modules.governance.application.policy_service import PolicyService
+from qzdap.modules.governance.application.ports import PolicyEventPublisher
 
 # ── Constants ───────────────────────────────────────────────────────────
 

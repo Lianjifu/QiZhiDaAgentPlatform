@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
-import { ToastHost, Spinner } from '@de/web-ui';
+import { ToastHost, Spinner } from '@qzdap/web-ui';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { WorkspaceShell } from '@/widgets/app-shell';
 import WorkspacePlaceholder from '@/pages/shared/WorkspacePlaceholder';

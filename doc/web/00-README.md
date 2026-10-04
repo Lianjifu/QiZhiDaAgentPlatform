@@ -1,8 +1,8 @@
 # Enterprise-Agent-OS · Web 子项目方案文档集
 
 > Enterprise-Agent-OS 的**配套前端子项目**文档集。
-> 后端：`enterprise-agent-os/`（FastAPI · uv workspace · 多租户 Agent 平台）
-> 前端（本方案）：`enterprise-agent-os/web/`（pnpm workspace · FSD · DDD · Hexagonal）
+> 后端：`qizhida-agent-platform/`（FastAPI · uv workspace · 多租户 Agent 平台）
+> 前端（本方案）：`qizhida-agent-platform/web/`（pnpm workspace · FSD · DDD · Hexagonal）
 
 > **本方案架构内核**：**pnpm Workspace Monorepo + FSD（Feature-Sliced Design 6 层）+ DDD 领域建模（对齐后端 8 BC）+ Hexagonal Ports & Adapters**
 >
@@ -28,7 +28,7 @@
 | 00 | [00-README.md](00-README.md) | 本文档（四维架构总览 + 与后端对齐） |
 | 01 | [01-架构总览.md](01-架构总览.md) | FSD 6 层 × DDD 8 BC（对齐后端）× Hex Port/Adapter 三视角融合图 |
 | 02 | [02-仓库结构.md](02-仓库结构.md) | `packages/*`（shared）+ `web/src/{app,pages,widgets,features,entities}/` |
-| 03 | [03-共享内核.md](03-共享内核.md) | FSD shared 层：`@eos/web-ui` `@eos/web-api` `@eos/web-mock` `@eos/web-types` `@eos/web-hooks` `@eos/web-utils` |
+| 03 | [03-共享内核.md](03-共享内核.md) | FSD shared 层：`@qzdap/web-ui` `@qzdap/web-api` `@qzdap/web-mock` `@qzdap/web-types` `@qzdap/web-hooks` `@qzdap/web-utils` |
 | 04 | [04-模块设计.md](04-模块设计.md) | 8 BC（对齐后端 modules/）× FSD 切片 × Hex 六边形 |
 | 05 | [05-跨模块协作.md](05-跨模块协作.md) | Domain Event · ACL · EventBus · 跨 BC 订阅与八模块闭环可视化 |
 | 06 | [06-接口规范.md](06-接口规范.md) | RESTful + SSE + MCP Tool 协议 + DTO 类型契约 |
@@ -44,7 +44,7 @@
 
 ## 项目定位
 
-`enterprise-agent-os/web/` 是 Enterprise-Agent-OS 平台的**官方 Web Console**：
+`qizhida-agent-platform/web/` 是 Enterprise-Agent-OS 平台的**官方 Web Console**：
 
 - **多租户**：前端感知 Tenant / Workspace 两级；路由 + state + UI 三层体现
 - **多 Agent 类型**：Conversational / Task / Workflow / Coarse-grained 在前端统一抽象
@@ -57,10 +57,10 @@
 
 | 项 | 关系 |
 |---|---|---|
-| 仓库 | 与后端 **同仓库独立目录**（`enterprise-agent-os/web/`）；uv workspace 不管前端 |
+| 仓库 | 与后端 **同仓库独立目录**（`qizhida-agent-platform/web/`）；uv workspace 不管前端 |
 | 数据 | 全部走后端 API；前端无数据库；UI 状态本地 |
 | 命名 | **与后端 modules/ 1:1 对齐**：前端 BC 名 = 后端模块名 |
-| DTO 来源 | 后端 OpenAPI → TypeScript Codegen → `@eos/web-types` |
+| DTO 来源 | 后端 OpenAPI → TypeScript Codegen → `@qzdap/web-types` |
 | Mock 来源 | 后端真实 handler 镜像（避免前后端 mock 不一致） |
 | 部署 | 独立 Node 构建产物；Nginx 静态托管 / Vercel / K8s 静态 Pod |
 | 起步范围 | **与后端同步**：核心闭环 4 模块先行（agent_runtime / session / skill / tool） |
@@ -72,7 +72,7 @@
 | 模板来源 | docs/web-refactor/ 是 `digital-employee-platform` 老项目的 web 重构方案 |
 | 复用 | 四维架构（pnpm + FSD + DDD + Hex）+ 测试与 CI + 风险验收**全部沿用** |
 | 差异 | 业务命名不沿用 `collab/home/cap`；按 Agent 能力重命名；与后端 modules/ 1:1 对齐 |
-| 配套 | 文档编号 00-12（与后端 enterprise-agent-os 文档集 13 篇对齐） |
+| 配套 | 文档编号 00-12（与后端 qizhida-agent-platform 文档集 13 篇对齐） |
 
 ## 后端 8 个模块（前端 BC 边界来源）
 
@@ -132,7 +132,7 @@ User → Session → Agent Runtime → Skill / Tool / Memory / Knowledge → Res
 
 ## 一句话总结
 
-> 现状：需要从 0 构建 enterprise-agent-os/web。
+> 现状：需要从 0 构建 qizhida-agent-platform/web。
 >
 > 方案：**pnpm Workspace + FSD 6 层 + DDD 8 BC（对齐后端）+ Hex Port/Adapter 四维融合**：
 >
@@ -141,6 +141,6 @@ User → Session → Agent Runtime → Skill / Tool / Memory / Knowledge → Res
 > - **DDD 战略**：8 BC（agent_runtime / session / skill / tool / knowledge / memory / governance / identity）+ channel 前端独有 + observability 横切
 > - **DDD 战术**：BC 内 `model/`（Entity/VO/Repository Port/Domain Service/ACL/Event）+ `lib/`（Use Case）
 > - **Hex 适配器**：BC 内 `api/` 下放 HttpApiAdapter（生产）/ MockApiAdapter（dev）/ LocalStorageAdapter（可选）三类
-> - **mock**：`@eos/web-mock` 与 `@eos/web-api` 平行；按租户切换；生产 tree-shake 剔除
+> - **mock**：`@qzdap/web-mock` 与 `@qzdap/web-api` 平行；按租户切换；生产 tree-shake 剔除
 >
 > 路径：**与后端同步 4 周增量 + buffer**：W1 物理 → W2 model 骨架 → W3 features 4 层 → W4 收尾 + CI 守门。

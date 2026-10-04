@@ -14,9 +14,9 @@ import { mockTeams, mockMembers, mockSharedItems } from '@/features/user/team/fi
 import { projectOpenSkills, projectOpenWorkflows, projectKnowledgeDocs } from '@/features/user/catalog/mappers';
 import { qk } from '@/api/shared/query-keys';
 
-const SKILLS_CHOSEN_KEY = 'qzd.user.skills.chosen';
-const AUTOMATIONS_CHOSEN_KEY = 'qzd.user.automations.chosen';
-const KNOWLEDGE_CHOSEN_KEY = 'qzd.user.knowledge.chosen';
+const SKILLS_CHOSEN_KEY = 'qzdap.user.skills.chosen';
+const AUTOMATIONS_CHOSEN_KEY = 'qzdap.user.automations.chosen';
+const KNOWLEDGE_CHOSEN_KEY = 'qzdap.user.knowledge.chosen';
 
 function renderWithProviders(node: ReactNode, chosenSkillIds: string[] = ['skill-summary', 'tool-calendar', 'mcp-drive']) {
   sessionStorage.setItem(SKILLS_CHOSEN_KEY, JSON.stringify(chosenSkillIds));
@@ -153,7 +153,8 @@ describe('我的协作', () => {
     const qc = makeClient();
     qc.setQueryData([...qk.user.team.root, 'teams', 'w1'], mockTeams);
     qc.setQueryData([...qk.user.team.members, 'w1'], mockMembers);
-    qc.setQueryData([...qk.user.team.shared, 'w1'], mockSharedItems);
+    qc.setQueryData([...qk.user.team.shared, 'agents', 'w1'], mockSharedItems.filter((item) => item.kind === 'agent'));
+    qc.setQueryData([...qk.user.team.shared, 'knowledge', 'w1'], mockSharedItems.filter((item) => item.kind === 'knowledge'));
     return render(<MyTeam />, { wrapper: wrap(qc) });
   }
 
@@ -161,8 +162,8 @@ describe('我的协作', () => {
     renderTeam();
     fireEvent.click(screen.getByRole('tab', { name: '智能体' }));
     expect(screen.getByText('需求梳理伙伴')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '取消收藏需求梳理伙伴' }));
-    expect(screen.getByRole('button', { name: '收藏需求梳理伙伴' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '收藏需求梳理伙伴' }));
+    expect(screen.getByRole('button', { name: '取消收藏需求梳理伙伴' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /客户成功组/ }));
     expect(screen.getByText('客户沟通助手')).toBeTruthy();
     expect(screen.queryByText('需求梳理伙伴')).toBeNull();

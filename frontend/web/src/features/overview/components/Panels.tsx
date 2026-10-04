@@ -15,7 +15,6 @@ const BAR_CLASS: Record<TopAgent['tone'], string> = {
 };
 
 export function AlertsPanel({ alerts, onSelect }: { alerts: OverviewAlert[]; onSelect: (alert: OverviewAlert) => void }) {
-  const navigate = useNavigate();
   return (
     <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-7">
       <div className="flex items-center justify-between">
@@ -28,7 +27,9 @@ export function AlertsPanel({ alerts, onSelect }: { alerts: OverviewAlert[]; onS
         </span>
       </div>
       <div className="mt-5 divide-y divide-[var(--border)]">
-        {alerts.map((alert) => {
+        {alerts.length === 0
+          ? <p className="py-8 text-center text-sm text-[var(--text-muted)]">暂无告警。</p>
+          : alerts.map((alert) => {
           const badge = SEVERITY_BADGE[alert.severity];
           return (
             <button key={alert.id} type="button" onClick={() => onSelect(alert)} className="flex w-full items-start gap-3 py-3 text-left transition hover:bg-[var(--bg-hover)]">
@@ -42,9 +43,7 @@ export function AlertsPanel({ alerts, onSelect }: { alerts: OverviewAlert[]; onS
           );
         })}
       </div>
-      <button type="button" onClick={() => navigate('/admin/alerts')} className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-[var(--brand)] hover:underline">
-        查看全部告警 <ChevronRight className="h-3.5 w-3.5" />
-      </button>
+      <p className="mt-4 text-xs text-[var(--text-muted)]">{alerts.length} 条事件 · 来自运营概览接口</p>
     </section>
   );
 }
@@ -62,7 +61,9 @@ export function ServicesPanel({ services, onViewAll }: { services: OverviewServi
         </button>
       </div>
       <div className="mt-5 divide-y divide-[var(--border)]">
-        {services.map((service) => (
+        {services.length === 0
+          ? <p className="py-8 text-center text-sm text-[var(--text-muted)]">暂无服务健康数据。</p>
+          : services.map((service) => (
           <div key={service.name} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
             <StatusDot status={service.status} />
             <div className="min-w-0 flex-1">
@@ -92,7 +93,9 @@ export function TopAgentsPanel({ topAgents }: { topAgents: TopAgent[] }) {
         </button>
       </div>
       <div className="mt-5 space-y-4">
-        {topAgents.map((agent, index) => (
+        {topAgents.length === 0
+          ? <p className="py-8 text-center text-sm text-[var(--text-muted)]">暂无智能体调用排名。</p>
+          : topAgents.map((agent, index) => (
           <button key={agent.name} type="button" onClick={() => navigate('/admin/agents')} className="block w-full text-left transition hover:opacity-90">
             <div className="flex items-center justify-between text-xs">
               <span className="inline-flex items-center gap-2 font-semibold">

@@ -1,11 +1,11 @@
 # Header-based canary routing.
 # Primary rule (no annotation) → stable. Canary rule (annotations)
-# activates when the request carries `X-EOS-Ring: canary`.
+# activates when the request carries `X-QZDAP-Ring: canary`.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: eos-app
-  namespace: eos-prod
+  name: qzdap-app
+  namespace: qzdap-prod
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "32m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
@@ -16,43 +16,43 @@ metadata:
 spec:
   ingressClassName: nginx
   tls:
-    - hosts: [eos.example.com]
-      secretName: eos-app-tls
+    - hosts: [qzdap.example.com]
+      secretName: qzdap-app-tls
   rules:
-    - host: eos.example.com
+    - host: qzdap.example.com
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: eos-app-stable
+                name: qzdap-app-stable
                 port:
                   number: 80
 ---
-# Canary ingress — only matches when X-EOS-Ring: canary is set.
+# Canary ingress — only matches when X-QZDAP-Ring: canary is set.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: eos-app-canary
-  namespace: eos-prod
+  name: qzdap-app-canary
+  namespace: qzdap-prod
   annotations:
     nginx.ingress.kubernetes.io/canary: "true"
-    nginx.ingress.kubernetes.io/canary-by-header: "X-EOS-Ring"
+    nginx.ingress.kubernetes.io/canary-by-header: "X-QZDAP-Ring"
     nginx.ingress.kubernetes.io/canary-by-header-value: "canary"
 spec:
   ingressClassName: nginx
   tls:
-    - hosts: [eos.example.com]
-      secretName: eos-app-tls
+    - hosts: [qzdap.example.com]
+      secretName: qzdap-app-tls
   rules:
-    - host: eos.example.com
+    - host: qzdap.example.com
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: eos-app-canary
+                name: qzdap-app-canary
                 port:
                   number: 80

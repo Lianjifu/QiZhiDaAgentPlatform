@@ -89,7 +89,8 @@ describe('Login', () => {
     expect(screen.getByText('99.99%')).toBeTruthy();
     expect(screen.getByText('< 50ms')).toBeTruthy();
     // hero title (appears in both brand mark and hero — assert at least one match)
-    expect(screen.getAllByText('企智搭 · 智能体平台').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('企智搭').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByLabelText('企智搭 · 智能体平台').length).toBeGreaterThanOrEqual(1);
     // new copy: smart/control/governance terminology
     expect(screen.getByText('持续验证 · 零信任')).toBeTruthy();
     expect(screen.getByText('智能体协同 · 受控执行')).toBeTruthy();
@@ -97,20 +98,25 @@ describe('Login', () => {
     expect(screen.getByText('智能体能力')).toBeTruthy();
   });
 
-  it('clicking 管理员登录 demo chip auto-fills email + password', () => {
+  it('clicking 管理员登录 demo chip auto-fills and submits admin credentials', () => {
+    const mutate = vi.fn();
+    mutation.mockReturnValue({ mutate, isPending: false, data: undefined, error: null });
     renderLogin(['/login']);
-    const admin = screen.getByRole('button', { name: /管理员登录/ });
-    fireEvent.click(admin);
+    fireEvent.click(screen.getByRole('button', { name: /管理员登录/ }));
     const emailInput = screen.getByPlaceholderText('name@company.com') as HTMLInputElement;
     const pwInput = screen.getByPlaceholderText('••••••••') as HTMLInputElement;
     expect(emailInput.value).toBe('admin@acme.com');
     expect(pwInput.value).toBe('dev-admin-password-change-me');
+    expect(mutate).toHaveBeenCalledWith({ email: 'admin@acme.com', password: 'dev-admin-password-change-me' });
   });
 
   it('clicking 普通用户登录 demo chip uses the user account', () => {
+    const mutate = vi.fn();
+    mutation.mockReturnValue({ mutate, isPending: false, data: undefined, error: null });
     renderLogin(['/login']);
     fireEvent.click(screen.getByRole('button', { name: /普通用户登录/ }));
     expect((screen.getByPlaceholderText('name@company.com') as HTMLInputElement).value).toBe('user@acme.com');
+    expect(mutate).toHaveBeenCalledWith({ email: 'user@acme.com', password: 'dev-admin-password-change-me' });
   });
 
   it('form submit calls mutate with email + password', () => {
@@ -129,6 +135,13 @@ describe('Login', () => {
     authState.user = { id: 'u1', role: 'user', name: 'Tester' };
     renderLogin(['/login']);
     expect(navigateMock).toHaveBeenCalledWith('/home', { replace: true });
+  });
+
+  it('redirects already-authed admin to /admin/overview', () => {
+    authState.isAuthed = true;
+    authState.user = { id: 'u1', role: 'admin', name: 'Admin', email: 'admin@acme.com' };
+    renderLogin(['/login']);
+    expect(navigateMock).toHaveBeenCalledWith('/admin/overview', { replace: true });
   });
 
   it('blocks form submit during IME composition and fires after compositionend', () => {

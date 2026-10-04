@@ -1,10 +1,10 @@
-"""Unit tests for ``eos_vault.crypto.aes_gcm`` (P6 model + channel)."""
+"""Unit tests for ``qzdap_vault.crypto.aes_gcm`` (P6 model + channel)."""
 
 from __future__ import annotations
 
 import pytest
 
-from eos_vault import (
+from qzdap_vault import (
     CryptoError,
     InvalidCiphertext,
     InvalidKey,
@@ -172,7 +172,7 @@ def test_derive_key_rejects_invalid_length() -> None:
 
 def test_derive_key_then_encrypt_decrypt_round_trip() -> None:
     """Common pattern: passphrase + salt → AES key → encrypt."""
-    passphrase = "EOS_MODEL_MASTER_KEY_env"
+    passphrase = "QZDAP_MODEL_MASTER_KEY_env"
     salt = b"unique-salt-per-tenant"
     key = derive_key(passphrase, salt=salt)
     blob = encrypt(b"sk-abc1234567890", key)
@@ -184,7 +184,7 @@ def test_derive_key_then_encrypt_decrypt_round_trip() -> None:
 
 def test_crypto_errors_are_app_errors() -> None:
     """All crypto errors inherit ``AppError`` so the HTTP layer maps them."""
-    from eos_kernel.errors import AppError
+    from qzdap_kernel.errors import AppError
 
     assert issubclass(InvalidKey, AppError)
     assert issubclass(InvalidCiphertext, AppError)

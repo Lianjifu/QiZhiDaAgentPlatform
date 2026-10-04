@@ -5,10 +5,10 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from eos_kernel.errors import ForbiddenError
+from qzdap_kernel.errors import ForbiddenError
 
-from eos_persistence.base import Base, make_composite_index
-from eos_persistence.tenant_guard import (
+from qzdap_persistence.base import Base, make_composite_index
+from qzdap_persistence.tenant_guard import (
     assert_tenant_scope,
     bind_tenant_to_session,
     current_tenant_id,
@@ -59,7 +59,7 @@ def test_assert_tenant_scope_allows_self() -> None:
 
 
 def test_register_pgvector_is_idempotent() -> None:
-    from eos_persistence.pgvector import register_pgvector
+    from qzdap_persistence.pgvector import register_pgvector
 
     register_pgvector()
     register_pgvector()  # must not raise

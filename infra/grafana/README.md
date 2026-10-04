@@ -1,36 +1,36 @@
-# Grafana — EnterpriseAgentOS
+# Grafana — 企智搭 · 智能体平台
 
-Multi-tenant dashboards + provisioning for the EOS backend.
+Multi-tenant dashboards + provisioning for the QZDAP backend.
 
 ## Layout
 
 ```
 infra/grafana/
 ├── dashboards/
-│   ├── eos-overview.json      # 5 panel TOP dashboard (rate / latency / error / cost / eval)
-│   └── eos-costs.json         # Cost observability dashboard (pie / 7d trend / top 10 tenants)
+│   ├── qzdap-overview.json      # 5 panel TOP dashboard (rate / latency / error / cost / eval)
+│   └── qzdap-costs.json         # Cost observability dashboard (pie / 7d trend / top 10 tenants)
 └── provisioning/
     ├── dashboards/
-    │   └── eos-dashboards.yaml  # Auto-load dashboards/ directory
+    │   └── qzdap-dashboards.yaml  # Auto-load dashboards/ directory
     └── datasources/
         └── prometheus.yaml      # Prometheus datasource (URL + scrape)
 ```
 
 ## Dashboards
 
-### EOS — Overview (`eos-overview.json`)
+### QZDAP — Overview (`qzdap-overview.json`)
 
 5 panels, multi-tenant via `tenant_id` template variable:
 
 | # | Panel | Source |
 |---|---|---|
-| 1 | Tenant Request Rate | `rate(eos_http_requests_total[5m])` |
+| 1 | Tenant Request Rate | `rate(qzdap_http_requests_total[5m])` |
 | 2 | P95 Turn Latency | `histogram_quantile(0.95, ...)` |
 | 3 | Error Rate (5xx) | 5xx / total ratio |
-| 4 | LLM Cost (USD/5m) | `rate(eos_cost_usd_total[5m]) * 300` |
+| 4 | LLM Cost (USD/5m) | `rate(qzdap_cost_usd_total[5m]) * 300` |
 | 5 | Eval Gate Pass Rate | passed / total |
 
-### EOS — Costs (`eos-costs.json`)
+### QZDAP — Costs (`qzdap-costs.json`)
 
 3 panels:
 
@@ -58,13 +58,13 @@ services:
       - "3000:3000"
 ```
 
-After boot, dashboards appear under folder **EnterpriseAgentOS**.
+After boot, dashboards appear under folder **QiZhiDa**.
 
 ### Bare-metal / VM
 
 ```bash
 sudo cp dashboards/*.json /etc/grafana/dashboards/
-sudo cp provisioning/dashboards/eos-dashboards.yaml /etc/grafana/provisioning/dashboards/
+sudo cp provisioning/dashboards/qzdap-dashboards.yaml /etc/grafana/provisioning/dashboards/
 sudo cp provisioning/datasources/prometheus.yaml /etc/grafana/provisioning/datasources/
 sudo systemctl reload grafana-server
 ```
@@ -73,23 +73,23 @@ sudo systemctl reload grafana-server
 
 ```bash
 # JSON parses cleanly
-python3 -c "import json; json.load(open('dashboards/eos-overview.json'))"
-python3 -c "import json; json.load(open('dashboards/eos-costs.json'))"
+python3 -c "import json; json.load(open('dashboards/qzdap-overview.json'))"
+python3 -c "import json; json.load(open('dashboards/qzdap-costs.json'))"
 
 # Provisioning YAML parses
 python3 -c "import yaml; yaml.safe_load(open('provisioning/datasources/prometheus.yaml'))"
-python3 -c "import yaml; yaml.safe_load(open('provisioning/dashboards/eos-dashboards.yaml'))"
+python3 -c "import yaml; yaml.safe_load(open('provisioning/dashboards/qzdap-dashboards.yaml'))"
 ```
 
 ## Multi-tenancy
 
 Both dashboards use the `tenant` template variable sourced from
-`label_values(eos_*_total, tenant)` so it auto-populates as the
+`label_values(qzdap_*_total, tenant)` so it auto-populates as the
 backend emits metrics with the `tenant` label.  Until P10+
 instrumentation middleware is wired, the dropdown will be empty —
 that's expected for P9-6.
 
 ## Metric contract
 
-Same set of `eos_*` metrics documented in
+Same set of `qzdap_*` metrics documented in
 [`infra/prometheus/README.md`](../prometheus/README.md#metrics-contract).

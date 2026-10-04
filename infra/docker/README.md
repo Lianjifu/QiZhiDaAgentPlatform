@@ -7,17 +7,17 @@ production image with gunicorn (uvicorn workers) running on port 8102.
 
 ```bash
 # from repo root
-docker build -f infra/docker/Dockerfile.app -t eos-app:prod .
+docker build -f infra/docker/Dockerfile.app -t qzdap-app:prod .
 ```
 
 ## Run (single instance)
 
 ```bash
 docker run --rm -p 8102:8102 \
-    -e EOS_RING=stable \
-    -e EOS_DATABASE_URL_SECRET_REF=vault://prod/eos/database_url \
-    -e EOS_REDIS_URL_SECRET_REF=vault://prod/eos/redis_url \
-    eos-app:prod
+    -e QZDAP_RING=stable \
+    -e QZDAP_DATABASE_URL_SECRET_REF=vault://prod/qzdap/database_url \
+    -e QZDAP_REDIS_URL_SECRET_REF=vault://prod/qzdap/redis_url \
+    qzdap-app:prod
 ```
 
 ## Configuration
@@ -26,12 +26,12 @@ All runtime config comes via environment variables. Critical ones:
 
 | Env | Purpose | Default |
 |---|---|---|
-| `EOS_ENV` | `production` for prod | `production` |
-| `EOS_RING` | `stable` or `canary` (P10 gray) | `stable` |
-| `EOS_GUNICORN_WORKERS` | worker count | 4 |
-| `EOS_GUNICORN_THREADS` | threads per worker | 2 |
-| `EOS_GUNICORN_TIMEOUT` | request timeout (s) | 60 |
-| `EOS_GUNICORN_BIND` | bind address | `0.0.0.0:8102` |
+| `QZDAP_ENV` | `production` for prod | `production` |
+| `QZDAP_RING` | `stable` or `canary` (P10 gray) | `stable` |
+| `QZDAP_GUNICORN_WORKERS` | worker count | 4 |
+| `QZDAP_GUNICORN_THREADS` | threads per worker | 2 |
+| `QZDAP_GUNICORN_TIMEOUT` | request timeout (s) | 60 |
+| `QZDAP_GUNICORN_BIND` | bind address | `0.0.0.0:8102` |
 
 ## Health checks
 
@@ -39,7 +39,7 @@ All runtime config comes via environment variables. Critical ones:
 - `/readyz` — readiness (DB + Redis reachable)
 - `/healthz` — full health (DB + Redis + vector store)
 
-All three are wired to the existing `eos_http.health` module.
+All three are wired to the existing `qzdap_http.health` module.
 
 ## Production tuning
 

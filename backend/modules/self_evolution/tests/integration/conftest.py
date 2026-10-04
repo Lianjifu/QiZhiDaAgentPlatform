@@ -72,7 +72,7 @@ def _db_reachable(url: str) -> bool:
 
 @pytest.fixture(scope="session")
 def database_url() -> str:
-    return os.environ.get("EOS_DATABASE_URL", _DEFAULT_DB_URL)
+    return os.environ.get("QZDAP_DATABASE_URL", _DEFAULT_DB_URL)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -87,7 +87,7 @@ def _require_postgres(database_url: str) -> None:
 
 @pytest.fixture(scope="session")
 def schema_name() -> str:
-    return f"eos_evo_test_{uuid.uuid4().hex[:8]}"
+    return f"qzdap_evo_test_{uuid.uuid4().hex[:8]}"
 
 
 def _register_search_path(engine: AsyncEngine, schema: str) -> None:

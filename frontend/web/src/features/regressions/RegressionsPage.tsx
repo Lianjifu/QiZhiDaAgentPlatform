@@ -19,13 +19,16 @@ import { TrackCard } from './components/TrackCard';
 
 type ViewId = 'track' | 'baseline' | 'risk' | 'timeline' | 'alert';
 
+const EMPTY_TRACKS: RegressionTrack[] = [];
+const EMPTY_ALERTS: AlertRule[] = [];
+
 export default function RegressionsPage() {
   const navigate = useNavigate();
   const remoteTracks = useRegressionTracks();
   const remoteAlerts = useRegressionAlerts();
   const remoteTimeline = useRegressionTimeline();
-  const tracksData = remoteTracks.data ?? [];
-  const alertsData = remoteAlerts.data ?? [];
+  const tracksData = remoteTracks.data ?? EMPTY_TRACKS;
+  const alertsData = remoteAlerts.data ?? EMPTY_ALERTS;
   const timelineData = remoteTimeline.data ?? [];
 
   const [tracks, setTracks] = useState<RegressionTrack[]>([]);
@@ -42,8 +45,8 @@ export default function RegressionsPage() {
   const [notice, setNotice] = useState('');
   const [page, setPage] = useState(1);
 
-  useEffect(() => { setTracks(tracksData); }, [tracksData]);
-  useEffect(() => { setAlerts(alertsData); }, [alertsData]);
+  useEffect(() => { setTracks(tracksData); }, [remoteTracks.data]);
+  useEffect(() => { setAlerts(alertsData); }, [remoteAlerts.data]);
 
   const counts = useMemo(() => {
     const total = tracks.length;

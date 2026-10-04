@@ -1,13 +1,24 @@
 /**
- * Copilot 会话 hooks — 占位。`/api/sessions` 已在 mock.ts 注册但当前 UI
- * 仍以内置样例展示;`useSessions` 留作后续替换 useState 提供真实数据时使用。
+ * Copilot 会话 hooks。
  */
-import { useApiQuery } from '@/services/query';
+import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';
 import { withDefaults } from '@/api/shared/pagination';
 import type { CopilotSession, SessionsListParams } from './schema';
 
 const PATH = '/api/sessions';
+
+export interface SessionDetail extends CopilotSession {
+  messages?: Array<{ role: string; content: string; toolName?: string }>;
+  pendingApproval?: {
+    approval_id?: string;
+    approvalId?: string;
+    tool_name?: string;
+    toolName?: string;
+    arguments?: Record<string, unknown>;
+    reason?: string;
+  } | null;
+}
 
 export function useSessions(params: SessionsListParams = {}) {
   const query = withDefaults(params);
@@ -15,6 +26,13 @@ export function useSessions(params: SessionsListParams = {}) {
     [...qk.user.copilot.sessions, query],
     PATH,
     { query },
-    { staleTime: 30_000, placeholderData: (prev) => prev },
+    { staleTime: 15_000, placeholderData: (prev) => prev },
+  );
+}
+
+export function useCreateSession() {
+  return useApiMutation<SessionDetail, { agentId: string; title?: string }>(
+    PATH,
+    { invalidateKeys: [qk.user.copilot.sessions] },
   );
 }

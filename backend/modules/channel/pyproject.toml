@@ -1,16 +1,16 @@
 [project]
-name = "deos-channel"
+name = "qzdap-channel"
 version = "0.1.0"
 description = "Inbound/outbound channel adapters (Feishu, DingTalk, WeChat Work, Web) + webhook verification"
 requires-python = ">=3.12"
 dependencies = [
-  "eos-kernel",
-  "eos-schema",
-  "eos-persistence",
-  "eos-auth",
-  "eos-messaging",
-  "eos-vault",
-  "eos-http",
+  "qzdap-kernel",
+  "qzdap-schema",
+  "qzdap-persistence",
+  "qzdap-auth",
+  "qzdap-messaging",
+  "qzdap-vault",
+  "qzdap-http",
   "fastapi>=0.110",
   "pydantic>=2.5",
   "httpx>=0.27",
@@ -21,11 +21,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/deos"]
+packages = ["src/qzdap"]
 
 [tool.pytest.ini_options]
 pythonpath = [
-  "src/deos",
+  "src/qzdap",
   "tests/unit",
 ]
 testpaths = ["tests/unit"]

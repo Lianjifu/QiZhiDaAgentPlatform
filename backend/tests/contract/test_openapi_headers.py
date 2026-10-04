@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 
 ROOTS = [
-    Path("modules/identity/src/deos/modules/identity/adapter/http"),
-    Path("modules/agent_runtime/src/deos/modules/agent_runtime/adapter/http"),
-    Path("modules/tool/src/deos/modules/tool/adapter/http"),
+    Path("modules/identity/src/qzdap/modules/identity/adapter/http"),
+    Path("modules/agent_runtime/src/qzdap/modules/agent_runtime/adapter/http"),
+    Path("modules/tool/src/qzdap/modules/tool/adapter/http"),
 ]
 
 # Whitelist of paths that may omit the tenant header (matched as suffix).

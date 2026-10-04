@@ -6,13 +6,13 @@ from uuid import UUID
 
 import pytest
 
-from deos.modules.skill.application.ports import (
+from qzdap.modules.skill.application.ports import (
     SkillRepository,
     SkillUserStateRepository,
 )
-from deos.modules.skill.application.services import SkillService
-from deos.modules.skill.domain.entities import Skill
-from deos.modules.skill.domain.errors import SkillDisabled, SkillNotFound
+from qzdap.modules.skill.application.services import SkillService
+from qzdap.modules.skill.domain.entities import Skill
+from qzdap.modules.skill.domain.errors import SkillDisabled, SkillNotFound
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
 WORKSPACE = UUID("00000000-0000-0000-0000-000000000002")
@@ -156,6 +156,82 @@ async def test_bump_and_describe_requires_published() -> None:
     assert result["ok"] is True
     again = await svc.get_admin(UUID(listed[0]["id"]))
     assert again["calls"] == 1
+
+
+class _FakeSandbox:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def run_job(self, **kwargs):  # type: ignore[no-untyped-def]
+        self.calls.append(kwargs)
+        return {"status": "succeeded", "stdout": "done", "stderr": "", "exit_code": 0}
+
+
+@pytest.mark.asyncio
+async def test_invoke_in_sandbox_records_metrics() -> None:
+    from uuid import uuid4
+
+    sandbox = _FakeSandbox()
+    svc = SkillService(
+        InMemorySkillRepository(),
+        InMemorySkillUserStateRepository(),
+        sandbox_jobs=sandbox,
+    )
+    created = await svc.create(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={
+            "name": "沙箱技能",
+            "type": "Skill",
+            "owner": "管理员",
+            "runtime": {
+                "enabled": True,
+                "source": "print(open('/work/input.json').read())",
+                "entry": "main.py",
+                "image": "qzdap/sandbox-python:latest",
+            },
+        },
+    )
+    await svc.bulk(ids=[created["id"]], action="publish", actor="管理员")
+    result = await svc.invoke_in_sandbox(
+        workspace_id=WORKSPACE,
+        name="沙箱技能",
+        arguments={},
+        call_id=uuid4(),
+    )
+    assert result["ok"] is True
+    assert sandbox.calls
+    again = await svc.get_admin(UUID(created["id"]))
+    assert again["calls"] == 1
+    assert again["successRate"] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_invoke_requires_runtime_and_confirm() -> None:
+    from uuid import uuid4
+
+    from qzdap.modules.skill.domain.errors import SkillNeedsConfirm, SkillNotExecutable
+
+    svc = _svc()
+    created = await svc.create(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"name": "无运行时", "type": "Skill", "owner": "管理员", "needConfirm": True},
+    )
+    await svc.bulk(ids=[created["id"]], action="publish", actor="管理员")
+    with pytest.raises(SkillNeedsConfirm):
+        await svc.invoke_in_sandbox(
+            workspace_id=WORKSPACE, name="无运行时", arguments={}, call_id=uuid4()
+        )
+    await svc.update(
+        skill_id=UUID(created["id"]),
+        body={"patch": {"needConfirm": False}},
+        actor="管理员",
+    )
+    with pytest.raises(SkillNotExecutable):
+        await svc.invoke_in_sandbox(
+            workspace_id=WORKSPACE, name="无运行时", arguments={}, call_id=uuid4()
+        )
 
 
 @pytest.mark.asyncio

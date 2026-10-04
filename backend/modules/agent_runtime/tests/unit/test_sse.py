@@ -5,14 +5,14 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from uuid import UUID
 
-from eos_schema.dtos.turn import (
+from qzdap_schema.dtos.turn import (
     DoneChunk,
     ErrorChunk,
     MessageChunk,
     UsageChunk,
 )
 
-from deos.modules.agent_runtime.adapter.http.sse import sse_stream
+from qzdap.modules.agent_runtime.adapter.http.sse import sse_stream
 
 
 async def _gen() -> AsyncIterator:

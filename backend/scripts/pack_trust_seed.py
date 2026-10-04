@@ -11,8 +11,8 @@ with the same ``key_id``.
 Usage::
 
     python scripts/pack_trust_seed.py \\
-        .eos/skill-trust/eos-office-dev.pub.pem \\
-        .eos/skill-trust
+        .qzdap/skill-trust/qzdap-office-dev.pub.pem \\
+        .qzdap/skill-trust
 
 The trust directory is created if missing.
 """
@@ -28,7 +28,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT))
 sys.path.insert(0, str(_REPO_ROOT / "libs" / "pack_signing" / "src"))
 
-from eos_pack_signing import (  # noqa: E402
+from qzdap_pack_signing import (  # noqa: E402
     load_public_key_pem,
     public_key_id,
 )

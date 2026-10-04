@@ -102,7 +102,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
-          POSTGRES_DB: eos_test
+          POSTGRES_DB: qzdap_test
         ports: ['5432:5432']
         options: >-
           --health-cmd pg_isready
@@ -118,14 +118,14 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      EOS_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/eos_test
-      EOS_REDIS_URL: redis://localhost:6379/0
-      EOS_ENV: ci
-      EOS_BAN_MOCK_TOKEN: '1'
-      EOS_ALLOW_DEMO_TOKEN: '0'
-      EOS_LLM_PROVIDER: mock
-      EOS_LLM_MOCK_LATENCY_MS: '50'
-      EOS_JWT_SECRET: ci-test-secret-not-for-production-use
+      QZDAP_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/qzdap_test
+      QZDAP_REDIS_URL: redis://localhost:6379/0
+      QZDAP_ENV: ci
+      QZDAP_BAN_MOCK_TOKEN: '1'
+      QZDAP_ALLOW_DEMO_TOKEN: '0'
+      QZDAP_LLM_PROVIDER: mock
+      QZDAP_LLM_MOCK_LATENCY_MS: '50'
+      QZDAP_JWT_SECRET: ci-test-secret-not-for-production-use
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -140,9 +140,9 @@ jobs:
           until pg_isready -h localhost -p 5432; do sleep 1; done
           until redis-cli -h localhost ping; do sleep 1; done
       - name: Apply migrations
-        run: EOS_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/eos_test uv run alembic -c migrations/alembic.ini upgrade head
+        run: QZDAP_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/qzdap_test uv run alembic -c migrations/alembic.ini upgrade head
       - name: Run tests
-        run: EOS_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/eos_test uv run pytest --cov-fail-under=70
+        run: QZDAP_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/qzdap_test uv run pytest --cov-fail-under=70
 
   smoke:
     name: Smoke (end-to-end)
@@ -154,7 +154,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
-          POSTGRES_DB: eos_smoke
+          POSTGRES_DB: qzdap_smoke
         ports: ['5432:5432']
         options: >-
           --health-cmd pg_isready
@@ -176,16 +176,16 @@ jobs:
           MINIO_ROOT_PASSWORD: minioadmin
         ports: ['9000:9000', '9001:9001']
     env:
-      EOS_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/eos_smoke
-      EOS_REDIS_URL: redis://localhost:6379/0
-      EOS_OBJECT_STORAGE_ENDPOINT: http://localhost:9000
-      EOS_OBJECT_STORAGE_ACCESS_KEY: minioadmin
-      EOS_OBJECT_STORAGE_SECRET_KEY: minioadmin
-      EOS_ENV: ci
-      EOS_BAN_MOCK_TOKEN: '1'
-      EOS_ALLOW_DEMO_TOKEN: '0'
-      EOS_LLM_PROVIDER: mock
-      EOS_JWT_SECRET: ci-smoke-secret-not-for-production
+      QZDAP_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/qzdap_smoke
+      QZDAP_REDIS_URL: redis://localhost:6379/0
+      QZDAP_OBJECT_STORAGE_ENDPOINT: http://localhost:9000
+      QZDAP_OBJECT_STORAGE_ACCESS_KEY: minioadmin
+      QZDAP_OBJECT_STORAGE_SECRET_KEY: minioadmin
+      QZDAP_ENV: ci
+      QZDAP_BAN_MOCK_TOKEN: '1'
+      QZDAP_ALLOW_DEMO_TOKEN: '0'
+      QZDAP_LLM_PROVIDER: mock
+      QZDAP_JWT_SECRET: ci-smoke-secret-not-for-production
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -202,7 +202,7 @@ jobs:
       - name: Apply migrations
         run: uv run alembic -c migrations/alembic.ini upgrade head
       - name: Start app
-        run: uv run uvicorn deos.composition.main:create_app --host 127.0.0.1 --port 8100 --factory &
+        run: uv run uvicorn qzdap.composition.main:create_app --host 127.0.0.1 --port 8100 --factory &
       - name: Wait for app
         run: |
           for i in {1..30}; do

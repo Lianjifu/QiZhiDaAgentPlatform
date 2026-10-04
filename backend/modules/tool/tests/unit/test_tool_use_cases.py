@@ -14,7 +14,7 @@ from _tool_unit_in_memory import (
     InMemoryToolRepository,
 )
 
-from deos.modules.tool.application.use_cases import (
+from qzdap.modules.tool.application.use_cases import (
     BatchInvokeInput,
     DeleteToolUseCase,
     GetToolUseCase,
@@ -23,7 +23,7 @@ from deos.modules.tool.application.use_cases import (
     RegisterToolUseCase,
     UpdateToolUseCase,
 )
-from deos.modules.tool.domain import (
+from qzdap.modules.tool.domain import (
     AuthConfig,
     AuthConfigType,
     SpecOperation,
@@ -31,7 +31,7 @@ from deos.modules.tool.domain import (
     ToolCallStatus,
     ToolProtocol,
 )
-from deos.modules.tool.domain.errors import (
+from qzdap.modules.tool.domain.errors import (
     ToolAlreadyExists,
     ToolCallTimeout,
     ToolDisabled,
@@ -67,7 +67,7 @@ def _deps():
 
 
 def _service(d):
-    from deos.modules.tool.application.services import ToolService
+    from qzdap.modules.tool.application.services import ToolService
 
     return ToolService(
         tools=d["tools"],
@@ -169,7 +169,7 @@ class TestRegisterTool:
 
     @pytest.mark.asyncio
     async def test_invalid_openapi_spec_raises(self) -> None:
-        from deos.modules.tool.domain.errors import InvalidToolSpec
+        from qzdap.modules.tool.domain.errors import InvalidToolSpec
 
         d = _deps()
         with pytest.raises(InvalidToolSpec):
@@ -472,7 +472,7 @@ class TestInvokeTool:
             mcp=d["mcp"],
             events=d["events"],
         )
-        from deos.modules.tool.application.use_cases import InvalidToolSpecCallError
+        from qzdap.modules.tool.application.use_cases import InvalidToolSpecCallError
 
         with pytest.raises(InvalidToolSpecCallError):
             await invoke.execute(
@@ -712,7 +712,7 @@ class TestRegisterToolNegative:
 
     @pytest.mark.asyncio
     async def test_register_mcp_missing_server_url_rejected(self) -> None:
-        from deos.modules.tool.domain.errors import InvalidToolSpec
+        from qzdap.modules.tool.domain.errors import InvalidToolSpec
 
         d = _deps()
         with pytest.raises(InvalidToolSpec):
@@ -730,7 +730,7 @@ class TestRegisterToolNegative:
 
     @pytest.mark.asyncio
     async def test_register_mcp_missing_tool_name_rejected(self) -> None:
-        from deos.modules.tool.domain.errors import InvalidToolSpec
+        from qzdap.modules.tool.domain.errors import InvalidToolSpec
 
         d = _deps()
         with pytest.raises(InvalidToolSpec):
@@ -748,7 +748,7 @@ class TestRegisterToolNegative:
 
     @pytest.mark.asyncio
     async def test_register_openapi_missing_paths_rejected(self) -> None:
-        from deos.modules.tool.domain.errors import InvalidToolSpec
+        from qzdap.modules.tool.domain.errors import InvalidToolSpec
 
         d = _deps()
         with pytest.raises(InvalidToolSpec):
@@ -1015,7 +1015,7 @@ class TestUpdateToolNegative:
 
     @pytest.mark.asyncio
     async def test_update_with_invalid_spec_raises(self) -> None:
-        from deos.modules.tool.domain.errors import InvalidToolSpec
+        from qzdap.modules.tool.domain.errors import InvalidToolSpec
 
         d = _deps()
         reg = RegisterToolUseCase(d["tools"], d["events"])
@@ -1160,7 +1160,7 @@ class TestGetToolNegative:
 class TestInvokeToolNegative:
     @pytest.mark.asyncio
     async def test_invoke_openapi_with_unknown_operation_id_422(self) -> None:
-        from deos.modules.tool.application.use_cases import InvalidToolSpecCallError
+        from qzdap.modules.tool.application.use_cases import InvalidToolSpecCallError
 
         d = _deps()
         reg = RegisterToolUseCase(d["tools"], d["events"])
@@ -1197,7 +1197,7 @@ class TestInvokeToolNegative:
 
     @pytest.mark.asyncio
     async def test_invoke_openapi_without_servers_url_422(self) -> None:
-        from deos.modules.tool.application.use_cases import InvalidToolSpecCallError
+        from qzdap.modules.tool.application.use_cases import InvalidToolSpecCallError
 
         d = _deps()
         # Bypass the registration validator by manually crafting a tool
@@ -1237,7 +1237,7 @@ class TestInvokeToolNegative:
     @pytest.mark.asyncio
     async def test_invoke_openapi_with_operation_id_non_string(self) -> None:
         # __operation_id must be a non-empty string; a list/int is rejected.
-        from deos.modules.tool.application.use_cases import InvalidToolSpecCallError
+        from qzdap.modules.tool.application.use_cases import InvalidToolSpecCallError
 
         d = _deps()
         reg = RegisterToolUseCase(d["tools"], d["events"])

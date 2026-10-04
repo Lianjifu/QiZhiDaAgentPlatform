@@ -1,26 +1,26 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: eos-app-config
-  namespace: eos-staging
+  name: qzdap-app-config
+  namespace: qzdap-staging
   labels:
-    name: eos-staging
-    purpose: enterprise-agent-os
+    name: qzdap-staging
+    purpose: qizhida-agent-platform
     environment: staging
 data:
-  EOS_ENV: "staging"
-  EOS_LOG_LEVEL: "INFO"
-  EOS_BAN_MOCK_TOKEN: "1"
-  EOS_ALLOW_DEMO_TOKEN: "0"
-  EOS_VAULT_MODE: "csi"
-  EOS_GUNICORN_WORKERS: "2"
-  EOS_GUNICORN_THREADS: "2"
-  EOS_GUNICORN_TIMEOUT: "60"
-  EOS_AUDIT_MODE: "kafka"
-  EOS_AUDIT_CONSUMER_ENABLED: "false"
-  EOS_EVENT_BUS: "inprocess"
+  QZDAP_ENV: "staging"
+  QZDAP_LOG_LEVEL: "INFO"
+  QZDAP_BAN_MOCK_TOKEN: "1"
+  QZDAP_ALLOW_DEMO_TOKEN: "0"
+  QZDAP_VAULT_MODE: "csi"
+  QZDAP_GUNICORN_WORKERS: "2"
+  QZDAP_GUNICORN_THREADS: "2"
+  QZDAP_GUNICORN_TIMEOUT: "60"
+  QZDAP_AUDIT_MODE: "kafka"
+  QZDAP_AUDIT_CONSUMER_ENABLED: "false"
+  QZDAP_EVENT_BUS: "inprocess"
   # Pricing & SLO defaults (overridable per-tenant via TenantSetting)
-  EOS_CURRENCY: "USD"
-  EOS_EVAL_SCORE_MIN: "0.7"
-  EOS_EVAL_RECALL_MIN: "0.7"
-  EOS_DEFAULT_TENANT_PLAN: "free"
+  QZDAP_CURRENCY: "USD"
+  QZDAP_EVAL_SCORE_MIN: "0.7"
+  QZDAP_EVAL_RECALL_MIN: "0.7"
+  QZDAP_DEFAULT_TENANT_PLAN: "free"

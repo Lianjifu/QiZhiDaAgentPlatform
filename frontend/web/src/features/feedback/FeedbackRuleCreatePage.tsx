@@ -8,11 +8,13 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Workflow } from 'lucide-react';
-import type { FeedbackSentiment, RoutingAction, RoutingRule } from './schema';
-import { ROUTING_ACTION_LABEL, uid } from './components/constants';
+import type { FeedbackSentiment, RoutingAction } from './schema';
+import { ROUTING_ACTION_LABEL } from './components/constants';
+import { useCreateFeedbackRule } from './useFeedback';
 
 export default function FeedbackRuleCreatePage() {
   const navigate = useNavigate();
+  const createRule = useCreateFeedbackRule();
   const [name, setName] = useState('');
   const [topic, setTopic] = useState('');
   const [sentiment, setSentiment] = useState<FeedbackSentiment | 'all'>('all');
@@ -23,18 +25,19 @@ export default function FeedbackRuleCreatePage() {
   const canSubmit = name.trim().length > 0 && topic.trim().length > 0;
 
   const handleCreate = () => {
-    const rule: RoutingRule = {
-      id: uid('rl'),
-      name: name.trim(),
-      matchTopic: topic.trim(),
-      matchSentiment: sentiment,
-      action,
-      target: target.trim(),
-      enabled: true,
-      description: description.trim() || '管理员手动创建',
-    };
-    void rule;
-    navigate('/admin/feedback');
+    if (!canSubmit || createRule.isPending) return;
+    createRule.mutate(
+      {
+        name: name.trim(),
+        matchTopic: topic.trim(),
+        matchSentiment: sentiment,
+        action,
+        target: target.trim(),
+        enabled: true,
+        description: description.trim() || '管理员手动创建',
+      },
+      { onSuccess: () => navigate('/admin/feedback'), onError: () => navigate('/admin/feedback') },
+    );
   };
 
   return (
@@ -95,7 +98,7 @@ export default function FeedbackRuleCreatePage() {
 
         <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border)] pt-5">
           <Link to="/admin/feedback" className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">取消</Link>
-          <button type="button" onClick={handleCreate} disabled={!canSubmit} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">创建规则</button>
+          <button type="button" onClick={handleCreate} disabled={!canSubmit || createRule.isPending} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">创建规则</button>
         </div>
       </section>
     </div>

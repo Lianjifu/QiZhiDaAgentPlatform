@@ -8,7 +8,7 @@ import { BrowseKnowledgeDrawer } from './components/BrowseKnowledgeDrawer';
 import { useKnowledgeResources } from './useKnowledge';
 import type { KnowledgeResource, KnowledgeFilter, KnowledgeSort } from './schema';
 
-const CHOSEN_STORAGE_KEY = 'qzd.user.knowledge.chosen';
+const CHOSEN_STORAGE_KEY = 'qzdap.user.knowledge.chosen';
 
 const kinds: Array<KnowledgeFilter | 'favorites'> = ['all', '制度', '项目', '指南', 'favorites'];
 const KIND_LABEL: Record<KnowledgeFilter | 'favorites', string> = {

@@ -6,13 +6,13 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from eos_schema.dtos import (
+from qzdap_schema.dtos import (
     DoneChunk,
     MessageChunk,
     ToolCallChunk,
     UsageChunk,
 )
-from eos_schema.ids import (
+from qzdap_schema.ids import (
     TenantId,
     WorkspaceId,
 )
@@ -77,6 +77,6 @@ def test_done_chunk_optional_message() -> None:
 
 
 def test_problem_details_is_kernel_error() -> None:
-    from eos_kernel.errors import ErrorEnvelope
+    from qzdap_kernel.errors import ErrorEnvelope
 
     assert ErrorEnvelope.__name__ == "ErrorEnvelope"

@@ -1,12 +1,11 @@
 import { Bot, Check, ChevronRight, FileCheck2, FileText, Heart, MailPlus, MessageSquareText, Share2, UsersRound } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CenterModal } from '@/components/feedback/CenterModal';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { SideDrawer } from '@/components/feedback/SideDrawer';
 import { CardActionButton, CardActions, CatalogToolbar, EmptyFilterState, PageIntro, WorkspacePage } from '../components';
-import { useInviteMember, useMembers, useSharedItems, useTeams } from './useTeam';
+import { useMembers, useSharedItems, useTeams } from './useTeam';
 import type { Member, SharedItem, SharedKind, Team } from './schema';
-import { mockTeams, mockMembers, mockSharedItems } from './fixtures';
 
 type TabLabel = '成员' | '智能体' | '知识' | '产出物';
 type TabValue = 'members' | SharedKind;
@@ -31,18 +30,18 @@ function kindIcon(kind: SharedKind) {
 }
 
 export default function TeamPage() {
-  const { data: remoteTeams } = useTeams();
-  const { data: remoteMembers } = useMembers();
-  const { data: remoteShared } = useSharedItems();
-  const invite = useInviteMember();
+  const { data: teams } = useTeams();
+  const [activeTeam, setActiveTeam] = useState('');
+  useEffect(() => {
+    if (!activeTeam && teams[0]?.name) setActiveTeam(teams[0].name);
+  }, [activeTeam, teams]);
+  const currentTeam = teams.find((item) => item.name === activeTeam) ?? teams[0];
+  const teamName = currentTeam?.name ?? teams[0]?.name ?? '';
 
-  const teams = (remoteTeams && remoteTeams.length > 0 ? remoteTeams : mockTeams) as Team[];
-  const initialMembers = (remoteMembers && remoteMembers.length > 0 ? remoteMembers : mockMembers) as Member[];
-  const initialShared = (remoteShared && remoteShared.length > 0 ? remoteShared : mockSharedItems) as SharedItem[];
-
-  const [members, setMembers] = useState<Member[]>(initialMembers);
-  const [favorites, setFavorites] = useState<string[]>(['a2']);
-  const [activeTeam, setActiveTeam] = useState<string>(teams[0]?.name ?? '产品协作组');
+  const { data: remoteMembers } = useMembers(teamName);
+  const { data: remoteShared } = useSharedItems(teamName);
+  const [invited, setInvited] = useState<Member[]>([]);
+  const [favorites, setFavorites] = useState<string[]>([]);
   const [tab, setTab] = useState<TabValue>('members');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<SharedItem | Member | null>(null);
@@ -50,35 +49,38 @@ export default function TeamPage() {
   const [email, setEmail] = useState('');
   const [notice, setNotice] = useState('');
 
+  const members = useMemo(() => {
+    const remote = remoteMembers.filter((member) => !invited.some((row) => row.id === member.id));
+    return [...invited, ...remote];
+  }, [invited, remoteMembers]);
+
   const visibleMembers = useMemo(
-    () => members.filter((member) => member.team === activeTeam && `${member.name} ${member.role}`.toLowerCase().includes(query.trim().toLowerCase())),
-    [members, activeTeam, query],
+    () => members.filter((member) => (!teamName || member.team === teamName) && `${member.name} ${member.role}`.toLowerCase().includes(query.trim().toLowerCase())),
+    [members, teamName, query],
   );
   const visibleItems = useMemo(
-    () => initialShared.filter((item) => item.team === activeTeam && item.kind === tab && `${item.title} ${item.description} ${item.owner} ${item.label}`.toLowerCase().includes(query.trim().toLowerCase())),
-    [initialShared, activeTeam, tab, query],
+    () => remoteShared.filter((item) => (!teamName || item.team === teamName || !item.team) && item.kind === tab && `${item.title} ${item.description} ${item.owner} ${item.label}`.toLowerCase().includes(query.trim().toLowerCase())),
+    [remoteShared, teamName, tab, query],
   );
-  const currentTeam = teams.find((item) => item.name === activeTeam) ?? teams[0];
   const resultCount = tab === 'members' ? visibleMembers.length : visibleItems.length;
 
   const submitInvite = () => {
     const trimmed = email.trim();
-    if (!trimmed || !currentTeam) return;
+    if (!trimmed || !teamName) return;
     const invitee: Member = {
       id: `local-${Date.now()}`,
       name: trimmed,
-      role: '待邀请 · 本地演示',
-      team: activeTeam,
+      role: '待邀请 · 本地记录',
+      team: teamName,
       initials: trimmed.slice(0, 1).toUpperCase(),
       color: 'bg-[var(--brand-light)] text-[var(--brand)]',
     };
-    setMembers((current) => [invitee, ...current]);
+    setInvited((current) => [invitee, ...current]);
     setTab('members');
     setQuery('');
     setInviting(false);
     setEmail('');
     setNotice(`"${trimmed}"已加入本页待邀请列表，未发送真实邀请。`);
-    invite.mutate({ team: activeTeam, email: trimmed });
   };
 
   const isResource = (item: SharedItem | Member): item is SharedItem => 'kind' in item;
@@ -87,11 +89,11 @@ export default function TeamPage() {
     <WorkspacePage>
       <PageIntro
         title={currentTeam?.name ?? '协作空间'}
-        description={currentTeam?.note ?? '查看团队成员与共享内容。'}
+        description={currentTeam?.note ?? '查看工作空间成员与已开放的共享内容。'}
         meta={
           <>
             <span>空间 {teams.length}</span>
-            <span>成员 {members.filter((member) => member.team === activeTeam).length}</span>
+            <span>成员 {members.filter((member) => !teamName || member.team === teamName).length}</span>
           </>
         }
         actions={
@@ -111,7 +113,7 @@ export default function TeamPage() {
         <aside className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
           <p className="px-2 text-xs font-semibold text-[var(--text-muted)]">协作空间</p>
           <div className="mt-3 space-y-1" role="group" aria-label="选择协作空间">
-            {teams.map((team) => (
+            {teams.length ? teams.map((team) => (
               <button
                 key={team.name}
                 type="button"
@@ -128,7 +130,9 @@ export default function TeamPage() {
                 </span>
                 <ChevronRight className="h-4 w-4 shrink-0" />
               </button>
-            ))}
+            )) : (
+              <p className="px-2 py-6 text-xs leading-6 text-[var(--text-muted)]">当前租户还没有工作空间。</p>
+            )}
           </div>
         </aside>
 
@@ -149,7 +153,7 @@ export default function TeamPage() {
               ))}
             </div>
             <span className="inline-flex items-center gap-1 rounded-full bg-[var(--success-bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--success)]">
-              <Check className="h-3.5 w-3.5" />演示空间
+              <Check className="h-3.5 w-3.5" />工作空间
             </span>
           </div>
           <CatalogToolbar
@@ -224,7 +228,7 @@ export default function TeamPage() {
         open={selected !== null}
         onClose={() => setSelected(null)}
         ariaLabel={selected ? (isResource(selected) ? `${selected.title}详情` : `${selected.name}详情`) : '协作详情'}
-        eyebrow={<p className="text-[11px] font-semibold text-[var(--brand)]">{activeTeam} · 详情</p>}
+        eyebrow={<p className="text-[11px] font-semibold text-[var(--brand)]">{teamName || '协作'} · 详情</p>}
         closeLabel="关闭协作详情"
       >
         {selected && (
@@ -252,7 +256,7 @@ export default function TeamPage() {
             </div>
             <div className="mt-8 rounded-2xl bg-[var(--bg-elevated)] p-5">
               <p className="flex items-center gap-2 text-xs font-semibold"><MessageSquareText className="h-4 w-4 text-[var(--brand)]" />协作提示</p>
-              <p className="mt-2 text-xs leading-6 text-[var(--text-muted)]">这个视图展示前端演示数据。真实分享范围和成员权限需要接入协作服务后确认。</p>
+              <p className="mt-2 text-xs leading-6 text-[var(--text-muted)]">成员来自当前登录身份，智能体与知识来自工作空间目录。邀请仅保存在本页，不会发送邮件。</p>
             </div>
           </>
         )}
@@ -261,15 +265,15 @@ export default function TeamPage() {
         open={inviting}
         onClose={() => setInviting(false)}
         ariaLabel="邀请协作者"
-        title={`邀请加入 ${activeTeam}`}
-        description="填写邮箱后将加入本页演示列表，不会发送邮件。"
+        title={`邀请加入 ${teamName || '协作空间'}`}
+        description="填写邮箱后将加入本页列表，不会发送邮件。"
         closeLabel="关闭邀请窗口"
         panelClassName="max-w-md"
         onSubmit={(event) => { event.preventDefault(); submitInvite(); }}
         footer={
           <>
             <button type="button" onClick={() => setInviting(false)} className="rounded-xl border border-[var(--border)] px-4 py-2.5 text-sm font-medium">取消</button>
-            <button type="submit" disabled={!email.trim()} className="inline-flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
+            <button type="submit" disabled={!email.trim() || !teamName} className="inline-flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
               <MailPlus className="h-4 w-4" />加入演示列表
             </button>
           </>

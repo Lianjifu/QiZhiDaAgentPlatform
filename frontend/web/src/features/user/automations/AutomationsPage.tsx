@@ -8,7 +8,7 @@ import { BrowseWorkflowsDrawer } from './components/BrowseWorkflowsDrawer';
 import { useFlows, useFlowRuns, useRecordFlowRun } from './useAutomations';
 import type { Flow, FlowRun, FlowAvailability } from './schema';
 
-const CHOSEN_STORAGE_KEY = 'qzd.user.automations.chosen';
+const CHOSEN_STORAGE_KEY = 'qzdap.user.automations.chosen';
 
 function readChosenIds(): string[] {
   try {

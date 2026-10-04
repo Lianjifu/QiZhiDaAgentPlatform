@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from deos.modules.identity.domain import (
+from qzdap.modules.identity.domain import (
     APIKey,
     APIKeyStatus,
     Tenant,
@@ -16,7 +16,7 @@ from deos.modules.identity.domain import (
     Workspace,
     WorkspaceStatus,
 )
-from deos.modules.identity.domain.errors import (
+from qzdap.modules.identity.domain.errors import (
     TenantAlreadyExists,
     WorkspaceAlreadyExists,
     WorkspaceLimitReached,

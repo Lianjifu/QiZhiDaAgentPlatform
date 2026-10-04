@@ -13,8 +13,8 @@ from _agent_factory_unit_in_memory import (  # type: ignore[import-not-found]
     RecordingPublisher,
     make_eval_summary,
 )
-from eos_kernel.errors import BusinessRuleError
-from eos_schema.ids import (
+from qzdap_kernel.errors import BusinessRuleError
+from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
     EvalRunId,
@@ -23,8 +23,8 @@ from eos_schema.ids import (
     WorkspaceId,
 )
 
-from deos.modules.agent_factory.application.services import AgentFactoryService
-from deos.modules.agent_factory.domain.errors import (
+from qzdap.modules.agent_factory.application.services import AgentFactoryService
+from qzdap.modules.agent_factory.domain.errors import (
     AgentFactoryError,
     AgentTemplateNameConflict,
     AgentTemplateNotFound,
@@ -32,7 +32,7 @@ from deos.modules.agent_factory.domain.errors import (
     AgentVersionNotFound,
     AgentVersionTagConflict,
 )
-from deos.modules.agent_factory.domain.value_objects import (
+from qzdap.modules.agent_factory.domain.value_objects import (
     AgentVersionStatus,
 )
 

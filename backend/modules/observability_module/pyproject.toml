@@ -1,13 +1,13 @@
 [project]
-name = "deos-observability-module"
+name = "qzdap-observability-module"
 version = "0.1.0"
 description = "Observability module — RunRecord / CostRecord / QualityScore via event-bus subscribers; P9 of doc 12."
 requires-python = ">=3.12"
 dependencies = [
-    "eos-kernel",
-    "eos-schema",
-    "eos-persistence",
-    "eos-messaging",
+    "qzdap-kernel",
+    "qzdap-schema",
+    "qzdap-persistence",
+    "qzdap-messaging",
     "pydantic>=2.9",
 ]
 
@@ -16,7 +16,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/deos"]
+packages = ["src/qzdap"]
 
 [tool.ruff]
 src = ["src"]

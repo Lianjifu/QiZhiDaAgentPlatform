@@ -6,17 +6,17 @@ from uuid import uuid4
 
 import jwt
 import pytest
-from eos_kernel.errors import AuthenticationError, ForbiddenError
-from eos_kernel.principal import PrincipalType
+from qzdap_kernel.errors import AuthenticationError, ForbiddenError
+from qzdap_kernel.principal import PrincipalType
 
-from eos_auth.api_key import ApiKeyHasher, hash_api_key, verify_api_key
-from eos_auth.dependencies import (
+from qzdap_auth.api_key import ApiKeyHasher, hash_api_key, verify_api_key
+from qzdap_auth.dependencies import (
     AuthenticatedPrincipal,
     get_principal,
     require_role,
     require_scope,
 )
-from eos_auth.jwt import JWTConfig, JWTIssuer, JWTVerifier
+from qzdap_auth.jwt import JWTConfig, JWTIssuer, JWTVerifier
 
 
 @pytest.fixture
@@ -24,8 +24,8 @@ def cfg() -> JWTConfig:
     return JWTConfig(
         secret="unit-test-secret-not-for-production-use",
         algorithm="HS256",
-        issuer="eos-test",
-        audience="eos-api",
+        issuer="qzdap-test",
+        audience="qzdap-api",
         access_ttl_seconds=60,
     )
 
@@ -57,8 +57,8 @@ def test_verify_rejects_expired(verifier: JWTVerifier) -> None:
     payload = {
         "sub": str(uuid4()),
         "tid": str(uuid4()),
-        "iss": "eos-test",
-        "aud": "eos-api",
+        "iss": "qzdap-test",
+        "aud": "qzdap-api",
         "iat": 0,
         "exp": 1,
         "roles": [],

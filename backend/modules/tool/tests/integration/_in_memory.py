@@ -10,8 +10,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
 
-from deos.modules.tool.adapter.adapters.openapi_runtime import SecretsResolver
-from deos.modules.tool.application.ports import (
+from qzdap.modules.tool.adapter.adapters.openapi_runtime import SecretsResolver
+from qzdap.modules.tool.application.ports import (
     CustomInvokerPort,
     EventPublisher,
     MCPRuntime,
@@ -19,7 +19,7 @@ from deos.modules.tool.application.ports import (
     ToolCallRepository,
     ToolRepository,
 )
-from deos.modules.tool.domain import (
+from qzdap.modules.tool.domain import (
     AuthConfig,
     SpecOperation,
     Tool,
@@ -105,7 +105,7 @@ class FakeCustomInvoker(CustomInvokerPort):
 
     async def invoke(self, *, name: str, arguments: dict) -> dict:
         if name not in self._registry:
-            from deos.modules.tool.domain.errors import ToolNotFound
+            from qzdap.modules.tool.domain.errors import ToolNotFound
 
             raise ToolNotFound(f"custom tool {name!r} not registered")
         return dict(await self._registry[name](arguments))

@@ -1,7 +1,7 @@
 """Burn-in gate runner — orchestrates G2/G3/G5/G6/G7/G8.
 
-Designed to run against a fully-deployed EnterpriseAgentOS pair
-(stable + canary). When EOS_STABLE_URL / EOS_CANARY_URL are unset,
+Designed to run against a fully-deployed 企智搭 · 智能体平台 pair
+(stable + canary). When QZDAP_STABLE_URL / QZDAP_CANARY_URL are unset,
 only the locally-runnable gates fire (G5 secrets, G6 promtool,
 G7 grafana JSON validation).
 
@@ -11,9 +11,9 @@ Usage::
     uv run python deploy/burn_in.py
 
     # full gates (requires deployed stable + canary; G3 also needs
-    # EOS_BENCH_TOKEN/TENANT/WORKSPACE/AGENT_ID — see g3_bench)
-    EOS_STABLE_URL=https://eos-stable.example.com \
-    EOS_CANARY_URL=https://eos-canary.example.com \
+    # QZDAP_BENCH_TOKEN/TENANT/WORKSPACE/AGENT_ID — see g3_bench)
+    QZDAP_STABLE_URL=https://qzdap-stable.example.com \
+    QZDAP_CANARY_URL=https://qzdap-canary.example.com \
     uv run python deploy/burn_in.py
 
 Exit code is the number of gates that failed (0 = all green).
@@ -104,15 +104,15 @@ def g7_grafana_loads(stable_url: str | None) -> tuple[bool, str]:
     if not stable_url:
         return True, (
             "JSON schema OK (skipping live Grafana load — "
-            "set EOS_STABLE_URL to curl /api/dashboards/uid/<id>):\n"
+            "set QZDAP_STABLE_URL to curl /api/dashboards/uid/<id>):\n"
             + "\n".join(msgs)
         )
-    # Live load: /api/dashboards/uid/eos-overview  + /eos-costs
+    # Live load: /api/dashboards/uid/qzdap-overview  + /qzdap-costs
     import httpx  # local import so the rest of the script can run without it
 
     all_ok = True
     msgs.append("---")
-    for uid in ("eos-overview", "eos-costs"):
+    for uid in ("qzdap-overview", "qzdap-costs"):
         url = f"{stable_url.rstrip('/')}/api/dashboards/uid/{uid}"
         try:
             r = httpx.get(url, timeout=10.0)
@@ -132,7 +132,7 @@ def g7_grafana_loads(stable_url: str | None) -> tuple[bool, str]:
 def g2_readyz(stable_url: str | None, canary_url: str | None) -> tuple[bool, str]:
     if not stable_url or not canary_url:
         return False, (
-            "skipping — set EOS_STABLE_URL + EOS_CANARY_URL to enable "
+            "skipping — set QZDAP_STABLE_URL + QZDAP_CANARY_URL to enable "
             "dual-instance /readyz check"
         )
     import httpx
@@ -162,9 +162,9 @@ def g2_readyz(stable_url: str | None, canary_url: str | None) -> tuple[bool, str
 def g8_smoke(stable_url: str | None, canary_url: str | None) -> tuple[bool, str]:
     if not stable_url and not canary_url:
         return False, (
-            "skipping — set EOS_STABLE_URL and/or EOS_CANARY_URL to run "
+            "skipping — set QZDAP_STABLE_URL and/or QZDAP_CANARY_URL to run "
             "the happy-path smoke. Script: tests/e2e/smoke.py (uses "
-            "EOS_SMOKE_BASE_URL; no auth required — smoke hits /healthz + "
+            "QZDAP_SMOKE_BASE_URL; no auth required — smoke hits /healthz + "
             "/v1/identity/tenants, so it expects an open / dev-mode "
             "deployment, NOT prod with auth on)."
         )
@@ -176,7 +176,7 @@ def g8_smoke(stable_url: str | None, canary_url: str | None) -> tuple[bool, str]
     for label, base in (("stable", stable_url), ("canary", canary_url)):
         if not base:
             continue
-        env = {**os.environ, "EOS_SMOKE_BASE_URL": base}
+        env = {**os.environ, "QZDAP_SMOKE_BASE_URL": base}
         rc, out, err = _run(
             ["uv", "run", "--frozen", "python", str(script)],
             cwd=REPO_ROOT / "backend",
@@ -193,14 +193,14 @@ def g8_smoke(stable_url: str | None, canary_url: str | None) -> tuple[bool, str]
 def g3_bench(stable_url: str | None) -> tuple[bool, str]:
     if not stable_url:
         return False, (
-            "skipping — set EOS_STABLE_URL to run "
+            "skipping — set QZDAP_STABLE_URL to run "
             "backend/tests/perf/bench_turn_latency.py. Threshold P95 ≤ 10s "
             "per doc/prelaunch-checklist.md G3."
         )
     # The bench script requires tenant-scoped IDs that an operator must
     # seed once; if any are missing we skip rather than fabricate.
-    bench_env_required = ("EOS_BENCH_TOKEN", "EOS_BENCH_TENANT",
-                          "EOS_BENCH_WORKSPACE", "EOS_BENCH_AGENT_ID")
+    bench_env_required = ("QZDAP_BENCH_TOKEN", "QZDAP_BENCH_TENANT",
+                          "QZDAP_BENCH_WORKSPACE", "QZDAP_BENCH_AGENT_ID")
     missing = [n for n in bench_env_required if not os.environ.get(n)]
     if missing:
         return False, (
@@ -211,7 +211,7 @@ def g3_bench(stable_url: str | None) -> tuple[bool, str]:
     script = REPO_ROOT / "backend" / "tests" / "perf" / "bench_turn_latency.py"
     if not script.is_file():
         return False, f"bench script missing: {script}"
-    env = {**os.environ, "EOS_BENCH_URL": stable_url}
+    env = {**os.environ, "QZDAP_BENCH_URL": stable_url}
     rc, out, err = _run(
         ["uv", "run", "--frozen", "python", str(script)],
         cwd=REPO_ROOT / "backend",
@@ -223,8 +223,8 @@ def g3_bench(stable_url: str | None) -> tuple[bool, str]:
 
 # ── Runner ──────────────────────────────────────────────────────────────
 def main() -> int:
-    stable = os.environ.get("EOS_STABLE_URL")
-    canary = os.environ.get("EOS_CANARY_URL")
+    stable = os.environ.get("QZDAP_STABLE_URL")
+    canary = os.environ.get("QZDAP_CANARY_URL")
     failures = 0
     skipped = 0
 
@@ -252,7 +252,7 @@ def main() -> int:
         print(f"[{mark}] {label}\n{msg}\n")
     print(
         f"=== {failures} failed, {skipped} skipped "
-        f"(set EOS_STABLE_URL + EOS_CANARY_URL to run remote gates) ==="
+        f"(set QZDAP_STABLE_URL + QZDAP_CANARY_URL to run remote gates) ==="
     )
     return failures
 

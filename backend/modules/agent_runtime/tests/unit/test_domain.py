@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 import pytest
-from eos_schema.ids import (
+from qzdap_schema.ids import (
     AgentId,
     SessionId,
     TenantId,
@@ -13,13 +13,13 @@ from eos_schema.ids import (
     WorkspaceId,
 )
 
-from deos.modules.agent_runtime.domain import (
+from qzdap.modules.agent_runtime.domain import (
     Session,
     SessionStatus,
     Turn,
     TurnStatus,
 )
-from deos.modules.agent_runtime.domain.errors import SessionClosedError
+from qzdap.modules.agent_runtime.domain.errors import SessionClosedError
 
 
 def _make_session(**overrides: object) -> Session:

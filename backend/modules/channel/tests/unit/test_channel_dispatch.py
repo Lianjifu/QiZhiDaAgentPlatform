@@ -12,13 +12,13 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from deos.modules.channel.adapter.dispatch.dispatch_subscriber import (
+from qzdap.modules.channel.adapter.dispatch.dispatch_subscriber import (
     SYSTEM_AGENT_ID,
     SYSTEM_AGENT_VERSION,
     SYSTEM_USER_ID,
     ChannelDispatchSubscriber,
 )
-from deos.modules.channel.domain.events import ChannelMessageReceived
+from qzdap.modules.channel.domain.events import ChannelMessageReceived
 
 
 class _FakeChannelRepo:
@@ -56,7 +56,7 @@ class _FakeAgentRuntime:
             self._outer = outer
 
         async def execute(self, **kwargs: Any) -> Any:  # type: ignore[no-untyped-def]
-            from deos.modules.agent_runtime.application.use_cases.run_turn_to_completion import (
+            from qzdap.modules.agent_runtime.application.use_cases.run_turn_to_completion import (
                 RunTurnCompletionResult,
             )
 

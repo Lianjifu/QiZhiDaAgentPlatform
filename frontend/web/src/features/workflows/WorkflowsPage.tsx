@@ -17,10 +17,13 @@ import { uid } from './components/constants';
 import { OverviewTab } from './components/tabs/OverviewTab';
 import { PublishAsToolModal } from './components/PublishAsToolModal';
 
+const EMPTY_FLOWS: Flow[] = [];
+
 export default function WorkflowsPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<WorkflowTabId>('all');
-  const remoteFlows = useWorkflows().data ?? [];
+  const flowsQuery = useWorkflows();
+  const remoteFlows = flowsQuery.data ?? EMPTY_FLOWS;
   const [flows, setFlows] = useState<Flow[]>(remoteFlows);
   const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
@@ -34,7 +37,7 @@ export default function WorkflowsPage() {
 
   useEffect(() => {
     setFlows(remoteFlows);
-  }, [remoteFlows]);
+  }, [flowsQuery.data]);
 
   const visibleFlows = useMemo(() => {
     const base = tab === 'all' ? flows : flows.filter((f) => f.status === tab);

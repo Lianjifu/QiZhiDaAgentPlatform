@@ -29,11 +29,11 @@ from _ar_unit_in_memory import (
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from deos.modules.agent_runtime.adapter.http.router import (
+from qzdap.modules.agent_runtime.adapter.http.router import (
     agent_runtime_dependency,
     build_router,
 )
-from deos.modules.agent_runtime.application.services import AgentRuntimeService
+from qzdap.modules.agent_runtime.application.services import AgentRuntimeService
 
 # ── App + dependency override ──────────────────────────────────────────────
 
@@ -64,9 +64,9 @@ def _build_test_app(
 
     app = FastAPI(title="agent_runtime-test")
     # Translate AppError subclasses → proper HTTP envelopes with the right
-    # status code (mirrors what `eos_http.middleware.build_default_middleware_chain`
+    # status code (mirrors what `qzdap_http.middleware.build_default_middleware_chain`
     # does in production).
-    from eos_http.error_envelope import error_envelope_middleware
+    from qzdap_http.error_envelope import error_envelope_middleware
     from starlette.middleware.base import BaseHTTPMiddleware
 
     app.add_middleware(BaseHTTPMiddleware, dispatch=error_envelope_middleware)  # type: ignore[arg-type]

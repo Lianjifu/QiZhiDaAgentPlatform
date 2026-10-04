@@ -8,7 +8,7 @@ from uuid import UUID
 
 import pytest
 
-from deos.modules.self_evolution.application.apply_guard import (
+from qzdap.modules.self_evolution.application.apply_guard import (
     ApplyGuard,
     ApplyOutcome,
     DirectApplyGuard,
@@ -20,8 +20,8 @@ from deos.modules.self_evolution.application.apply_guard import (
     RoutingDraftGuard,
     SkillDraftGuard,
 )
-from deos.modules.self_evolution.domain.entities import EvolveCandidate
-from deos.modules.self_evolution.domain.value_objects import EvolveKind
+from qzdap.modules.self_evolution.domain.entities import EvolveCandidate
+from qzdap.modules.self_evolution.domain.value_objects import EvolveKind
 
 TENANT = UUID(int=1)
 
@@ -99,7 +99,7 @@ async def test_apply_outcome_summary_is_isolated_per_call() -> None:
 @pytest.mark.asyncio
 async def test_apply_guard_can_raise_apply_guard_rejected() -> None:
     """A guard that vetoes must surface as ``ApplyGuardRejected``."""
-    from deos.modules.self_evolution.domain.errors import ApplyGuardRejected
+    from qzdap.modules.self_evolution.domain.errors import ApplyGuardRejected
 
     class _VetoGuard(ApplyGuard):
         async def apply(  # type: ignore[override]

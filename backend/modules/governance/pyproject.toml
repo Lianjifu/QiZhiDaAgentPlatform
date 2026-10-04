@@ -1,15 +1,15 @@
 [project]
-name = "deos-governance"
+name = "qzdap-governance"
 version = "0.1.0"
 description = "Governance module: policies, approvals, decision events, audit log"
 requires-python = ">=3.12"
 dependencies = [
-    "eos-kernel",
-    "eos-schema",
-    "eos-persistence",
-    "eos-auth",
-    "eos-messaging",
-    "eos-http",
+    "qzdap-kernel",
+    "qzdap-schema",
+    "qzdap-persistence",
+    "qzdap-auth",
+    "qzdap-messaging",
+    "qzdap-http",
     "fastapi>=0.115.0",
     "pydantic>=2.9",
 ]
@@ -19,7 +19,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/deos"]
+packages = ["src/qzdap"]
 
 [tool.ruff]
 src = ["src"]

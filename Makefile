@@ -1,33 +1,31 @@
-# EnterpriseAgentOS — root Makefile
-# EAOS-specific dev stack orchestration, distinct from
-# digital-employee-platform/scripts/dev-stack/run-stack.sh.
+# 企智搭 · 智能体平台 — root Makefile
 #
-# Ports (defined in bin/eaos-stack/eaos-env.sh, override via env):
-#   EAOS_FRONTEND_PORT   5200  (Vite dev server)
-#   EAOS_LISTEN_PORT     9200  (eaos-gateway → de-app :8100 for now)
-#   EAOS_EOSAPP_PORT     8200  (Python eos-app, when started)
-#   EAOS_PG_PORT         5434  (EAOS Postgres, when started)
+# Ports (defined in bin/qzdap-stack/qzdap-env.sh, override via env):
+#   QZDAP_FRONTEND_PORT   5200  (Vite dev server)
+#   QZDAP_LISTEN_PORT     9200  (qzdap-gateway → qzdap-app)
+#   QZDAP_APP_PORT        8200  (Python qzdap-app)
+#   QZDAP_PG_PORT         5434  (QZDAP Postgres, when started)
 
-EAOS_STACK_DIR := bin/eaos-stack
+QZDAP_STACK_DIR := bin/qzdap-stack
 
-.PHONY: eaos-up eaos-down eaos-status eaos-logs eaos-clean \
+.PHONY: qzdap-up qzdap-down qzdap-status qzdap-logs qzdap-clean \
         help
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-eaos-up: ## Start EAOS dev stack (gateway + Vite + de-app)
-	@$(EAOS_STACK_DIR)/run-eaos-stack.sh
+qzdap-up: ## Start QZDAP dev stack (gateway + Vite + de-app)
+	@$(QZDAP_STACK_DIR)/run-qzdap-stack.sh
 
-eaos-down: ## Stop EAOS dev stack
-	@$(EAOS_STACK_DIR)/stop-eaos-stack.sh
+qzdap-down: ## Stop QZDAP dev stack
+	@$(QZDAP_STACK_DIR)/stop-qzdap-stack.sh
 
-eaos-status: ## Show EAOS stack status
-	@$(EAOS_STACK_DIR)/status-eaos-stack.sh
+qzdap-status: ## Show QZDAP stack status
+	@$(QZDAP_STACK_DIR)/status-qzdap-stack.sh
 
-eaos-logs: ## Tail EAOS logs (gateway + vite)
-	@tail -F $(EAOS_STACK_DIR)/logs/eaos-*.log
+qzdap-logs: ## Tail QZDAP logs (gateway + vite)
+	@tail -F $(QZDAP_STACK_DIR)/logs/qzdap-*.log
 
-eaos-clean: ## Clean EAOS logs + pid files
-	@rm -f $(EAOS_STACK_DIR)/logs/*.log $(EAOS_STACK_DIR)/logs/*.pid
+qzdap-clean: ## Clean QZDAP logs + pid files
+	@rm -f $(QZDAP_STACK_DIR)/logs/*.log $(QZDAP_STACK_DIR)/logs/*.pid
 	@echo "cleaned"

@@ -1,18 +1,18 @@
 # Enterprise-Agent-OS — k8s manifests
 
-Single-namespace (`eos-prod`) deployment of the FastAPI composition root.
+Single-namespace (`qzdap-prod`) deployment of the FastAPI composition root.
 Two pools share the same ConfigMap and Secret, differ only by the
-`EOS_RING` env. A canary ingress splits traffic based on the
-`X-EOS-Ring: canary` header.
+`QZDAP_RING` env. A canary ingress splits traffic based on the
+`X-QZDAP-Ring: canary` header.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `namespace.yaml` | `eos-prod` ns |
-| `configmap.yaml` | non-secret env (EOS_ENV, ports, log level, pricing defaults) |
+| `namespace.yaml` | `qzdap-prod` ns |
+| `configmap.yaml` | non-secret env (QZDAP_ENV, ports, log level, pricing defaults) |
 | `secret.example.yaml` | secret **template** — never commit real values |
-| `deployment.yaml` | `eos-app-stable` (3 replicas) + `eos-app-canary` (1 replica) |
+| `deployment.yaml` | `qzdap-app-stable` (3 replicas) + `qzdap-app-canary` (1 replica) |
 | `service.yaml` | ClusterIP for stable + canary + metrics |
 | `ingress.yaml` | nginx ingress with header-based canary rule |
 | `hpa.yaml` | HPA 3-10 (stable) + 1-3 (canary) |
@@ -36,10 +36,10 @@ kubectl apply -f networkpolicy.yaml
 
 ```bash
 # Stable (no header)
-curl -fsS https://eos.example.com/livez
+curl -fsS https://qzdap.example.com/livez
 
 # Canary (with header)
-curl -fsS -H "X-EOS-Ring: canary" https://eos.example.com/livez
+curl -fsS -H "X-QZDAP-Ring: canary" https://qzdap.example.com/livez
 
 # Inspect which pod answered
 kubectl logs -l ring=stable --tail=5
@@ -69,9 +69,9 @@ of real secret values.
 
 ```bash
 # Rolling restart stable
-kubectl rollout restart deploy/eos-app-stable -n eos-prod
-kubectl rollout status  deploy/eos-app-stable -n eos-prod
+kubectl rollout restart deploy/qzdap-app-stable -n qzdap-prod
+kubectl rollout status  deploy/qzdap-app-stable -n qzdap-prod
 
 # Roll back
-kubectl rollout undo deploy/eos-app-stable -n eos-prod
+kubectl rollout undo deploy/qzdap-app-stable -n qzdap-prod
 ```

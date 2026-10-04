@@ -67,9 +67,9 @@ describe('enterprise navigation translations', () => {
     expect([...DICTS['zh-CN']['nav.agents']].length).toBe(5);
     expect([...DICTS['zh-CN']['nav.agents.auditor']].length).toBe(4);
     expect(DICTS['zh-CN']['app.title']).toBe('企智搭 · 智能体平台');
-    expect(DICTS['zh-CN']['app.shortName']).toBe('EA');
-    expect(DICTS['en-US']['app.title']).toBe('Enterprise Agent OS');
-    expect(DICTS['en-US']['app.shortName']).toBe('EA');
+    expect(DICTS['zh-CN']['app.shortName']).toBe('搭');
+    expect(DICTS['en-US']['app.title']).toBe('QiZhiDa · Agent Platform');
+    expect(DICTS['en-US']['app.shortName']).toBe('QZ');
     expect(DICTS['en-US']['nav.agents']).toBe('Agent Factory');
     expect(DICTS['zh-CN']['module.agents.tabs.market']).not.toContain('工厂');
   });

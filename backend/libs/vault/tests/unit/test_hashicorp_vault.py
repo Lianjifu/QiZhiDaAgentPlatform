@@ -13,7 +13,7 @@ from uuid import UUID
 
 import pytest
 
-from eos_vault import (
+from qzdap_vault import (
     ActorContext,
     HashicorpVaultSecretsResolver,
     InvalidSecretRef,
@@ -191,9 +191,9 @@ async def test_hashicorp_resolver_rejects_malformed_path() -> None:
 async def test_hashicorp_resolver_missing_url_or_token_raises_not_found(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("EOS_VAULT_URL", raising=False)
+    monkeypatch.delenv("QZDAP_VAULT_URL", raising=False)
     monkeypatch.delenv("VAULT_ADDR", raising=False)
-    monkeypatch.delenv("EOS_VAULT_TOKEN", raising=False)
+    monkeypatch.delenv("QZDAP_VAULT_TOKEN", raising=False)
     monkeypatch.delenv("VAULT_TOKEN", raising=False)
     r = HashicorpVaultSecretsResolver()
     with pytest.raises(SecretNotFound):
@@ -212,6 +212,6 @@ def test_hashicorp_resolver_invalidate_clears_cache() -> None:
 
 
 def _fake_entry(value: dict[str, str]) -> Any:
-    from eos_vault.hashicorp_vault import _CacheEntry
+    from qzdap_vault.hashicorp_vault import _CacheEntry
 
     return _CacheEntry(value=value, expires_at=9e18)

@@ -2,10 +2,10 @@
 
 Spins up the four governance tables (``policies``, ``approvals``,
 ``decision_events``, ``audit_log``) in a per-session schema on the dev
-``eos-postgres`` container. The schema name is unique per test run so
+``qzdap-postgres`` container. The schema name is unique per test run so
 concurrent suites don't collide. Tables are torn down at session end.
 
-Connects via ``EOS_DATABASE_URL`` (default: postgres on localhost:5499).
+Connects via ``QZDAP_DATABASE_URL`` (default: postgres on localhost:5499).
 Skips the entire suite if the database is unreachable so a developer's
 machine without docker doesn't fail the whole unit test run.
 """
@@ -17,7 +17,7 @@ import socket
 import uuid
 from collections.abc import AsyncIterator
 
-import eos_persistence.pgvector  # noqa: F401
+import qzdap_persistence.pgvector  # noqa: F401
 import pytest
 import pytest_asyncio
 from sqlalchemy import event, text
@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from deos.modules.governance.adapter.persistence import (
+from qzdap.modules.governance.adapter.persistence import (
     models as gov_models,  # noqa: F401
 )
 
@@ -126,7 +126,7 @@ def _db_reachable(url: str) -> bool:
 
 @pytest.fixture(scope="session")
 def database_url() -> str:
-    return os.environ.get("EOS_DATABASE_URL", _DEFAULT_DB_URL)
+    return os.environ.get("QZDAP_DATABASE_URL", _DEFAULT_DB_URL)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -141,7 +141,7 @@ def _require_postgres(database_url: str) -> None:
 
 @pytest.fixture(scope="session")
 def schema_name() -> str:
-    return f"eos_gov_test_{uuid.uuid4().hex[:8]}"
+    return f"qzdap_gov_test_{uuid.uuid4().hex[:8]}"
 
 
 def _register_search_path(engine: AsyncEngine, schema: str) -> None:

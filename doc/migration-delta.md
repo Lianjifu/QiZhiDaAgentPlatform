@@ -1,9 +1,9 @@
-# Digital-Employee-Platform → EnterpriseAgentOS 后端迁移 Delta 审计
+# Digital-Employee-Platform → 企智搭 · 智能体平台 后端迁移 Delta 审计
 
 **审计日期:** 2026-09-25
 **数据源:**
 - `digital-employee-platform/backend/api/routes.md` — de-app 完整路由清单(146 唯一 endpoint)
-- `EnterpriseAgentOS/backend/modules/*/router.py` — eos-app 当前 15 模块 92 唯一 endpoint
+- `QiZhiDaAgentPlatform/backend/modules/*/router.py` — qzdap-app 当前 15 模块 92 唯一 endpoint
 
 ## 总览
 
@@ -11,10 +11,10 @@
 |---|---|---|
 | ✅ COVERED(直接同名/同路径) | 23 | 15.8% |
 | ⚠️ DIFFERENT-NAME(模块在,路径不同) | 4 | 2.7% |
-| ❌ MISSING(eos-app 无对应) | 119 | 81.5% |
+| ❌ MISSING(qzdap-app 无对应) | 119 | 81.5% |
 | **总计** | **146** | 100% |
 
-## 按 eos-app 模块分布
+## 按 qzdap-app 模块分布
 
 | 模块 | ✅ 直接 | ⚠️ 同名 | ❌ 缺失 | 共计 |
 |---|---:|---:|---:|---:|
@@ -67,7 +67,7 @@ POST   /api/evolve/candidates/:id/reject     → POST   /v1/evolve/candidates/{c
 PATCH  /api/zero-trust                       → PATCH  /v1/policies/{rule_id}
 GET    /api/zero-trust                       → GET    /v1/policies
 POST   /api/actions/:id/approve              → POST   /v1/approvals/{approval_id}/approve
-POST   /api/digital-employees/:id/release    → POST   /v1/agents/{aid}/versions/{vid}/release
+POST   /api/agent-profiles/:id/release    → POST   /v1/agents/{aid}/versions/{vid}/release
 PATCH  /api/model-providers/:id              → PATCH  /v1/models/{model_id}   (≠ model-credentials)
 DELETE /api/model-providers/:id              → DELETE /v1/models/{model_id}
 PATCH  /api/notification-channels/:id        → PATCH  /v1/channels/{channel_id} (≠ notification 专用)
@@ -216,12 +216,12 @@ GET    /api/workflows/:id/versions
 ### agent_factory (6)
 
 ```
-GET    /api/digital-employees        (only :id currently)
-POST   /api/digital-employees
-GET    /api/digital-employees/overview
-POST   /api/digital-employees/:id/lifecycle
-POST   /api/digital-employees/:id/evaluate
-POST   /api/digital-employees/:id/configuration
+GET    /api/agent-profiles        (only :id currently)
+POST   /api/agent-profiles
+GET    /api/agent-profiles/overview
+POST   /api/agent-profiles/:id/lifecycle
+POST   /api/agent-profiles/:id/evaluate
+POST   /api/agent-profiles/:id/configuration
 ```
 
 ### governance (4)
@@ -276,6 +276,6 @@ POST   /api/slash-commands
 ## 推荐实施策略
 
 1. **保持 de-app gateway 在 :8089 继续跑** — 不动现有前端 e2e 体验
-2. **并行运行** — eos-app 起在新端口(:9000 via gateway, 已就绪),gateway 后面同时转发 de-app 和 eos-app(根据 path prefix 决定)
+2. **并行运行** — qzdap-app 起在新端口(:9000 via gateway, 已就绪),gateway 后面同时转发 de-app 和 qzdap-app(根据 path prefix 决定)
 3. **按 Batch 灰度切** — 每 batch 完成后,pathMap 标 `unmatched: true` → 灰度 `matched: true` → 验证 → 删除 phantom
-4. **完全替换** — 全部 8 batch 完成后,de-app 退场,只留 eos-app + 一层薄薄 gateway
+4. **完全替换** — 全部 8 batch 完成后,de-app 退场,只留 qzdap-app + 一层薄薄 gateway

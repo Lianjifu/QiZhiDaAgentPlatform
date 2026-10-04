@@ -1,6 +1,6 @@
 # Enterprise-Agent-OS — prod runtime image
 # Multi-stage build: deps via uv sync --no-dev, entrypoint picks
-# gunicorn vs uvicorn based on EOS_GUNICORN_WORKERS.
+# gunicorn vs uvicorn based on QZDAP_GUNICORN_WORKERS.
 
 FROM python:3.12-slim AS base
 
@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONPATH=/app/backend/src \
-    EOS_ENV=production
+    QZDAP_ENV=production
 
 # libpq5 = asyncpg runtime; libssl3 = cryptography/tls deps.
 # curl / tini intentionally omitted:

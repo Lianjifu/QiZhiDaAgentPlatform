@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from eos_messaging.domain_event import DomainEvent, EventEnvelope
-from eos_messaging.in_process import InProcessBus
+from qzdap_messaging.domain_event import DomainEvent, EventEnvelope
+from qzdap_messaging.in_process import InProcessBus
 
 
 @dataclass(slots=True)

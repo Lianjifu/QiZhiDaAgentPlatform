@@ -11,7 +11,7 @@ import type {
   SkillExportFormat, SkillExportField,
 } from '../schema';
 
-export type DrawerPanel = 'basic' | 'schema' | 'permission' | 'versions' | 'monitor' | 'agents' | 'audit';
+export type DrawerPanel = 'basic' | 'schema' | 'permission' | 'runtime' | 'versions' | 'monitor' | 'agents' | 'audit';
 
 export const TYPE_META: Record<SkillType, { icon: LucideIcon; tone: string; label: string; subLabel: string; description: string }> = {
   Skill: { icon: Sparkles, tone: 'bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300', label: '技能', subLabel: 'Skill', description: '把经验、流程或模板沉淀成可复用能力' },

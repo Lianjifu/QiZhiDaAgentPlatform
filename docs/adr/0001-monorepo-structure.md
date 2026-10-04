@@ -20,9 +20,9 @@ a mono-repo, or a hybrid?
 A single uv workspace at the repo root, with three package roots:
 
 ```
-libs/        ← 10 kernel packages (`eos-kernel`, `eos-persistence`, …)
-modules/     ← 14 capability modules (`deos-identity`, `deos-agent-runtime`, …)
-composition/ ← composition root (`eos-app`)
+libs/        ← 10 kernel packages (`qzdap-kernel`, `qzdap-persistence`, …)
+modules/     ← 14 capability modules (`qzdap-identity`, `qzdap-agent-runtime`, …)
+composition/ ← composition root (`qzdap-app`)
 ```
 
 Each package is a separately-installable Python project with its own
@@ -36,7 +36,7 @@ Each package is a separately-installable Python project with its own
   `git submodule` ceremony.
 - One CI pipeline. One test run. One import-linter pass.
 - One migration stream. One `docker-compose.yml`.
-- Single deploy artifact: the `eos-app` container.
+- Single deploy artifact: the `qzdap-app` container.
 
 ### Negative
 

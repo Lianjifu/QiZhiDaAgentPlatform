@@ -20,7 +20,7 @@ Both styles rot within months.
 Every module follows the same four-layer split:
 
 ```
-modules/<m>/src/deos/modules/<m>/
+modules/<m>/src/qzdap/modules/<m>/
 ├── domain/                 ← pure business types + invariants
 │   ├── <aggregate>.py      ← Tenant, Workspace, User, …
 │   ├── events.py           ← DomainEvent subclasses (past tense)
@@ -38,12 +38,12 @@ modules/<m>/src/deos/modules/<m>/
 Strict rules enforced by `.importlinter.ini`:
 
 1. `domain/` must NOT import any framework, ORM, transport, or any other
-   module. Period. Only stdlib + `eos_kernel`.
+   module. Period. Only stdlib + `qzdap_kernel`.
 2. `application/` may import `domain/` and `libs.*`, but never
    `adapter/`.
 3. `adapter/` may import `application/ports/` and the framework
    (FastAPI / SQLAlchemy).
-4. The composition root (`composition/eos_app/`) is the only place that
+4. The composition root (`composition/qzdap_app/`) is the only place that
    wires concrete adapters into ports.
 
 ## Consequences

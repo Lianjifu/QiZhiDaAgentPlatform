@@ -11,6 +11,18 @@ const withDelay = <T>(value: T, ms = 120) =>
 export function wrapMockHandlerWithAdminMetrics(fallback: (path: string, opts: any) => Promise<unknown> | unknown) {
   return async (path: string, opts: any = {}) => {
     const method = (opts?.method ?? 'GET').toUpperCase();
+    if (method === 'POST' && path === '/api/admin/metrics/dashboards') {
+      const body = (opts.body ?? {}) as { name?: string; range?: string; description?: string };
+      return withDelay({
+        id: `db-${Date.now()}`,
+        name: body.name?.trim() || '未命名看板',
+        range: body.range || '24h',
+        panels: 4,
+        owner: '管理员',
+        starred: false,
+        description: body.description || '',
+      });
+    }
     if (method !== 'GET') return fallback(path, opts);
     if (path === '/api/admin/metrics/models') return withDelay(mockModelMetrics);
     if (path === '/api/admin/metrics/latency') return withDelay(mockLatencyPoints);
