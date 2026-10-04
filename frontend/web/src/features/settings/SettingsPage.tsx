@@ -4,6 +4,7 @@
  */
 import { Building2, Check, ListTodo, Save, Search, ShieldCheck, Upload, UsersRound } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
+import { BrandLogo } from '@/components/feedback/BrandLogo';
 import { NoticeBanner, type NoticeTone } from '@/components/feedback/NoticeBanner';
 
 type SettingTab = 'brand' | 'compliance' | 'audit' | 'members';
@@ -11,7 +12,7 @@ type MemberRole = '管理员' | '成员';
 type Member = { id: string; name: string; email: string; role: MemberRole; team: string };
 type Policies = { sensitive: boolean; block: boolean; egress: boolean; trail: boolean };
 
-const SWATCHES = ['#4f46e5', '#6366f1', '#0f766e', '#b45309', '#be123c'];
+const SWATCHES = ['#6828D8', '#F87818', '#0f766e', '#b45309', '#be123c'];
 
 const AUDIT_ROWS = [
   { time: '今天 16:20', actor: '张敏', action: '发布智能体「客户沟通助手」', result: '成功' },
@@ -32,7 +33,7 @@ const SEED_MEMBERS: Member[] = [
 export default function SettingsPage() {
   const [tab, setTab] = useState<SettingTab>('brand');
   const [brandName, setBrandName] = useState('企智搭 · 智能体平台');
-  const [brandColor, setBrandColor] = useState('#6366f1');
+  const [brandColor, setBrandColor] = useState('#6828D8');
   const [policies, setPolicies] = useState<Policies>({ sensitive: true, block: true, egress: true, trail: true });
   const [members, setMembers] = useState<Member[]>(SEED_MEMBERS);
   const [query, setQuery] = useState('');
@@ -297,9 +298,9 @@ function BrandPreview({ name, color }: { name: string; color: string }) {
     <div>
       <p className="text-xs font-semibold">预览</p>
       <div className="mt-2 overflow-hidden rounded-xl border border-[var(--border)]">
-        <div className="flex items-center gap-2.5 px-4 py-3" style={{ background: color }}>
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-white/20 text-xs font-semibold text-white">{name.slice(0, 1)}</span>
-          <span className="truncate text-sm font-semibold text-white">{name}</span>
+        <div className="flex items-center gap-2.5 bg-[var(--surface-1)] px-4 py-3" style={{ borderBottom: `3px solid ${color}` }}>
+          <BrandLogo size={28} variant="icon" ariaLabel={name} />
+          <span className="truncate text-sm font-semibold" style={{ color }}>{name}</span>
         </div>
         <div className="space-y-2 bg-[var(--bg-elevated)] p-4">
           <div className="h-2 w-20 rounded bg-[var(--border-strong)]" />
@@ -314,5 +315,5 @@ function BrandPreview({ name, color }: { name: string; color: string }) {
 }
 
 function toHex(value: string): string {
-  return /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#6366f1';
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#6828D8';
 }

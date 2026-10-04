@@ -81,9 +81,9 @@ export function WorkspaceShell() {
       <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} px-2`}>
         <NavLink to={homeHref} className="flex items-center gap-2.5" aria-label="返回首页">
           {sidebarCollapsed ? (
-            <BrandLogo size={36} className="text-[var(--brand)]" ariaLabel="企智搭 · 智能体平台" />
+            <BrandLogo size={36} variant="icon" ariaLabel="企智搭 · 智能体平台" />
           ) : (
-            <BrandLogo size={36} withWordmark className="text-[var(--brand)]" />
+            <BrandLogo size={32} withWordmark />
           )}
         </NavLink>
         <button type="button" onClick={toggleSidebar} className="hidden rounded-md p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] lg:block" aria-label={sidebarCollapsed ? '展开侧栏' : '收起侧栏'} title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}>

@@ -45,11 +45,6 @@ export interface UseLoginOpts {
 const MFA_EMAIL_PATTERN = /_mfa@acme\.com$/i;
 const MFA_CODE_PATTERN = /^\d{6}$/;
 
-function readBuildVersion(): string {
-  return ((import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env
-    ?.VITE_BUILD_VERSION) ?? 'dev';
-}
-
 function identityServiceDown(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
   const status = 'status' in err ? Number((err as { status?: number }).status) : NaN;
@@ -260,6 +255,5 @@ export function useLogin(opts: UseLoginOpts = {}) {
     submit,
     isPending: mut.isPending,
     chooseRole,
-    buildVersion: readBuildVersion(),
   };
 }

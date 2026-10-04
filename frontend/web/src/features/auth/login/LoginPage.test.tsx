@@ -191,11 +191,6 @@ describe('Login', () => {
     expect(screen.getByText('验证身份')).toBeTruthy();
   });
 
-  it('renders build chip with default dev label', () => {
-    renderLogin(['/login']);
-    expect(screen.getByText(/Build dev/i)).toBeTruthy();
-  });
-
   it('SSO button is disabled with tooltip', () => {
     renderLogin(['/login']);
     const sso = screen.getByRole('button', { name: /企业 SSO 登录/ }) as HTMLButtonElement;

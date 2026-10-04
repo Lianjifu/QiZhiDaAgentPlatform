@@ -2,6 +2,39 @@
 
 **QiZhiDa · Agent Platform（QZDAP）** 是企业级智能体工作台：管理员建设能力并治理运行，成员从已开放目录选用智能体、知识、技能和工作流去完成工作。
 
+品牌图形是两块圆角方块层叠咬合，白色间隙勾出层次，象征「搭」——像积木一样把企业智能化能力一块一块搭起来。
+
+## 品牌标识
+
+中文名 **企智搭**，英文 **QIZHIDA**，产品线 **智能体平台 / Agent Platform**。技术包名与环境变量用 **QZDAP**（QiZhiDa Agent Platform）。
+
+| 色板 | 色值 | 用途 |
+|---|---|---|
+| 品牌紫 | `#6828D8` | 后层方块、中文名、工作台主色 `--brand` |
+| 强调橙 | `#F87818` | 前层方块、`QIZHIDA`、登录强调 `--brand-accent` |
+| 间隙白 | `#FFFFFF` | 两块方块之间的咬合缝 |
+| 单色深 | `#1A1A1A` / `#3A3A3A` | 印刷、反白底上的单色组合 |
+
+<p>
+  <img src="frontend/web/public/favicon.svg" width="72" alt="图标标识" />
+  &nbsp;&nbsp;
+  <img src="frontend/web/public/logo-lockup.svg" height="72" alt="横向组合" />
+  &nbsp;&nbsp;
+  <img src="frontend/web/public/logo-mono.svg" height="72" alt="单色版本" />
+</p>
+
+![主标识](frontend/web/public/logo-wordmark.svg)
+
+| 版本 | 构图 | 出现位置 | 文件 |
+|---|---|---|---|
+| 图标标识 | 紫底圆角方块 + 浅紫/橙叠合方块 | 浏览器 favicon、侧栏收起 | `frontend/web/public/favicon.svg` |
+| 横向组合 | 图形在左；右为「企智搭」+ 小字「智能体平台」 | 侧栏展开 | `frontend/web/public/logo-lockup.svg` |
+| 登录组合 | 同上，再加一行橙色 `QIZHIDA` | 登录页左侧品牌区 | 由 `BrandLogo` 拼装 |
+| 主标识 | 图形 + 企智搭 + QIZHIDA 纵向 | 文档、对外物料 | `frontend/web/public/logo-wordmark.svg` |
+| 单色版本 | 深色叠合方块 + 企智搭 + 智能体平台 | 单色印刷 | `frontend/web/public/logo-mono.svg` |
+
+界面实现：`frontend/web/src/components/feedback/BrandLogo.tsx`（`variant`: `mark` / `icon` / `mono`；登录页横向 lockup 带 `caption="QIZHIDA"`）。不要把 Logo 拉变形，间隙必须保留白色、不可填色。
+
 前端是 React 18 + Vite 工作台（用户侧 + 管理侧）；后端是 Python 3.12 + FastAPI 模块化单体。默认联调路径：
 
 ```
@@ -28,12 +61,12 @@ make qzdap-down        # 停止
 工作台：<http://127.0.0.1:5200>  
 默认开发账号（种子数据）：
 
-| 角色 | 邮箱 | 密码 |
-|---|---|---|
-| 管理员 | `admin@acme.com` | `dev-admin-password-change-me` |
-| 成员 | `user@acme.com` | `dev-admin-password-change-me` |
+| 角色 | 邮箱 | 密码 | 进入 |
+|---|---|---|---|
+| 管理员 | `admin@acme.com` | `dev-admin-password-change-me` | `/admin/*` |
+| 成员 | `user@acme.com` | `dev-admin-password-change-me` | 工作区路由 |
 
-管理员进入 `/admin/*`，成员进入工作区路由。登录走 `POST /v1/identity/login`，JWT 中的工作区写入 `X-Workspace-Id`。
+登录走 `POST /v1/identity/login`，JWT 中的工作区写入 `X-Workspace-Id`。
 
 ### 仅前端（演示数据）
 
@@ -64,6 +97,42 @@ curl http://127.0.0.1:8200/healthz
 ```
 
 后端命令须在 `backend/` 下执行。环境变量一律 `QZDAP_*`，Python 包名 `qzdap.*`，前端包名 `@qzdap/web-*`。
+
+## 界面预览
+
+以下截图来自 `pnpm --filter web dev:demo`（前端内存演示数据，无需后端）。
+
+### 登录
+
+管理员与成员从同一登录页进入，角色分流到 `/admin/*` 或工作区。
+
+![登录工作台](docs/images/demo/login.png)
+
+### 用户侧
+
+成员从已开放目录选用能力，在对话里把工作做完。
+
+| 首页 | 对话 |
+|---|---|
+| ![首页](docs/images/demo/user-home.png) | ![对话](docs/images/demo/user-copilot.png) |
+
+![协作](docs/images/demo/user-team.png)
+
+### 管理侧
+
+管理员建设目录、治理用量，并用评测与链路看质量。
+
+| 运营概览 | 智能体管理 |
+|---|---|
+| ![运营概览](docs/images/demo/admin-overview.png) | ![智能体管理](docs/images/demo/admin-agents.png) |
+
+| 知识管理 | 额度管理 |
+|---|---|
+| ![知识管理](docs/images/demo/admin-knowledge.png) | ![额度管理](docs/images/demo/admin-quotas.png) |
+
+| 评测中心 | 调用链路 |
+|---|---|
+| ![评测中心](docs/images/demo/admin-evaluations.png) | ![调用链路](docs/images/demo/admin-operations.png) |
 
 ## 用户侧
 
@@ -134,13 +203,13 @@ curl http://127.0.0.1:8200/healthz
 .
 ├── backend/         Python 3.12 + FastAPI + uv workspace（qzdap.*）
 ├── frontend/        pnpm workspace
-│   ├── web/         工作台 SPA
+│   ├── web/         工作台 SPA（含 public/ 品牌 SVG）
 │   └── packages/    @qzdap/web-api、ui、hooks、types、utils
 ├── bin/qzdap-stack/ 本机开发栈（Vite + 网关 + qzdap-app）
 ├── deploy/          部署脚本与编排
 ├── infra/           k8s / envoy / prometheus / grafana
 ├── doc/             架构设计（backend + web）
-├── docs/            ADR 与 runbook
+├── docs/            ADR、runbook 与演示截图（images/demo）
 └── README.md
 ```
 

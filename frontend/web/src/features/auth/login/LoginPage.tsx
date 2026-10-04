@@ -34,7 +34,6 @@ export default function LoginPage() {
     submit,
     isPending,
     chooseRole,
-    buildVersion,
   } = useLogin({
     onAuthenticated: (data) => {
       const name = data.user.name || data.user.email || '';
@@ -113,13 +112,11 @@ export default function LoginPage() {
           product={t('login.brand.product')}
           tagline={t('login.brand.tagline')}
           badge={t('login.hero.badge')}
-          buildVersion={buildVersion}
           title1={t('login.hero.title1')}
           title2={t('login.hero.title2')}
           subtitle={t('login.hero.subtitle')}
           bullets={heroBullets}
           stats={heroStats}
-          footnote={t('login.hero.footnote')}
         />
 
         <main className="login-sheet relative flex min-h-full flex-col">
@@ -139,7 +136,6 @@ export default function LoginPage() {
                   size={36}
                   withWordmark
                   wordmark="企智搭"
-                  subtitle="智能体平台"
                   ariaLabel="企智搭 · 智能体平台"
                 />
               </div>
@@ -204,11 +200,8 @@ export default function LoginPage() {
 
               <div id="security" className="mt-8 border-t border-[var(--login-rule)] pt-5">
                 <TrustStrip items={trustItems} tone="light" className="login-trust" />
-                <div className="mt-3 flex items-center justify-between text-[11px] text-[var(--text-muted)]">
+                <div className="mt-3 text-[11px] text-[var(--text-muted)]">
                   <a href="#security" className="hover:text-[var(--text)]">安全与合规说明</a>
-                  <span className="font-mono tracking-[0.18em]">
-                    {t('login.buildLabel')} {buildVersion}
-                  </span>
                 </div>
               </div>
             </div>
