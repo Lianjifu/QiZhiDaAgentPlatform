@@ -48,7 +48,10 @@ export async function adminModelsMockHandler(path: string, opts: MockOpts): Prom
   if (method === 'POST' && path === '/api/admin/models/catalog') {
     const v = (opts.body ?? {}) as ProbeModelsVars;
     if (!v.apiKey?.trim() || !v.baseUrl?.trim()) {
-      return withDelay({ models: [] as string[] }, 180);
+      return withDelay(
+        { models: [] as string[], error: '请填写 API Key 和请求地址后再拉取。' },
+        180,
+      );
     }
     const protocol = (v.protocol ?? 'openai') as ModelProtocol;
     return withDelay({ models: [...(DEMO_PROVIDER_CATALOG[protocol] ?? [])] }, 220);

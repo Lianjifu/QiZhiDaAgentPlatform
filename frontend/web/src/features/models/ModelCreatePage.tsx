@@ -1,10 +1,11 @@
 /**
  * 新建模型 — 独立页面 /admin/models/new
- * 左侧填写供应商凭证，从供应商拉取模型列表后再勾选接入。
+ * 左侧填写供应商凭证，从供应商拉取模型列表后再勾选接入；
+ * 也可不依赖供应商目录，手动添加模型 ID。
  */
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, RefreshCw, X } from 'lucide-react';
 import type { ModelProtocol } from './schema';
 import { useCreateModel, useProbeProviderModels } from './useModels';
 import { MODEL_PROTOCOLS, PROTOCOL_META } from './components/constants';
@@ -18,16 +19,20 @@ export default function ModelCreatePage() {
   const [protocol, setProtocol] = useState<ModelProtocol>('openai');
   const [baseUrl, setBaseUrl] = useState(PROTOCOL_META.openai.baseUrl);
   const [catalog, setCatalog] = useState<string[]>([]);
-  const [models, setModels] = useState<string[]>([]);
+  const [probeError, setProbeError] = useState<string | null>(null);
   const [probed, setProbed] = useState(false);
+  const [models, setModels] = useState<string[]>([]);
+  const [customDraft, setCustomDraft] = useState('');
   const [query, setQuery] = useState('');
 
   const switchProtocol = (next: ModelProtocol) => {
     setProtocol(next);
     setBaseUrl(PROTOCOL_META[next].baseUrl);
     setCatalog([]);
-    setModels([]);
+    setProbeError(null);
     setProbed(false);
+    setModels([]);
+    setCustomDraft('');
     setQuery('');
   };
 
@@ -35,11 +40,29 @@ export default function ModelCreatePage() {
     setModels((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   };
 
+  const removeModel = (id: string) => {
+    setModels((cur) => cur.filter((x) => x !== id));
+  };
+
+  const addCustomModel = (raw: string) => {
+    const id = raw.trim();
+    if (!id) return;
+    setModels((cur) => (cur.includes(id) ? cur : [...cur, id]));
+  };
+
+  const submitCustomDraft = () => {
+    addCustomModel(customDraft);
+    setCustomDraft('');
+  };
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return catalog;
     return catalog.filter((id) => id.toLowerCase().includes(q));
   }, [catalog, query]);
+
+  const probedSet = useMemo(() => new Set(catalog), [catalog]);
+  const customModels = useMemo(() => models.filter((id) => !probedSet.has(id)), [models, probedSet]);
 
   const canProbe = apiKey.trim().length > 0 && baseUrl.trim().length > 0 && !probe.isPending;
   const canSubmit = providerName.trim().length > 0
@@ -55,7 +78,7 @@ export default function ModelCreatePage() {
       {
         onSuccess: (res) => {
           setCatalog(res.models);
-          setModels([]);
+          setProbeError(res.error ?? null);
           setProbed(true);
         },
       },
@@ -70,7 +93,7 @@ export default function ModelCreatePage() {
       <header>
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">模型配置</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">新建模型</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-muted)]">先接入供应商，再从对方拉取可用模型并勾选接入。</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-muted)]">先接入供应商，再从对方拉取可用模型并勾选接入；也可不依赖供应商目录，手动添加模型 ID。</p>
       </header>
 
       <form
@@ -166,7 +189,11 @@ export default function ModelCreatePage() {
             <div>
               <h2 className="text-sm font-semibold">模型列表</h2>
               <p className="mt-1 text-[11px] leading-5 text-[var(--text-muted)]">
-                {probed ? `供应商返回 ${catalog.length} 个模型，已选 ${models.length} 个。` : '填写凭证后从供应商拉取，再勾选要接入的模型。'}
+                {probed
+                  ? probeError
+                    ? `供应商目录拉取失败：${probeError}`
+                    : `供应商返回 ${catalog.length} 个模型，已选 ${models.length} 个。`
+                  : '填写凭证后从供应商拉取，或直接手动添加模型 ID。'}
               </p>
             </div>
             {catalog.length > 0 && (
@@ -180,17 +207,22 @@ export default function ModelCreatePage() {
           </div>
 
           <div className="mt-4 min-h-0 flex-1">
-            {!probed && (
+            {!probed && catalog.length === 0 && (
               <div className="grid h-full min-h-[16rem] place-items-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-elevated)] px-6 text-center text-sm text-[var(--text-muted)]">
-                模型列表从供应商拉取，不会预置本地目录。
+                填写凭证后从供应商拉取模型，或直接使用下方「手动添加」输入模型 ID。
               </div>
             )}
-            {probed && catalog.length === 0 && (
+            {probed && catalog.length === 0 && !probeError && (
               <div className="grid h-full min-h-[16rem] place-items-center rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-elevated)] px-6 text-center text-sm text-[var(--text-muted)]">
-                供应商未返回可用模型。请检查密钥、请求地址和协议后重试。
+                供应商未返回可用模型。请检查密钥、请求地址和协议后重试，或使用下方「手动添加」。
               </div>
             )}
-            {probed && catalog.length > 0 && (
+            {probed && probeError && catalog.length === 0 && (
+              <div className="grid h-full min-h-[16rem] place-items-center rounded-xl border border-dashed border-rose-300 bg-rose-50 px-6 text-center text-sm text-rose-700">
+                {probeError}
+              </div>
+            )}
+            {catalog.length > 0 && (
               <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-xl border border-[var(--border)]">
                 {visible.map((id) => {
                   const on = models.includes(id);
@@ -207,6 +239,59 @@ export default function ModelCreatePage() {
                   <li className="px-3 py-8 text-center text-xs text-[var(--text-muted)]">没有匹配的模型 ID</li>
                 )}
               </ul>
+            )}
+          </div>
+
+          <div className="mt-5 space-y-3 border-t border-[var(--border)] pt-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold">手动添加</h3>
+                <p className="mt-0.5 text-[11px] leading-5 text-[var(--text-muted)]">不依赖供应商目录：填写模型 ID 直接加入待创建列表。</p>
+              </div>
+              <div className="flex w-full max-w-sm items-center gap-2">
+                <input
+                  value={customDraft}
+                  onChange={(e) => setCustomDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      submitCustomDraft();
+                    }
+                  }}
+                  placeholder="例如 deepseek-chat"
+                  className="h-9 flex-1 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-2.5 font-mono text-xs outline-none focus:border-[var(--brand)]"
+                />
+                <button
+                  type="button"
+                  onClick={submitCustomDraft}
+                  disabled={customDraft.trim().length === 0}
+                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-[var(--border)] px-2.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Plus className="h-3.5 w-3.5" />添加
+                </button>
+              </div>
+            </div>
+            {customModels.length > 0 ? (
+              <ul className="flex flex-wrap gap-1.5">
+                {customModels.map((id) => (
+                  <li
+                    key={id}
+                    className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 font-mono text-xs"
+                  >
+                    {id}
+                    <button
+                      type="button"
+                      onClick={() => removeModel(id)}
+                      className="rounded-full p-0.5 text-[var(--text-muted)] hover:bg-rose-50 hover:text-rose-600"
+                      aria-label={`移除 ${id}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[11px] text-[var(--text-muted)]">尚未手动添加任何模型。</p>
             )}
           </div>
 

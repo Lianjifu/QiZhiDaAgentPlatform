@@ -87,6 +87,8 @@ export type ProbeModelsVars = {
 
 export type ProbeModelsResult = {
   models: string[];
+  /** Present when the probe could not return real supplier data. */
+  error?: string;
 };
 
 export type CreateRouteVars = {

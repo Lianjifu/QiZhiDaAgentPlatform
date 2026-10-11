@@ -16,7 +16,7 @@ vi.mock('./useModels', async () => {
       isPending: false,
       mutate: (
         vars: { protocol: string },
-        opts?: { onSuccess?: (res: { models: string[] }) => void },
+        opts?: { onSuccess?: (res: { models: string[]; error?: string }) => void },
       ) => {
         const models = vars.protocol === 'anthropic'
           ? ['claude-3-5-sonnet', 'claude-3-5-haiku']
@@ -47,7 +47,7 @@ describe('AdminModelCreate', () => {
     expect(screen.getByLabelText('请求地址')).toBeTruthy();
     expect(screen.getByRole('radiogroup', { name: '协议' })).toBeTruthy();
     expect(screen.queryByText('gpt-4o')).toBeNull();
-    expect(screen.getByText(/模型列表从供应商拉取/)).toBeTruthy();
+    expect(screen.getByText(/填写凭证后从供应商拉取模型/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('供应商名称'), { target: { value: '自建网关' } });
     fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'sk-test' } });
@@ -57,6 +57,22 @@ describe('AdminModelCreate', () => {
     expect((screen.getByRole('button', { name: /创建/ }) as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.click(screen.getByText('gpt-4o').closest('label')!);
+    expect((screen.getByRole('button', { name: /创建 1 个模型/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('lets the user submit purely with manually added model IDs (no probe)', () => {
+    renderAt();
+    fireEvent.change(screen.getByLabelText('供应商名称'), { target: { value: 'deepseek' } });
+    fireEvent.change(screen.getByLabelText('API Key'), { target: { value: 'sk-test' } });
+
+    const submit = screen.getByRole('button', { name: /创建/ }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+
+    const draft = screen.getByPlaceholderText(/例如 deepseek-chat/);
+    fireEvent.change(draft, { target: { value: 'deepseek-chat' } });
+    fireEvent.click(screen.getByRole('button', { name: '添加' }));
+
+    expect(screen.getByText('deepseek-chat')).toBeTruthy();
     expect((screen.getByRole('button', { name: /创建 1 个模型/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
