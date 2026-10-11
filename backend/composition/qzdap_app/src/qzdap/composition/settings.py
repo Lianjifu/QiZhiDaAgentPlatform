@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # redis
     redis_url: str = "redis://localhost:9154/0"
-    redis_max_connions: int = 50
+    redis_max_connections: int = 50
 
     # auth
     jwt_secret: str = "dev-secret-not-for-production-use-only"
