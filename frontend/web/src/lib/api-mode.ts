@@ -16,7 +16,7 @@ function isLoopbackBase(url: string): boolean {
 }
 
 /**
- * 开发态默认走同源 `/api`（Vite proxy → de-gateway :8089），避免浏览器/Cursor 沙箱
+ * 开发态默认走同源 `/api`（Vite proxy → qzdap-gateway :9150），避免浏览器/Cursor 沙箱
  * 无法直连环回地址导致控制面读取失败。
  * 需要直连时设置 `VITE_API_DIRECT=true` 并填写非空 `VITE_API_BASE`。
  */

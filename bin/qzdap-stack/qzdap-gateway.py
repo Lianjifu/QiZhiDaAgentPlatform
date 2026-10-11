@@ -16,11 +16,11 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-LISTEN_PORT = int(os.environ.get("QZDAP_LISTEN_PORT", "9200"))
-BACKEND_PORT = int(os.environ.get("QZDAP_BACKEND_PORT", "8200"))
+LISTEN_PORT = int(os.environ.get("QZDAP_LISTEN_PORT", "9150"))
+BACKEND_PORT = int(os.environ.get("QZDAP_BACKEND_PORT", "9151"))
 BACKEND_HOST = os.environ.get("QZDAP_BACKEND_HOST", "127.0.0.1")
 APP_HOST = os.environ.get("QZDAP_APP_HOST", "127.0.0.1")
-APP_PORT = int(os.environ.get("QZDAP_APP_PORT", "8200"))
+APP_PORT = int(os.environ.get("QZDAP_APP_PORT", "9151"))
 APP_PATH_PREFIXES = [
     p.strip()
     for p in os.environ.get(

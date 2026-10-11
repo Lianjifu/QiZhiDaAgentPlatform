@@ -20,25 +20,25 @@ export default defineConfig({
   },
   server: {
     host: true,
-    port: Number(process.env.QZDAP_FRONTEND_PORT ?? 5200),
+    port: Number(process.env.QZDAP_FRONTEND_PORT ?? 9152),
     strictPort: true,
     // 联调：浏览器请求经 pathMap 改写后落到 /v1/*（backend 真路径），
-    // 仍走同源 → QZDAP gateway (:9200) → qzdap-app。
+    // 仍走同源 → QZDAP gateway (:9150) → qzdap-app。
     // 保留 /api/* 以便尚未改写完的 pathMap 仍可经网关转发。
-    // QZDAP gateway 默认端口 :9200 (bin/qzdap-stack/qzdap-env.sh)。
+    // QZDAP gateway 默认端口 :9150 (bin/qzdap-stack/qzdap-env.sh)。
     proxy: {
       '/v1': {
-        target: process.env.VITE_PROXY_TARGET ?? process.env.QZDAP_VITE_PROXY_TARGET ?? 'http://127.0.0.1:9200',
+        target: process.env.VITE_PROXY_TARGET ?? process.env.QZDAP_VITE_PROXY_TARGET ?? 'http://127.0.0.1:9150',
         changeOrigin: true,
         secure: false,
       },
       '/api': {
-        target: process.env.VITE_PROXY_TARGET ?? process.env.QZDAP_VITE_PROXY_TARGET ?? 'http://127.0.0.1:9200',
+        target: process.env.VITE_PROXY_TARGET ?? process.env.QZDAP_VITE_PROXY_TARGET ?? 'http://127.0.0.1:9150',
         changeOrigin: true,
         secure: false,
       },
       '/healthz': {
-        target: process.env.VITE_PROXY_TARGET ?? process.env.QZDAP_VITE_PROXY_TARGET ?? 'http://127.0.0.1:9200',
+        target: process.env.VITE_PROXY_TARGET ?? process.env.QZDAP_VITE_PROXY_TARGET ?? 'http://127.0.0.1:9150',
         changeOrigin: true,
         secure: false,
       },

@@ -5,10 +5,8 @@
 后端 **Python 3.12 + FastAPI 模块化单体**，前端 **React 18 + Vite** 工作台（用户侧 + 管理侧）。默认联调路径：
 
 ```
-浏览器 :5200  →  网关 :9200  →  qzdap-app :8200  →  Postgres
+浏览器 :9152  →  网关 :9150  →  qzdap-app :9151  →  Postgres :9153
 ```
-
-架构方案见 [`doc/`](./doc/)，决策记录见 [`docs/adr/`](./docs/adr/)。
 
 ## 界面预览
 
@@ -69,7 +67,7 @@
 
 ## 快速开始
 
-依赖：后端 `uv`，前端 `pnpm`。开发栈脚本拉起 qzdap-app + 网关 + Vite，默认端口 5200 / 9200 / 8200。
+依赖：后端 `uv`，前端 `pnpm`。开发栈脚本拉起 qzdap-app + 网关 + Vite，默认端口 9152 / 9150 / 9151 / 9153。
 
 ```bash
 # 准备
@@ -82,7 +80,7 @@ make qzdap-status      # 查看端口
 make qzdap-down        # 停止
 ```
 
-打开 [http://127.0.0.1:5200](http://127.0.0.1:5200)，使用种子账号登录：
+打开 [http://127.0.0.1:9152](http://127.0.0.1:9152)，使用种子账号登录：
 
 | 角色 | 邮箱 | 密码 |
 |---|---|---|
@@ -96,7 +94,7 @@ make qzdap-down        # 停止
 ```bash
 cd frontend
 pnpm --filter web dev:demo
-# http://127.0.0.1:5200
+# http://127.0.0.1:9152
 ```
 
 真实 API 是默认：`pnpm --filter web dev`（`VITE_USE_DEMO=false`，Vite 代理到网关）。
@@ -109,8 +107,8 @@ make sync
 docker compose up -d       # PG（pgvector）+ Redis + MinIO
 cp .env.example .env
 make db-upgrade
-make run-app               # 联调用 make qzdap-up（:8200）
-curl http://127.0.0.1:8200/healthz
+make run-app               # 联调用 make qzdap-up（:9151）
+curl http://127.0.0.1:9151/healthz
 ```
 
 后端命令须在 `backend/` 下执行。环境变量一律 `QZDAP_*`，Python 包名 `qzdap.*`，前端包名 `@qzdap/web-*`。
@@ -170,10 +168,9 @@ curl http://127.0.0.1:8200/healthz
 ├── frontend/                      pnpm workspace
 │   ├── web/                       工作台 SPA
 │   └── packages/                  @qzdap/web-{api,ui,hooks,types,utils}
-├── bin/qzdap-stack/               本机开发栈：Vite(:5200) + 网关(:9200) + qzdap-app(:8200)
+├── bin/qzdap-stack/               本机开发栈：Vite(:9152) + 网关(:9150) + qzdap-app(:9151) + Postgres(:9153)
 ├── deploy/                        部署脚本与编排
 ├── infra/                         k8s / envoy / prometheus / grafana
-├── doc/                           架构设计 13 节 × 2（backend + web）
 ├── docs/                          ADR、runbook 与演示截图
 └── README.md
 ```
@@ -185,17 +182,3 @@ curl http://127.0.0.1:8200/healthz
 - 多租户请求携带 `X-Tenant-Id` 与 `X-Workspace-Id`
 - 演示模式 `VITE_USE_DEMO=true` 只注入本地 mock，生产构建不触达
 - 命名空间：Python `qzdap.*`、前端 `@qzdap/web-*`、环境变量 `QZDAP_*`
-
-## 文档导航
-
-| 主题 | 入口 |
-|---|---|
-| 后端架构总览 | [doc/backend/01-架构总览.md](./doc/backend/01-架构总览.md) |
-| 前端架构总览 | [doc/web/01-架构总览.md](./doc/web/01-架构总览.md) |
-| 后端模块设计 | [doc/backend/04-模块设计.md](./doc/backend/04-模块设计.md) |
-| 前端模块设计 | [doc/web/04-模块设计.md](./doc/web/04-模块设计.md) |
-| 接口规范 | [doc/backend/06-接口规范.md](./doc/backend/06-接口规范.md) |
-| 部署与运行 | [doc/backend/11-部署与运行.md](./doc/backend/11-部署与运行.md) |
-| 监控 SLO | [doc/slo.md](./doc/slo.md) |
-| Runbook | [doc/runbook.md](./doc/runbook.md) |
-| 架构决策（ADR） | [docs/adr/](./docs/adr/) |

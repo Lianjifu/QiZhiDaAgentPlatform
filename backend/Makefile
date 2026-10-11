@@ -7,7 +7,7 @@ UV        ?= uv
 PYTHON   ?= python3.12
 APP      ?= qzdap.composition.main:create_app
 HOST     ?= 0.0.0.0
-PORT     ?= 8100
+PORT     ?= 9151
 
 help:
 	@echo "Targets:"

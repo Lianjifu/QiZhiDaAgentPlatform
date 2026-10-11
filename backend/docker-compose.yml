@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: qzdap_dev
     ports:
-      - "5432:5432"
+      - "9153:9153"
     volumes:
       - qzdap_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -20,60 +20,17 @@ services:
   redis:
     image: redis:7-alpine
     container_name: qzdap-redis
-    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--port", "9154"]
     ports:
-      - "6379:6379"
+      - "9154:9154"
     volumes:
       - qzdap_redis:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-p", "9154", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 10
-
-  minio:
-    image: minio/minio:latest
-    container_name: qzdap-minio
-    command: ["server", "/data", "--console-address", ":9001"]
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - qzdap_minio:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
-  kafka:
-    # A5: audit bus broker. KRaft single-node for dev (no ZK).
-    # Switch QZDAP_AUDIT_MODE=direct to bypass in dev.
-    image: bitnami/kafka:3.7
-    container_name: qzdap-kafka
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_CFG_NODE_ID: "0"
-      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "0@kafka:9093"
-      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_CFG_NUM_PARTITIONS: "3"
-      ALLOW_PLAINTEXT_LISTENER: "yes"
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
-      interval: 10s
-      timeout: 5s
       retries: 10
 
 volumes:
   qzdap_postgres:
   qzdap_redis:
-  qzdap_minio:

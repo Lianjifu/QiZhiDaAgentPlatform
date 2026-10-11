@@ -7,7 +7,7 @@
 #                        ``uv run uvicorn --reload`` (no image build, hot reload,
 #                        debugger attach, ~150 MB less memory).
 #
-# No compose, no ingress, no canary, no MinIO, no Vault / k8s.
+# No compose, no ingress, no canary, no MinIO, no Kafka, no Vault / k8s.
 #
 # Port policy — staging uses ports decoupled from prod defaults (5432 /
 # 8102 / 9102) so a colocated dev box can run both without conflicts:

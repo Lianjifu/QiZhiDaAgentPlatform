@@ -1,10 +1,10 @@
 # 企智搭 · 智能体平台 — root Makefile
 #
 # Ports (defined in bin/qzdap-stack/qzdap-env.sh, override via env):
-#   QZDAP_FRONTEND_PORT   5200  (Vite dev server)
-#   QZDAP_LISTEN_PORT     9200  (qzdap-gateway → qzdap-app)
-#   QZDAP_APP_PORT        8200  (Python qzdap-app)
-#   QZDAP_PG_PORT         5434  (QZDAP Postgres, when started)
+#   QZDAP_FRONTEND_PORT   9152  (Vite dev server)
+#   QZDAP_LISTEN_PORT     9150  (qzdap-gateway → qzdap-app)
+#   QZDAP_APP_PORT        9151  (Python qzdap-app)
+#   QZDAP_PG_PORT         9153  (QZDAP Postgres, when started)
 
 QZDAP_STACK_DIR := bin/qzdap-stack
 
