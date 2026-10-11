@@ -78,18 +78,23 @@ burn-in:
 	$(UV) run python ../deploy/burn_in.py
 
 db-upgrade:
+	@if [ -f .env ]; then set -a; . ./.env; set +a; fi
 	$(UV) run alembic -c migrations/alembic.ini upgrade head
 
 db-downgrade:
+	@if [ -f .env ]; then set -a; . ./.env; set +a; fi
 	$(UV) run alembic -c migrations/alembic.ini downgrade -1
 
 db-stamp:
+	@if [ -f .env ]; then set -a; . ./.env; set +a; fi
 	$(UV) run alembic -c migrations/alembic.ini stamp head
 
 run-app:
+	@if [ -f .env ]; then set -a; . ./.env; set +a; fi
 	$(UV) run uvicorn $(APP) --host $(HOST) --port $(PORT) --factory
 
 run-app-debug:
+	@if [ -f .env ]; then set -a; . ./.env; set +a; fi
 	$(UV) run uvicorn $(APP) --host $(HOST) --port $(PORT) --factory --reload --log-level debug
 
 clean:
