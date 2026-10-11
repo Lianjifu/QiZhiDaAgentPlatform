@@ -26,20 +26,20 @@ class Settings(BaseSettings):
 
     # http
     http_host: str = "0.0.0.0"
-    http_port: int = 8100
+    http_port: int = 9151
     http_workers: int = 1
     http_request_body_max_bytes: int = 10 * 1024 * 1024
 
     # database
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/qzdap_dev"
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:9153/qzdap_dev"
     database_pool_size: int = 20
     database_max_overflow: int = 10
     database_pool_recycle: int = 3600
     database_echo: bool = False
 
     # redis
-    redis_url: str = "redis://localhost:6379/0"
-    redis_max_connections: int = 50
+    redis_url: str = "redis://localhost:9154/0"
+    redis_max_connions: int = 50
 
     # auth
     jwt_secret: str = "dev-secret-not-for-production-use-only"
@@ -76,20 +76,6 @@ class Settings(BaseSettings):
     event_redis_block_ms: int = 1000
     event_redis_count: int = 10
 
-    # audit pipeline (A5)
-    # ``direct`` keeps the synchronous SqlAuditLogAdapter (default —
-    # backward compatible). ``kafka`` routes audit events through
-    # KafkaAuditPublisher → topic → KafkaAuditConsumer → audit_log SQL.
-    audit_mode: Literal["direct", "kafka"] = "direct"
-    audit_consumer_enabled: bool = True  # set false on N-1 k8s replicas
-    audit_kafka_bootstrap_servers: str = "localhost:9092"
-    audit_kafka_topic: str = "qzdap.audit.events"
-    audit_kafka_dlq_topic: str = "qzdap.audit.events.dlq"
-    audit_kafka_consumer_group: str = ""  # env/hostname fallback
-    audit_kafka_max_retries: int = 3
-    audit_kafka_block_ms: int = 1000
-    audit_kafka_request_timeout_ms: int = 5000
-
     # rate limit
     rate_limit_per_tenant_per_min: int = 1000
     rate_limit_per_api_key_per_min: int = 1000
@@ -99,7 +85,7 @@ class Settings(BaseSettings):
     tool_call_timeout_seconds: float = 30.0
 
     # sandbox_runtime (gVisor sidecar)
-    sandbox_runtime_url: str = "http://127.0.0.1:8093"
+    sandbox_runtime_url: str = "http://127.0.0.1:9158"
     sandbox_runtime_secret: str = "dev-sandbox-runtime-secret-change-me"
     sandbox_default_image: str = "qzdap/sandbox-python:latest"
     skill_artifact_root: str = "/tmp/qzdap-skill-artifacts"

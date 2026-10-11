@@ -121,32 +121,6 @@ def redis_client(redis_url: str):
         asyncio.run(client.aclose())
 
 
-@pytest.fixture(scope="session")
-def kafka_bootstrap_servers() -> str:
-    """Boot a single Kafka KRaft container per test session, return bootstrap.
-
-    Skips if ``testcontainers[kafka]`` is not installed (CI installs it
-    via the dev extra).
-    """
-    if not _has_testcontainers():
-        pytest.skip("testcontainers-python not installed")
-    try:
-        from testcontainers.kafka import KafkaContainer
-    except ImportError as exc:
-        pytest.skip(f"testcontainers[kafka] not available: {exc}")
-
-    from testcontainers.kafka import KafkaContainer
-
-    kafka = KafkaContainer("bitnami/kafka:3.7")
-    kafka.start()
-    try:
-        host = kafka.get_container_host_ip()
-        port = kafka.get_exposed_port(9092)
-        yield f"{host}:{port}"
-    finally:
-        kafka.stop()
-
-
 def _async_url(dsn: str) -> str:
     if dsn.startswith("postgresql+asyncpg://"):
         return dsn

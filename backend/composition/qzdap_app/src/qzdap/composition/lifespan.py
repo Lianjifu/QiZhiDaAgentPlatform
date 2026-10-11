@@ -771,22 +771,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await bus.start()
     app.state.bus = bus
 
-    # ── A5 audit pipeline: Kafka producer (always if mode=kafka) + ──────
-    # ── co-located consumer (conditional, default on for single replica) ─
-    audit_producer = None
-    audit_consumer = None
-    if container.settings.audit_mode == "kafka":
-        audit_producer = container.kafka_audit_producer()
-        await audit_producer.start()
-        app.state.audit_producer = audit_producer
-        if container.settings.audit_consumer_enabled:
-            audit_consumer = container.kafka_audit_consumer()
-            await audit_consumer.start()
-            app.state.audit_consumer = audit_consumer
-            _log.info("kafka audit consumer active (group=%s)", audit_consumer.group_id)
-        else:
-            _log.info("kafka audit producer active; consumer disabled (multi-replica)")
-
     # ── P9 observability subscriber (passive; never raises back) ────────
     obs_recorder = ObservabilityRecorder(
         run_repo=SqlRunRecordRepository(obs_session_factory()),
@@ -849,10 +833,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        if audit_consumer is not None:
-            await audit_consumer.stop()
-        if audit_producer is not None:
-            await audit_producer.stop()
         await bus.stop()
         sandbox = getattr(app.state, "sandbox", None)
         if sandbox is not None:

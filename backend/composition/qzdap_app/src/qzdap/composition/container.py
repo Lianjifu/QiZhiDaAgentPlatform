@@ -30,7 +30,6 @@ class Container:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._services: dict[type, Any] = {}
-        self._kafka_audit_producer: object | None = None
         self._kv_resolver: HashicorpVaultSecretsResolver | None = None
         # Fail-loud prod gate — same pattern as
         # ``model_credential_cipher`` raising on missing
@@ -310,74 +309,19 @@ class Container:
 
         Each ``append`` call opens its own session via the async
         sessionmaker (audit events arrive outside any HTTP request).
-
-        When ``audit_mode == "kafka"`` the AuditLogPort is a
-        ``KafkaAuditPublisher`` (singleton); scrubbing runs inside the
-        producer so the topic payload is already compliant. When
-        ``"direct"`` we fall back to the synchronous SQL adapter.
         """
+        from qzdap.modules.governance.adapter.persistence.repositories import (
+            SqlAuditLogAdapter,
+        )
         from qzdap.modules.governance.application.audit_recorder import (
             AuditRecorder,
             build_default_topics,
-        )
-
-        if self.settings.audit_mode == "kafka":
-            return AuditRecorder(
-                audit_port=self.kafka_audit_producer(),
-                clock=self.clock(),
-                topics=build_default_topics(),
-            )
-        from qzdap.modules.governance.adapter.persistence.repositories import (
-            SqlAuditLogAdapter,
         )
 
         return AuditRecorder(
             audit_port=SqlAuditLogAdapter(self.session_factory().maker()),
             clock=self.clock(),
             topics=build_default_topics(),
-        )
-
-    def kafka_audit_producer(self):
-        """Singleton Kafka audit publisher — shared by recorder + lifespan.
-
-        Lazy because the AIOKafkaProducer only constructs when the
-        ``audit_mode == "kafka"`` branch is exercised; we don't want
-        to import ``aiokafka`` on every direct-mode boot.
-        """
-        if self._kafka_audit_producer is None:
-            from qzdap_messaging.kafka_audit import KafkaAuditPublisher
-
-            self._kafka_audit_producer = KafkaAuditPublisher(
-                bootstrap_servers=self.settings.audit_kafka_bootstrap_servers,
-                topic=self.settings.audit_kafka_topic,
-                dlq_topic=self.settings.audit_kafka_dlq_topic,
-                max_retries=self.settings.audit_kafka_max_retries,
-                request_timeout_ms=self.settings.audit_kafka_request_timeout_ms,
-            )
-        return self._kafka_audit_producer
-
-    def kafka_audit_consumer(self):
-        """Build a fresh KafkaAuditConsumer bound to the SQL audit port.
-
-        Returns a new instance each call so lifespan can call ``start``
-        on it; the consumer drains into ``SqlAuditLogAdapter`` which
-        opens its own async session per write (mirroring the direct
-        path).
-        """
-        from qzdap.modules.governance.adapter.persistence.repositories import (
-            SqlAuditLogAdapter,
-        )
-        from qzdap_messaging.kafka_audit import (
-            KafkaAuditConsumer,
-            resolve_consumer_group,
-        )
-
-        return KafkaAuditConsumer(
-            bootstrap_servers=self.settings.audit_kafka_bootstrap_servers,
-            topic=self.settings.audit_kafka_topic,
-            group_id=resolve_consumer_group(self.settings.audit_kafka_consumer_group),
-            audit_port=SqlAuditLogAdapter(self.session_factory().maker()),
-            block_ms=self.settings.audit_kafka_block_ms,
         )
 
     def policy_evaluator(self):

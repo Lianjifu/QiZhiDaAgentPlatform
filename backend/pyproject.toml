@@ -22,7 +22,8 @@ dev = [
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30.0",
     "pgvector>=0.3.6",
-    "testcontainers[postgres,redis,kafka]>=4.8.0",
+    "httpx>=0.27.0",
+    "testcontainers[postgres,redis]>=4.8.0",
 ]
 
 [tool.uv]
@@ -120,7 +121,7 @@ plugins = ["pydantic.mypy"]
 # Each mypy_path entry MUST be the deepest directory that contains an
 # __init__.py; otherwise mypy sees the same file as two modules
 # (e.g. `identity.domain` AND `qzdap.modules.identity.domain`).
-mypy_path = "libs/kernel/src:libs/auth/src:libs/observability/src:libs/persistence/src:libs/messaging/src:libs/http/src:libs/schema/src:libs/llm/src:libs/sandbox/src:libs/vector/src:libs/vault/src:libs/pack_signing/src:modules/identity/src/qzdap:modules/agent_runtime/src/qzdap:modules/tool/src/qzdap:modules/governance/src/qzdap:modules/channel/src/qzdap:modules/knowledge/src/qzdap:modules/orchestration/src/qzdap:modules/agent_factory/src/qzdap:modules/evaluation/src/qzdap:modules/platform/src/qzdap:modules/self_evolution/src/qzdap:composition/qzdap_app/src/qzdap"
+mypy_path = "libs/kernel/src:libs/auth/src:libs/observability/src:libs/persistence/src:libs/messaging/src:libs/http/src:libs/schema/src:libs/llm/src:libs/sandbox/src:libs/vector/src:libs/vault/src:libs/pack_signing/src:modules/identity/src:modules/agent_runtime/src:modules/tool/src:modules/governance/src:modules/channel/src:modules/knowledge/src:modules/orchestration/src:modules/agent_factory/src:modules/evaluation/src:modules/platform/src:modules/self_evolution/src:composition/qzdap_app/src"
 
 [[tool.mypy.overrides]]
 # Tests + generated migrations are exempt from strict checks.
@@ -183,29 +184,29 @@ pythonpath = [
     "libs/vault/src",
     "libs/pack_signing/src",
     "tests",
-    "modules/identity/src/qzdap",
-    "modules/agent_runtime/src/qzdap",
-    "modules/tool/src/qzdap",
-    "modules/skill/src/qzdap",
-    "modules/memory/src/qzdap",
-    "modules/governance/src/qzdap",
-    "modules/model/src/qzdap",
+    "modules/identity/src",
+    "modules/agent_runtime/src",
+    "modules/tool/src",
+    "modules/skill/src",
+    "modules/memory/src",
+    "modules/governance/src",
+    "modules/model/src",
     "modules/model/tests/unit",
-    "modules/channel/src/qzdap",
+    "modules/channel/src",
     "modules/channel/tests/unit",
-    "modules/knowledge/src/qzdap",
-    "modules/orchestration/src/qzdap",
+    "modules/knowledge/src",
+    "modules/orchestration/src",
     "modules/orchestration/tests/unit",
-    "modules/agent_factory/src/qzdap",
+    "modules/agent_factory/src",
     "modules/agent_factory/tests/unit",
-    "modules/evaluation/src/qzdap",
+    "modules/evaluation/src",
     "modules/evaluation/tests/unit",
-    "modules/platform/src/qzdap",
+    "modules/platform/src",
     "modules/platform/tests/unit",
-    "modules/self_evolution/src/qzdap",
-    "runtimes/embedding_runtime/src/qzdap",
-    "runtimes/sandbox_runtime/src/qzdap",
-    "composition/qzdap_app/src/qzdap",
+    "modules/self_evolution/src",
+    "runtimes/embedding_runtime/src",
+    "runtimes/sandbox_runtime/src",
+    "composition/qzdap_app/src",
 ]
 addopts = "-ra --strict-markers --strict-config --import-mode=importlib --cov=qzdap_kernel --cov=qzdap_auth --cov=qzdap_observability --cov=qzdap_persistence --cov=qzdap_messaging --cov=qzdap_http --cov=qzdap_schema --cov=qzdap_llm --cov=qzdap_vector --cov=qzdap_vault --cov=qzdap --cov-report=term-missing"
 markers = [
