@@ -93,6 +93,38 @@ async def test_openai_compatible_propagates_status_error(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_anthropic_compatible_uses_anthropic_headers(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["x-api-key"] = request.headers.get("x-api-key", "")
+        captured["auth"] = request.headers.get("authorization", "")
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "claude-3-5-sonnet-proxy"}], "has_more": False},
+        )
+
+    real_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: _async_client_with(handler, real_async_client),
+    )
+    prober = HttpCatalogProber(timeout_seconds=2.0)
+    names = await prober.list_models(
+        api_key="sk-third-party",
+        base_url="https://thirdparty.example.com",
+        protocol="anthropic-compatible",
+    )
+    assert names == ["claude-3-5-sonnet-proxy"]
+    assert captured["url"] == "https://thirdparty.example.com/v1/models"
+    assert captured["x-api-key"] == "sk-third-party"
+    # Bearer should NOT be set — Anthropic uses x-api-key only.
+    assert captured["auth"] == ""
+
+
+@pytest.mark.asyncio
 async def test_extract_ids_handles_plain_strings(monkeypatch) -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=["gpt-4o", "gpt-4o-mini"])

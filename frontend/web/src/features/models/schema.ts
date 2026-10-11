@@ -9,7 +9,7 @@ export type TaskType = 'reasoning' | 'generation' | 'classification' | 'embeddin
 export type ModelTier = 'premium' | 'balanced' | 'economy';
 export type ExchangeFormat = 'json' | 'yaml';
 export type HealthEventType = 'incident' | 'latency' | 'quota' | 'recovery';
-export type ModelProtocol = 'openai' | 'azure' | 'anthropic' | 'openai-compatible';
+export type ModelProtocol = 'openai' | 'azure' | 'anthropic' | 'openai-compatible' | 'anthropic-compatible';
 
 export interface Model {
   id: string;

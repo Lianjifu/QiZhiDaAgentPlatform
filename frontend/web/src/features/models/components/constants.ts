@@ -93,7 +93,7 @@ export function formatPrice(value: number, kind: 'in' | 'out'): string {
   return `¥ ${v.toFixed(v < 0.01 ? 4 : 3)}`;
 }
 
-export const MODEL_PROTOCOLS: ModelProtocol[] = ['openai', 'azure', 'anthropic', 'openai-compatible'];
+export const MODEL_PROTOCOLS: ModelProtocol[] = ['openai', 'azure', 'anthropic', 'openai-compatible', 'anthropic-compatible'];
 
 export const PROTOCOL_META: Record<ModelProtocol, { label: string; summary: string; baseUrl: string }> = {
   openai: {
@@ -116,6 +116,11 @@ export const PROTOCOL_META: Record<ModelProtocol, { label: string; summary: stri
     summary: '兼容 /v1 的自建或第三方网关',
     baseUrl: 'https://',
   },
+  'anthropic-compatible': {
+    label: 'Anthropic 兼容',
+    summary: '兼容 Anthropic /v1/models 的自建或第三方网关',
+    baseUrl: 'https://',
+  },
 };
 
 /** demo 探测供应商时按协议返回的模型 ID，生产由供应商 /models 接口给出 */
@@ -124,4 +129,5 @@ export const DEMO_PROVIDER_CATALOG: Record<ModelProtocol, string[]> = {
   azure: ['gpt-4o', 'gpt-35-turbo', 'text-embedding-3'],
   anthropic: ['claude-3-5-sonnet', 'claude-3-5-haiku', 'claude-3-opus'],
   'openai-compatible': ['llama-3.1-70b', 'qwen-max', 'deepseek-chat'],
+  'anthropic-compatible': ['claude-3-5-sonnet-proxy', 'claude-3-haiku-proxy'],
 };

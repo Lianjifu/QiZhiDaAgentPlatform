@@ -16,7 +16,7 @@ class HttpCatalogProber(CatalogProber):
 
     async def list_models(self, *, api_key: str, base_url: str, protocol: str) -> list[str]:
         protocol = (protocol or "").lower()
-        if protocol == "anthropic":
+        if protocol in ("anthropic", "anthropic-compatible"):
             return await self._list_anthropic(api_key=api_key, base_url=base_url)
         return await self._list_openai_compatible(api_key=api_key, base_url=base_url)
 

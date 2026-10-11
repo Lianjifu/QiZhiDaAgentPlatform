@@ -21,7 +21,7 @@ ROUTE_STRATEGIES = frozenset({"quality-first", "cost-first", "latency-first", "f
 TASK_TYPES = frozenset({"reasoning", "generation", "classification", "embedding", "summarization"})
 MODEL_TIERS = frozenset({"premium", "balanced", "economy"})
 HEALTH_TYPES = frozenset({"incident", "latency", "quota", "recovery"})
-PROTOCOLS = frozenset({"openai", "azure", "anthropic", "openai-compatible"})
+PROTOCOLS = frozenset({"openai", "azure", "anthropic", "openai-compatible", "anthropic-compatible"})
 
 
 def _utcnow() -> datetime:
