@@ -80,11 +80,6 @@ data/
 # (*.pub.pem) remain trackable so shared dev trust stores can be committed.
 **/.qzdap/**/*.priv.pem
 **/.qzdap/**/*.priv
-# Real SecretProviderClass / Secret rendered from infra/k8s/secret.example.yaml
-# (per doc/burn-in-preflight.md §A.4 — gitleaks G5 will catch any leak).
-infra/k8s/secret.yaml
-infra/k8s/staging/secret.yaml
-
 # ── Frontend (pnpm + Vite + TS) ────────────────────────────────────────────
 # Frontend lives under frontend/ — pnpm workspace with web/ + packages/*.
 # Source frontend/.gitignore handles package-local ignores; these root-level

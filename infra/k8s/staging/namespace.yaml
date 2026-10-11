@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: qzdap-staging
-  labels:
-    name: qzdap-staging
-    purpose: qizhida-agent-platform
-    environment: production
