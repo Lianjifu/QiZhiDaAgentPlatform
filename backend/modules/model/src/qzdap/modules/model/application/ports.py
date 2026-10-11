@@ -79,6 +79,7 @@ class ModelClientFactory(Protocol):
 
 
 class CatalogProber(ABC):
+    @abstractmethod
     async def list_models(self, *, api_key: str, base_url: str, protocol: str) -> list[str]: ...
 
 

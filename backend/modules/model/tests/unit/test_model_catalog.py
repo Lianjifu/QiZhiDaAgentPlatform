@@ -10,6 +10,7 @@ from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
 from qzdap.modules.model.application.ports import (
+    CatalogProber,
     HealthRepository,
     ModelClientFactory,
     ModelRepository,
@@ -121,7 +122,19 @@ class _FakeFactory(ModelClientFactory):
         return _FakeClient()
 
 
-def _svc() -> ModelService:
+class _FakeProber(CatalogProber):
+    def __init__(self, models: list[str] | None = None, *, raise_exc: Exception | None = None) -> None:
+        self.models = models if models is not None else ["gpt-4o", "gpt-4o-mini"]
+        self.raise_exc = raise_exc
+
+    async def list_models(self, *, api_key: str, base_url: str, protocol: str) -> list[str]:
+        _ = (api_key, base_url, protocol)
+        if self.raise_exc is not None:
+            raise self.raise_exc
+        return list(self.models)
+
+
+def _svc(*, prober: CatalogProber | None = None) -> ModelService:
     return ModelService(
         _MemModels(),
         _MemProviders(),
@@ -129,6 +142,7 @@ def _svc() -> ModelService:
         _MemHealth(),
         cipher=_PlainCipher(),
         client_factory=_FakeFactory(),
+        prober=prober,
     )
 
 
@@ -188,7 +202,7 @@ async def test_update_star_batch_and_delete() -> None:
 
 @pytest.mark.asyncio
 async def test_routes_and_probe_fallback() -> None:
-    svc = _svc()
+    svc = _svc(prober=_FakeProber(["gpt-4o", "gpt-4o-mini"]))
     created = await svc.create_from_provider(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
@@ -219,8 +233,39 @@ async def test_routes_and_probe_fallback() -> None:
         {"apiKey": "sk", "baseUrl": "https://example.com", "protocol": "openai"}
     )
     assert "gpt-4o" in catalog["models"]
+    assert catalog.get("error") is None
     empty = await svc.probe_catalog({"apiKey": "", "baseUrl": ""})
-    assert empty == {"models": []}
+    assert empty == {"models": [], "error": "请填写 API Key 和请求地址后再拉取。"}
+
+
+@pytest.mark.asyncio
+async def test_probe_catalog_no_prober_wired() -> None:
+    svc = _svc()
+    catalog = await svc.probe_catalog(
+        {"apiKey": "sk", "baseUrl": "https://example.com", "protocol": "openai"}
+    )
+    assert catalog == {"models": [], "error": "目录探测器未配置，请联系管理员。"}
+
+
+@pytest.mark.asyncio
+async def test_probe_catalog_prober_raises() -> None:
+    svc = _svc(prober=_FakeProber(raise_exc=RuntimeError("boom")))
+    catalog = await svc.probe_catalog(
+        {"apiKey": "sk", "baseUrl": "https://example.com", "protocol": "openai"}
+    )
+    assert catalog == {"models": [], "error": "探测失败：boom"}
+
+
+@pytest.mark.asyncio
+async def test_probe_catalog_prober_returns_empty() -> None:
+    svc = _svc(prober=_FakeProber([]))
+    catalog = await svc.probe_catalog(
+        {"apiKey": "sk", "baseUrl": "https://example.com", "protocol": "openai"}
+    )
+    assert catalog == {
+        "models": [],
+        "error": "供应商未返回模型列表，请确认协议或手动添加模型 ID。",
+    }
 
 
 @pytest.mark.asyncio

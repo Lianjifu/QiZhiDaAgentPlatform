@@ -23,13 +23,6 @@ MODEL_TIERS = frozenset({"premium", "balanced", "economy"})
 HEALTH_TYPES = frozenset({"incident", "latency", "quota", "recovery"})
 PROTOCOLS = frozenset({"openai", "azure", "anthropic", "openai-compatible"})
 
-FALLBACK_CATALOG: dict[str, list[str]] = {
-    "openai": ["gpt-4o", "gpt-4o-mini", "o1-preview", "text-embedding-3-large"],
-    "azure": ["gpt-4o", "gpt-35-turbo", "text-embedding-3"],
-    "anthropic": ["claude-3-5-sonnet", "claude-3-5-haiku", "claude-3-opus"],
-    "openai-compatible": ["llama-3.1-70b", "qwen-max", "deepseek-chat"],
-}
-
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
@@ -338,7 +331,6 @@ class HealthEvent:
 
 
 __all__ = [
-    "FALLBACK_CATALOG",
     "HealthEvent",
     "Model",
     "Provider",

@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+import httpx
+
 from qzdap_llm import ChatRequest, ChatResponse
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
@@ -20,7 +22,6 @@ from qzdap.modules.model.application.ports import (
     RouteRepository,
 )
 from qzdap.modules.model.domain.entities import (
-    FALLBACK_CATALOG,
     MODEL_STATUSES,
     PROTOCOLS,
     HealthEvent,
@@ -104,17 +105,27 @@ class ModelService:
         if protocol not in PROTOCOLS:
             protocol = "openai"
         if not api_key or not base_url:
-            return {"models": []}
-        names: list[str] = []
-        if self._prober is not None:
-            try:
-                names = await self._prober.list_models(
-                    api_key=api_key, base_url=base_url, protocol=protocol
-                )
-            except Exception:  # noqa: BLE001 — probe must not 500 the admin form
-                names = []
+            return {"models": [], "error": "请填写 API Key 和请求地址后再拉取。"}
+        if self._prober is None:
+            return {"models": [], "error": "目录探测器未配置，请联系管理员。"}
+        try:
+            names = await self._prober.list_models(
+                api_key=api_key, base_url=base_url, protocol=protocol
+            )
+        except httpx.HTTPStatusError as exc:
+            return {
+                "models": [],
+                "error": f"供应商返回 {exc.response.status_code}，请检查请求地址、协议与 API Key。",
+            }
+        except httpx.HTTPError as exc:
+            return {"models": [], "error": f"无法连接供应商：{exc.__class__.__name__}。"}
+        except Exception as exc:  # noqa: BLE001 — surface a hint, do not 500 the admin form
+            return {"models": [], "error": f"探测失败：{exc}"}
         if not names:
-            names = list(FALLBACK_CATALOG.get(protocol, []))
+            return {
+                "models": [],
+                "error": "供应商未返回模型列表，请确认协议或手动添加模型 ID。",
+            }
         return {"models": names}
 
     async def create_from_provider(
