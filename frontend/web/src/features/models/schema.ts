@@ -9,11 +9,12 @@ export type TaskType = 'reasoning' | 'generation' | 'classification' | 'embeddin
 export type ModelTier = 'premium' | 'balanced' | 'economy';
 export type ExchangeFormat = 'json' | 'yaml';
 export type HealthEventType = 'incident' | 'latency' | 'quota' | 'recovery';
-export type ModelProtocol = 'openai' | 'azure' | 'anthropic' | 'openai-compatible' | 'anthropic-compatible';
+export type ModelProtocol = 'openai' | 'azure' | 'anthropic' | 'openai-compatible' | 'anthropic-compatible' | 'google' | 'deepseek' | 'glm' | 'kimi' | 'qwen' | 'minimax';
 
 export interface Model {
   id: string;
   name: string;
+  upstreamModel?: string;
   providerId: string;
   providerName: string;
   task: TaskType[];
@@ -77,18 +78,60 @@ export type CreateModelVars = {
   baseUrl: string;
   protocol: ModelProtocol;
   models: string[];
+  apiVersion?: string;
+  source: 'catalog' | 'verified';
+  verificationToken?: string;
+};
+
+export type ModelDetail = Model & { provider: ProviderConnection };
+
+export type ProviderConnection = {
+  id: string;
+  name: string;
+  baseUrl: string;
+  protocol: ModelProtocol;
+  apiKeyMasked: string;
+  hasCredential: boolean;
+  apiVersion?: string;
+};
+
+export type ProviderConnectionValues = {
+  name: string;
+  baseUrl: string;
+  protocol: ModelProtocol;
+  apiKey: string;
+  apiVersion?: string;
 };
 
 export type ProbeModelsVars = {
-  apiKey: string;
+  modelId?: string;
+  apiKey?: string;
   baseUrl: string;
   protocol: ModelProtocol;
+  apiVersion?: string;
 };
 
 export type ProbeModelsResult = {
   models: string[];
+  discoverySupported?: boolean;
   /** Present when the probe could not return real supplier data. */
   error?: string;
+};
+
+export type ConnectivityTestVars = ProbeModelsVars & {
+  model: string;
+  apiVersion?: string;
+};
+
+export type ConnectivityTestResult = {
+  success: boolean;
+  verificationToken?: string;
+  latencyMs: number;
+  statusCode: number | null;
+  requestedModel: string;
+  actualModel: string | null;
+  response: string | null;
+  error: string | null;
 };
 
 export type CreateRouteVars = {
@@ -102,7 +145,12 @@ export type CreateRouteVars = {
 
 export type UpdateModelVars = {
   id: string;
-  patch: Partial<Model>;
+  patch: Partial<Pick<Model, 'name' | 'description' | 'tier' | 'status' | 'contextWindow' | 'priceIn' | 'priceOut' | 'task' | 'tags'>> & {
+    provider?: ProviderConnectionValues;
+    upstreamModel?: string;
+    source?: 'catalog' | 'verified';
+    verificationToken?: string;
+  };
 };
 
 export type ToggleRouteVars = { id: string };

@@ -222,7 +222,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 KnowledgeServiceAdapter,
             )
             from qzdap.modules.agent_runtime.adapter.memory import MemoryServiceAdapter
-            from qzdap.modules.agent_runtime.adapter.sandbox import SandboxRuntimeAdapter
+            from qzdap.modules.agent_runtime.adapter.sandbox import (
+                SandboxRuntimeAdapter,
+            )
             from qzdap.modules.agent_runtime.adapter.skills import SkillServiceAdapter
             from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
@@ -285,6 +287,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from qzdap.modules.model.adapter.llm.client_factory import (
         build_default_client_factory,
     )
+    from qzdap.modules.model.adapter.llm.connectivity_tester import (
+        HttpConnectivityTester,
+    )
     from qzdap.modules.model.adapter.llm.prober import HttpCatalogProber
     from qzdap.modules.model.adapter.persistence.repositories import (
         SqlHealthRepository,
@@ -313,6 +318,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     request_timeout_seconds=container.settings.model_invocation_timeout_seconds,
                 ),
                 prober=HttpCatalogProber(),
+                connectivity_tester=HttpConnectivityTester(),
+                verification_secret=container.settings.jwt_secret.encode(),
             )
 
         def __call__(self, session):  # type: ignore[no-untyped-def]

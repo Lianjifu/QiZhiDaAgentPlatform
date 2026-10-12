@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 from qzdap_llm import LLMClient
@@ -60,7 +60,9 @@ class HealthRepository(ABC):
     async def add(self, event: HealthEvent) -> None: ...
 
     @abstractmethod
-    async def list_for_workspace(self, workspace_id: UUID, limit: int = 50) -> list[HealthEvent]: ...
+    async def list_for_workspace(
+        self, workspace_id: UUID, limit: int = 50
+    ) -> list[HealthEvent]: ...
 
 
 @runtime_checkable
@@ -75,16 +77,44 @@ class CredentialCipher(Protocol):
 
 @runtime_checkable
 class ModelClientFactory(Protocol):
-    def build(self, *, protocol: str, api_key: str, base_url: str | None) -> LLMClient: ...
+    def build(
+        self,
+        *,
+        protocol: str,
+        api_key: str,
+        base_url: str | None,
+        api_version: str = "",
+    ) -> LLMClient: ...
+
+
+class CatalogDiscoveryUnsupported(ValueError):
+    """Provider has no supported automatic model-discovery contract."""
 
 
 class CatalogProber(ABC):
     @abstractmethod
-    async def list_models(self, *, api_key: str, base_url: str, protocol: str) -> list[str]: ...
+    async def list_models(
+        self, *, api_key: str, base_url: str, protocol: str
+    ) -> list[str]: ...
+
+
+class ConnectivityTester(ABC):
+    @abstractmethod
+    async def test_connection(
+        self,
+        *,
+        api_key: str,
+        base_url: str,
+        protocol: str,
+        model: str,
+        api_version: str,
+    ) -> dict[str, Any]: ...
 
 
 __all__ = [
+    "CatalogDiscoveryUnsupported",
     "CatalogProber",
+    "ConnectivityTester",
     "CredentialCipher",
     "HealthRepository",
     "ModelClientFactory",

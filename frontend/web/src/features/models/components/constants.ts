@@ -1,5 +1,5 @@
 import type { ModelStatus, ProviderStatus, RouteStrategy, TaskType, ModelTier, ExchangeFormat, TabId, ModelProtocol } from '../schema';
-import { BarChart3, Bot, Filter, LineChart, Settings2, ShieldCheck, Sparkles, Activity } from 'lucide-react';
+import { BarChart3, ShieldCheck, Sparkles, Activity } from 'lucide-react';
 
 export const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'overview', label: '模型总览' },
@@ -65,13 +65,6 @@ export const TIER_FILTER: Array<{ id: 'all' | ModelTier; label: string }> = [
   { id: 'economy', label: '经济' },
 ];
 
-export const DRAWER_NAV_ITEMS: Array<{ id: 'detail' | 'params' | 'route' | 'audit'; label: string; icon: typeof Settings2 }> = [
-  { id: 'detail', label: '基本信息', icon: Settings2 },
-  { id: 'params', label: '参数与定价', icon: LineChart },
-  { id: 'route', label: '路由引用', icon: Filter },
-  { id: 'audit', label: '变更记录', icon: ShieldCheck },
-];
-
 export const EXCHANGE_FORMATS: ExchangeFormat[] = ['json', 'yaml'];
 
 export function downloadBlob(blob: Blob, filename: string) {
@@ -93,7 +86,7 @@ export function formatPrice(value: number, kind: 'in' | 'out'): string {
   return `¥ ${v.toFixed(v < 0.01 ? 4 : 3)}`;
 }
 
-export const MODEL_PROTOCOLS: ModelProtocol[] = ['openai', 'azure', 'anthropic', 'openai-compatible', 'anthropic-compatible'];
+export const MODEL_PROTOCOLS: ModelProtocol[] = ['openai', 'azure', 'anthropic', 'google', 'deepseek', 'glm', 'kimi', 'qwen', 'minimax', 'openai-compatible', 'anthropic-compatible'];
 
 export const PROTOCOL_META: Record<ModelProtocol, { label: string; summary: string; baseUrl: string }> = {
   openai: {
@@ -111,6 +104,12 @@ export const PROTOCOL_META: Record<ModelProtocol, { label: string; summary: stri
     summary: 'Messages API',
     baseUrl: 'https://api.anthropic.com',
   },
+  google: { label: 'Google Gemini', summary: 'Gemini 原生 API', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
+  deepseek: { label: 'DeepSeek', summary: 'DeepSeek 官方 API', baseUrl: 'https://api.deepseek.com' },
+  glm: { label: '智谱 GLM', summary: '国内 API，地址可按账户区域调整', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
+  kimi: { label: 'Kimi', summary: 'Moonshot 官方 API', baseUrl: 'https://api.moonshot.cn/v1' },
+  qwen: { label: '通义千问', summary: '请填写账户所属区域的兼容模式地址', baseUrl: '' },
+  minimax: { label: 'MiniMax', summary: 'MiniMax 官方 API', baseUrl: 'https://api.minimax.io/v1' },
   'openai-compatible': {
     label: 'OpenAI 兼容',
     summary: '兼容 /v1 的自建或第三方网关',
@@ -121,13 +120,4 @@ export const PROTOCOL_META: Record<ModelProtocol, { label: string; summary: stri
     summary: '兼容 Anthropic /v1/models 的自建或第三方网关',
     baseUrl: 'https://',
   },
-};
-
-/** demo 探测供应商时按协议返回的模型 ID，生产由供应商 /models 接口给出 */
-export const DEMO_PROVIDER_CATALOG: Record<ModelProtocol, string[]> = {
-  openai: ['gpt-4o', 'gpt-4o-mini', 'o1-preview', 'text-embedding-3-large'],
-  azure: ['gpt-4o', 'gpt-35-turbo', 'text-embedding-3'],
-  anthropic: ['claude-3-5-sonnet', 'claude-3-5-haiku', 'claude-3-opus'],
-  'openai-compatible': ['llama-3.1-70b', 'qwen-max', 'deepseek-chat'],
-  'anthropic-compatible': ['claude-3-5-sonnet-proxy', 'claude-3-haiku-proxy'],
 };

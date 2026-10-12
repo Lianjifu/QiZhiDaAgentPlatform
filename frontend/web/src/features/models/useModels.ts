@@ -1,10 +1,13 @@
 /**
  * 管理侧「模型配置」hooks — 列表 / CRUD / 路由 / 健康监控。
  */
+import { useMutation } from '@tanstack/react-query';
+import { getApiClient } from '@qzdap/web-api';
 import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';
 import type {
-  Model, Provider, RouteRule, HealthEvent, ModelFilters,
+  Model, ModelDetail, Provider, RouteRule, HealthEvent, ModelFilters,
+  ConnectivityTestVars, ConnectivityTestResult,
   CreateModelVars, ProbeModelsVars, ProbeModelsResult, CreateRouteVars, UpdateModelVars,
   ToggleRouteVars, DeleteModelVars, ToggleStarVars, BatchStatusVars,
 } from './schema';
@@ -21,7 +24,7 @@ export function useModelsList(filters: ModelFilters = {}) {
 }
 
 export function useModelDetail(id: string) {
-  return useApiQuery<Model>(
+  return useApiQuery<ModelDetail>(
     [...qk.admin.models.detail(id)],
     `/api/admin/models/${id}`,
     {},
@@ -68,6 +71,15 @@ export function useProbeProviderModels() {
     '/api/admin/models/catalog',
     { invalidateKeys: [['admin', 'models', 'catalog']] },
   );
+}
+
+export function useModelConnectivityTest() {
+  return useMutation<ConnectivityTestResult, Error, ConnectivityTestVars>({
+    mutationFn: (vars) => getApiClient().post<ConnectivityTestResult>(
+      '/api/admin/models/connectivity-test', vars, { timeoutMs: 40_000 },
+    ),
+    retry: false,
+  });
 }
 
 export function useUpdateModel() {

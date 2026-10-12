@@ -3,10 +3,10 @@
  * dev:demo 注入;prod 永不触达。
  */
 import { mockModels, mockProviders, mockRoutes, mockHealth } from './fixtures';
-import { DEMO_PROVIDER_CATALOG } from './components/constants';
+import { ApiError } from '@qzdap/web-api';
 import type {
-  Model, Provider, RouteRule, HealthEvent, ModelProtocol,
-  CreateModelVars, ProbeModelsVars, CreateRouteVars, UpdateModelVars,
+  Model, Provider, RouteRule, HealthEvent,
+  CreateModelVars, ProbeModelsVars, ConnectivityTestVars, CreateRouteVars, UpdateModelVars,
   ToggleRouteVars, DeleteModelVars, ToggleStarVars, BatchStatusVars,
 } from './schema';
 
@@ -17,10 +17,12 @@ const state = {
   providers: [...mockProviders] as Provider[],
   routes: [...mockRoutes] as RouteRule[],
   health: [...mockHealth] as HealthEvent[],
+  credentialIds: new Set<string>(),
+  apiVersions: new Map<string, string | undefined>(),
 };
 
 function withDelay<T>(value: T, ms = 60): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), ms));
+  return new Promise((resolve) => setTimeout(resolve, ms, value));
 }
 
 function uid(prefix: string): string {
@@ -42,7 +44,25 @@ export async function adminModelsMockHandler(path: string, opts: MockOpts): Prom
   const detailMatch = path.match(/^\/api\/admin\/models\/([^/]+)$/);
   if (method === 'GET' && detailMatch) {
     const m = state.models.find((x) => x.id === detailMatch[1]);
-    return m ? withDelay(m) : withDelay({ error: 'not found' }, 200);
+    if (!m) throw new ApiError('NOT_FOUND', '模型不存在', 404);
+    const p = findProvider(m.providerId);
+    return withDelay({ ...m, upstreamModel: m.upstreamModel ?? m.name, provider: {
+      id: p?.id ?? m.providerId, name: p?.name ?? m.providerName, protocol: p?.protocol ?? 'openai', baseUrl: p?.baseUrl ?? '',
+      apiKeyMasked: p?.apiKeyMasked ?? '', hasCredential: state.credentialIds.has(m.providerId), apiVersion: state.apiVersions.get(m.providerId),
+    } });
+  }
+
+  if (method === 'POST' && path === '/api/admin/models/connectivity-test') {
+    const v = (opts.body ?? {}) as ConnectivityTestVars;
+    return withDelay({
+      success: false,
+      latencyMs: 0,
+      statusCode: null,
+      requestedModel: v.model ?? '',
+      actualModel: null,
+      response: null,
+      error: '演示模式不支持真实供应商测试',
+    });
   }
 
   if (method === 'POST' && path === '/api/admin/models/catalog') {
@@ -53,63 +73,28 @@ export async function adminModelsMockHandler(path: string, opts: MockOpts): Prom
         180,
       );
     }
-    const protocol = (v.protocol ?? 'openai') as ModelProtocol;
-    return withDelay({ models: [...(DEMO_PROVIDER_CATALOG[protocol] ?? [])] }, 220);
+    return withDelay({ models: [], error: '演示模式不支持真实供应商目录', discoverySupported: false }, 220);
   }
 
   if (method === 'POST' && path === '/api/admin/models') {
-    const v = (opts.body ?? {}) as CreateModelVars;
-    const names = v.models.filter((n) => n.trim().length > 0);
-    if (names.length === 0) return withDelay({ error: 'models required' }, 200);
-    const providerId = uid('pv');
-    const tail = v.apiKey.slice(-4);
-    const provider: Provider = {
-      id: providerId,
-      name: v.providerName,
-      region: 'custom',
-      status: 'healthy',
-      baseUrl: v.baseUrl,
-      apiKeyMasked: tail ? `••••${tail}` : '••••',
-      protocol: v.protocol,
-      errorRate: 0,
-      avgLatencyMs: 0,
-      qps: 0,
-    };
-    state.providers.unshift(provider);
-    let first: Model | null = null;
-    for (const name of names) {
-      const lower = name.toLowerCase();
-      const task = lower.includes('embed') ? ['embedding' as const] : lower.includes('o1') || lower.includes('reason') ? ['reasoning' as const] : ['generation' as const];
-      const created: Model = {
-        id: uid('md'),
-        name,
-        providerId,
-        providerName: v.providerName,
-        task,
-        contextWindow: 128000,
-        priceIn: 0,
-        priceOut: 0,
-        latencyMs: 0,
-        successRate: 0,
-        status: 'draft',
-        tier: 'balanced',
-        starred: false,
-        calls: 0,
-        trend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        description: `经 ${v.providerName}（${v.protocol}）接入`,
-        tags: [v.protocol],
-      };
-      state.models.unshift(created);
-      if (!first) first = created;
-    }
-    return withDelay(first);
+    throw new ApiError('DEMO_UNSUPPORTED', '演示模式无法验证供应商模型，不支持新建接入。', 400);
   }
 
   if (method === 'PATCH' && detailMatch) {
     const v = (opts.body ?? {}) as UpdateModelVars;
     const target = state.models.find((x) => x.id === v.id);
-    if (!target) return withDelay({ error: 'not found' }, 200);
-    Object.assign(target, v.patch);
+    if (!target) throw new ApiError('NOT_FOUND', '模型不存在', 404);
+    const currentProvider = findProvider(target.providerId);
+    if ((v.patch.upstreamModel && v.patch.upstreamModel !== (target.upstreamModel ?? target.name)) || v.patch.provider?.apiKey ||
+        (v.patch.provider && (v.patch.provider.baseUrl !== currentProvider?.baseUrl || v.patch.provider.protocol !== (currentProvider?.protocol ?? 'openai') || v.patch.provider.apiVersion !== state.apiVersions.get(target.providerId)))) {
+      throw new ApiError('DEMO_UNSUPPORTED', '演示模式不支持真实供应商配置变更', 400);
+    }
+    const { provider, source: _source, verificationToken: _token, ...metadata } = v.patch;
+    if (provider) {
+      const p = findProvider(target.providerId);
+      if (p) { p.name = provider.name; target.providerName = provider.name; }
+    }
+    Object.assign(target, metadata);
     return withDelay(target);
   }
 

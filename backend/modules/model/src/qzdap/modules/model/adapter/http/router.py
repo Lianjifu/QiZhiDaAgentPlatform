@@ -1,17 +1,17 @@
 """HTTP adapter for admin model catalog.
 
-  GET          /api/admin/models
-  GET          /api/admin/models/providers
-  GET          /api/admin/models/routes
-  GET          /api/admin/models/health
-  POST         /api/admin/models/catalog
-  POST         /api/admin/models
-  POST         /api/admin/models/routes
-  POST         /api/admin/models/batch-status
-  GET/PATCH/DELETE /api/admin/models/{id}
-  POST         /api/admin/models/{id}/star
-  POST         /api/admin/models/routes/{id}/toggle
-  DELETE       /api/admin/models/routes/{id}
+GET          /api/admin/models
+GET          /api/admin/models/providers
+GET          /api/admin/models/routes
+GET          /api/admin/models/health
+POST         /api/admin/models/catalog
+POST         /api/admin/models
+POST         /api/admin/models/routes
+POST         /api/admin/models/batch-status
+GET/PATCH/DELETE /api/admin/models/{id}
+POST         /api/admin/models/{id}/star
+POST         /api/admin/models/routes/{id}/toggle
+DELETE       /api/admin/models/routes/{id}
 """
 
 from __future__ import annotations
@@ -24,7 +24,27 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from qzdap.modules.model.application.services import ModelService
 
 
-async def model_dependency(request: Request) -> ModelService:
+async def require_model_admin(
+    request: Request,
+    x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+    x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+) -> Any:
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        raise HTTPException(status_code=401, detail="authentication required")
+    if not set(principal.roles).intersection(
+        {"admin", "platform_admin", "workspace_owner"}
+    ):
+        raise HTTPException(status_code=403, detail="admin required")
+    if principal.tenant_id != x_tenant_id or principal.workspace_id != x_workspace_id:
+        raise HTTPException(status_code=403, detail="scope mismatch")
+    return principal
+
+
+async def model_dependency(
+    request: Request,
+    principal: Any = Depends(require_model_admin),  # noqa: B008
+) -> ModelService:
     factory = getattr(request.app.state, "model_service_factory", None)
     container = getattr(request.app.state, "container", None)
     if factory is None or container is None:
@@ -32,10 +52,28 @@ async def model_dependency(request: Request) -> ModelService:
     sf = container.session_factory()
     async with sf.session() as session:
         svc = factory.for_session(session)
+        svc.bind_scope(
+            tenant_id=principal.tenant_id,
+            workspace_id=principal.workspace_id,
+            actor_id=principal.id,
+            actor_name=principal.display_name,
+        )
         try:
             yield svc
-        except Exception:
+        except Exception as exc:
             await session.rollback()
+            from qzdap.modules.model.domain.errors import (
+                CredentialNotFound,
+                ModelNotFound,
+                RouteNotFound,
+            )
+
+            if isinstance(exc, (ModelNotFound, RouteNotFound)):
+                raise HTTPException(status_code=404, detail="not found") from exc
+            if isinstance(exc, (ValueError, CredentialNotFound)):
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            if isinstance(exc, PermissionError):
+                raise HTTPException(status_code=403, detail="scope mismatch") from exc
             raise
         await session.commit()
 
@@ -49,7 +87,7 @@ def build_router() -> APIRouter:
         search: str = Query(default=""),
         status: str = Query(default="all"),
         tier: str = Query(default="all"),
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> list[dict[str, Any]]:
         return await svc.list_models(
             workspace_id=x_workspace_id, search=search, status=status, tier=tier
@@ -58,37 +96,44 @@ def build_router() -> APIRouter:
     @router.get("/api/admin/models/providers")
     async def list_admin_providers(
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> list[dict[str, Any]]:
         return await svc.list_providers(workspace_id=x_workspace_id)
 
     @router.get("/api/admin/models/routes")
     async def list_admin_routes(
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> list[dict[str, Any]]:
         return await svc.list_routes(workspace_id=x_workspace_id)
 
     @router.get("/api/admin/models/health")
     async def list_admin_health(
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> list[dict[str, Any]]:
         return await svc.list_health(workspace_id=x_workspace_id)
 
     @router.post("/api/admin/models/catalog")
     async def probe_catalog(
         body: dict[str, Any],
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> dict[str, Any]:
         return await svc.probe_catalog(body)
+
+    @router.post("/api/admin/models/connectivity-test")
+    async def test_connectivity(
+        body: dict[str, Any],
+        svc: ModelService = Depends(model_dependency),  # noqa: B008
+    ) -> dict[str, Any]:
+        return await svc.test_connectivity(body)
 
     @router.post("/api/admin/models", status_code=201)
     async def create_admin_models(
         body: dict[str, Any],
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> dict[str, Any]:
         try:
             return await svc.create_from_provider(
@@ -102,7 +147,7 @@ def build_router() -> APIRouter:
         body: dict[str, Any],
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> dict[str, Any]:
         return await svc.create_route(
             tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
@@ -111,7 +156,7 @@ def build_router() -> APIRouter:
     @router.post("/api/admin/models/batch-status")
     async def batch_admin_status(
         body: dict[str, Any],
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> dict[str, Any]:
         return await svc.batch_status(
             ids=[str(item) for item in (body.get("ids") or [])],
@@ -121,7 +166,7 @@ def build_router() -> APIRouter:
     @router.get("/api/admin/models/{model_id}")
     async def get_admin_model(
         model_id: UUID,
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> dict[str, Any]:
         return await svc.get_model(model_id)
 
@@ -129,14 +174,14 @@ def build_router() -> APIRouter:
     async def patch_admin_model(
         model_id: UUID,
         body: dict[str, Any],
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> dict[str, Any]:
         return await svc.update_model(model_id=model_id, body=body)
 
     @router.delete("/api/admin/models/{model_id}")
     async def delete_admin_model(
         model_id: UUID,
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> dict[str, Any]:
         return await svc.delete_model(model_id)
 
@@ -144,21 +189,23 @@ def build_router() -> APIRouter:
     async def star_admin_model(
         model_id: UUID,
         body: dict[str, Any],
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> dict[str, Any]:
-        return await svc.set_starred(model_id=model_id, starred=bool(body.get("starred")))
+        return await svc.set_starred(
+            model_id=model_id, starred=bool(body.get("starred"))
+        )
 
     @router.post("/api/admin/models/routes/{route_id}/toggle")
     async def toggle_admin_route(
         route_id: UUID,
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> dict[str, Any]:
         return await svc.toggle_route(route_id)
 
     @router.delete("/api/admin/models/routes/{route_id}")
     async def delete_admin_route(
         route_id: UUID,
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
     ) -> dict[str, Any]:
         return await svc.delete_route(route_id)
 
