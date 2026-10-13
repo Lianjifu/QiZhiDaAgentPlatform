@@ -51,6 +51,82 @@ export const DEFAULT_SKILL_RUNTIME: SkillRuntimeSpec = {
   memoryMb: 256,
 };
 
+// ── 类型专属 profile ──────────────────────────────────────────────────
+// Skill 走沙箱(用 SkillRuntimeSpec);Tool / MCP 走各自的 profile。
+// 前端收集后随 create/update 提交,后端目前忽略,Phase 2 接入持久化。
+
+export type ToolAuthKind = 'api_key' | 'oauth2' | 'bearer';
+export type ToolSourceKind = 'openapi_url' | 'openapi_inline' | 'http_endpoint';
+export type ToolNetworkPolicy = 'none' | 'bridge' | 'allowlist';
+
+export interface ToolConfig {
+  authKind: ToolAuthKind;
+  apiKey?: string;                // 提交时由后端加密,前端只持有明文草稿
+  baseUrl: string;
+  endpointPath: string;
+  httpMethod: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  sourceKind: ToolSourceKind;
+  openapiSpec?: Record<string, unknown>;
+  networkPolicy: ToolNetworkPolicy;
+  allowedHosts: string[];
+  timeoutMs: number;
+}
+
+export const DEFAULT_TOOL_CONFIG: ToolConfig = {
+  authKind: 'api_key',
+  baseUrl: '',
+  endpointPath: '',
+  httpMethod: 'POST',
+  sourceKind: 'http_endpoint',
+  networkPolicy: 'allowlist',
+  allowedHosts: [],
+  timeoutMs: 30000,
+};
+
+export type MCPTransport = 'stdio' | 'sse' | 'streamable-http';
+
+export interface MCPConfig {
+  transport: MCPTransport;
+  serverUrl: string;              // sse/streamable-http 时使用
+  command: string;                // stdio 时使用
+  args: string[];
+  env: Record<string, string>;
+  token?: string;                 // 提交时由后端加密
+  probeIntervalS: number;
+  connectionTimeoutS: number;
+  tokenRotationDays: number;
+  selectedTools: string[];        // 从 server 拉取后勾选用哪些
+}
+
+export const DEFAULT_MCP_CONFIG: MCPConfig = {
+  transport: 'streamable-http',
+  serverUrl: '',
+  command: '',
+  args: [],
+  env: {},
+  probeIntervalS: 300,
+  connectionTimeoutS: 10,
+  tokenRotationDays: 90,
+  selectedTools: [],
+};
+
+// MCP server 拉到的 tool schema(简版,用于前端展示与勾选)
+export interface MCPToolInfo {
+  name: string;
+  description: string;
+  inputSchema: SchemaField[];
+}
+
+export interface SkillConfig {
+  /** Skill 走沙箱,profile 实际上就是 SkillRuntimeSpec;保留包装便于未来扩展。 */
+  runtime: SkillRuntimeSpec;
+}
+
+export type SkillProfile =
+  | ({ kind: 'Skill' } & SkillConfig)
+  | ({ kind: 'Tool' } & ToolConfig)
+  | ({ kind: 'MCP' } & MCPConfig);
+
 export interface Skill {
   id: string;
   name: string;
@@ -77,6 +153,8 @@ export interface Skill {
   usedByAgents: string[];
   auditLog: AuditEntry[];
   runtime?: SkillRuntimeSpec;
+  /** 类型专属 profile;后端当前忽略,Phase 2 持久化到 admin_tool_credentials / admin_mcp_servers。 */
+  profile?: SkillProfile;
 }
 
 export interface TemplateSeed {
@@ -114,6 +192,8 @@ export interface CreateSkillVars {
   needConfirm: boolean;
   inputSchema: SchemaField[];
   outputSchema: SchemaField[];
+  /** 类型专属配置;后端当前忽略,Phase 2 持久化到 admin_tool_credentials / admin_mcp_servers。 */
+  profile?: SkillProfile;
 }
 
 export interface UpdateSkillVars {

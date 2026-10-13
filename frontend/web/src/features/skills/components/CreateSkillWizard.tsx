@@ -1,10 +1,26 @@
-import { useEffect, useState } from 'react';
-import { BookOpen, Layers, Plus, ShieldCheck } from 'lucide-react';
+/**
+ * 3 步新建 wizard — Skill / Tool / MCP 三类型差异化。
+ *
+ * - Step 1 通用:名称、负责人、描述(类型锁定,顶部 type 指示)
+ * - Step 2 类型专属:Skill=输入输出 JSON / Tool=鉴权+端点+出站 / MCP=传输+服务器+能力
+ * - Step 3 类型专属:Skill=沙箱+风险 / Tool=确认粒度+白名单 / MCP=探活+轮换+连接
+ *
+ * 提交时携带类型专属 profile;后端目前忽略,Phase 2 接入持久化。
+ */
+import { useEffect, useMemo, useState } from 'react';
+import { BookOpen, Layers, ShieldCheck, Plus, Sparkles, Wrench, Network } from 'lucide-react';
 import { CenterModal } from '@/components/feedback/CenterModal';
-import type { RiskLevel, Skill, SkillType, SchemaField } from '../schema';
-import { RISK_BADGE, TYPE_META } from './constants';
+import type {
+  MCPConfig, MCPToolInfo, RiskLevel, Skill, SkillProfile, SkillType, SchemaField, ToolConfig,
+} from '../schema';
+import { DEFAULT_MCP_CONFIG, DEFAULT_SKILL_RUNTIME, DEFAULT_TOOL_CONFIG } from '../schema';
+import { TYPE_META } from './constants';
 import { StepIndicator } from './StepIndicator';
 import { buildSkillFromDraft, parseSchemaJson } from './skill-io';
+import { StepSkillIO, StepToolEndpoint, StepMCPServer } from './CreateStepConfigs';
+import {
+  SkillRiskPanel, ToolRiskPanel, MCPRiskPanel, type ToolConfirmGranularity,
+} from './CreateStepRisks';
 
 interface CreateWizardProps {
   open: boolean;
@@ -15,6 +31,22 @@ interface CreateWizardProps {
   embedded?: boolean;
 }
 
+const STEP_LABELS: Record<SkillType, { step2: string; step3: string }> = {
+  Skill: { step2: '输入输出', step3: '沙箱与风险' },
+  Tool:  { step2: '鉴权与端点', step3: '出站与风险' },
+  MCP:   { step2: '服务器与凭据', step3: '连接与风险' },
+};
+
+const DEFAULT_TOOL_GRANULARITY: ToolConfirmGranularity = 'always';
+const DEFAULT_SANDBOX = {
+  image: DEFAULT_SKILL_RUNTIME.image,
+  entry: DEFAULT_SKILL_RUNTIME.entry,
+  source: DEFAULT_SKILL_RUNTIME.source,
+  timeoutMs: DEFAULT_SKILL_RUNTIME.timeoutMs,
+  network: DEFAULT_SKILL_RUNTIME.network,
+  memoryMb: DEFAULT_SKILL_RUNTIME.memoryMb,
+} as const;
+
 export function CreateSkillWizard({ open, onClose, onCreate, type: lockedType, lockType = true, embedded = false }: CreateWizardProps) {
   const [step, setStep] = useState(1);
   const [pickedType, setPickedType] = useState<SkillType>(lockedType);
@@ -23,8 +55,21 @@ export function CreateSkillWizard({ open, onClose, onCreate, type: lockedType, l
   const [owner, setOwner] = useState('张敏');
   const [risk, setRisk] = useState<RiskLevel>('low');
   const [needConfirm, setNeedConfirm] = useState(false);
+
+  // Skill 专属
   const [inputJson, setInputJson] = useState('[{ "name": "input", "type": "string", "required": true, "description": "示例输入" }]');
   const [outputJson, setOutputJson] = useState('[{ "name": "result", "type": "string", "required": true, "description": "示例输出" }]');
+
+  // Tool 专属
+  const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
+  const [toolGranularity, setToolGranularity] = useState<ToolConfirmGranularity>(DEFAULT_TOOL_GRANULARITY);
+
+  // MCP 专属
+  const [mcpConfig, setMcpConfig] = useState<MCPConfig>(DEFAULT_MCP_CONFIG);
+  const [mcpTools, setMcpTools] = useState<MCPToolInfo[]>([]);
+  const [probing, setProbing] = useState(false);
+  const [probeError, setProbeError] = useState<string | null>(null);
+
   useEffect(() => {
     if (open) {
       setStep(1);
@@ -34,23 +79,113 @@ export function CreateSkillWizard({ open, onClose, onCreate, type: lockedType, l
       setOwner('张敏');
       setRisk('low');
       setNeedConfirm(false);
+      setInputJson('[{ "name": "input", "type": "string", "required": true, "description": "示例输入" }]');
+      setOutputJson('[{ "name": "result", "type": "string", "required": true, "description": "示例输出" }]');
+      setToolConfig(DEFAULT_TOOL_CONFIG);
+      setToolGranularity(DEFAULT_TOOL_GRANULARITY);
+      setMcpConfig(DEFAULT_MCP_CONFIG);
+      setMcpTools([]);
+      setProbing(false);
+      setProbeError(null);
     }
   }, [open, lockedType]);
+
   const type = lockType ? lockedType : pickedType;
+  const labels = STEP_LABELS[type];
+
+  // canNext per step
   const canNext1 = name.trim().length > 0;
-  const canNext2 = (() => {
-    try { JSON.parse(inputJson); JSON.parse(outputJson); return true; } catch { return false; }
-  })();
+  const canNext2 = useMemo(() => {
+    if (type === 'Skill') {
+      try { JSON.parse(inputJson); JSON.parse(outputJson); return true; } catch { return false; }
+    }
+    if (type === 'Tool') {
+      if (!toolConfig.baseUrl.trim()) return false;
+      if (toolConfig.sourceKind === 'http_endpoint' && !toolConfig.endpointPath.trim()) return false;
+      return true;
+    }
+    if (type === 'MCP') {
+      if (mcpConfig.transport === 'stdio') return mcpConfig.command.trim().length > 0;
+      return mcpConfig.serverUrl.trim().length > 0;
+    }
+    return false;
+  }, [type, inputJson, outputJson, toolConfig, mcpConfig]);
+
+  // Mock 探测(后端 probe 端点未到位前的本地模拟,Phase 2 替换为真实 server.tools/list)
+  const probeMcp = async () => {
+    setProbing(true);
+    setProbeError(null);
+    setMcpTools([]);
+    await new Promise((r) => setTimeout(r, 800));
+    const url = mcpConfig.serverUrl.toLowerCase();
+    let tools: MCPToolInfo[] = [];
+    if (url.includes('github')) {
+      tools = [
+        { name: 'list_repos', description: '列出当前用户可访问的仓库', inputSchema: [{ name: 'visibility', type: 'string', required: false, description: 'public / private / all' }] },
+        { name: 'search_issues', description: '在指定仓库中搜索 Issue / PR', inputSchema: [{ name: 'repo', type: 'string', required: true, description: '仓库 owner/name' }, { name: 'query', type: 'string', required: true, description: '搜索关键词' }] },
+        { name: 'create_issue', description: '在指定仓库创建新 Issue', inputSchema: [{ name: 'repo', type: 'string', required: true, description: '仓库' }, { name: 'title', type: 'string', required: true, description: '标题' }, { name: 'body', type: 'string', required: false, description: '正文' }] },
+      ];
+    } else if (url.includes('drive') || url.includes('file')) {
+      tools = [
+        { name: 'search_files', description: '按关键词搜索授权范围内的文件', inputSchema: [{ name: 'keyword', type: 'string', required: true, description: '搜索词' }] },
+        { name: 'read_file', description: '读取文件内容(只读)', inputSchema: [{ name: 'fileId', type: 'string', required: true, description: '文件 ID' }] },
+      ];
+    } else if (url.includes('crm') || url.includes('customer')) {
+      tools = [
+        { name: 'get_customer', description: '按客户编号查询客户档案', inputSchema: [{ name: 'query', type: 'string', required: true, description: '客户编号或名称' }] },
+        { name: 'list_records', description: '查询客户的服务记录(只读)', inputSchema: [{ name: 'customerId', type: 'string', required: true, description: '客户 ID' }] },
+      ];
+    } else {
+      tools = [
+        { name: 'ping', description: '健康探活,返回 pong', inputSchema: [] },
+        { name: 'get_status', description: '获取 server 状态', inputSchema: [] },
+      ];
+    }
+    setMcpTools(tools);
+    setMcpConfig((c) => ({ ...c, selectedTools: c.selectedTools.filter((n) => tools.some((t) => t.name === n)) }));
+    setProbing(false);
+  };
+
   const handleSubmit = () => {
-    const inputSchema: SchemaField[] = parseSchemaJson(inputJson);
-    const outputSchema: SchemaField[] = parseSchemaJson(outputJson);
-    const skill = buildSkillFromDraft(name.trim(), type, description.trim(), owner, risk);
-    skill.inputSchema = inputSchema;
-    skill.outputSchema = outputSchema;
+    let inputSchema: SchemaField[] = [];
+    let outputSchema: SchemaField[] = [];
+    let profile: SkillProfile | undefined;
+
+    if (type === 'Skill') {
+      inputSchema = parseSchemaJson(inputJson);
+      outputSchema = parseSchemaJson(outputJson);
+      profile = { kind: 'Skill', runtime: { ...DEFAULT_SKILL_RUNTIME, ...DEFAULT_SANDBOX, source: '' } };
+    } else if (type === 'Tool') {
+      // Tool:从 endpoint / openapi 推断 schema(此处保留简版:用户可在 Step 2 末尾编辑)
+      inputSchema = [];
+      outputSchema = [];
+      profile = { kind: 'Tool', ...toolConfig };
+    } else {
+      // MCP:从勾选的 tool 汇总 input schema(同一 server 共享一个 toolset)
+      const selected = mcpTools.filter((t) => mcpConfig.selectedTools.includes(t.name));
+      const collectedInputs: SchemaField[] = [];
+      selected.forEach((t) => {
+        t.inputSchema.forEach((f) => {
+          if (!collectedInputs.some((x) => x.name === `${t.name}.${f.name}`)) {
+            collectedInputs.push({ ...f, name: `${t.name}.${f.name}`, description: `[${t.name}] ${f.description}` });
+          }
+        });
+      });
+      inputSchema = collectedInputs;
+      outputSchema = [];
+      profile = { kind: 'MCP', ...mcpConfig };
+    }
+
+    const skill = buildSkillFromDraft(name.trim(), type, description.trim(), owner, risk, profile, inputSchema, outputSchema);
     skill.needConfirm = needConfirm || risk !== 'low';
     onCreate(skill);
   };
+
   const title = type === 'Tool' ? '新建 Tool' : type === 'MCP' ? '新建 MCP' : '新建技能';
+  const TypeIcon = type === 'Tool' ? Wrench : type === 'MCP' ? Network : Sparkles;
+  const step2Title = labels.step2;
+  const step3Title = labels.step3;
+
   const footer = (
     <>
       {step > 1 && <button type="button" onClick={() => setStep((s) => Math.max(1, s - 1))} className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">上一步</button>}
@@ -66,32 +201,34 @@ export function CreateSkillWizard({ open, onClose, onCreate, type: lockedType, l
       )}
     </>
   );
+
   const stepBody = (
     <>
       {step === 1 && (
         <div className="space-y-4">
+          {lockType && (
+            <div className={`flex items-center gap-2 rounded-xl border border-[var(--brand)] bg-[var(--brand-light)] px-3 py-2 text-xs ${TYPE_META[type].tone}`}>
+              <TypeIcon className="h-4 w-4" />
+              <span className="font-semibold">{type} · {TYPE_META[type].label}</span>
+              <span className="ml-auto text-[10px] text-[var(--text-muted)]">类型已锁定</span>
+            </div>
+          )}
           <div>
             <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">技能名称</label>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="例如:客户跟进建议" className="mt-1.5 h-10 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-sm outline-none focus:border-[var(--brand)]" />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">类型</label>
-              <select
-                aria-label="类型"
-                value={type}
-                disabled={lockType}
-                onChange={(event) => setPickedType(event.target.value as SkillType)}
-                className="mt-1.5 h-10 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-sm outline-none disabled:opacity-70"
-              >
-                {(Object.keys(TYPE_META) as SkillType[]).map((item) => (
-                  <option key={item} value={item}>{item} · {TYPE_META[item].label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
               <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">负责人</label>
               <input type="text" value={owner} onChange={(e) => setOwner(e.target.value)} className="mt-1.5 h-10 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-sm outline-none focus:border-[var(--brand)]" />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">可见范围</label>
+              <select className="mt-1.5 h-10 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-sm outline-none">
+                <option>部门</option>
+                <option>公开</option>
+                <option>个人</option>
+              </select>
             </div>
           </div>
           <div>
@@ -102,56 +239,57 @@ export function CreateSkillWizard({ open, onClose, onCreate, type: lockedType, l
       )}
       {step === 2 && (
         <div className="space-y-4">
-          <div>
-            <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">输入参数 (JSON 数组)</label>
-            <textarea value={inputJson} onChange={(e) => setInputJson(e.target.value)} rows={6} className="mt-1.5 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 py-2 font-mono text-xs leading-6 outline-none focus:border-[var(--brand)]" />
-            {!canNext2 && <p className="mt-1 text-[11px] text-rose-600">JSON 格式无效,请检查括号或逗号。</p>}
+          <div className={`flex items-center gap-2 rounded-xl border border-[var(--brand)] bg-[var(--brand-light)] px-3 py-2 text-xs ${TYPE_META[type].tone}`}>
+            <TypeIcon className="h-4 w-4" />
+            <span className="font-semibold">{type} · {step2Title}</span>
+            <span className="ml-auto text-[10px] text-[var(--text-muted)]">{TYPE_META[type].description}</span>
           </div>
-          <div>
-            <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">输出参数 (JSON 数组)</label>
-            <textarea value={outputJson} onChange={(e) => setOutputJson(e.target.value)} rows={6} className="mt-1.5 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 py-2 font-mono text-xs leading-6 outline-none focus:border-[var(--brand)]" />
-          </div>
-          <p className="text-[11px] text-[var(--text-muted)]">每个字段:name · type (string/number/boolean/object/array) · required · description。</p>
+          {type === 'Skill' && <StepSkillIO inputJson={inputJson} outputJson={outputJson} onInputChange={setInputJson} onOutputChange={setOutputJson} />}
+          {type === 'Tool' && <StepToolEndpoint config={toolConfig} onChange={setToolConfig} />}
+          {type === 'MCP' && <StepMCPServer config={mcpConfig} onChange={setMcpConfig} tools={mcpTools} onProbe={probeMcp} probing={probing} probeError={probeError} />}
         </div>
       )}
       {step === 3 && (
         <div className="space-y-4">
-          <div>
-            <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">风险等级</label>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {(['low', 'medium', 'high'] as const).map((level) => {
-                const active = risk === level;
-                return (
-                  <button key={level} type="button" onClick={() => setRisk(level)} aria-pressed={active} className={`rounded-xl border p-3 text-left text-xs font-semibold transition ${active ? 'border-[var(--brand)] bg-[var(--brand-light)] text-[var(--brand)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--brand)]'}`}>
-                    {RISK_BADGE[level].label}
-                  </button>
-                );
-              })}
-            </div>
+          <div className={`flex items-center gap-2 rounded-xl border border-[var(--brand)] bg-[var(--brand-light)] px-3 py-2 text-xs ${TYPE_META[type].tone}`}>
+            <TypeIcon className="h-4 w-4" />
+            <span className="font-semibold">{type} · {step3Title}</span>
+            <span className="ml-auto text-[10px] text-[var(--text-muted)]">创建后状态为草稿</span>
           </div>
-          <div className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
-            <div>
-              <p className="text-xs font-semibold">需要二次确认</p>
-              <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">调用前用户需授权。</p>
-            </div>
-            <button type="button" role="switch" aria-checked={needConfirm} onClick={() => setNeedConfirm(!needConfirm)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${needConfirm ? 'bg-[var(--brand)]' : 'bg-[var(--bg-hover)]'}`}>
-              <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${needConfirm ? 'translate-x-5' : 'translate-x-0.5'}`} />
-            </button>
-          </div>
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">创建后</p>
-            <p className="mt-2 text-xs text-[var(--text-secondary)]">技能将以 <span className="font-semibold">草稿</span> 状态加入总览,可继续完善输入输出,完成后走发布流程。</p>
-          </div>
+          {type === 'Skill' && (
+            <SkillRiskPanel
+              risk={risk} needConfirm={needConfirm}
+              onRiskChange={setRisk} onNeedConfirmChange={setNeedConfirm}
+              sandbox={DEFAULT_SANDBOX} onSandboxChange={() => { /* 暂不持久化到草稿 */ }}
+            />
+          )}
+          {type === 'Tool' && (
+            <ToolRiskPanel
+              risk={risk} needConfirm={needConfirm}
+              onRiskChange={setRisk} onNeedConfirmChange={setNeedConfirm}
+              config={toolConfig} onConfigChange={setToolConfig}
+              granularity={toolGranularity} onGranularityChange={setToolGranularity}
+            />
+          )}
+          {type === 'MCP' && (
+            <MCPRiskPanel
+              risk={risk} needConfirm={needConfirm}
+              onRiskChange={setRisk} onNeedConfirmChange={setNeedConfirm}
+              config={mcpConfig} onConfigChange={setMcpConfig}
+            />
+          )}
         </div>
       )}
     </>
   );
+
   const createSteps = [
-    { index: 1, title: '基本信息', description: '名称、类型与负责人', icon: BookOpen },
-    { index: 2, title: '输入输出', description: '用 JSON 描述字段', icon: Layers },
-    { index: 3, title: '风险权限', description: '风险等级与二次确认', icon: ShieldCheck },
+    { index: 1, title: '基本信息', description: '名称、负责人与描述', icon: BookOpen },
+    { index: 2, title: step2Title, description: STEP_DESCRIPTION[type].step2, icon: Layers },
+    { index: 3, title: step3Title, description: STEP_DESCRIPTION[type].step3, icon: ShieldCheck },
   ] as const;
   const currentStep = createSteps[step - 1];
+
   if (embedded) {
     return (
       <section className="flex min-h-[480px] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] lg:flex-row">
@@ -176,7 +314,7 @@ export function CreateSkillWizard({ open, onClose, onCreate, type: lockedType, l
                     <span className="min-w-0 pt-0.5">
                       <span className={`text-[11px] font-semibold uppercase tracking-wide ${active ? 'text-[var(--brand)]' : 'text-[var(--text-muted)]'}`}>第 {item.index} 步</span>
                       <span className={`mt-0.5 block text-sm font-semibold ${active ? 'text-[var(--text)]' : 'text-[var(--text-secondary)]'}`}>{item.title}</span>
-                      <span className="mt-0.5 block text-[11px] leading-4 text-[var(--text-muted)]">{item.description}</span>
+                      <span className={`mt-0.5 block text-[11px] leading-4 text-[var(--text-muted)]`}>{item.description}</span>
                     </span>
                   </button>
                 </li>
@@ -200,15 +338,21 @@ export function CreateSkillWizard({ open, onClose, onCreate, type: lockedType, l
       open={open}
       onClose={onClose}
       ariaLabel={title}
-      panelClassName="max-w-2xl"
+      panelClassName="max-w-3xl"
       title={<span className="flex items-center gap-2"><Plus className="h-5 w-5 text-[var(--brand)]" />{title}</span>}
-      description={step === 1 ? '设置技能的基本信息' : step === 2 ? '用 JSON 描述输入输出字段' : '设置风险等级与可见范围'}
+      description={step === 1 ? '设置技能的基本信息' : step === 2 ? step2Title : step3Title}
       footer={footer}
     >
       <div className="mt-4 mb-5">
-        <StepIndicator current={step} total={3} labels={['基本信息', '输入输出', '风险权限']} />
+        <StepIndicator current={step} total={3} labels={['基本信息', step2Title, step3Title]} />
       </div>
       {stepBody}
     </CenterModal>
   );
 }
+
+const STEP_DESCRIPTION: Record<SkillType, { step2: string; step3: string }> = {
+  Skill: { step2: '用 JSON 描述字段', step3: '沙箱镜像与确认粒度' },
+  Tool:  { step2: '鉴权方式与调用源', step3: '出站白名单与告警' },
+  MCP:   { step2: '传输协议与凭据', step3: '探活与 token 轮换' },
+};

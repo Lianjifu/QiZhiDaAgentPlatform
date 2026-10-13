@@ -3,7 +3,7 @@
  * 全部为纯函数,保持与原 AdminSkills.tsx 同等行为。
  */
 import type {
-  Skill, TemplateSeed, SchemaField, RiskLevel, SkillType,
+  Skill, TemplateSeed, SchemaField, RiskLevel, SkillType, SkillProfile,
   SkillExportField, SkillExportFormat,
 } from '../schema';
 
@@ -34,17 +34,27 @@ export function buildSkillFromTemplate(template: TemplateSeed, name: string, own
   };
 }
 
-export function buildSkillFromDraft(name: string, type: SkillType, description: string, owner: string, risk: RiskLevel): Skill {
+export function buildSkillFromDraft(
+  name: string,
+  type: SkillType,
+  description: string,
+  owner: string,
+  risk: RiskLevel,
+  profile?: SkillProfile,
+  inputSchema: SchemaField[] = [],
+  outputSchema: SchemaField[] = [],
+): Skill {
   return {
     id: uid('skill'), name, description, type, owner,
     status: 'draft', version: 'draft', lastUpdate: '刚刚',
     calls: 0, successRate: 0, errorRate: 0, avgLatencyMs: 0, rating: 0,
     risk, needConfirm: risk !== 'low',
     visibleScope: ['部门'], tags: [], starred: false,
-    inputSchema: [], outputSchema: [], versions: [],
+    inputSchema, outputSchema, versions: [],
     trend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     usedByAgents: [],
     auditLog: [{ time: '刚刚', actor: owner, action: '新建技能' }],
+    runtime: profile && profile.kind === 'Skill' ? profile.runtime : undefined,
   };
 }
 

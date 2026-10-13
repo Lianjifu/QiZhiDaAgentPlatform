@@ -1,11 +1,23 @@
 import { ChevronRight } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
+const TYPE_LABEL: Record<string, string> = {
+  Skill: '新建 Skill',
+  Tool: '新建 Tool',
+  MCP: '新建 MCP',
+};
+
 /** 嵌套页的当前标题。列表页返回 null，顶栏继续显示栏目名。 */
-export function childPageTitle(pathname: string): string | null {
+export function childPageTitle(pathname: string, search?: URLSearchParams): string | null {
+  if (pathname === '/admin/tools/new') {
+    const type = search?.get('type');
+    if (type && (TYPE_LABEL[type] || null)) {
+      return TYPE_LABEL[type];
+    }
+    return '新建技能';
+  }
   if (
     pathname === '/admin/agents/new'
-    || pathname === '/admin/tools/new'
     || pathname === '/admin/knowledge/kbs/new'
     || pathname === '/admin/knowledge/sources/new'
     || pathname === '/admin/regressions/new'
