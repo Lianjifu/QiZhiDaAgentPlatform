@@ -1,13 +1,13 @@
 /**
- * 管理侧「智能体工作台」常量 — Tab/状态徽章/排序/导出字段/向导/导入格式/drawer nav/Prompt 文档/记忆/工作流触发器。
+ * 管理侧「智能体工作台」常量 — Tab/状态徽章/排序/导出字段/导入格式/drawer nav/Prompt 文档/记忆/工作流触发器。
  */
 import {
-  Activity, AlertTriangle, Beaker, BookOpen, Bot, Brain, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, CheckSquare, Clock, Copy, Download, Edit3, FileJson, FileSpreadsheet, FileText, FolderTree, GitBranch, Headphones, History, Info, Layers, LineChart, MessageSquareText, MoreVertical, PenLine, Play, Plus, RotateCcw, Save, Search, ShieldCheck, Sparkles, Square, Star, Tag, Timer, Trash2, TrendingUp, Upload, Workflow, X,
+  Activity, AlertTriangle, Beaker, BookOpen, Brain, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, CheckSquare, Clock, Copy, Download, Edit3, FileJson, FileSpreadsheet, FileText, FolderTree, GitBranch, History, Info, Layers, MoreVertical, Play, Plus, RotateCcw, Save, Search, ShieldCheck, Sparkles, Square, Star, Tag, Timer, Trash2, TrendingUp, Upload, Workflow, X,
 } from 'lucide-react';
-import type { Tone, Status, TabId, SortKey, DrawerPanel, PromptKey, ExportField, ExportFormat, ExportScope, MemoryRetention, MemoryScope, FlowTrigger, ImportExtension, VisibleScope, WizardDraft, DeletePayload } from '../schema';
+import type { Tone, Status, TabId, SortKey, DrawerPanel, PromptKey, ExportField, ExportFormat, ExportScope, MemoryRetention, MemoryScope, FlowTrigger, ImportExtension, VisibleScope, DeletePayload } from '../schema';
 
 export {
-  Activity, AlertTriangle, Beaker, BookOpen, Bot, Brain, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, CheckSquare, Clock, Copy, Download, Edit3, FileJson, FileSpreadsheet, FileText, FolderTree, GitBranch, Headphones, History, Info, Layers, LineChart, MessageSquareText, MoreVertical, PenLine, Play, Plus, RotateCcw, Save, Search, ShieldCheck, Sparkles, Square, Star, Tag, Timer, Trash2, TrendingUp, Upload, Workflow, X,
+  Activity, AlertTriangle, Beaker, BookOpen, Brain, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, CheckSquare, Clock, Copy, Download, Edit3, FileJson, FileSpreadsheet, FileText, FolderTree, GitBranch, History, Info, Layers, MoreVertical, Play, Plus, RotateCcw, Save, Search, ShieldCheck, Sparkles, Square, Star, Tag, Timer, Trash2, TrendingUp, Upload, Workflow, X,
 };
 
 export const TABS: Array<{ id: TabId; label: string }> = [
@@ -54,43 +54,12 @@ export const EXPORT_FIELDS: Array<{ id: ExportField; label: string }> = [
   { id: 'flow', label: '工作流' },
 ];
 
-export const WIZARD_TEMPLATES: Array<{ id: WizardDraft['template']; title: string; description: string; icon: typeof Bot; tone: Tone }> = [
-  { id: 'blank', title: '空白智能体', description: '从零开始,自行配置 Prompt、技能与权限。', icon: Bot, tone: 'info' },
-  { id: 'customer-service', title: '客服场景模板', description: '内置订单查询、退换货、情绪识别等客服常用技能。', icon: MessageSquareText, tone: 'brand' },
-  { id: 'sales-support', title: '销售支持模板', description: '内置 CRM 查询、报价引擎、合同条款检索。', icon: TrendingUp, tone: 'success' },
-];
-
-export const WIZARD_ICONS: Array<{ name: string; Icon: typeof Bot; tone: Tone; label: string }> = [
-  { name: 'Bot', Icon: Bot, tone: 'brand', label: '通用' },
-  { name: 'Headphones', Icon: Headphones, tone: 'info', label: '客服' },
-  { name: 'LineChart', Icon: LineChart, tone: 'success', label: '数据' },
-  { name: 'PenLine', Icon: PenLine, tone: 'warn', label: '文案' },
-  { name: 'Workflow', Icon: Workflow, tone: 'purple', label: '工作流' },
-  { name: 'ShieldCheck', Icon: ShieldCheck, tone: 'danger', label: '审批' },
-];
-
-export const WIZARD_MODELS = ['GPT-4o (默认)', 'Claude Sonnet 4.5', 'Qwen 2.5 72B', 'DeepSeek V3', '混元 Pro'];
-export const WIZARD_SKILLS = ['订单查询', '客户画像', 'CRM 查询', '知识检索', '邮件发送', '审批中心', '日程预约', '敏感词检测'];
-
 export const IMPORT_FORMATS: Array<{ ext: ImportExtension; label: string; description: string }> = [
   { ext: 'json', label: 'JSON', description: '结构化数组,字段一一映射' },
   { ext: 'csv', label: 'CSV', description: '表格导入,首行为表头' },
   { ext: 'yaml', label: 'YAML', description: 'YAML 列表,支持注释' },
   { ext: 'zip', label: 'ZIP', description: '压缩包,可包含多个文件' },
 ];
-
-export const INITIAL_WIZARD_DRAFT: WizardDraft = {
-  name: '',
-  description: '',
-  category: '客服一组',
-  owner: '张敏',
-  icon: 'Bot',
-  tags: [],
-  template: 'blank',
-  model: 'GPT-4o (默认)',
-  defaultSkills: [],
-  visibleScope: '部门',
-};
 
 export const DEFAULT_EXPORT_FIELDS: Record<ExportField, boolean> = {
   meta: true,
@@ -158,4 +127,4 @@ export const DRAWER_NAV_ITEMS: Array<{ id: DrawerPanel; label: string; icon: typ
   { id: 'permission', label: '权限', icon: ShieldCheck },
 ];
 
-export type { Tone, Status, TabId, SortKey, DrawerPanel, PromptKey, ExportField, ExportFormat, ExportScope, VisibleScope, WizardDraft, DeletePayload };
+export type { Tone, Status, TabId, SortKey, DrawerPanel, PromptKey, ExportField, ExportFormat, ExportScope, VisibleScope, DeletePayload };

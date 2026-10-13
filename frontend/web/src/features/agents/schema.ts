@@ -16,19 +16,6 @@ export type FlowTrigger = '消息触发' | '定时触发' | '事件触发' | '�
 export type ImportExtension = 'json' | 'csv' | 'yaml' | 'zip';
 export type VisibleScope = '公开' | '部门' | '个人';
 
-export interface WizardDraft {
-  name: string;
-  description: string;
-  category: string;
-  owner: string;
-  icon: string;
-  tags: string[];
-  template: 'blank' | 'customer-service' | 'sales-support';
-  model: string;
-  defaultSkills: string[];
-  visibleScope: VisibleScope;
-}
-
 export interface ImportRow {
   source: Record<string, string>;
   status: 'ok' | 'duplicate' | 'missing';

@@ -16,6 +16,9 @@ import { useL1Sessions, useL2Facts, useL3Entries, useRetentionPolicies } from '@
 import { useWorkflows } from '@/features/workflows/useWorkflows';
 import { EvalProgress, PanelPagination } from './Primitives';
 import { MarkdownView } from './MarkdownView';
+import { KnowledgePicker } from './KnowledgePicker';
+import { SkillPicker } from './SkillPicker';
+import { WorkflowPicker } from './WorkflowPicker';
 import {
   DOCUMENT_TARGET_LIMITS, MEMORY_RETENTION_OPTIONS, MEMORY_SCOPE_OPTIONS,
   PROMPT_DOCS, PROMPT_SNIPPETS, statusBadge, toneClass,
@@ -341,39 +344,22 @@ export function DrawerPanelVersions({ draft, onOpenDiff }: { draft: AgentEntry; 
 
 export function DrawerPanelSkills({ draft, onChange }: { draft: AgentEntry; onChange: (patch: Partial<AgentEntry>) => void }) {
   const { data: skills = [] } = useAdminSkills();
-  const enabledMap = new Map(draft.tools.map((t) => [t.id, t.enabled]));
-  const myNames = new Set(draft.tools.map((t) => t.name));
-  const mySkills = skills.filter((s) => myNames.has(s.name) || s.usedByAgents?.includes(draft.name));
-  const unbound = skills.filter((s) => !myNames.has(s.name) && !s.usedByAgents?.includes(draft.name));
+  const skillById = useMemo(() => new Map(skills.map((s) => [s.id, s])), [skills]);
+  const selectedIds = draft.tools.map((t) => t.id);
   const enabledCount = draft.tools.filter((t) => t.enabled).length;
   const countsByType = useMemo(() => {
     const out = { Skill: 0, Tool: 0, MCP: 0 } as Record<'Skill' | 'Tool' | 'MCP', number>;
     draft.tools.forEach((t) => { out[t.type] = (out[t.type] ?? 0) + 1; });
     return out;
   }, [draft.tools]);
-  const mergedList = useMemo(() => [...mySkills, ...unbound], [mySkills, unbound]);
-  const [page, setPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(mergedList.length / PANEL_PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paged = useMemo(
-    () => mergedList.slice((safePage - 1) * PANEL_PAGE_SIZE, safePage * PANEL_PAGE_SIZE),
-    [mergedList, safePage],
-  );
-  const pageStart = mergedList.length === 0 ? 0 : (safePage - 1) * PANEL_PAGE_SIZE + 1;
-  const pageEnd = Math.min(safePage * PANEL_PAGE_SIZE, mergedList.length);
-  useEffect(() => { setPage(1); }, [draft.id]);
-  const toggle = (skill: typeof skills[number]) => {
-    const exists = draft.tools.some((t) => t.id === skill.id);
-    if (exists) {
-      onChange({ tools: draft.tools.map((t) => t.id === skill.id ? { ...t, enabled: !t.enabled } : t) });
-    } else {
-      onChange({
-        tools: [
-          ...draft.tools,
-          { id: skill.id, name: skill.name, type: skill.type, enabled: true },
-        ],
-      });
-    }
+  const handleChange = (ids: string[]) => {
+    const refs: SkillRef[] = ids.map((id) => {
+      const existing = draft.tools.find((t) => t.id === id);
+      if (existing) return existing;
+      const s = skillById.get(id);
+      return { id, name: s?.name ?? '', type: (s?.type ?? 'Skill') as SkillRef['type'], enabled: true };
+    });
+    onChange({ tools: refs });
   };
   return (
     <div className="space-y-4">
@@ -391,59 +377,7 @@ export function DrawerPanelSkills({ draft, onChange }: { draft: AgentEntry; onCh
         <PanelStat label="Skill" value={`${countsByType.Skill}`} hint="本智能体" />
         <PanelStat label="Tool · MCP" value={`${countsByType.Tool + countsByType.MCP}`} hint="本智能体" tone="info" />
       </section>
-      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
-        <header className="flex items-center justify-between">
-          <div>
-            <h4 className="text-sm font-semibold">技能列表</h4>
-            <p className="text-[11px] text-[var(--text-muted)]">来自技能管理 · 总数 {skills.length} · 本智能体已选 {draft.tools.length}</p>
-          </div>
-        </header>
-        <ul className="mt-3 space-y-2">
-          {paged.map((skill) => {
-            const isMine = draft.tools.some((t) => t.id === skill.id);
-            const enabled = enabledMap.get(skill.id) ?? false;
-            const kindTone = skill.type === 'Skill' ? 'brand' : skill.type === 'MCP' ? 'purple' : 'info';
-            return (
-              <li key={skill.id} className={`flex items-start gap-3 rounded-xl border p-4 transition ${enabled ? 'border-[var(--brand)] bg-[var(--brand-light)]/40' : isMine ? 'border-[var(--warning)]/30 bg-[var(--warning-bg)]/40' : 'border-[var(--border)] bg-[var(--surface-1)]'}`}>
-                <input
-                  type="checkbox"
-                  checked={enabled}
-                  onChange={() => toggle(skill)}
-                  aria-label={`启用 ${skill.name}`}
-                  className="mt-0.5 h-4 w-4 accent-[var(--brand)]"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-semibold">{skill.name}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${toneClass[kindTone]}`}>{skill.type}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${skill.status === 'published' ? 'bg-[var(--success-bg)] text-[var(--success)]' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'}`}>
-                      {skill.status}
-                    </span>
-                    {!isMine && <span className="rounded-full bg-[var(--info-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--info)]">未绑定</span>}
-                  </div>
-                  <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">{skill.description}</p>
-                  <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{skill.owner} · v{skill.version} · 调用 {formatCalls(skill.calls)} · 成功率 {skill.successRate.toFixed(2)}%</p>
-                </div>
-                <a
-                  href={`/admin/tools/${skill.id}`}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-semibold hover:border-[var(--brand)] hover:text-[var(--brand)]"
-                  title="在技能管理查看详情"
-                >
-                  <ExternalLink className="h-3 w-3" />查看
-                </a>
-              </li>
-            );
-          })}
-        </ul>
-        <PanelPagination
-          page={page}
-          totalPages={totalPages}
-          total={mergedList.length}
-          pageStart={pageStart}
-          pageEnd={pageEnd}
-          onPageChange={setPage}
-        />
-      </section>
+      <SkillPicker selectedIds={selectedIds} onChange={handleChange} />
     </div>
   );
 }
@@ -1050,29 +984,17 @@ function HeroStat({ label, value, hint, tone = 'default' }: { label: string; val
 
 export function DrawerPanelKnowledge({ draft, onChange }: { draft: AgentEntry; onChange: (refs: KnowledgeRef[]) => void }) {
   const { data: kbs = [] } = useKnowledgeBases();
-  const enabledMap = new Map(draft.knowledgeRefs.map((r) => [r.id, r.enabled]));
+  const kbById = useMemo(() => new Map(kbs.map((k) => [k.id, k])), [kbs]);
+  const selectedIds = draft.knowledgeRefs.map((r) => r.id);
   const enabledCount = draft.knowledgeRefs.filter((r) => r.enabled).length;
-  const sources = ['全部', ...Array.from(new Set(kbs.map((kb) => kb.scope)))];
-  const [sourceFilter, setSourceFilter] = useState('全部');
-  const filtered = useMemo(() => {
-    if (sourceFilter === '全部') return kbs;
-    return kbs.filter((kb) => kb.scope === sourceFilter);
-  }, [kbs, sourceFilter]);
-  const [page, setPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PANEL_PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paged = useMemo(
-    () => filtered.slice((safePage - 1) * PANEL_PAGE_SIZE, safePage * PANEL_PAGE_SIZE),
-    [filtered, safePage],
-  );
-  const pageStart = filtered.length === 0 ? 0 : (safePage - 1) * PANEL_PAGE_SIZE + 1;
-  const pageEnd = Math.min(safePage * PANEL_PAGE_SIZE, filtered.length);
-  useEffect(() => { setPage(1); }, [sourceFilter, draft.id]);
-  const toggle = (id: string) => {
-    const next = draft.knowledgeRefs.find((r) => r.id === id)
-      ? draft.knowledgeRefs.map((r) => r.id === id ? { ...r, enabled: !r.enabled } : r)
-      : [...draft.knowledgeRefs, { id, name: kbs.find((kb) => kb.id === id)?.name ?? id, scope: '公开' as const, enabled: true }];
-    onChange(next);
+  const handleChange = (ids: string[]) => {
+    const refs: KnowledgeRef[] = ids.map((id) => {
+      const existing = draft.knowledgeRefs.find((r) => r.id === id);
+      if (existing) return existing;
+      const k = kbById.get(id);
+      return { id, name: k?.name ?? '', scope: (k?.scope ?? '部门') as KnowledgeRef['scope'], enabled: true };
+    });
+    onChange(refs);
   };
   return (
     <div className="space-y-4">
@@ -1088,76 +1010,9 @@ export function DrawerPanelKnowledge({ draft, onChange }: { draft: AgentEntry; o
         <PanelStat label="已绑定知识库" value={`${draft.knowledgeRefs.length}`} />
         <PanelStat label="已启用" value={`${enabledCount}`} tone="success" />
         <PanelStat label="知识库总数" value={`${kbs.length}`} hint="来自知识管理" />
-        <PanelStat
-          label="来源模块"
-          value={`${draft.knowledgeRefs.length}/${kbs.length}`}
-          hint="本智能体 / 知识库目录"
-        />
+        <PanelStat label="已绑定/总数" value={`${draft.knowledgeRefs.length}/${kbs.length}`} hint="本智能体 / 知识库目录" />
       </section>
-      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
-        <header className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h4 className="text-sm font-semibold">知识库列表</h4>
-            <p className="text-[11px] text-[var(--text-muted)]">数据来自 /admin/knowledge 的 知识库 (kbs) 目录</p>
-          </div>
-          <label className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[11px]">
-            <span className="text-[var(--text-muted)]">范围</span>
-            <select
-              value={sourceFilter}
-              onChange={(event) => setSourceFilter(event.target.value)}
-              className="bg-transparent text-xs font-medium outline-none"
-            >
-              {sources.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </label>
-        </header>
-        <ul className="mt-3 space-y-2">
-          {paged.length === 0 ? (
-            <li className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-app)] p-4 text-center text-[11px] text-[var(--text-muted)]">该范围下暂无知识库</li>
-          ) : paged.map((kb) => {
-            const isBound = draft.knowledgeRefs.some((r) => r.id === kb.id);
-            const enabled = enabledMap.get(kb.id) ?? false;
-            return (
-              <li key={kb.id} className={`flex items-start gap-3 rounded-xl border p-4 transition ${enabled ? 'border-[var(--brand)] bg-[var(--brand-light)]/40' : 'border-[var(--border)] bg-[var(--surface-1)]'}`}>
-                <input
-                  type="checkbox"
-                  checked={enabled}
-                  onChange={() => toggle(kb.id)}
-                  aria-label={`启用 ${kb.name}`}
-                  className="mt-0.5 h-4 w-4 accent-[var(--brand)]"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-semibold">{kb.name}</p>
-                    <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]">{kb.scope}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${kb.status === 'indexed' ? 'bg-[var(--success-bg)] text-[var(--success)]' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'}`}>
-                      {kb.status}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">{kb.description}</p>
-                  <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">负责人 {kb.owner} · {kb.docCount} 文档 · 命中率 {kb.evalHitRate}%</p>
-                </div>
-                <a
-                  href={`/admin/knowledge/kbs/${kb.id}`}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-semibold hover:border-[var(--brand)] hover:text-[var(--brand)]"
-                  title="在知识管理查看详情"
-                >
-                  <ExternalLink className="h-3 w-3" />查看
-                </a>
-                {!isBound && <span className="rounded-full bg-[var(--info-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--info)]">未绑定</span>}
-              </li>
-            );
-          })}
-        </ul>
-        <PanelPagination
-          page={page}
-          totalPages={totalPages}
-          total={filtered.length}
-          pageStart={pageStart}
-          pageEnd={pageEnd}
-          onPageChange={setPage}
-        />
-      </section>
+      <KnowledgePicker selectedIds={selectedIds} onChange={handleChange} />
     </div>
   );
 }
@@ -1288,27 +1143,18 @@ export function DrawerPanelMemory({ draft, onChange }: { draft: AgentEntry; onCh
 
 export function DrawerPanelFlow({ draft, onChange }: { draft: AgentEntry; onChange: (refs: FlowRef[]) => void }) {
   const { data: flows = [] } = useWorkflows();
-  const boundFlows = useMemo(() => flows.filter((f) => f.boundAgents?.includes(draft.id) || f.boundAgents?.includes(draft.name)), [flows, draft.id, draft.name]);
-  const enabledMap = new Map(draft.flowRefs.map((r) => [r.id, r.enabled]));
+  const flowById = useMemo(() => new Map(flows.map((f) => [f.id, f])), [flows]);
+  const selectedIds = draft.flowRefs.map((r) => r.id);
   const enabledCount = draft.flowRefs.filter((r) => r.enabled).length;
-  const toggle = (id: string) => {
-    const next = draft.flowRefs.find((r) => r.id === id)
-      ? draft.flowRefs.map((r) => r.id === id ? { ...r, enabled: !r.enabled } : r)
-      : [...draft.flowRefs, { id, name: flows.find((f) => f.id === id)?.name ?? id, trigger: flows.find((f) => f.id === id)?.trigger ?? '消息触发', enabled: true }];
-    onChange(next);
+  const handleChange = (ids: string[]) => {
+    const refs: FlowRef[] = ids.map((id) => {
+      const existing = draft.flowRefs.find((r) => r.id === id);
+      if (existing) return existing;
+      const f = flowById.get(id);
+      return { id, name: f?.name ?? '', trigger: (f?.trigger ?? '消息触发') as FlowRef['trigger'], enabled: true };
+    });
+    onChange(refs);
   };
-  const unbound = useMemo(() => flows.filter((f) => !boundFlows.some((b) => b.id === f.id)), [flows, boundFlows]);
-  const mergedList = useMemo(() => [...boundFlows, ...unbound], [boundFlows, unbound]);
-  const [page, setPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(mergedList.length / PANEL_PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paged = useMemo(
-    () => mergedList.slice((safePage - 1) * PANEL_PAGE_SIZE, safePage * PANEL_PAGE_SIZE),
-    [mergedList, safePage],
-  );
-  const pageStart = mergedList.length === 0 ? 0 : (safePage - 1) * PANEL_PAGE_SIZE + 1;
-  const pageEnd = Math.min(safePage * PANEL_PAGE_SIZE, mergedList.length);
-  useEffect(() => { setPage(1); }, [draft.id]);
   return (
     <div className="space-y-4">
       <PanelHero
@@ -1323,58 +1169,9 @@ export function DrawerPanelFlow({ draft, onChange }: { draft: AgentEntry; onChan
         <PanelStat label="已绑定工作流" value={`${draft.flowRefs.length}`} />
         <PanelStat label="已启用" value={`${enabledCount}`} tone="success" />
         <PanelStat label="工作流总数" value={`${flows.length}`} hint="来自工作流管理" />
-        <PanelStat label="未绑定" value={`${unbound.length}`} tone="info" hint="可选工作流" />
+        <PanelStat label="已绑定/总数" value={`${draft.flowRefs.length}/${flows.length}`} hint="本智能体 / 工作流目录" />
       </section>
-      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
-        <header className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold">工作流列表</h4>
-          <span className="text-[10px] text-[var(--text-muted)]">本智能体绑定 {draft.flowRefs.length} / {flows.length}</span>
-        </header>
-        <ul className="mt-3 space-y-2">
-          {paged.map((flow) => {
-            const isBound = draft.flowRefs.some((r) => r.id === flow.id);
-            const enabled = enabledMap.get(flow.id) ?? false;
-            return (
-              <li key={flow.id} className={`flex items-start gap-3 rounded-xl border p-4 transition ${enabled ? 'border-[var(--brand)] bg-[var(--brand-light)]/40' : isBound ? 'border-[var(--warning)]/30 bg-[var(--warning-bg)]/40' : 'border-[var(--border)] bg-[var(--surface-1)]'}`}>
-                <input
-                  type="checkbox"
-                  checked={enabled}
-                  onChange={() => toggle(flow.id)}
-                  aria-label={`绑定 ${flow.name}`}
-                  className="mt-0.5 h-4 w-4 accent-[var(--brand)]"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-semibold">{flow.name}</p>
-                    <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]">{flow.trigger}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${flow.status === 'published' ? 'bg-[var(--success-bg)] text-[var(--success)]' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'}`}>
-                      {flow.status}
-                    </span>
-                    {!isBound && <span className="rounded-full bg-[var(--info-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--info)]">未绑定</span>}
-                  </div>
-                  <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">{flow.description}</p>
-                  <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{flow.owner} · 调用 {flow.callCount.toLocaleString()} · 节点 {flow.initialNodes.length}</p>
-                </div>
-                <a
-                  href={`/admin/workflows/${flow.id}`}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-semibold hover:border-[var(--brand)] hover:text-[var(--brand)]"
-                  title="在工作流管理查看详情"
-                >
-                  <ExternalLink className="h-3 w-3" />查看
-                </a>
-              </li>
-            );
-          })}
-        </ul>
-        <PanelPagination
-          page={page}
-          totalPages={totalPages}
-          total={mergedList.length}
-          pageStart={pageStart}
-          pageEnd={pageEnd}
-          onPageChange={setPage}
-        />
-      </section>
+      <WorkflowPicker selectedIds={selectedIds} onChange={handleChange} />
     </div>
   );
 }
