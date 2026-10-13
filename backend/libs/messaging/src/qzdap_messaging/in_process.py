@@ -33,7 +33,7 @@ class InProcessBus(EventBus):
                     "handler failed", extra={"event_name": envelope.event_name}
                 )
 
-    def subscribe(self, event_name: str, handler: Handler) -> None:  # type: ignore[override]
+    async def subscribe(self, event_name: str, handler: Handler) -> None:
         self._subs[event_name].append(handler)
 
     async def start(self) -> None:
