@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
+import { EnvBadge } from './EnvBadge';
 import { childPageTitle, PageCrumbNav } from './pageCrumb';
 import { BrandLogo } from '@/components/feedback/BrandLogo';
 import { useAuthStore } from '@/features/auth';
@@ -74,7 +75,7 @@ export function WorkspaceShell() {
   const PageIcon = page.item?.icon;
   const pageLabel = page.item?.label ?? '首页';
   const pageHint = [page.section, page.item?.description].filter(Boolean).join(' · ');
-  const childTitle = childPageTitle(location.pathname);
+  const childTitle = childPageTitle(location.pathname, new URLSearchParams(location.search));
 
   const sidebar = (
     <aside className={`flex h-full flex-col border-r border-[var(--border)] bg-[var(--surface-1)] px-3 py-4 ${sidebarCollapsed ? 'w-[76px]' : 'w-[248px]'}`}>
@@ -138,6 +139,7 @@ export function WorkspaceShell() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <EnvBadge size="md" />
             <span className="hidden max-w-[11rem] items-center gap-1.5 truncate rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] sm:inline-flex">
               <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand)]" />
               <span className="truncate">{workspaceName}</span>
