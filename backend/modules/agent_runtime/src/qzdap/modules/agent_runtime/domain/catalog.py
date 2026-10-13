@@ -80,6 +80,7 @@ class CatalogAgent:
     knowledge_refs: list[dict[str, Any]] = field(default_factory=list)
     memory_policy: dict[str, Any] = field(default_factory=_default_memory)
     flow_refs: list[dict[str, Any]] = field(default_factory=list)
+    profile: dict[str, Any] | None = None
 
     @classmethod
     def create(
@@ -153,6 +154,8 @@ class CatalogAgent:
             data["memory_policy"] = policy
         if "flowRefs" in patch and isinstance(patch["flowRefs"], list):
             data["flow_refs"] = [item for item in patch["flowRefs"] if isinstance(item, dict)]
+        if "profile" in patch and (patch["profile"] is None or isinstance(patch["profile"], dict)):
+            data["profile"] = patch["profile"]
         data["updated_at"] = _utcnow()
         next_agent = replace(self, **data)
         if next_agent.status == "published" and self.status != "published":
@@ -209,6 +212,7 @@ class CatalogAgent:
             "knowledgeRefs": list(self.knowledge_refs),
             "memoryPolicy": dict(self.memory_policy),
             "flowRefs": list(self.flow_refs),
+            "profile": self.profile,
         }
 
     def to_catalog_dict(self) -> dict[str, Any]:

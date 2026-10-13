@@ -61,6 +61,7 @@ def _to_domain(row: CatalogAgentORM) -> CatalogAgent:
         knowledge_refs=list(row.knowledge_refs or []),
         memory_policy=dict(row.memory_policy or {}),
         flow_refs=list(row.flow_refs or []),
+        profile=dict(row.profile) if row.profile else None,
     )
 
 
@@ -94,6 +95,7 @@ def _apply(row: CatalogAgentORM, agent: CatalogAgent) -> None:
     row.knowledge_refs = list(agent.knowledge_refs)
     row.memory_policy = dict(agent.memory_policy)
     row.flow_refs = list(agent.flow_refs)
+    row.profile = dict(agent.profile) if agent.profile else None
     row.updated_at = agent.updated_at
 
 

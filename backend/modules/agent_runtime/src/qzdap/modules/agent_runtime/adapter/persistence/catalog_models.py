@@ -44,6 +44,7 @@ class CatalogAgentORM(TenantScopedMixin, Base):
     knowledge_refs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
     memory_policy: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
     flow_refs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None, server_default=text("NULL"))
 
     __table_args__ = (
         Index("ix_admin_agents_tenant_workspace_status", "tenant_id", "workspace_id", "status"),
