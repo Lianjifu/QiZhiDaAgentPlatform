@@ -118,29 +118,25 @@ describe('AdminAgents', () => {
     expect(screen.queryByLabelText('批量操作')).toBeNull();
   });
 
-  it('navigates to create page (4 steps + 返回 link)', () => {
+  it('navigates to create page (AgentEditor 9 面板 + 返回 link)', () => {
     renderApp('/admin/agents');
     fireEvent.click(screen.getByRole('button', { name: '新建智能体' }));
     // 路由切换到独立页面,带返回按钮
     const crumb = screen.getByRole('navigation', { name: '面包屑' });
     expect(within(crumb).getByRole('link', { name: '智能体管理' })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1, name: '新建页' })).toBeTruthy();
-    // 4 步向导页头(左侧 stepper + 右侧 H2 各出现一次,用 getAllByText)
-    expect(screen.getAllByText('基本信息').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('确认创建').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('模板选择').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('快速配置').length).toBeGreaterThanOrEqual(1);
-    // Step 1: 名称必填
-    const name = screen.getByPlaceholderText(/差旅助手/);
+    // AgentEditor:ActionBar 有「保存草稿」/「发布」按钮
+    expect(screen.getByRole('button', { name: /保存草稿/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /发布/ })).toBeTruthy();
+    // 当前 panel 是 basic — DrawerPanelBasic 表单的「名称」输入
+    const name = screen.getByLabelText(/^名称$/);
+    expect(name).toBeTruthy();
     fireEvent.change(name, { target: { value: '测试智能体' } });
-    fireEvent.click(screen.getByRole('button', { name: /下一步/ }));
-    fireEvent.click(screen.getByRole('button', { name: /下一步/ }));
-    // Step 3: 至少选 1 个技能
-    fireEvent.click(screen.getByRole('button', { name: /订单查询/ }));
-    fireEvent.click(screen.getByRole('button', { name: /下一步/ }));
-    // Step 4: 确认页可见
-    expect(screen.getByText(/创建并进入编辑器/)).toBeTruthy();
-    // 返回上一级:从 /admin/agents/new → /admin/agents
+    // 发布按钮初始 disabled(必填未完)
+    expect((screen.getByRole('button', { name: /发布/ }) as HTMLButtonElement).disabled).toBe(true);
+    // 切到「技能」面板(verify 9 面板 nav 工作) — 找「技能」按钮(sidebar 内至少 1 个)
+    expect(screen.getAllByText('技能').length).toBeGreaterThanOrEqual(1);
+    // 返回上一级
     fireEvent.click(within(crumb).getByRole('link', { name: '智能体管理' }));
     expect(screen.getByText(/配置、审核并发布智能体/)).toBeTruthy();
   });

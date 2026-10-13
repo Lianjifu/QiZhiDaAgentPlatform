@@ -1,150 +1,66 @@
 /**
- * 新建智能体 — 独立页面 /admin/agents/new
+ * 管理侧「新建智能体」— 路由 /admin/tools/new 的镜像:/admin/agents/new
  *
- * 顶部返回按钮回 /admin/agents;主区域左 1/3 纵向 stepper,右 2/3 工作区。
- * Stepper 与工作区通过受控 step state 联动,4 步完成调 useCreateAgent
- * 然后导航到新 agent 详情页。
+ * 使用 AgentEditor mode='create' — 9 面板全功能 + onboarding 提示 + 必填徽标。
+ * Save Draft / Publish 按钮在 ActionBar;保存后跳详情页。
  */
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Bot, BookOpen, FileCheck2, Info, Sparkles, Wand2 } from 'lucide-react';
 import { useCreateAgent } from './useAgents';
-import { buildPrompts, toolsFromNames } from './fixtures';
-import { INITIAL_WIZARD_DRAFT } from './components/constants';
-import { WizardBody } from './components/WizardModal';
-import type { WizardDraft } from './schema';
+import { AgentEditor } from './AgentEditor';
+import type { AgentEntry, Status } from './schema';
 
-type StepKey = 'basic' | 'template' | 'config' | 'review';
-interface StepDef {
-  key: StepKey;
-  index: 1 | 2 | 3 | 4;
-  title: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string }>;
+function makeEmptyDraft(): AgentEntry {
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    id: `a-${Date.now()}`,
+    name: '',
+    description: '',
+    category: '',
+    owner: '张敏',
+    tags: [],
+    tone: 'info',
+    status: 'draft',
+    version: 'v0.1',
+    lastUpdate: '刚刚',
+    createdAt: today,
+    calls: 0,
+    successRate: 0,
+    errorRate: 0,
+    avgLatencyMs: 0,
+    rating: 0,
+    tools: [],
+    starred: false,
+    visibleScope: ['部门'],
+    dataAccess: '基础数据',
+    versions: [],
+    evaluationPassRate: 0,
+    evaluationRuns: 0,
+    evaluationFailedCases: 0,
+    trend: Array(12).fill(0),
+    prompts: { prompt: '', soul: '', agents: '', user: '', tools: '' },
+    customPrompts: [],
+    knowledgeRefs: [],
+    memoryPolicy: { enabled: false, retentionDays: 30, scope: 'user', autoSummarize: false },
+    flowRefs: [],
+  };
 }
-
-const STEPS: StepDef[] = [
-  { key: 'basic', index: 1, title: '基本信息', description: '命名、归属与外观', icon: Bot },
-  { key: 'template', index: 2, title: '模板选择', description: '从预设开始或空白起步', icon: Wand2 },
-  { key: 'config', index: 3, title: '快速配置', description: '模型、技能、可见范围', icon: Sparkles },
-  { key: 'review', index: 4, title: '确认创建', description: '核对信息后写入工作台', icon: FileCheck2 },
-];
 
 export default function AgentCreatePage() {
   const navigate = useNavigate();
   const createAgent = useCreateAgent();
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
-
-  const handleSubmit = (draft: WizardDraft) => {
-    const today = new Date().toISOString().slice(0, 10);
-    createAgent.mutate({
-      id: `a-${Date.now()}`,
-      name: draft.name,
-      description: draft.description,
-      category: draft.category,
-      owner: draft.owner,
-      tags: draft.tags ?? [],
-      tone: 'info',
-      status: 'draft',
-      version: 'v0.1',
-      createdAt: today,
-      tools: toolsFromNames(draft.defaultSkills),
-      visibleScope: [draft.visibleScope],
-      dataAccess: '基础数据',
-      prompts: buildPrompts(draft.name, draft.category, draft.owner),
-      customPrompts: [],
-      knowledgeRefs: [],
-      memoryPolicy: { enabled: false, retentionDays: 30, scope: 'user', autoSummarize: false },
-      flowRefs: [],
-    }, {
-      onSuccess: (created) => {
-        navigate(`/admin/agents/${created.id}`);
-      },
-    });
-  };
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-4 p-5 pb-16 sm:p-8 xl:px-6">
-      <section className="flex min-h-[480px] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] lg:flex-row">
-        <aside aria-label="创建步骤" className="w-full shrink-0 border-b border-[var(--border)] bg-[var(--bg-elevated)] p-4 lg:w-[260px] lg:border-b-0 lg:border-r">
-          <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">工作区</p>
-          <ol className="relative space-y-1">
-            {STEPS.map((s) => {
-              const active = step === s.index;
-              const done = step > s.index;
-              const Icon = s.icon;
-              return (
-                <li key={s.key} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setStep(s.index)}
-                    aria-current={active ? 'step' : undefined}
-                    className={`flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition ${
-                      active
-                        ? 'bg-[var(--brand-light)]'
-                        : 'hover:bg-[var(--bg-hover)]'
-                    }`}
-                  >
-                    <span
-                      className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 transition ${
-                        done
-                          ? 'border-[var(--brand)] bg-[var(--brand)] text-white'
-                          : active
-                            ? 'border-[var(--brand)] bg-[var(--surface-1)] text-[var(--brand)]'
-                            : 'border-[var(--border)] bg-[var(--surface-1)] text-[var(--text-muted)]'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <span className="min-w-0 flex-1 pt-0.5">
-                      <span className="flex items-center gap-1.5">
-                        <span className={`text-[11px] font-semibold uppercase tracking-wide ${active ? 'text-[var(--brand)]' : 'text-[var(--text-muted)]'}`}>
-                          第 {s.index} 步
-                        </span>
-                      </span>
-                      <span className={`mt-0.5 block text-sm font-semibold ${active ? 'text-[var(--text)]' : 'text-[var(--text-secondary)]'}`}>
-                        {s.title}
-                      </span>
-                      <span className="mt-0.5 block text-[11px] leading-4 text-[var(--text-muted)]">
-                        {s.description}
-                      </span>
-                    </span>
-                    {active && <ArrowRight className="mt-3 h-3.5 w-3.5 shrink-0 text-[var(--brand)]" />}
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-
-          <div className="mt-2 flex items-start gap-2 rounded-xl border border-dashed border-[var(--border)] p-3 text-[11px] leading-4 text-[var(--text-muted)]">
-            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--brand)]" />
-            <span>
-              草稿状态可随时修改,所有面板(技能/知识/记忆/工作流等)可在编辑器中继续完善。
-            </span>
-          </div>
-        </aside>
-
-        <main className="min-w-0 flex-1 overflow-auto bg-[var(--bg-app)] p-5">
-          <div className="mb-5 flex items-center justify-between border-b border-[var(--border)] pb-4">
-            <div className="flex items-center gap-2">
-              <BookOpen className="h-4 w-4 text-[var(--brand)]" />
-              <h2 id="create-step-title" className="text-sm font-semibold">
-                {STEPS.find((s) => s.index === step)?.title}
-              </h2>
-            </div>
-            <span className="text-[11px] font-medium tabular-nums text-[var(--text-muted)]">
-              {step} / 4
-            </span>
-          </div>
-
-          <WizardBody
-            initialDraft={INITIAL_WIZARD_DRAFT}
-            onSubmit={handleSubmit}
-            controlledStep={step}
-            onStepChange={setStep}
-          />
-        </main>
-      </section>
+      <AgentEditor
+        mode="create"
+        initialDraft={makeEmptyDraft()}
+        onCancel={() => navigate('/admin/agents')}
+        onSave={(draft, status: Status) => {
+          createAgent.mutate({ ...draft, status }, {
+            onSuccess: (created) => navigate(`/admin/agents/${created.id}`),
+          });
+        }}
+      />
     </div>
   );
 }
