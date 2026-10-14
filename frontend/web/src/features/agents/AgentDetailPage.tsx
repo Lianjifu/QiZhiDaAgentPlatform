@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { Edit3, Save } from 'lucide-react';
 import type { AgentEntry, EvalCase, PromptKey } from './schema';
-import { useAgentVersions, useDiffVersions, useRunEval, useUpdateAgent } from './useAgents';
+import { useAgentDetail, useAgentVersions, useDiffVersions, useRunEval, useUpdateAgent } from './useAgents';
 import { mockAgents } from './fixtures';
 import { DiffDialog, type DiffPair } from './components/DiffDialog';
 import { EvalProgress } from './components/Primitives';
@@ -32,7 +32,11 @@ export default function AgentDetailPage() {
   const [params, setSearchParams] = useSearchParams();
   const editing = params.get('edit') === '1';
 
-  const agent = useMemo(() => mockAgents.find((a) => a.id === id) ?? null, [id]);
+  // 走 /api/admin/agents/{id},与 mock-handler / 真后端都通(避免读 fixtures 与 mock state 不同源的问题)
+  const { data: remoteAgent, isLoading, isError } = useAgentDetail(id);
+  // 兜底:若 API 失败(fixtures-only 模式/开发早期),从 fixtures 直接读
+  const fallbackAgent = useMemo(() => mockAgents.find((a) => a.id === id) ?? null, [id]);
+  const agent = remoteAgent ?? fallbackAgent;
 
   const [promptDoc] = useState<string>('prompt');  // 预留,后续 AgentEditor 支持
   const [evalRunning, setEvalRunning] = useState<{ progress: number } | null>(null);
@@ -81,6 +85,14 @@ export default function AgentDetailPage() {
 
   if (location.pathname.endsWith('/edit')) {
     return <Navigate to={`/admin/agents/${id}?edit=1`} replace />;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto w-full max-w-[1440px] p-5 pb-16 sm:p-8 xl:px-6">
+        <p className="text-xs text-[var(--text-muted)]">正在加载智能体…</p>
+      </div>
+    );
   }
 
   if (!agent) return <NotFound />;

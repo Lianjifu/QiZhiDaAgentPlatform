@@ -45,6 +45,11 @@ function renderApp(initialPath: string) {
       initialEntries: [initialPath],
       seeds: [
         { key: [...qk.admin.agents.list, {}, 'w1'], data: mockAgents },
+        // AgentDetailPage 走 useAgentDetail(id) → 真实缓存 key = [...qk.admin.agents.detail(id), workspaceId='w1']
+        ...mockAgents.map((a) => ({
+          key: [...qk.admin.agents.detail(a.id), 'w1'],
+          data: a,
+        })),
       ],
     },
   );
