@@ -11,6 +11,9 @@ dependencies = [
     "qzdap-messaging",
     "qzdap-llm",
     "qzdap-observability",
+    # Stage 2: Postgres checkpointer (langgraph 1.x 拆分独立包, §13.1 / §14.1)
+    "langgraph-checkpoint-postgres>=3.0,<4.0",
+    "psycopg[binary,pool]>=3.2",
 ]
 
 [build-system]

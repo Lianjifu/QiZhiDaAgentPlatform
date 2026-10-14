@@ -4,11 +4,16 @@ Stage 1 退出条件（§8）：
 - 纯内存 fake 可编译图
 - 通过单元测试
 
+Stage 2 PR B 升级：
+- 接入 Postgres checkpointer（生产用 `from_url(...)` 创建）
+- 默认仍为 InMemorySaver（单测 / 本地 dev）
+- `build_session_graph()` 接受 checkpointer 或 None
+
 `build_session_graph()` 返回 LangGraph `CompiledStateGraph`：
 
 - 主路径 add_node 17 次固定（1–12, 15–19）
 - 条件挂载 2 次（13 deep_agent_plan / 14 subagent，仅 deep_task=true）
-- InMemorySaver 作为 checkpointer（生产用 PostgresSaver 替换，Stage 2）
+- InMemorySaver 作为 checkpointer（生产用 PostgresSaver，Stage 2 PR B）
 - add_edge 顺序：START → 1 → 2 → … → 9 → 10 → 11/13 条件分支 → 12/14 → 10（loop）→ 15 → 16 → 17 → 18 → 19 → END
 """
 
@@ -136,4 +141,38 @@ def build_session_graph(*, checkpointer: Any | None = None) -> Any:
     return g.compile(checkpointer=checkpointer)
 
 
-__all__ = ["build_session_graph"]
+def from_url(url: str):  # type: ignore[no-untyped-def]
+    """工厂：从 PostgreSQL 连接串创建 PostgresSaver（§8 Stage 2 PR B）。
+
+    LangGraph 1.x 中 `PostgresSaver.from_conn_string` 返回 context manager；
+    本工厂包装为 `with from_url(...) as saver:` 用法。调用方负责：
+
+    1. 调用 `saver.setup()` 一次性建表（langgraph_checkpoint_<X> 表）。
+    2. 在 lifespan / DI 中管理 saver 生命周期（必须 keep alive）。
+    3. 用 `build_session_graph(checkpointer=saver)` 装配图。
+
+    Args:
+        url: PostgreSQL 连接串，例：
+             `postgresql://user:pass@host:5432/dbname`
+
+    Yields:
+        `PostgresSaver` 实例（在 with 块内有效）。
+
+    Example:
+        with from_url("postgresql://...") as saver:
+            saver.setup()
+            compiled = build_session_graph(checkpointer=saver)
+    """
+    from contextlib import contextmanager
+
+    from langgraph.checkpoint.postgres import PostgresSaver
+
+    @contextmanager
+    def _factory():
+        with PostgresSaver.from_conn_string(url) as saver:
+            yield saver
+
+    return _factory()
+
+
+__all__ = ["build_session_graph", "from_url"]

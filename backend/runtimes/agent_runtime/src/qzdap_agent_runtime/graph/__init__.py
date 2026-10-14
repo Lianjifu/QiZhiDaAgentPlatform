@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from .builder import build_session_graph
+from .builder import build_session_graph, from_url
 from .routing import (
     AgentRouteConfig,
     TaskKind,
@@ -41,5 +41,6 @@ __all__ = [
     "UsageState",
     "build_session_graph",
     "classify_task_kind_heuristic",
+    "from_url",
     "is_deep_task",
 ]
