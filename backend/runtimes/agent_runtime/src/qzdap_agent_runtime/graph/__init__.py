@@ -1,12 +1,19 @@
-"""Graph 层：StateGraph 节点、routing、checkpoint。
-
-§2.5 阻塞 6 决议：Stage 4 范围内仅实现 `classify_task_kind_heuristic`
-（纯规则 fallback，不依赖任何模型）；Stage 6b 再接入小模型分类器。
-"""
+"""Graph 层：StateGraph 节点、routing、checkpoint、Deep Agents 工厂。"""
 
 from __future__ import annotations
 
 from .builder import build_session_graph, from_url
+from .deep_agent import (
+    DEEP_AGENT_BUDGET_EXCEEDED_ERROR_CODE,
+    DEEP_AGENT_FAILED_ERROR_CODE,
+    DeepAgent,
+    DeepAgentBudgetExceeded,
+    DeepAgentConfig,
+    DeepAgentFactory,
+    InMemoryDeepAgent,
+    InMemoryDeepAgentFactory,
+    SubAgentSpec,
+)
 from .routing import (
     AgentRouteConfig,
     TaskKind,
@@ -28,12 +35,21 @@ from .state import (
 
 __all__ = [
     "AgentRouteConfig",
+    "DEEP_AGENT_BUDGET_EXCEEDED_ERROR_CODE",
+    "DEEP_AGENT_FAILED_ERROR_CODE",
+    "DeepAgent",
+    "DeepAgentBudgetExceeded",
+    "DeepAgentConfig",
+    "DeepAgentFactory",
+    "InMemoryDeepAgent",
+    "InMemoryDeepAgentFactory",
     "PendingApproval",
     "ResultState",
     "Route",
     "RuntimeErrorState",
     "SCHEMA_VERSION",
     "SessionState",
+    "SubAgentSpec",
     "TaskKind",
     "Todo",
     "ToolCallState",
