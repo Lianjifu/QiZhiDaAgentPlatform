@@ -26,6 +26,13 @@ from ..execution.lock import (
     RevisionConflictError,
     SessionBusyError,
 )
+from ..governance.approval import (
+    DEFAULT_APPROVAL_TTL_SECONDS,
+    ApprovalRecord,
+    InMemoryApprovalStore,
+    _request_hash,
+)
+from ..governance.audit import AuditEvent, AuditKind, InMemoryAuditLogger
 from ..governance.policy import InMemoryPolicyGuard
 from ..memory.layered import InMemoryLayeredMemory, L1Source
 from .routing import AgentRouteConfig, TaskKind, classify_task_kind_heuristic
@@ -46,6 +53,8 @@ _default_policy: Optional[Any] = None  # PolicyGuard
 _default_executor: Optional[InMemoryToolExecutor] = None
 _default_tool_registry: Optional[Any] = None  # ToolRegistry
 _default_agent_config: Optional[AgentRouteConfig] = None
+_default_approval_store: Optional[InMemoryApprovalStore] = None
+_default_audit: Optional[InMemoryAuditLogger] = None
 
 
 def set_default_lock_manager(manager: LockManager) -> None:
@@ -125,10 +134,31 @@ def get_default_agent_config() -> AgentRouteConfig | None:
     return _default_agent_config
 
 
+def set_default_approval_store(store: InMemoryApprovalStore) -> None:
+    """composition root 注入 ApprovalStore (§5.7 / Stage 6a)."""
+    global _default_approval_store
+    _default_approval_store = store
+
+
+def get_default_approval_store() -> InMemoryApprovalStore | None:
+    return _default_approval_store
+
+
+def set_default_audit(audit: InMemoryAuditLogger) -> None:
+    """composition root 注入 AuditLogger (§5.7 / Stage 6a)."""
+    global _default_audit
+    _default_audit = audit
+
+
+def get_default_audit() -> InMemoryAuditLogger | None:
+    return _default_audit
+
+
 def reset_default_dependencies() -> None:
     """测试辅助：清空所有默认依赖。"""
     global _default_lock_manager, _default_memory, _default_compactor, _default_assembler
     global _default_policy, _default_executor, _default_tool_registry, _default_agent_config
+    global _default_approval_store, _default_audit
     _default_lock_manager = None
     _default_memory = None
     _default_compactor = None
@@ -137,6 +167,8 @@ def reset_default_dependencies() -> None:
     _default_executor = None
     _default_tool_registry = None
     _default_agent_config = None
+    _default_approval_store = None
+    _default_audit = None
 
 
 # ---------------------------------------------------------------------------
@@ -526,17 +558,20 @@ def agent(state: SessionState) -> dict[str, Any]:
 def governance(state: SessionState) -> dict[str, Any]:
     """11 governance: §13.2 节点 11。
 
-    Stage 4 PR C: 接入 PolicyGuard。
+    Stage 6a PR C: 接入 PolicyGuard + ApprovalStore + AuditLogger。
 
     行为：
     - 遍历 state.tool_calls 中 pending 的 tool_call
     - 调 PolicyGuard.decide() 拿 ApprovalDecision
-    - approve_required → 写 state.pending_approval
-    - deny → 写 state.errors (ErrorCode.APPROVAL_EXPIRED 等)
-    - allow → 不动, 等 execute 节点执行
+    - approve_required → 写 state.pending_approval + ApprovalStore.save()
+      + AuditLogger.log(AUDIT 不留, 等 resume_turn 时记 approve/deny)
+    - deny → 写 state.errors (ErrorCode.APPROVAL_EXPIRED 等) + 记 audit
+    - allow → 记 audit (immediately)
     """
     policy = get_default_policy()
     registry = get_default_tool_registry()
+    audit = get_default_audit()
+    store = get_default_approval_store()
     if policy is None or registry is None:
         return {}  # Stage 1 兼容: 未注入 policy/registry → passthrough
 
@@ -551,6 +586,7 @@ def governance(state: SessionState) -> dict[str, Any]:
     tool_calls = list(state.get("tool_calls") or [])
     pending = list(state.get("pending_approval") or [])
     new_errors = []
+    now = time.time()
 
     for tc in tool_calls:
         if tc.get("status") not in (None, "pending", "approved"):
@@ -567,11 +603,31 @@ def governance(state: SessionState) -> dict[str, Any]:
             arguments=tc.get("arguments", {}))
 
         if decision == "approve_required":
+            approval_id = approval_id or f"apr-{tc.get('tool_call_id', '')}"
+            arguments = tc.get("arguments", {})
+            request_hash = _request_hash(arguments)
+            # §5.7 TTL: 写入 ApprovalStore
+            if store is not None:
+                from ..governance.approval import ApprovalRecord
+                rec = ApprovalRecord(
+                    approval_id=approval_id,
+                    session_id=str(state.get("session_id", "")),
+                    turn_id=str(state.get("turn_id", "")),
+                    tool_call_id=str(tc.get("tool_call_id", "")),
+                    tool_name=tool_name,
+                    request_hash=request_hash,
+                    arguments=arguments,
+                    policy_id=meta.policy_id,
+                    requester=actor.actor_id,
+                    created_at=now,
+                    expires_at=now + DEFAULT_APPROVAL_TTL_SECONDS,
+                )
+                store.save(rec)
             pending.append({
-                "approval_id": approval_id or "",
+                "approval_id": approval_id,
                 "tool_call_id": str(tc.get("tool_call_id", "")),
                 "tool_name": tool_name,
-                "arguments_hash": "",
+                "arguments_hash": request_hash,
                 "policy_id": meta.policy_id or "",
                 "requester": actor.actor_id,
                 "requested_at": "",
@@ -586,6 +642,31 @@ def governance(state: SessionState) -> dict[str, Any]:
                 "retriable": False,
                 "occurred_at": "",
             })
+            if audit is not None:
+                audit.log(AuditEvent(
+                    kind=AuditKind.DENY,
+                    actor_id=actor.actor_id,
+                    session_id=str(state.get("session_id", "")),
+                    turn_id=str(state.get("turn_id", "")),
+                    tool_call_id=str(tc.get("tool_call_id", "")),
+                    tool_name=tool_name,
+                    policy_id=meta.policy_id,
+                    request_hash=_request_hash(tc.get("arguments", {})),
+                    trace_id=state.get("trace_id"),
+                    reason="policy deny",
+                ))
+        elif decision == "allow" and audit is not None:
+            audit.log(AuditEvent(
+                kind=AuditKind.ALLOW,
+                actor_id=actor.actor_id,
+                session_id=str(state.get("session_id", "")),
+                turn_id=str(state.get("turn_id", "")),
+                tool_call_id=str(tc.get("tool_call_id", "")),
+                tool_name=tool_name,
+                policy_id=meta.policy_id,
+                request_hash=_request_hash(tc.get("arguments", {})),
+                trace_id=state.get("trace_id"),
+            ))
 
     out: dict[str, Any] = {}
     if pending:
@@ -593,6 +674,9 @@ def governance(state: SessionState) -> dict[str, Any]:
     if new_errors:
         out["errors"] = list(state.get("errors") or []) + new_errors
     return out
+
+
+import time  # noqa: E402  # 延迟到模块末尾使用
 
 
 def _call_policy(policy: Any, *, actor: Any, tool_call_id: str, tool_meta: Any, arguments: dict[str, Any]) -> tuple[Any, str | None]:
