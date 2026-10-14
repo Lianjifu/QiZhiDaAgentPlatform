@@ -14,7 +14,7 @@
  *   - evalState / onRunEval / onOpenDiff: 侧栏(评测、版本对比)回调
  */
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Bot, Edit3, Info, Save, Send, Sparkles } from 'lucide-react';
+import { ArrowLeft, Bot, Edit3, Info, Loader2, Play, Save, Send, Sparkles, X } from 'lucide-react';
 import type { AgentEntry, DrawerPanel, EvalCase, Status } from './schema';
 import { DrawerSidebar } from './components/DrawerSidebar';
 import {
@@ -75,6 +75,7 @@ export function AgentEditor({
   const [draft, setDraft] = useState<AgentEntry>(initialDraft);
   const [panel, setPanel] = useState<DrawerPanel>('basic');
   const [promptDoc, setPromptDoc] = useState<string>('prompt');
+  const [dryRunOpen, setDryRunOpen] = useState(false);
 
   // 当父传入的 initialDraft 变化(create 模式初次填充 / edit 模式远端刷新)时同步
   useEffect(() => {
@@ -90,6 +91,8 @@ export function AgentEditor({
     onChange?.(next);
   };
 
+  const firstSkill = draft.tools?.[0];
+
   return (
     <div className="space-y-4">
       {/* 顶部 action bar */}
@@ -99,6 +102,8 @@ export function AgentEditor({
         validation={validation}
         onCancel={onCancel}
         onSave={(status) => onSave?.(draft, status)}
+        onDryRun={firstSkill ? () => setDryRunOpen((v) => !v) : undefined}
+        dryRunOpen={dryRunOpen}
       />
 
       {/* create 模式额外 onboarding 提示 */}
@@ -149,6 +154,11 @@ export function AgentEditor({
         </span>
         <span>{draft.versions?.length ?? 0} 个版本 · 最近更新 {draft.lastUpdate}</span>
       </footer>
+
+      {/* 试运行面板 — mode=edit 且有 skills 时可用 */}
+      {dryRunOpen && firstSkill && (
+        <DryRunPanel skill={firstSkill} workspaceId={draft.workspaceId} onClose={() => setDryRunOpen(false)} />
+      )}
     </div>
   );
 }
@@ -159,9 +169,11 @@ interface ActionBarProps {
   validation: Validation;
   onCancel?: () => void;
   onSave: (status: Status) => void;
+  onDryRun?: () => void;
+  dryRunOpen?: boolean;
 }
 
-function ActionBar({ mode, draft, validation, onCancel, onSave }: ActionBarProps) {
+function ActionBar({ mode, draft, validation, onCancel, onSave, onDryRun, dryRunOpen }: ActionBarProps) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] px-4 py-3">
       <div className="flex items-center gap-2 text-xs">
@@ -173,6 +185,20 @@ function ActionBar({ mode, draft, validation, onCancel, onSave }: ActionBarProps
         </span>
       </div>
       <div className="flex items-center gap-2">
+        {onDryRun && (
+          <button
+            type="button"
+            onClick={onDryRun}
+            aria-pressed={dryRunOpen}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+              dryRunOpen
+                ? 'border-[var(--brand)] bg-[var(--brand-light)] text-[var(--brand)]'
+                : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+            }`}
+          >
+            <Play className="h-3.5 w-3.5" />试运行
+          </button>
+        )}
         {onCancel && (
           <button
             type="button"
@@ -284,3 +310,133 @@ function renderPanel(args: RenderArgs) {
 
 export type { Validation, Mode };
 export { REQUIRED_PANELS, RECOMMENDED_PANELS, OPTIONAL_PANELS };
+
+// ─── 试运行面板(dev-only) ────────────────────────────────────────────────
+
+interface DryRunSkillResult {
+  ok?: boolean;
+  status?: string;
+  exit_code?: number | null;
+  stdout?: string;
+  stderr?: string;
+  latency_ms?: number;
+  error_code?: string | null;
+  error_message?: string;
+  call_id?: string;
+}
+
+function DryRunPanel({
+  skill,
+  workspaceId,
+  onClose,
+}: {
+  skill: { id: string; name: string; type: string };
+  workspaceId?: string;
+  onClose: () => void;
+}) {
+  const [argsText, setArgsText] = useState('{\n  "document": "今天讨论了 Q4 路线图,重点包括新功能发布计划、人员招聘和预算分配。会议决定:Q4 上线 3 个核心功能,招聘 2 名工程师,预算增加 15%。下周一前提交详细计划。"\n}');
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<DryRunSkillResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async () => {
+    setRunning(true);
+    setError(null);
+    setResult(null);
+    let args: Record<string, unknown> = {};
+    try {
+      args = JSON.parse(argsText) as Record<string, unknown>;
+    } catch (e) {
+      setError(`参数 JSON 解析失败: ${(e as Error).message}`);
+      setRunning(false);
+      return;
+    }
+    const token = localStorage.getItem('qzdap.access_token') ?? '';
+    const tenant = localStorage.getItem('qzdap.tenant_id') ?? '';
+    try {
+      const resp = await fetch(`/api/dev/skills/${encodeURIComponent(skill.name)}/invoke`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'X-Tenant-Id': tenant,
+          ...(workspaceId ? { 'X-Workspace-Id': workspaceId } : {}),
+        },
+        body: JSON.stringify({ arguments: args, confirmed: true }),
+      });
+      const data = await resp.json() as DryRunSkillResult;
+      setResult(data);
+      if (!resp.ok) setError(`HTTP ${resp.status}`);
+    } catch (e) {
+      setError(`请求失败: ${(e as Error).message}`);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-[var(--brand)] bg-[var(--surface-1)] p-5">
+      <header className="mb-3 flex items-center justify-between">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--brand)]">dev-only 试运行</p>
+          <h3 className="mt-0.5 text-sm font-semibold">直接调用 {skill.name}(跳过 LLM,直跑沙箱)</h3>
+          <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">后端 dev API 需 QZDAP_ALLOW_DEV_API=1;workspace / tenant 从本地 storage 读。</p>
+        </div>
+        <button type="button" onClick={onClose} aria-label="关闭" className="grid h-7 w-7 place-items-center rounded-md text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">
+          <X className="h-4 w-4" />
+        </button>
+      </header>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div>
+          <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">参数 arguments (JSON)</label>
+          <textarea
+            value={argsText}
+            onChange={(e) => setArgsText(e.target.value)}
+            rows={10}
+            spellCheck={false}
+            className="mt-1.5 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] p-2.5 font-mono text-[11px] leading-5 outline-none focus:border-[var(--brand)]"
+          />
+          <button
+            type="button"
+            onClick={run}
+            disabled={running}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+            {running ? '运行中…' : '运行'}
+          </button>
+        </div>
+        <div>
+          <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">结果</label>
+          {error && <p className="mt-1.5 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-[11px] text-rose-700">{error}</p>}
+          {result && (
+            <div className="mt-1.5 space-y-2">
+              <div className="flex flex-wrap gap-2 text-[10px]">
+                <span className={`rounded-full px-2 py-0.5 font-semibold ${result.status === 'succeeded' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                  {result.status ?? result.error_code ?? 'unknown'}
+                </span>
+                {typeof result.latency_ms === 'number' && <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-[var(--text-muted)]">{result.latency_ms} ms</span>}
+                {typeof result.exit_code === 'number' && <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-[var(--text-muted)]">exit {result.exit_code}</span>}
+              </div>
+              {result.stdout && (
+                <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--border)] bg-[var(--surface-1)] p-2.5 font-mono text-[10px] leading-5 text-[var(--text)]">
+                  {result.stdout}
+                </pre>
+              )}
+              {result.stderr && (
+                <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-rose-200 bg-rose-50 p-2.5 font-mono text-[10px] leading-5 text-rose-700">
+                  {result.stderr}
+                </pre>
+              )}
+            </div>
+          )}
+          {!error && !result && (
+            <p className="mt-1.5 rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-app)] p-3 text-center text-[11px] text-[var(--text-muted)]">
+              填好参数 → 点「运行」→ 沙箱 stdout / stderr 会显示在这里。
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
