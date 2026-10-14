@@ -17,7 +17,7 @@ Stage 1 + Stage 2 PR A/B/C/D 范围内交付：
 
 from __future__ import annotations
 
-from . import channels, execution, graph, memory, outbox, ports, result
+from . import channels, execution, graph, memory, outbox, ports, result, tools
 
 __all__ = [
     "channels",
@@ -27,4 +27,5 @@ __all__ = [
     "outbox",
     "ports",
     "result",
+    "tools",
 ]
