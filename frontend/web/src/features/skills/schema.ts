@@ -194,6 +194,8 @@ export interface CreateSkillVars {
   outputSchema: SchemaField[];
   /** 类型专属配置;后端当前忽略,Phase 2 持久化到 admin_tool_credentials / admin_mcp_servers。 */
   profile?: SkillProfile;
+  /** 沙箱执行参数;Skill 类型必填(包含 main.py 的 Python 源码)。 */
+  runtime?: SkillRuntimeSpec;
 }
 
 export interface UpdateSkillVars {

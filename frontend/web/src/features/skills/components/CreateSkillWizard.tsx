@@ -59,6 +59,18 @@ export function CreateSkillWizard({ open, onClose, onCreate, type: lockedType, l
   // Skill 专属
   const [inputJson, setInputJson] = useState('[{ "name": "input", "type": "string", "required": true, "description": "示例输入" }]');
   const [outputJson, setOutputJson] = useState('[{ "name": "result", "type": "string", "required": true, "description": "示例输出" }]');
+  const [skillSource, setSkillSource] = useState(
+    'import json, sys\n' +
+    'raw = sys.stdin.read() or "{}"\n' +
+    'args = json.loads(raw) if raw.strip().startswith("{") else {}\n' +
+    'doc = args.get("document", "")\n' +
+    'lines = [l for l in doc.splitlines() if l.strip()]\n' +
+    'print(json.dumps({\n' +
+    '  "summary": (" ".join(lines))[:int(args.get("maxSummary", 500))],\n' +
+    '  "keyPoints": lines[:5],\n' +
+    '  "actions": []\n' +
+    '}, ensure_ascii=False))\n'
+  );
 
   // Tool 专属
   const [toolConfig, setToolConfig] = useState<ToolConfig>(DEFAULT_TOOL_CONFIG);
@@ -81,6 +93,16 @@ export function CreateSkillWizard({ open, onClose, onCreate, type: lockedType, l
       setNeedConfirm(false);
       setInputJson('[{ "name": "input", "type": "string", "required": true, "description": "示例输入" }]');
       setOutputJson('[{ "name": "result", "type": "string", "required": true, "description": "示例输出" }]');
+      setSkillSource(`import json, sys
+raw = sys.stdin.read() or "{}"
+args = json.loads(raw) if raw.strip().startswith("{") else {}
+doc = args.get("document", "")
+lines = [l for l in doc.splitlines() if l.strip()]
+print(json.dumps({
+  "summary": (" ".join(lines))[:int(args.get("maxSummary", 500))],
+  "keyPoints": lines[:5],
+  "actions": []
+}, ensure_ascii=False))`);
       setToolConfig(DEFAULT_TOOL_CONFIG);
       setToolGranularity(DEFAULT_TOOL_GRANULARITY);
       setMcpConfig(DEFAULT_MCP_CONFIG);
@@ -154,7 +176,8 @@ export function CreateSkillWizard({ open, onClose, onCreate, type: lockedType, l
     if (type === 'Skill') {
       inputSchema = parseSchemaJson(inputJson);
       outputSchema = parseSchemaJson(outputJson);
-      profile = { kind: 'Skill', runtime: { ...DEFAULT_SKILL_RUNTIME, ...DEFAULT_SANDBOX, source: '' } };
+      const baseRuntime = { ...DEFAULT_SKILL_RUNTIME, ...DEFAULT_SANDBOX, source: skillSource };
+      profile = { kind: 'Skill', runtime: baseRuntime };
     } else if (type === 'Tool') {
       // Tool:从 endpoint / openapi 推断 schema(此处保留简版:用户可在 Step 2 末尾编辑)
       inputSchema = [];
@@ -257,11 +280,30 @@ export function CreateSkillWizard({ open, onClose, onCreate, type: lockedType, l
             <span className="ml-auto text-[10px] text-[var(--text-muted)]">创建后状态为草稿</span>
           </div>
           {type === 'Skill' && (
-            <SkillRiskPanel
-              risk={risk} needConfirm={needConfirm}
-              onRiskChange={setRisk} onNeedConfirmChange={setNeedConfirm}
-              sandbox={DEFAULT_SANDBOX} onSandboxChange={() => { /* 暂不持久化到草稿 */ }}
-            />
+            <>
+              <SkillRiskPanel
+                risk={risk} needConfirm={needConfirm}
+                onRiskChange={setRisk} onNeedConfirmChange={setNeedConfirm}
+                sandbox={DEFAULT_SANDBOX} onSandboxChange={() => { /* 暂不持久化到草稿 */ }}
+              />
+              <section className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
+                <header className="mb-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">沙箱代码</p>
+                    <h4 className="mt-0.5 text-sm font-semibold">main.py</h4>
+                    <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">从 stdin 读 JSON args,print 出来的内容会作为技能输出。</p>
+                  </div>
+                  <span className="text-[10px] text-[var(--text-muted)]">{skillSource.length} 字符</span>
+                </header>
+                <textarea
+                  value={skillSource}
+                  onChange={(event) => setSkillSource(event.target.value)}
+                  rows={16}
+                  spellCheck={false}
+                  className="w-full rounded-xl border border-[var(--border-strong)] bg-[var(--surface-1)] p-3 font-mono text-[11px] leading-5 outline-none focus:border-[var(--brand)]"
+                />
+              </section>
+            </>
           )}
           {type === 'Tool' && (
             <ToolRiskPanel

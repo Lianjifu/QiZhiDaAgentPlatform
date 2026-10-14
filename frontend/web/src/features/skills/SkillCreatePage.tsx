@@ -36,6 +36,7 @@ export default function SkillCreatePage() {
       inputSchema: skill.inputSchema,
       outputSchema: skill.outputSchema,
       profile: skill.profile,
+      runtime: skill.runtime,
     });
     navigate('/admin/tools', { state: { created: skill } });
   };
