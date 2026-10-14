@@ -28,6 +28,7 @@ import {
 import KbCard from './components/KbCard';
 import SourceCard from './components/SourceCard';
 import { TimeRangeDropdown } from './components/TimeRangeDropdown';
+import { normalizeError } from '@/api/shared/http-error';
 
 export default function KnowledgePage() {
   const [tab, setTab] = useState<TabId>('kb');
@@ -153,6 +154,11 @@ export default function KnowledgePage() {
           {notice}
         </div>
       )}
+      {(kbsQuery.isError || sourcesQuery.isError) && (
+        <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          加载失败：{normalizeError(kbsQuery.error ?? sourcesQuery.error).message}
+        </div>
+      )}
 
       {tab === 'kb' && (
         <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-1)]">
@@ -250,7 +256,6 @@ export default function KnowledgePage() {
         </section>
       )}
 
-      <p className="text-center text-xs text-[var(--text-muted)]">本页为前端演示数据,生产环境将接入企智搭知识中台。</p>
     </div>
   );
 }

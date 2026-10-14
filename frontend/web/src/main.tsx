@@ -32,10 +32,10 @@ import { wrapMockHandlerWithAdminRegressions } from './features/regressions/mock
 import { wrapMockHandlerWithAdminFeedback } from './features/feedback/mock-handler';
 
 function installApiClient() {
-  // 演示和开发纯 Mock 直接使用本地 Handler；开发 API 模式将它作为查询回退。
+  // 只有演示环境注入本地 Handler；开发环境完全走后端 API。
   // Catalog 投影需在最外层，优先于旧用户 mock，读取内层 admin store。
   const config = runtimeConfig();
-  const mockMode = config.dataMode === 'demo' || config.dataMode === 'development-mock' || config.dataMode === 'development-api';
+  const mockMode = config.dataMode === 'demo';
   const localMockHandler = mockMode
     ? wrapMockHandlerWithCatalog(
         wrapMockHandlerWithSkills(
@@ -81,7 +81,7 @@ function installApiClient() {
     new ApiClient(
       apiBaseURL(),
       () => localStorage.getItem(runtimeStorageKey('token')),
-      config.dataMode === 'demo' || config.dataMode === 'development-mock' ? localMockHandler : undefined,
+      config.dataMode === 'demo' ? localMockHandler : undefined,
       () => {
         const user = useAuthStore.getState().user;
         const base: Record<string, string> = {
@@ -118,7 +118,7 @@ function installApiClient() {
       },
       // uid-注入型路径(/api/api-keys 等):从 auth store 拿当前用户 id
       () => useAuthStore.getState().user?.id ?? null,
-      config.dataMode === 'development-api' ? localMockHandler : undefined,
+      undefined,
     ),
   );
 }

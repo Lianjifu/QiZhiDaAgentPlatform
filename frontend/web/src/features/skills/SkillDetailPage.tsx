@@ -9,6 +9,7 @@ import type { Skill } from './schema';
 import type { DrawerPanel } from './components/constants';
 import { SkillWorkspace } from './components/SkillWorkspace';
 import { useAdminSkill, useUpdateSkill } from './useAdminSkills';
+import { normalizeError } from '@/api/shared/http-error';
 
 function NotFound() {
   return (
@@ -26,7 +27,7 @@ export default function SkillDetailPage() {
   const location = useLocation();
   const [params, setSearchParams] = useSearchParams();
   const editing = params.get('edit') === '1';
-  const { data: skill, isLoading, isError } = useAdminSkill(id || null);
+  const { data: skill, isLoading, isError, error } = useAdminSkill(id || null);
   const update = useUpdateSkill();
   const [draft, setDraft] = useState<Skill | null>(null);
   const [panel, setPanel] = useState<DrawerPanel>('basic');
@@ -51,7 +52,10 @@ export default function SkillDetailPage() {
     );
   }
 
-  if (isError || !skill || !draft) return <NotFound />;
+  if (isError) {
+    return <div className="mx-auto w-full max-w-[1440px] p-5 pb-16 sm:p-8 xl:px-6"><p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700">加载失败：{normalizeError(error).message}</p></div>;
+  }
+  if (!skill || !draft) return <NotFound />;
 
   const onChange = (patch: Partial<Skill>) => {
     if (!editing) return;

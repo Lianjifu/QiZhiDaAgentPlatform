@@ -1,5 +1,5 @@
 /**
- * AdminWorkflows hooks — useApiQuery 拉取工作流列表; mutation 走本地 mock 包装。
+ * AdminWorkflows hooks — all reads and writes use the backend API.
  */
 import { useApiMutation, useApiQuery } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';
@@ -27,6 +27,22 @@ export function useCreateWorkflow() {
   return useApiMutation<Flow, Flow>(
     '/api/admin/workflows',
     { invalidateKeys: [qk.admin.workflows.root] },
+  );
+}
+
+export function useUpdateWorkflow() {
+  return useApiMutation<Flow, { id: string; patch: Partial<Flow> }>(
+    (vars) => `/api/admin/workflows/${vars.id}`,
+    { invalidateKeys: [qk.admin.workflows.root] },
+    'PATCH',
+  );
+}
+
+export function useDeleteWorkflow() {
+  return useApiMutation<{ ok: true; id: string }, { id: string }>(
+    (vars) => `/api/admin/workflows/${vars.id}`,
+    { invalidateKeys: [qk.admin.workflows.root] },
+    'DELETE',
   );
 }
 

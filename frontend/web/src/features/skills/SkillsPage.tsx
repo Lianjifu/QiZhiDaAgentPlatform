@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import {
-  useAdminSkills, useUpdateSkill, useDeleteSkill, useBulkPublish,
+  useAdminSkills, useUpdateSkill, useDeleteSkill, useBulkPublish, useCreateSkill,
 } from './useAdminSkills';
+import { normalizeError } from '@/api/shared/http-error';
 import type {
   AdminSkillFilters, Skill, SkillExportField, SkillExportFormat, SkillType,
 } from './schema';
@@ -30,22 +31,14 @@ export default function SkillsPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Skill | null>(null);
   const [notice, setNotice] = useState('');
-  // 演示模式下,hook 返回 mock 数据;真实模式下需要本地缓存支持乐观更新。
-  // 这里用本地副本作为 source of truth,与 hook 同步。
-  const [localSkills, setLocalSkills] = useState<Skill[] | null>(null);
-
-  const { data: remoteSkills = [], isLoading } = useAdminSkills(filters);
-  const skills = localSkills ?? remoteSkills;
+  const { data: remoteSkills = [], isLoading, isError, error } = useAdminSkills(filters);
+  const skills = remoteSkills;
   const update = useUpdateSkill();
+  const create = useCreateSkill();
   const created = (location.state as { created?: Skill } | null)?.created;
 
   useEffect(() => {
     if (!created || isLoading) return;
-    setLocalSkills((current) => {
-      const base = current ?? remoteSkills;
-      if (base.some((item) => item.id === created.id)) return current ?? base;
-      return [created, ...base];
-    });
     setNotice(`已新增技能「${created.name}」,状态为草稿。`);
     navigate('/admin/tools', { replace: true, state: null });
   }, [created, isLoading, navigate, remoteSkills]);
@@ -83,44 +76,44 @@ export default function SkillsPage() {
   };
 
   const toggleStar = (id: string) => {
-    setLocalSkills((current) => current
-      ? current.map((s) => s.id === id ? { ...s, starred: !s.starred } : s)
-      : current,
-    );
+    const skill = skills.find((item) => item.id === id);
+    if (!skill) return;
+    update.mutate({ id, patch: { starred: !skill.starred } }, {
+      onSuccess: () => setNotice(`已更新「${skill.name}」收藏状态。`),
+      onError: (cause) => setNotice(`更新失败：${normalizeError(cause).message}`),
+    });
   };
 
   const handlePublish = (skill: Skill) => {
     if (skill.status === 'published') return;
-    const next = { ...skill, status: 'published' as const, lastUpdate: '刚刚' };
-    setLocalSkills((current) => (current ?? skills).map((item) => item.id === skill.id ? next : item));
-    update.mutate({ id: skill.id, patch: { status: 'published' } });
-    setNotice(`已发布「${skill.name}」。`);
+    update.mutate({ id: skill.id, patch: { status: 'published' } }, {
+      onSuccess: () => setNotice(`已发布「${skill.name}」。`),
+      onError: (cause) => setNotice(`发布失败：${normalizeError(cause).message}`),
+    });
   };
 
   const handleDelete = (skill: Skill) => {
-    setLocalSkills((current) => current ? current.filter((s) => s.id !== skill.id) : skills.filter((s) => s.id !== skill.id));
-    del.mutate({ id: skill.id });
-    setNotice(`已删除「${skill.name}」。`);
-    setDeleteTarget(null);
+    del.mutate({ id: skill.id }, {
+      onSuccess: () => { setNotice(`已删除「${skill.name}」。`); setDeleteTarget(null); },
+      onError: (cause) => setNotice(`删除失败：${normalizeError(cause).message}`),
+    });
   };
 
   const handleBatchDelete = () => {
     if (selectedIds.length === 0) return;
     const removedIds = [...selectedIds];
-    setLocalSkills((current) => current ? current.filter((s) => !removedIds.includes(s.id)) : skills.filter((s) => !removedIds.includes(s.id)));
-    setNotice(`已批量删除 ${removedIds.length} 个技能。`);
-    setSelectedIds([]);
+    Promise.all(removedIds.map((id) => del.mutateAsync({ id }))).then(() => {
+      setNotice(`已批量删除 ${removedIds.length} 个技能。`);
+      setSelectedIds([]);
+    }).catch((cause) => setNotice(`批量删除失败：${normalizeError(cause).message}`));
   };
   const handleBatchPublish = () => {
     if (selectedIds.length === 0) return;
     const ids = [...selectedIds];
-    setLocalSkills((current) => current
-      ? current.map((s) => ids.includes(s.id) ? { ...s, status: 'published', lastUpdate: '刚刚' } : s)
-      : skills.map((s) => ids.includes(s.id) ? { ...s, status: 'published', lastUpdate: '刚刚' } : s),
-    );
-    bulk.mutate({ ids, action: 'publish' });
-    setNotice(`已批量发布 ${ids.length} 个技能。`);
-    setSelectedIds([]);
+    bulk.mutate({ ids, action: 'publish' }, {
+      onSuccess: () => { setNotice(`已批量发布 ${ids.length} 个技能。`); setSelectedIds([]); },
+      onError: (cause) => setNotice(`批量发布失败：${normalizeError(cause).message}`),
+    });
   };
   const handleBatchExport = () => setExportOpen(true);
 
@@ -135,8 +128,13 @@ export default function SkillsPage() {
   const handleImport = (rows: ImportRow[]) => {
     const okRows = rows.filter((r) => r.status === 'ok');
     const newSkills: Skill[] = okRows.map((row) => buildSkillFromDraft(row.name, ioType, '', '张敏', 'low'));
-    setLocalSkills((current) => (current ? [...newSkills, ...current] : [...newSkills, ...skills]));
-    setNotice(`已导入 ${okRows.length} 个 ${ioType}(其余已跳过)。`);
+    Promise.all(newSkills.map((skill) => create.mutateAsync({
+      id: skill.id, name: skill.name, type: skill.type, description: skill.description,
+      owner: skill.owner, risk: skill.risk, needConfirm: skill.needConfirm,
+      inputSchema: skill.inputSchema, outputSchema: skill.outputSchema,
+      profile: skill.profile, runtime: skill.runtime,
+    }))).then(() => setNotice(`已导入 ${okRows.length} 个 ${ioType}(其余已跳过)。`))
+      .catch((cause) => setNotice(`导入失败：${normalizeError(cause).message}`));
   };
 
   const handleExportOne = (skill: Skill) => {
@@ -169,6 +167,11 @@ export default function SkillsPage() {
       {notice && (
         <NoticeBanner tone="violet" onClose={() => setNotice('')}>
           {notice}
+        </NoticeBanner>
+      )}
+      {isError && (
+        <NoticeBanner tone="rose" onClose={() => undefined}>
+          加载失败：{normalizeError(error).message}
         </NoticeBanner>
       )}
 

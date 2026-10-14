@@ -1,7 +1,7 @@
 /**
  * AdminMemory hooks — 5 个列表查询 + stats 纯函数。
  */
-import { useApiQuery } from '@/services/query';
+import { useApiMutation, useApiQuery } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';
 import type {
   L1Session, L2Fact, L3Entry, MemoryStats, MemoryTrend, PromotionEvent, RetentionPolicy,
@@ -81,4 +81,25 @@ export function useMemoryTrend(range: '7d' | '30d' | '90d') {
     undefined,
     { staleTime: 60_000 },
   ) ?? { data: TREND_FALLBACK, isLoading: false };
+}
+
+/** Writes deliberately target backend endpoints; there is no client-side fallback. */
+export function useFlushMemorySession() {
+  return useApiMutation<unknown, { id: string }>((vars) => `/api/admin/memory/l1/${encodeURIComponent(vars.id)}/flush`, { invalidateKeys: [qk.admin.memory.root] }, 'POST');
+}
+
+export function useFlushAllMemorySessions() {
+  return useApiMutation<unknown, void>('/api/admin/memory/l1/flush-all', { invalidateKeys: [qk.admin.memory.root] }, 'POST');
+}
+
+export function useUpdateMemoryFact() {
+  return useApiMutation<unknown, { id: string; patch: Record<string, unknown> }>((vars) => `/api/admin/memory/l2/${encodeURIComponent(vars.id)}`, { invalidateKeys: [qk.admin.memory.root] }, 'PATCH');
+}
+
+export function usePromoteMemoryFacts() {
+  return useApiMutation<unknown, { ids: string[]; team: string; title: string; summary: string }>('/api/admin/memory/l2/promote', { invalidateKeys: [qk.admin.memory.root] }, 'POST');
+}
+
+export function useUpdateMemoryEntry() {
+  return useApiMutation<unknown, { id: string; patch: Record<string, unknown> }>((vars) => `/api/admin/memory/l3/${encodeURIComponent(vars.id)}`, { invalidateKeys: [qk.admin.memory.root] }, 'PATCH');
 }

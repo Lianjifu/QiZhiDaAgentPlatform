@@ -7,6 +7,8 @@
  * 顶栏面包屑为「技能管理 > 新建页」。
  */
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
+import { normalizeError } from '@/api/shared/http-error';
 import type { Skill, SkillType } from './schema';
 import { useCreateSkill } from './useAdminSkills';
 import { CreateSkillWizard } from './components/CreateSkillWizard';
@@ -23,8 +25,10 @@ export default function SkillCreatePage() {
   const locked = isSkillType(typeParam);
   const type: SkillType = locked ? typeParam : 'Skill';
   const create = useCreateSkill();
+  const [error, setError] = useState('');
 
   const handleCreate = (skill: Skill) => {
+    setError('');
     create.mutate({
       id: skill.id,
       name: skill.name,
@@ -37,12 +41,15 @@ export default function SkillCreatePage() {
       outputSchema: skill.outputSchema,
       profile: skill.profile,
       runtime: skill.runtime,
+    }, {
+      onSuccess: (created) => navigate(`/admin/tools/${created.id}`),
+      onError: (cause) => setError(normalizeError(cause).message),
     });
-    navigate('/admin/tools', { state: { created: skill } });
   };
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-4 p-5 pb-16 sm:p-8 xl:px-6">
+      {error && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">创建失败：{error}</p>}
       {locked ? (
         <CreateSkillWizard
           open

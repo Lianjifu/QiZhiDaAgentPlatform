@@ -7,18 +7,18 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { FileText, Tag, Hash, Users, ChevronRight, ListChecks, AlertTriangle, Pause, Play, RefreshCw, User } from 'lucide-react';
-import { useKnowledgeBase, useKnowledgeDocs, useKnowledgeTasks } from './useKnowledge';
-import { mockAgents } from '@/features/agents/fixtures';
+import { useKnowledgeBase, useKnowledgeDocs, useKnowledgeTasks, useToggleKbStatus, useBatchKb } from './useKnowledge';
 import { KB_STATUS_BADGE, DOC_STATUS_BADGE, TASK_STATUS_BADGE, ProgressBar } from './components/Primitives';
 import { DOC_TYPE_LABEL } from './components/constants';
 import {
   DetailShell, DetailStatGrid, DetailStat, DetailSection, DetailField,
   DetailNotFound, DetailSkeleton,
 } from './components/DetailLayout';
+import { normalizeError } from '@/api/shared/http-error';
 
 export default function KbDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
-  const { data: kb, isLoading } = useKnowledgeBase(id || null);
+  const { data: kb, isLoading, isError, error } = useKnowledgeBase(id || null);
   const { data: docs = [] } = useKnowledgeDocs();
   const { data: tasks = [] } = useKnowledgeTasks();
   const [notice, setNotice] = useState<string | null>(null);
@@ -29,10 +29,9 @@ export default function KbDetailPage() {
     return tasks.filter((t) => t.kbId === id).slice(-5).reverse();
   }, [tasks, id]);
 
-  const boundAgents = useMemo(() => {
-    if (!kb) return [] as typeof mockAgents;
-    return mockAgents.filter((a) => a.knowledgeRefs.some((r) => r.id === kb.id));
-  }, [kb]);
+  const boundAgents: Array<{ id: string; name: string }> = [];
+  const toggleKbStatus = useToggleKbStatus();
+  const batchKb = useBatchKb();
 
   const flash = (text: string) => {
     setNotice(text);
@@ -47,6 +46,9 @@ export default function KbDetailPage() {
     );
   }
 
+  if (isError) {
+    return <DetailShell showBack={false}><p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700">加载失败：{normalizeError(error).message}</p></DetailShell>;
+  }
   if (!kb) {
     return (
       <DetailShell showBack={false}>
@@ -76,7 +78,10 @@ export default function KbDetailPage() {
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={() => flash(`已触发 ${kb.name} 重建索引`)}
+            onClick={() => batchKb.mutate({ ids: [kb.id], action: 'rebuild' }, {
+              onSuccess: () => flash(`已触发 ${kb.name} 重建索引`),
+              onError: () => flash('重建索引失败'),
+            })}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             <RefreshCw className="h-3.5 w-3.5" />
@@ -84,7 +89,10 @@ export default function KbDetailPage() {
           </button>
           <button
             type="button"
-            onClick={() => flash(`已${pauseLabel} ${kb.name}`)}
+            onClick={() => toggleKbStatus.mutate({ id: kb.id }, {
+              onSuccess: (next) => flash(`已${next.status === 'paused' ? '暂停' : '恢复'} ${kb.name}`),
+              onError: () => flash('状态更新失败'),
+            })}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             {kb.status === 'paused' ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}

@@ -1,11 +1,10 @@
 export type AppEnvironment = 'demo' | 'development';
-export type DataMode = 'demo' | 'development-api' | 'development-mock';
+export type DataMode = 'demo' | 'development-api';
 
 export interface RuntimeConfig {
   environment: AppEnvironment;
   dataMode: DataMode;
   apiEnabled: boolean;
-  queryFallbackEnabled: boolean;
 }
 
 type EnvInput = Record<string, string | undefined>;
@@ -28,26 +27,17 @@ export function resolveRuntimeConfig(input?: EnvInput): RuntimeConfig {
       environment: 'demo',
       dataMode: 'demo',
       apiEnabled: false,
-      queryFallbackEnabled: false,
     };
   }
 
-  const dataMode = env.VITE_DATA_MODE === 'development-mock' || env.VITE_USE_MOCK === 'true'
-    ? 'development-mock'
-    : 'development-api';
   return {
     environment: 'development',
-    dataMode,
-    apiEnabled: dataMode === 'development-api',
-    queryFallbackEnabled: dataMode === 'development-api',
+    dataMode: 'development-api',
+    apiEnabled: true,
   };
 }
 
 export function runtimeStorageKey(name: string, input?: EnvInput): string {
   const config = resolveRuntimeConfig(input);
   return `qzdap:${config.environment}:${config.dataMode}:${name}`;
-}
-
-export function isQueryFallbackPolicy(policy: string | undefined): boolean {
-  return policy === 'on-network-error' || policy === 'on-empty' || policy === 'on-network-error-or-empty';
 }

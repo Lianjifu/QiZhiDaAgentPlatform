@@ -9,7 +9,9 @@ import { useNavigate } from 'react-router-dom';
 import { Settings } from 'lucide-react';
 import {
   useL1Sessions, useL2Facts, useL3Entries, useMemoryStats, usePromotions,
+  useFlushMemorySession, useFlushAllMemorySessions, useUpdateMemoryFact, usePromoteMemoryFacts, useUpdateMemoryEntry,
 } from './useMemory';
+import { normalizeError } from '@/api/shared/http-error';
 import type {
   L1Session, L2Category, L2Fact, L3Entry, L3Status, MemoryRange, MemoryTabId,
 } from './schema';
@@ -56,13 +58,19 @@ export default function MemoryPage() {
   const remoteL2 = l2QueryRemote.data ?? EMPTY_L2;
   const remoteL3 = l3QueryRemote.data ?? EMPTY_L3;
   const remotePromotions = usePromotions().data ?? [];
+  const l1Error = l1QueryRemote.error;
+  const l2Error = l2QueryRemote.error;
+  const l3Error = l3QueryRemote.error;
 
-  const [l1, setL1] = useState<L1Session[]>(remoteL1);
-  const [l2, setL2] = useState<L2Fact[]>(remoteL2);
-  const [l3, setL3] = useState<L3Entry[]>(remoteL3);
-  useEffect(() => setL1(remoteL1), [l1QueryRemote.data]);
-  useEffect(() => setL2(remoteL2), [l2QueryRemote.data]);
-  useEffect(() => setL3(remoteL3), [l3QueryRemote.data]);
+  const l1 = remoteL1;
+  const l2 = remoteL2;
+  const l3 = remoteL3;
+  const flushOne = useFlushMemorySession();
+  const flushAllMutation = useFlushAllMemorySessions();
+  const updateFact = useUpdateMemoryFact();
+  const promote = usePromoteMemoryFacts();
+  const updateEntry = useUpdateMemoryEntry();
+  const [notice, setNotice] = useState('');
 
   const stats = useMemoryStats(l1, l2, l3, remotePromotions);
   const counts = useMemo(() => ({ l1: stats.l1Active, l2: stats.l2Confirmed, l3: stats.l3Published }), [stats]);
@@ -102,11 +110,12 @@ export default function MemoryPage() {
   const pagedL2 = useMemo(() => paginateItems(filteredL2, l2Page), [filteredL2, l2Page]);
   const pagedL3 = useMemo(() => paginateItems(filteredL3, l3Page), [filteredL3, l3Page]);
 
-  const flushSession = (id: string) => setL1((prev) => prev.map((s) => s.id === id ? { ...s, status: 'expired', ttlRemainMin: 0 } : s));
-  const flushAll = () => setL1((prev) => prev.map((s) => s.status === 'active' ? { ...s, status: 'expired', ttlRemainMin: 0 } : s));
-  const confirmFact = (id: string) => setL2((prev) => prev.map((f) => f.id === id ? { ...f, status: 'confirmed' } : f));
-  const retireEntry = (id: string) => setL3((prev) => prev.map((k) => k.id === id ? { ...k, status: 'retired' } : k));
-  const publishEntry = (id: string) => setL3((prev) => prev.map((k) => k.id === id ? { ...k, status: 'published' } : k));
+  const failure = (cause: unknown) => setNotice(`请求失败：${normalizeError(cause).message}`);
+  const flushSession = (id: string) => flushOne.mutate({ id }, { onSuccess: () => setNotice('已 flush'), onError: failure });
+  const flushAll = () => flushAllMutation.mutate(undefined, { onSuccess: () => setNotice('已全部 flush'), onError: failure });
+  const confirmFact = (id: string) => updateFact.mutate({ id, patch: { status: 'confirmed' } }, { onSuccess: () => setNotice('已确认'), onError: failure });
+  const retireEntry = (id: string) => updateEntry.mutate({ id, patch: { status: 'retired' } }, { onSuccess: () => setNotice('已下线'), onError: failure });
+  const publishEntry = (id: string) => updateEntry.mutate({ id, patch: { status: 'published' } }, { onSuccess: () => setNotice('已发布'), onError: failure });
   const toggleSelectL2 = (id: string) => setSelectedL2Ids((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   const openPromote = (ids: string[]) => {
     if (ids.length === 0) return;
@@ -114,11 +123,10 @@ export default function MemoryPage() {
     setPromoteOpen(true);
   };
   const submitPromote = (team: string, title: string, summary: string) => {
-    const id = `k-${Date.now()}`;
-    setL3((prev) => [{ id, team, title, summary, category: '综合', hits: 0, updatedAt: '刚刚', contributor: '管理员', status: 'draft' }, ...prev]);
-    setL2((prev) => prev.map((f) => promoteIds.includes(f.id) ? { ...f, promotedToL3: true } : f));
-    setSelectedL2Ids([]);
-    setPromoteOpen(false);
+    promote.mutate({ ids: promoteIds, team, title, summary }, {
+      onSuccess: () => { setSelectedL2Ids([]); setPromoteOpen(false); setNotice('已提交晋升'); },
+      onError: failure,
+    });
   };
   const openL1 = (s: L1Session) => navigate(`/admin/memory/l1/${encodeURIComponent(s.id)}`);
   const openL2 = (f: L2Fact) => navigate(`/admin/memory/l2/${encodeURIComponent(f.id)}`);
@@ -136,6 +144,8 @@ export default function MemoryPage() {
           <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{l1.length} 条短期会话 · {l2.length} 条长期记忆 · {l3.length} 条团队知识。</p>
         </div>
       </section>
+      {notice && <p role="status" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">{notice}</p>}
+      {(l1QueryRemote.isError || l2QueryRemote.isError || l3QueryRemote.isError) && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">加载失败：{normalizeError(l1Error ?? l2Error ?? l3Error).message}</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)]">
         <nav aria-label="子模块导航" className="flex flex-wrap items-center gap-1">

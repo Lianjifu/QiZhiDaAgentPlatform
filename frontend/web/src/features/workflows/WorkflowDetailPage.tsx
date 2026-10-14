@@ -12,7 +12,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, History, Rocket, Save, Pencil, X, Workflow as WorkflowIcon } from 'lucide-react';
-import { useWorkflow } from './useWorkflows';
+import { useWorkflow, useUpdateWorkflow } from './useWorkflows';
+import { normalizeError } from '@/api/shared/http-error';
 import type { Flow } from './schema';
 import { STATUS_BADGE } from './components/constants';
 import { FlowEditor } from './components/FlowEditor';
@@ -40,10 +41,11 @@ export default function WorkflowDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const isEditMode = searchParams.get('edit') === '1';
-  const { data: flow, isLoading } = useWorkflow(id || null);
+  const { data: flow, isLoading, isError, error } = useWorkflow(id || null);
   const [notice, setNotice] = useState('');
   const [localFlows, setLocalFlows] = useState<Flow[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const update = useUpdateWorkflow();
 
   useEffect(() => {
     if (flow && (localFlows.length === 0 || localFlows[0]?.id !== flow.id)) {
@@ -67,6 +69,7 @@ export default function WorkflowDetailPage() {
     );
   }
 
+  if (isError) return <div className="mx-auto w-full max-w-[1600px] p-5 pb-16 sm:p-8 xl:px-8"><p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700">加载失败：{normalizeError(error).message}</p></div>;
   if (!flow) return <NotFound />;
 
   const editorFlow = localFlows[0] ?? flow;
@@ -74,7 +77,13 @@ export default function WorkflowDetailPage() {
   const badge = STATUS_BADGE[flow.status];
 
   const onSave = () => {
-    setNotice(`已保存工作流「${editorFlow.name}」,共 ${editorFlow.initialNodes.length} 个节点 / ${editorFlow.initialEdges.length} 条连线。`);
+    update.mutate({
+      id: editorFlow.id,
+      patch: { initialNodes: editorFlow.initialNodes, initialEdges: editorFlow.initialEdges },
+    }, {
+      onSuccess: () => setNotice(`已保存工作流「${editorFlow.name}」,共 ${editorFlow.initialNodes.length} 个节点 / ${editorFlow.initialEdges.length} 条连线。`),
+      onError: (cause) => setNotice(`保存失败：${normalizeError(cause).message}`),
+    });
   };
 
   return (
@@ -107,10 +116,10 @@ export default function WorkflowDetailPage() {
               <button type="button" onClick={onSave} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[var(--brand)] px-3 text-xs font-semibold text-white hover:bg-[var(--brand-hover)]">
                 <Save className="h-3.5 w-3.5" />保存
               </button>
-              <button type="button" onClick={() => setNotice('演示版本暂不支持版本管理,请回到工作流管理查看历史版本。')} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-2.5 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--brand)] hover:text-[var(--brand)]">
+              <button type="button" onClick={() => setNotice('版本管理接口暂未提供,请求未执行。')} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-2.5 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--brand)] hover:text-[var(--brand)]">
                 <History className="h-3.5 w-3.5" />版本
               </button>
-              <button type="button" onClick={() => setNotice('演示版本暂不支持发布,请回到工作流管理进行完整流程。')} disabled={flow.status === 'published'} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300">
+              <button type="button" onClick={() => update.mutate({ id: flow.id, patch: { status: 'published' } }, { onSuccess: () => setNotice('已发布'), onError: (cause) => setNotice(`发布失败：${normalizeError(cause).message}`) })} disabled={flow.status === 'published'} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300">
                 <Rocket className="h-3.5 w-3.5" />发布
               </button>
             </>
@@ -141,7 +150,8 @@ export default function WorkflowDetailPage() {
         selectedNodeId={selectedNodeId}
         setSelectedNodeId={setSelectedNodeId}
         setFlows={setLocalFlows}
-        onOpenNodeConfig={() => setNotice('演示版本暂不支持节点配置编辑,请回到列表进行完整编辑。')}
+        onChange={(nodes, edges) => setLocalFlows((current) => current.length ? [{ ...current[0], initialNodes: nodes, initialEdges: edges }] : current)}
+        onOpenNodeConfig={() => setNotice('节点高级配置接口暂未提供,请求未执行。')}
         setNotice={setNotice}
         readOnly={readOnly}
       />

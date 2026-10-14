@@ -14,6 +14,7 @@ import {
   DetailShell, DetailHeader, DetailStatGrid, DetailStat, DetailSection,
   DetailNotFound, DetailSkeleton,
 } from './components/DetailLayout';
+import { normalizeError } from '@/api/shared/http-error';
 
 export default function SourceDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
@@ -69,6 +70,10 @@ export default function SourceDetailPage() {
     );
   }
 
+  if (sourcesQuery.isError || kbsQuery.isError || docsQuery.isError || tasksQuery.isError) {
+    return <DetailShell showBack={false}><p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700">加载失败：{normalizeError(sourcesQuery.error ?? kbsQuery.error ?? docsQuery.error ?? tasksQuery.error).message}</p></DetailShell>;
+  }
+
   if (!source) {
     return (
       <DetailShell showBack={false}>
@@ -89,7 +94,7 @@ export default function SourceDetailPage() {
         actions={(
           <button
             type="button"
-            onClick={() => flash(`已触发 ${source.name} 同步`)}
+            onClick={() => flash('同步接口暂未提供,请求未执行')}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             <RefreshCw className="h-3.5 w-3.5" />

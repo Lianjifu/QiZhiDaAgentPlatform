@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite",
     "dev:demo": "VITE_QZDAP_ENV=demo VITE_DATA_MODE=demo VITE_USE_DEMO=true vite",
-    "dev:mock": "VITE_QZDAP_ENV=development VITE_DATA_MODE=development-mock vite",
     "build": "tsc -b --noEmit && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",

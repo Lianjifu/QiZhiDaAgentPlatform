@@ -1,7 +1,6 @@
 /**
  * 管理侧「知识管理」hooks — 5 类实体的 list + 部分 mutation。
- * 端点 /api/admin/knowledge/* 由 features/knowledge/mock-handler.ts 接管
- * (全局 mock.ts ladder 未覆盖)。
+ * 端点 /api/admin/knowledge/* 始终通过真实 API 请求。
  */
 import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';

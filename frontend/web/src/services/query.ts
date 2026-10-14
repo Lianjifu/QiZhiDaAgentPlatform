@@ -21,7 +21,6 @@ export function useApiQuery<T>(
         method: params?.method ?? 'GET',
         query: params?.query,
         body: params?.body,
-        fallback: 'on-network-error-or-empty',
       });
     },
     ...options,

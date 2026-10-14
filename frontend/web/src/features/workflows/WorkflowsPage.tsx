@@ -8,10 +8,11 @@
  *
  * 列表内 modal:发布为工具。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
-import { useWorkflows } from './useWorkflows';
+import { useWorkflows, useCreateWorkflow, useUpdateWorkflow } from './useWorkflows';
+import { normalizeError } from '@/api/shared/http-error';
 import type { Flow, WorkflowTabId } from './schema';
 import { uid } from './components/constants';
 import { OverviewTab } from './components/tabs/OverviewTab';
@@ -24,7 +25,7 @@ export default function WorkflowsPage() {
   const [tab, setTab] = useState<WorkflowTabId>('all');
   const flowsQuery = useWorkflows();
   const remoteFlows = flowsQuery.data ?? EMPTY_FLOWS;
-  const [flows, setFlows] = useState<Flow[]>(remoteFlows);
+  const flows = remoteFlows;
   const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
 
@@ -35,9 +36,8 @@ export default function WorkflowsPage() {
   const [toolInput, setToolInput] = useState('query:string:true');
   const [toolOutput, setToolOutput] = useState('result:string:true');
 
-  useEffect(() => {
-    setFlows(remoteFlows);
-  }, [flowsQuery.data]);
+  const update = useUpdateWorkflow();
+  const create = useCreateWorkflow();
 
   const visibleFlows = useMemo(() => {
     const base = tab === 'all' ? flows : flows.filter((f) => f.status === tab);
@@ -60,18 +60,17 @@ export default function WorkflowsPage() {
 
   const submitPublish = () => {
     if (!publishFlow) return;
-    const v = publishFlow.versions[0]?.v || 'v1.0';
-    setFlows((prev) => prev.map((f) => f.id === publishFlow.id ? {
-      ...f, status: 'published', updatedAt: '刚刚',
-      versions: [{ v: `${v}-已发布`, at: '刚刚', operator: '当前管理员', note: `发布为工具 ${toolId || f.id}` }, ...f.versions],
-    } : f));
-    setPublishOpen(false);
-    setNotice(`「${publishFlow.name}」已发布为可被智能体调用的工具。`);
+    update.mutate({ id: publishFlow.id, patch: { status: 'published' } }, {
+      onSuccess: () => { setPublishOpen(false); setNotice(`「${publishFlow.name}」已发布为可被智能体调用的工具。`); },
+      onError: (cause) => setNotice(`发布失败：${normalizeError(cause).message}`),
+    });
   };
 
   const retireFlow = (flow: Flow) => {
-    setFlows((prev) => prev.map((f) => f.id === flow.id ? { ...f, status: 'retired', updatedAt: '刚刚' } : f));
-    setNotice(`「${flow.name}」已下线,不再可被调用。`);
+    update.mutate({ id: flow.id, patch: { status: 'retired' } }, {
+      onSuccess: () => setNotice(`「${flow.name}」已下线,不再可被调用。`),
+      onError: (cause) => setNotice(`下线失败：${normalizeError(cause).message}`),
+    });
   };
 
   const copyFlow = (flow: Flow) => {
@@ -83,8 +82,10 @@ export default function WorkflowsPage() {
       initialNodes: flow.initialNodes.map((n) => ({ ...n, id: `${n.id}-${copyId.slice(-3)}` })),
       initialEdges: [],
     };
-    setFlows((prev) => [copy, ...prev]);
-    setNotice(`已复制为「${flow.name} · 副本」。`);
+    create.mutate(copy, {
+      onSuccess: () => setNotice(`已复制为「${flow.name} · 副本」。`),
+      onError: (cause) => setNotice(`复制失败：${normalizeError(cause).message}`),
+    });
   };
 
   return (
@@ -105,6 +106,7 @@ export default function WorkflowsPage() {
           {notice}
         </NoticeBanner>
       )}
+      {flowsQuery.isError && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">加载失败：{normalizeError(flowsQuery.error).message}</p>}
 
       <OverviewTab
         flows={visibleFlows}

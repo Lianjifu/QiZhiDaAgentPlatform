@@ -56,6 +56,7 @@ interface FlowEditorProps {
   setFlows: React.Dispatch<React.SetStateAction<Flow[]>>;
   onOpenNodeConfig: (n: Node<FlowNodeData>) => void;
   setNotice: (s: string) => void;
+  onChange?: (nodes: Node<FlowNodeData>[], edges: Edge[]) => void;
   readOnly?: boolean;
 }
 
@@ -67,7 +68,7 @@ const KIND_ICON: Record<NodeKind, typeof Play> = {
   end: CheckCircle2,
 };
 
-export function FlowEditor({ flow, selectedNodeId, setSelectedNodeId, setFlows, onOpenNodeConfig, setNotice, readOnly = false }: FlowEditorProps) {
+export function FlowEditor({ flow, selectedNodeId, setSelectedNodeId, setFlows, onChange, onOpenNodeConfig, setNotice, readOnly = false }: FlowEditorProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(flow.initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(flow.initialEdges);
   const [openGroups, setOpenGroups] = useState<Record<NodeKind, boolean>>({
@@ -78,6 +79,10 @@ export function FlowEditor({ flow, selectedNodeId, setSelectedNodeId, setFlows, 
     setNodes(flow.initialNodes);
     setEdges(flow.initialEdges);
   }, [flow.id, setEdges, setNodes]);
+
+  useEffect(() => {
+    if (!readOnly) onChange?.(nodes, edges);
+  }, [edges, nodes, onChange, readOnly]);
 
   const onConnect = useCallback((connection: Connection) => {
     setEdges((eds) => addEdge({ ...connection, type: 'smoothstep', animated: true }, eds));

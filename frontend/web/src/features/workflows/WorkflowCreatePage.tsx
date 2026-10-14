@@ -10,6 +10,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, ArrowRight, FileCheck2, History, Info, Sparkles, Wand2 } from 'lucide-react';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { useCreateWorkflow } from './useWorkflows';
+import { normalizeError } from '@/api/shared/http-error';
 import type { Flow, TriggerType } from './schema';
 import { TEMPLATE_CHOICES, TRIGGER_BADGE, TRIGGERS, uid } from './components/constants';
 
@@ -74,10 +75,7 @@ export default function WorkflowCreatePage() {
       onSuccess: (created) => {
         navigate(`/admin/workflows/${created.id}?edit=1`);
       },
-      onError: () => {
-        setNotice('网络异常,工作流已保存在本地,可继续编辑。');
-        setTimeout(() => navigate(`/admin/workflows/${id}?edit=1`), 800);
-      },
+      onError: (cause) => setNotice(`创建失败：${normalizeError(cause).message}`),
     });
   };
 

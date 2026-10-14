@@ -21,15 +21,16 @@ describe('runtime environment', () => {
     );
   });
 
-  it('keeps development mock mode separate from demo mode', () => {
-    const devMock = resolveRuntimeConfig({
+  it('ignores mock flags in development and always uses the real API', () => {
+    const development = resolveRuntimeConfig({
       VITE_QZDAP_ENV: 'development',
       VITE_DATA_MODE: 'development-mock',
+      VITE_USE_MOCK: 'true',
     });
-    expect(devMock).toMatchObject({
+    expect(development).toMatchObject({
       environment: 'development',
-      dataMode: 'development-mock',
-      apiEnabled: false,
+      dataMode: 'development-api',
+      apiEnabled: true,
     });
     expect(runtimeStorageKey('auth', { VITE_QZDAP_ENV: 'demo' })).not.toBe(
       runtimeStorageKey('auth', { VITE_QZDAP_ENV: 'development' }),
