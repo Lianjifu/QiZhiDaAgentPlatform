@@ -280,6 +280,86 @@ class ModelService:
         except (ValueError, KeyError, TypeError) as exc:
             raise ValueError("模型验证已失效，请使用当前配置重新测试。") from exc
 
+    async def health_check(self, provider_id: UUID) -> dict[str, Any]:
+        provider = await self._providers.get(provider_id)
+        if provider is None or not self._owns(provider):
+            raise ModelNotFound("provider not found")
+        if self._tester is None:
+            raise CredentialNotFound("连接测试器未配置")
+        models = await self._models.list_for_workspace(provider.workspace_id)
+        model = next((m for m in models if m.provider_id == provider.id), None)
+        if model is None:
+            raise ValueError("provider has no models")
+        result = await self._tester.test_connection(
+            api_key=self._decrypt(provider),
+            base_url=provider.base_url,
+            protocol=provider.protocol,
+            model=model.upstream_model or model.name,
+            api_version=provider.api_version,
+        )
+        from qzdap.modules.model.domain.entities import HealthEvent
+
+        await self._health.add(
+            HealthEvent(
+                id=uuid4(),
+                tenant_id=provider.tenant_id,
+                workspace_id=provider.workspace_id,
+                type="recovery" if result.get("success") else "incident",
+                provider_id=provider.id,
+                provider_name=provider.name,
+                message=str(
+                    result.get("response") or result.get("error") or "health check"
+                ),
+                occurred_at=datetime.now(UTC).isoformat(),
+            )
+        )
+        return {
+            "success": bool(result.get("success")),
+            "providerId": str(provider.id),
+            "message": result.get("response") or result.get("error"),
+        }
+
+    async def import_models(
+        self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        self._check_workspace(workspace_id, tenant_id)
+        import json
+
+        try:
+            rows = json.loads(str(body.get("content") or ""))
+        except json.JSONDecodeError as exc:
+            raise ValueError("invalid JSON model import") from exc
+        if not isinstance(rows, list):
+            raise TypeError("model import must be an array")
+        created = 0
+        for row in rows:
+            if not isinstance(row, dict):
+                raise TypeError("each imported model must be an object")
+            provider = (
+                await self._providers.get(UUID(str(row.get("providerId"))))
+                if row.get("providerId")
+                else None
+            )
+            if provider is None or not self._owns(provider):
+                raise ValueError("providerId is required and must belong to workspace")
+            model = Model.create(
+                id=uuid4(),
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                name=str(row.get("name") or "").strip(),
+                provider_id=provider.id,
+                provider_name=provider.name,
+                protocol=provider.protocol,
+            )
+            model = replace(
+                model,
+                upstream_model=str(row.get("upstreamModel") or model.name),
+                status="draft",
+            )
+            await self._models.add(model)
+            created += 1
+        return {"created": created}
+
     async def probe_catalog(self, body: dict[str, Any]) -> dict[str, Any]:
         try:
             key, url, protocol, _, _ = await self._effective(body)
@@ -503,7 +583,7 @@ class ModelService:
         return await self.get_model(model_id)
 
     async def delete_model(self, model_id: UUID) -> dict[str, Any]:
-        model = await self._require_model(model_id)
+        await self._require_model(model_id)
         await self._models.delete(model_id)
         return {"id": str(model_id)}
 

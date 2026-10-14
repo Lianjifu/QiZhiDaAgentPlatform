@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date
+import csv
+import io
+import json
+from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -69,7 +72,12 @@ class AdminOpsService:
         current = await self.get(
             tenant_id=tenant_id, workspace_id=workspace_id, collection=collection, doc_key=doc_key
         )
-        merged = {**current, **patch, "id": doc_key}
+        now = datetime.now(timezone.utc).isoformat()
+        history = list(current.get("history") or [])
+        history.append({"time": now, "actor": "管理员", "action": "patch", "changes": dict(patch)})
+        logs = list(current.get("logs") or [])
+        logs.append({"time": now, "level": "info", "text": "document updated", **patch})
+        merged = {**current, **patch, "id": doc_key, "history": history, "logs": logs}
         return await self._repo.upsert_doc(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -77,6 +85,189 @@ class AdminOpsService:
             doc_key=doc_key,
             payload=merged,
         )
+
+    async def action(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        collection: str,
+        doc_key: str,
+        action: str,
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Apply a named UI action while retaining an auditable history entry."""
+        body = body or {}
+        if action == "reply":
+            reply = str(body.get("reply") or "").strip()
+            if not reply:
+                raise ValueError("reply is required")
+            return await self.patch(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                collection=collection,
+                doc_key=doc_key,
+                patch={"reply": reply, "status": "in-progress", "repliedAt": datetime.now(timezone.utc).isoformat()},
+            )
+        if action in {"resolve", "review", "triage", "investigate"}:
+            status = {"resolve": "resolved", "review": "reviewed", "triage": "triaged", "investigate": "investigating"}[action]
+            return await self.patch(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                collection=collection,
+                doc_key=doc_key,
+                patch={"resolved": True} if collection == "operations.incidents" else {"status": status},
+            )
+        raise ValueError(f"unsupported action: {action}")
+
+    async def validate_run(
+        self, *, tenant_id: UUID, workspace_id: UUID, collection: str, doc_key: str
+    ) -> dict[str, Any]:
+        row = await self.get(tenant_id=tenant_id, workspace_id=workspace_id, collection=collection, doc_key=doc_key)
+        cases = row.get("casesList") or row.get("cases")
+        if not isinstance(cases, list) or not cases:
+            raise ValueError("a run requires at least one evaluation case")
+        return row
+
+    async def run_collection(
+        self, *, tenant_id: UUID, workspace_id: UUID, collection: str, doc_key: str,
+        runner: Any, owner_id: UUID,
+    ) -> dict[str, Any]:
+        row = await self.validate_run(tenant_id=tenant_id, workspace_id=workspace_id, collection=collection, doc_key=doc_key)
+        if runner is None:
+            raise NotImplementedError("evaluation runner is not configured")
+        cases = row.get("casesList")
+        results: list[dict[str, Any]] = []
+        for case in cases:
+            if not isinstance(case, dict) or not str(case.get("input") or "").strip():
+                raise ValueError("every evaluation case requires input")
+            result = await runner(
+                tenant_id=tenant_id, workspace_id=workspace_id, owner_id=owner_id,
+                agent_id=str(row.get("target") or ""), user_input=str(case["input"]),
+            )
+            expected = str(case.get("expected") or "")
+            actual = str(result.get("final_message") or "")
+            results.append({**result, "caseId": case.get("id"), "passed": bool(expected and expected in actual)})
+        passed = sum(1 for item in results if item["passed"])
+        return await self.patch(
+            tenant_id=tenant_id, workspace_id=workspace_id, collection=collection, doc_key=doc_key,
+            patch={"status": "passed" if passed == len(results) else "failed", "cases": len(results), "passRate": passed / len(results) * 100, "results": results, "lastRunAt": datetime.now(timezone.utc).isoformat()},
+        )
+
+    async def delete(
+        self, *, tenant_id: UUID, workspace_id: UUID, collection: str, doc_key: str
+    ) -> bool:
+        _ = tenant_id
+        return await self._repo.delete_doc(
+            workspace_id=workspace_id, collection=collection, doc_key=doc_key
+        )
+
+    async def batch_patch(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        collection: str,
+        ids: list[str],
+        patch: dict[str, Any],
+    ) -> dict[str, int]:
+        updated = 0
+        for doc_id in ids:
+            try:
+                await self.patch(
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    collection=collection,
+                    doc_key=doc_id,
+                    patch=patch,
+                )
+            except KeyError:
+                continue
+            updated += 1
+        return {"updated": updated, "requested": len(ids)}
+
+    async def batch_delete(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        collection: str,
+        ids: list[str],
+    ) -> dict[str, int]:
+        _ = tenant_id
+        deleted = 0
+        for doc_id in ids:
+            if await self._repo.delete_doc(
+                workspace_id=workspace_id, collection=collection, doc_key=doc_id
+            ):
+                deleted += 1
+        return {"deleted": deleted, "requested": len(ids)}
+
+    async def duplicate(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        collection: str,
+        doc_key: str,
+        prefix: str,
+    ) -> dict[str, Any]:
+        current = await self.get(
+            tenant_id=tenant_id, workspace_id=workspace_id,
+            collection=collection, doc_key=doc_key,
+        )
+        body = {key: value for key, value in current.items() if key != "id"}
+        body["name"] = f"{body.get('name') or '副本'}（副本）"
+        return await self.create(
+            tenant_id=tenant_id, workspace_id=workspace_id,
+            collection=collection, prefix=prefix, body=body,
+        )
+
+    async def import_docs(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        collection: str,
+        content: str,
+        format: str,
+        prefix: str,
+    ) -> dict[str, int]:
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("import content is required")
+        fmt = str(format).lower()
+        if fmt == "json":
+            parsed = json.loads(content)
+        elif fmt == "jsonl":
+            parsed = [json.loads(line) for line in content.splitlines() if line.strip()]
+        elif fmt in {"yaml", "yml"}:
+            import yaml
+            parsed = yaml.safe_load(content)
+        elif fmt == "csv":
+            parsed = list(csv.DictReader(io.StringIO(content)))
+        else:
+            raise ValueError("supported import formats: json, jsonl, yaml, csv")
+        items = parsed if isinstance(parsed, list) else parsed.get("items") if isinstance(parsed, dict) else None
+        if not isinstance(items, list) or not items:
+            raise ValueError("import requires a non-empty array of records")
+        if any(not isinstance(item, dict) for item in items):
+            raise ValueError("every imported record must be an object")
+        # Validate the complete file before writes so malformed rows never
+        # silently disappear and no request reports partial success.
+        creators = {
+            "quotas.budgets": self.create_budget,
+            "notifications.channels": self.create_channel,
+            "evaluations.suites": self.create_eval_suite,
+            "regressions.tracks": self.create_regression_track,
+            "metrics.dashboards": self.create_dashboard,
+        }
+        creator = creators.get(collection)
+        for item in items:
+            if creator:
+                await creator(tenant_id=tenant_id, workspace_id=workspace_id, body=dict(item))
+            else:
+                await self.create(tenant_id=tenant_id, workspace_id=workspace_id, collection=collection, prefix=prefix, body=dict(item))
+        return {"imported": len(items)}
 
     async def create_budget(self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]) -> dict[str, Any]:
         return await self.create(
@@ -197,7 +388,7 @@ class AdminOpsService:
                 "type": body.get("type") or "capability",
                 "owner": str(body.get("owner") or "评测团队"),
                 "status": "queued",
-                "cases": 0,
+                "cases": len(body.get("casesList") or []),
                 "passRate": 0,
                 "avgScore": 0,
                 "lastRunAt": "未运行",
@@ -206,7 +397,7 @@ class AdminOpsService:
                 "starred": False,
                 "tags": [],
                 "trend": [0] * 12,
-                "casesList": [],
+                "casesList": list(body.get("casesList") or []),
                 "criteria": criteria_list,
                 "history": [],
             },
@@ -266,7 +457,8 @@ class AdminOpsService:
                 "tags": [],
                 "notes": str(body.get("notes") or "新创建的回归追踪"),
                 "history": [],
-                "casesList": [],
+                "casesList": list(body.get("casesList") or []),
+                "suiteId": body.get("suiteId"),
             },
         )
 

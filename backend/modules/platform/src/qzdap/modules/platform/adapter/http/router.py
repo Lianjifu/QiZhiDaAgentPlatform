@@ -21,8 +21,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_kernel.errors import BusinessRuleError
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from qzdap_kernel.errors import BusinessRuleError
 
 from qzdap.modules.platform.adapter.http.dto import (
     AssignSubscriptionRequest,
@@ -135,19 +135,68 @@ def build_router() -> APIRouter:
     async def upsert_setting(
         key: str,
         body: UpsertSettingRequest,
+        request: Request,
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
         x_user_id: UUID | None = Header(None, alias="X-User-Id"),  # noqa: B008
         svc: PlatformService = Depends(platform_service_dependency),  # noqa: B008
     ) -> TenantSettingResponse:
-        from qzdap_schema.ids import TenantId, UserId
+        from datetime import UTC, datetime
+        from uuid import uuid4
 
-        setting = await svc.upsert_tenant_setting(
-            tenant_id=TenantId(x_tenant_id),
-            key=key,
-            value=body.value,
-            updated_by=UserId(x_user_id) if x_user_id else None,
+        from qzdap.modules.identity.adapter.http.account_router import (
+            actor,
+            add_audit,
+            control_session,
+            current_user,
         )
-        return tenant_setting_to_dto(setting)
+        from sqlalchemy import select
+
+        from qzdap.modules.platform.adapter.persistence.mappers import (
+            tenant_setting_to_domain,
+        )
+        from qzdap.modules.platform.adapter.persistence.models import TenantSettingORM
+
+        principal = actor(request)
+        if not set(principal.roles) & {"admin", "platform_admin", "tenant_admin"}:
+            raise HTTPException(403, "tenant administrator required")
+        if body.workspace_id is not None:
+            raise HTTPException(422, "platform settings are tenant-wide")
+        async for session in control_session(request):
+            user = await current_user(request, session)
+            setting = await session.scalar(
+                select(TenantSettingORM)
+                .where(
+                    TenantSettingORM.tenant_id == principal.tenant_id,
+                    TenantSettingORM.key == key,
+                )
+                .with_for_update()
+            )
+            before = setting.value if setting else None
+            if setting is None:
+                setting = TenantSettingORM(
+                    id=uuid4(),
+                    tenant_id=principal.tenant_id,
+                    workspace_id=None,
+                    key=key,
+                    value=body.value,
+                    updated_by=user.id,
+                )
+                session.add(setting)
+            else:
+                setting.value = body.value
+                setting.updated_by = user.id
+                setting.updated_at = datetime.now(UTC)
+            add_audit(
+                session,
+                request,
+                user,
+                None,
+                f"platform.settings.{key}",
+                {"key": key, "before": before, "after": body.value},
+            )
+            await session.flush()
+            response = tenant_setting_to_dto(tenant_setting_to_domain(setting))
+        return response
 
     @router.get(
         "/settings/{key}",

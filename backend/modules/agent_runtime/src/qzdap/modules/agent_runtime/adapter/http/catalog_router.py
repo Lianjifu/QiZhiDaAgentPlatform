@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
+from qzdap.modules.agent_runtime.domain.catalog_errors import CatalogAgentNotFound, CatalogCapabilityUnavailable
 
 
 def _owner_id(request: Request, fallback: UUID) -> UUID:
@@ -26,10 +27,21 @@ async def catalog_dependency(request: Request) -> AgentCatalogService:
     sf = container.session_factory()
     async with sf.session() as session:
         svc = factory.for_session(session)
+        principal = getattr(request.state, "principal", None)
+        if principal is not None:
+            svc.bind_scope(
+                tenant_id=principal.tenant_id, workspace_id=principal.workspace_id
+            )
         try:
             yield svc
-        except Exception:
+        except Exception as exc:
             await session.rollback()
+            if isinstance(exc, CatalogAgentNotFound):
+                raise HTTPException(status_code=404, detail="agent not found") from exc
+            if isinstance(exc, CatalogCapabilityUnavailable):
+                raise HTTPException(status_code=501, detail=str(exc)) from exc
+            if isinstance(exc, (ValueError, TypeError)):
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
             raise
         await session.commit()
 
@@ -56,7 +68,9 @@ def build_catalog_router() -> APIRouter:
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
         svc: AgentCatalogService = Depends(catalog_dependency),  # noqa: B008
     ) -> dict[str, Any]:
-        return await svc.create(tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body)
+        return await svc.create(
+            tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
+        )
 
     @router.get("/api/admin/agents/{agent_id}")
     async def get_admin_agent(
@@ -112,9 +126,10 @@ def build_catalog_router() -> APIRouter:
     @router.post("/api/admin/agents/{agent_id}/eval")
     async def eval_agent(
         agent_id: UUID,
+        body: dict[str, Any] | None = None,
         svc: AgentCatalogService = Depends(catalog_dependency),  # noqa: B008
     ) -> dict[str, Any]:
-        return await svc.run_eval(agent_id)
+        return await svc.run_eval(agent_id, cases=(body or {}).get("cases"))
 
     @router.post("/api/admin/agents/batch-status")
     async def batch_status(
@@ -149,7 +164,9 @@ def build_catalog_router() -> APIRouter:
             source = row.get("source") if isinstance(row, dict) else None
             if not isinstance(source, dict):
                 continue
-            await svc.create(tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=source)
+            await svc.create(
+                tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=source
+            )
             created += 1
         return {"created": created}
 
@@ -159,7 +176,34 @@ def build_catalog_router() -> APIRouter:
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
         svc: AgentCatalogService = Depends(catalog_dependency),  # noqa: B008
     ) -> dict[str, Any]:
-        raise HTTPException(status_code=501, detail="智能体导出服务尚未实现，未生成导出文件")
+        if body.get("format", "json") != "json":
+            raise HTTPException(status_code=422, detail="agent export supports JSON")
+        rows = await svc.export(workspace_id=x_workspace_id, ids=body.get("ids"))
+        import json
+
+        from fastapi.responses import Response
+
+        return Response(
+            json.dumps(rows["agents"], ensure_ascii=False, indent=2),
+            media_type="application/json",
+            headers={"Content-Disposition": 'attachment; filename="agents.json"'},
+        )
+
+    @router.get("/api/admin/agents/{agent_id}/audit")
+    async def agent_audit(
+        agent_id: UUID, svc: AgentCatalogService = Depends(catalog_dependency)
+    ) -> list[dict[str, Any]]:  # noqa: B008
+        return await svc.audit(agent_id)
+
+    @router.post("/api/admin/agents/{agent_id}/rollback")
+    async def agent_rollback(
+        agent_id: UUID,
+        body: dict[str, Any],
+        svc: AgentCatalogService = Depends(catalog_dependency),
+    ) -> dict[str, Any]:  # noqa: B008
+        return await svc.rollback(
+            agent_id=agent_id, version=str(body.get("version") or "")
+        )
 
     @router.get("/api/catalog/agents")
     async def list_catalog_agents(
@@ -177,7 +221,9 @@ def build_catalog_router() -> APIRouter:
         svc: AgentCatalogService = Depends(catalog_dependency),  # noqa: B008
     ) -> dict[str, Any]:
         user_id = _owner_id(request, x_user_id)
-        return await svc.set_favorite(agent_id=agent_id, user_id=user_id, on=bool(body.get("on")))
+        return await svc.set_favorite(
+            agent_id=agent_id, user_id=user_id, on=bool(body.get("on"))
+        )
 
     return router
 

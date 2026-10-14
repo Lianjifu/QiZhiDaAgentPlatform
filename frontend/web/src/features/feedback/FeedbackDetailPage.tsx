@@ -123,14 +123,14 @@ function DrawerPanelReply({ fb }: { fb: Feedback }) {
       <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3">
         <div>
           <p className="text-xs font-semibold">同步通知 {fb.agent} 团队</p>
-          <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">发送回复时同步抄送相关团队,便于改进产品。</p>
+        <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">回复会保存到反馈记录，供相关团队后续查看。</p>
         </div>
         <button type="button" className="relative inline-flex h-6 w-11 items-center rounded-full bg-[var(--brand)] transition" aria-pressed="true">
           <span className="inline-block h-5 w-5 transform translate-x-5 rounded-full bg-white shadow transition" />
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--brand)] bg-[var(--brand-light)] px-4 py-3">
-        <button type="button" disabled={!reply.trim() || server.isPending} onClick={() => server.mutate({ path: `/api/admin/feedback/${fb.id}/reply`, body: { reply }, success: '回复已发送' })}>发送回复</button>
+        <button type="button" disabled={!reply.trim() || server.isPending} onClick={() => server.mutate({ path: `/api/admin/feedback/${fb.id}/reply`, body: { reply }, success: '回复已保存' })}>保存回复</button>
         {notice && <p role="alert">{notice}</p>}
         <Send className="h-4 w-4 text-[var(--brand)]" />
         <span className="text-xs font-semibold text-[var(--brand)]">回复草稿，发送后以服务端结果为准。</span>

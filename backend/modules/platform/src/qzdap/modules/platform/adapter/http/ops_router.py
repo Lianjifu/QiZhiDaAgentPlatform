@@ -599,6 +599,9 @@ def build_ops_router() -> APIRouter:
             tenant_id=x_tenant_id, workspace_id=x_workspace_id, collection="metrics.thresholds"
         )
 
+    from qzdap.modules.platform.adapter.http.ops_mutation_router import build_mutation_router
+
+    router.include_router(build_mutation_router())
     return router
 
 

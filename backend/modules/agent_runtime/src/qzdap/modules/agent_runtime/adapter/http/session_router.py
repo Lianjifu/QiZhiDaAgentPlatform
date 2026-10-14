@@ -34,7 +34,9 @@ async def copilot_dependency(request: Request) -> CopilotSessionService:
         if tenant_raw and workspace_raw:
             from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
-            from qzdap.modules.agent_runtime.adapter.sandbox import SandboxRuntimeAdapter
+            from qzdap.modules.agent_runtime.adapter.sandbox import (
+                SandboxRuntimeAdapter,
+            )
             from qzdap.modules.agent_runtime.adapter.skills import SkillServiceAdapter
 
             tenant_id = TenantId(UUID(tenant_raw))
@@ -42,7 +44,7 @@ async def copilot_dependency(request: Request) -> CopilotSessionService:
             owner_id = UserId(_owner_id(request, UUID(int=0)))
             skill_factory = getattr(request.app.state, "skill_factory", None)
             if skill_factory is not None:
-                svc._graph._skill_port = SkillServiceAdapter(  # noqa: SLF001
+                svc._graph._skill_port = SkillServiceAdapter(
                     svc=skill_factory.for_session(session),
                     tenant_id=tenant_id,
                     workspace_id=workspace_id,
@@ -50,7 +52,7 @@ async def copilot_dependency(request: Request) -> CopilotSessionService:
                 )
             sandbox_client = getattr(request.app.state, "sandbox_client", None)
             if sandbox_client is not None:
-                svc._graph._sandbox_port = SandboxRuntimeAdapter(  # noqa: SLF001
+                svc._graph._sandbox_port = SandboxRuntimeAdapter(
                     sandbox_client,
                     tenant_id=tenant_id,
                     workspace_id=workspace_id,
@@ -66,6 +68,11 @@ async def copilot_dependency(request: Request) -> CopilotSessionService:
 
 def build_session_router() -> APIRouter:
     router = APIRouter(tags=["sessions"])
+    from qzdap.modules.agent_runtime.adapter.http.attachments import (
+        build_attachment_router,
+    )
+
+    router.include_router(build_attachment_router())
 
     @router.get("/api/sessions")
     async def list_sessions(
@@ -74,7 +81,9 @@ def build_session_router() -> APIRouter:
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
         svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
     ) -> list[dict[str, Any]]:
-        return await svc.list_sessions(owner_id=_owner_id(request, x_user_id), search=search)
+        return await svc.list_sessions(
+            owner_id=_owner_id(request, x_user_id), search=search
+        )
 
     @router.post("/api/sessions", status_code=201)
     async def create_session(
@@ -126,6 +135,24 @@ def build_session_router() -> APIRouter:
         content = str(body.get("content") or body.get("message") or "").strip()
         if not content:
             raise HTTPException(status_code=400, detail="content is required")
+        from qzdap.modules.agent_runtime.adapter.http.attachments import (
+            attachment_session,
+            resolve_attachment_context,
+        )
+
+        if body.get("attachmentIds") or "[附件:" in content:
+            from contextlib import aclosing
+
+            async with aclosing(attachment_session(request)) as attachment_scope:
+                async for attachment_db in attachment_scope:
+                    content = await resolve_attachment_context(
+                        attachment_db,
+                        request,
+                        session_id,
+                        content,
+                        body.get("attachmentIds"),
+                    )
+                    break
         chunks = svc.stream_turn(
             tenant_id=x_tenant_id,
             workspace_id=x_workspace_id,
@@ -157,7 +184,16 @@ def build_session_router() -> APIRouter:
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
         svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
     ) -> StreamingResponse:
-        return await _resume(svc, request, session_id, approval_id, x_tenant_id, x_workspace_id, x_user_id, True)
+        return await _resume(
+            svc,
+            request,
+            session_id,
+            approval_id,
+            x_tenant_id,
+            x_workspace_id,
+            x_user_id,
+            True,
+        )
 
     @router.post("/api/sessions/{session_id}/approvals/{approval_id}/deny")
     async def deny_tool(
@@ -169,7 +205,16 @@ def build_session_router() -> APIRouter:
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
         svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
     ) -> StreamingResponse:
-        return await _resume(svc, request, session_id, approval_id, x_tenant_id, x_workspace_id, x_user_id, False)
+        return await _resume(
+            svc,
+            request,
+            session_id,
+            approval_id,
+            x_tenant_id,
+            x_workspace_id,
+            x_user_id,
+            False,
+        )
 
     @router.get("/v1/sessions")
     async def list_v1(

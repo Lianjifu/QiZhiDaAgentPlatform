@@ -202,11 +202,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
     from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
 
+    async def _evaluate_catalog_agent(*, agent, prompt):
+        result = await catalog_evaluation_runner(tenant_id=agent.tenant_id, workspace_id=agent.workspace_id,
+            owner_id=UUID(int=0), agent_id=str(agent.id), user_input=prompt)
+        return result["final_message"]
+
     class _AgentCatalogFactory:
         def for_session(self, session):  # type: ignore[no-untyped-def]
             return AgentCatalogService(
                 SqlCatalogAgentRepository(session),
                 SqlCatalogAgentUserStateRepository(session),
+                evaluator=_evaluate_catalog_agent,
             )
 
     app.state.agent_catalog_factory = _AgentCatalogFactory()
@@ -281,6 +287,41 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 graph=graph,
             )
 
+    async def catalog_evaluation_runner(*, tenant_id, workspace_id, owner_id, agent_id, user_input, agent_version=None):
+        from dataclasses import replace
+        from qzdap_kernel.errors import AppError
+        sf = container.session_factory()
+        async with sf.session() as evaluation_session:
+            catalog = _AgentCatalogFactory().for_session(evaluation_session)
+            catalog.bind_scope(tenant_id=tenant_id, workspace_id=workspace_id)
+            candidates = await catalog._agents.list_for_workspace(workspace_id)
+            agent = next((a for a in candidates if a.tenant_id == tenant_id and
+                          (str(a.id) == str(agent_id) or a.name == str(agent_id))), None)
+            if agent is None:
+                raise AppError("evaluation agent not found", code="EVAL_AGENT_NOT_FOUND", status=404)
+            if agent_version:
+                version = next((v for v in agent.versions if v.get("version") == agent_version), None)
+                if not version or not isinstance(version.get("snapshot"), dict):
+                    raise AppError("evaluation version snapshot missing", code="EVAL_VERSION_MISSING", status=422)
+                agent = replace(agent.apply_patch(version["snapshot"]), version=agent_version)
+            copilot = _CopilotFactory().for_session(evaluation_session)
+            graph = copilot._graph
+            turn_id = uuid4()
+            output = {"final_message": "", "turn_id": str(turn_id), "input_tokens": 0, "output_tokens": 0}
+            async for chunk in graph.run_turn(tenant_id=tenant_id, workspace_id=workspace_id,
+                owner_id=owner_id, turn_id=turn_id, user_input=user_input, history=[], agent=agent, model=agent.model):
+                if chunk.kind == "approval_required":
+                    raise AppError("evaluation requires human approval", code="EVAL_APPROVAL_REQUIRED", status=409)
+                if chunk.kind == "error":
+                    raise AppError(chunk.message, code=chunk.code, status=502)
+                if chunk.kind == "done":
+                    output["final_message"] = chunk.final_message or ""
+                if chunk.kind == "usage":
+                    output["input_tokens"], output["output_tokens"] = chunk.input_tokens, chunk.output_tokens
+            await evaluation_session.commit()
+            return output
+
+    app.state.catalog_evaluation_runner = catalog_evaluation_runner
     app.state.copilot_factory = _CopilotFactory()
     app.state.model_service = model_service
 
@@ -389,6 +430,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
 
     app.state.tool_factory = _ToolFactory()
+    app.state.mcp_runtime = mcp_rt
 
     # ── per-request skill factory ─────────────────────────────────────────
     from qzdap.modules.skill.adapter.persistence.repositories import (

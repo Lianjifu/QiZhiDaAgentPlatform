@@ -52,6 +52,7 @@ def _to_domain(row: CatalogAgentORM) -> CatalogAgent:
         max_steps=row.max_steps,
         tools=list(row.tools or []),
         versions=list(row.versions or []),
+        audit_events=list(row.audit_events or []),
         evaluation_pass_rate=row.evaluation_pass_rate,
         evaluation_runs=row.evaluation_runs,
         evaluation_failed_cases=row.evaluation_failed_cases,
@@ -86,6 +87,7 @@ def _apply(row: CatalogAgentORM, agent: CatalogAgent) -> None:
     row.max_steps = agent.max_steps
     row.tools = list(agent.tools)
     row.versions = list(agent.versions)
+    row.audit_events = list(agent.audit_events)
     row.evaluation_pass_rate = agent.evaluation_pass_rate
     row.evaluation_runs = agent.evaluation_runs
     row.evaluation_failed_cases = agent.evaluation_failed_cases
@@ -124,7 +126,9 @@ class SqlCatalogAgentRepository(CatalogAgentRepository):
         result = await self._s.execute(
             select(CatalogAgentORM).where(CatalogAgentORM.workspace_id == workspace_id)
         )
-        return [_to_domain(row) for row in result.scalars().all() if not _cross_tenant(row)]
+        return [
+            _to_domain(row) for row in result.scalars().all() if not _cross_tenant(row)
+        ]
 
     async def update(self, agent: CatalogAgent) -> None:
         row = await self._s.get(CatalogAgentORM, agent.id)

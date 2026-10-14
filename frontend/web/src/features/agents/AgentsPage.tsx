@@ -163,15 +163,17 @@ export default function AgentsPage() {
     const enabledFields = (Object.keys(exportFields) as ExportField[]).filter((k) => exportFields[k]);
     exportAgents.mutate({
       scope: exportScope,
-      format: exportFormat,
+      format: 'json',
       fields: enabledFields,
-      ids: exportScope === 'selected' ? selectedIds : undefined,
+      ids: exportScope === 'selected' ? selectedIds : exportScope === 'tab' ? filteredList.map((agent) => agent.id) : undefined,
     }, { onSuccess: (result) => {
-      if (!result.url) { window.alert('后端未返回导出文件，导出失败。'); return; }
+      if (!Array.isArray(result)) { window.alert('后端返回的导出格式无效。'); return; }
+      const payload = JSON.stringify(result, null, 2);
       const link = document.createElement('a');
-      link.href = result.url;
-      link.download = `agents.${exportFormat}`;
+      link.href = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
+      link.download = 'agents.json';
       link.click();
+      URL.revokeObjectURL(link.href);
       setExportOpen(false);
     } });
   };

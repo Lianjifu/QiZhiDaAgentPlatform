@@ -1,6 +1,6 @@
 import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';
-import type { Member, SharedItem, Team, TeamAccent } from './schema';
+import type { Member, SharedItem, Team, TeamAccent, WorkspaceInvitation } from './schema';
 
 const ACCENTS: TeamAccent[] = ['emerald', 'sky', 'amber'];
 const MEMBER_COLOR = 'bg-[var(--brand-light)] text-[var(--brand)]';
@@ -126,8 +126,12 @@ export function useSharedItems(teamName: string) {
 }
 
 export function useInviteMember() {
-  return useApiMutation<Member, { team: string; email: string }>(
-    (vars) => `/api/workspaces/${encodeURIComponent(vars.team)}/members/invite`,
+  return useApiMutation<WorkspaceInvitation, { team: string; email: string }>(
+    // The backend scopes the operation to the workspace selected by
+    // X-Workspace-Id and exposes only the current-workspace route.  Passing
+    // the display name as a URL segment selected the wrong (non-existent)
+    // endpoint and made invites fail in development.
+    '/api/workspaces/current/members/invite',
     undefined,
     'POST',
   );

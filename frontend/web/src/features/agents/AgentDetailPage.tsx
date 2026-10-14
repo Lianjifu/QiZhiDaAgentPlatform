@@ -70,8 +70,12 @@ export default function AgentDetailPage() {
       rightVersion: current.version,
     });
     setDiffPair({ base: { id: previous.version, label: previous.version }, target: { id: current.version, label: current.version } });
-    setDiffBase(resp.leftPrompts);
-    setDiffTarget(resp.rightPrompts);
+    // The backend returns a serialized snapshot diff rather than the old
+    // prompt-document pair. Render that recorded diff as the target pane and
+    // leave the baseline empty so the UI never invents prompt content.
+    const emptyPrompts = { prompt: '', soul: '', agents: '', user: '', tools: '' } as Record<PromptKey, string>;
+    setDiffBase(emptyPrompts);
+    setDiffTarget({ ...emptyPrompts, prompt: resp.diff });
     setDiffOpen(true);
     } catch { /* API 错误由全局提示展示，不打开伪造的比较结果。 */ }
   };
@@ -82,7 +86,12 @@ export default function AgentDetailPage() {
     setLastEvalResult(null);
     try {
       const resp = await runEval.mutateAsync({ id: agent.id });
-      setLastEvalResult(resp.cases);
+      setLastEvalResult(resp.cases.map((item, index) => ({
+        id: `${resp.id ?? 'run'}-${index}`,
+        name: String(item.input ?? `用例 ${index + 1}`),
+        status: item.passed ? 'pass' : 'fail',
+        latency: 0,
+      })));
     } catch { /* API 错误由全局提示展示。 */ }
     finally { setEvalRunning(null); }
   };

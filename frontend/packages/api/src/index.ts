@@ -242,14 +242,19 @@ export class ApiClient {
       } catch {
         throw new ApiError('E_BAD_RESPONSE', `控制面返回非 JSON（HTTP ${res.status}）`, res.status);
       }
-      if (!res.ok || !json.ok) {
+      // Upload endpoints may return raw JSON (for example `{id: ...}`) while
+      // the gateway wraps responses in `{ok, data}`. Only an explicit failed
+      // envelope is an application error; an absent `ok` on a 2xx raw payload
+      // is a successful response.
+      if (!res.ok || (json && typeof json === 'object' && 'ok' in json && json.ok === false)) {
         const { code, message } = extractErrorPayload(json, '上传失败');
         if ((res.status === 401 || code === 'E_IDENTITY_MOCK_FORBIDDEN') && !isLoginPath(uploadTranslated.backendPath)) {
           this.onUnauthorized?.({ path: uploadTranslated.backendPath, status: res.status });
         }
         throw new ApiError(code, message, res.status);
       }
-      return (json.data ?? null) as T;
+      const isEnvelope = json && typeof json === 'object' && 'ok' in json;
+      return (isEnvelope ? (json.data ?? null) : json) as T;
     } finally {
       clearTimeout(t);
     }

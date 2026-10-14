@@ -80,6 +80,7 @@ async def tool_dependency(request: Request) -> ToolService:
 def build_router() -> APIRouter:
     router = APIRouter(prefix="/v1/tools", tags=["tool"])
 
+
     @router.post("", status_code=201)
     async def register_tool(
         body: RegisterToolRequest,

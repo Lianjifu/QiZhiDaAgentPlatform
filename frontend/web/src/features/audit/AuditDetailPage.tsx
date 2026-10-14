@@ -70,7 +70,7 @@ export default function AuditDetailPage() {
   const sev = SEVERITY_BADGE[entry.severity];
 
   const handleResolve = () => {
-    server.mutate({ path: `/api/admin/audit/entries/${id}/resolve`, success: '已下发处置任务', onSuccess: () => navigate('/admin/tool-audit') });
+    server.mutate({ path: `/api/admin/audit/entries/${id}/resolve`, success: '已标记处置', onSuccess: () => navigate('/admin/tool-audit') });
   };
 
   return (

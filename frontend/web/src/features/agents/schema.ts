@@ -148,7 +148,16 @@ export type ToggleStarVars = { id: string; starred: boolean };
 
 export type RunEvalVars = { id: string };
 
-export type EvalResult = { cases: EvalCase[]; passRate: number };
+export type EvalResult = {
+  agentId: string;
+  id: string;
+  name: string;
+  at: string;
+  status: 'passed' | 'failed';
+  caseCount: number;
+  passRate: number;
+  cases: Array<{ input: string; expected: string; output: string; passed: boolean }>;
+};
 
 export type ExportRequestVars = { scope: ExportScope; format: ExportFormat; fields: ExportField[]; ids?: string[] };
 
@@ -161,8 +170,11 @@ export interface DiffRequest {
 }
 
 export interface DiffResult {
-  leftPrompts: PromptDocs;
-  rightPrompts: PromptDocs;
+  agentId: string;
+  leftVersion: string;
+  rightVersion: string;
+  changes: Record<string, { before?: unknown; after?: unknown }>;
+  diff: string;
 }
 
 export interface DeletePayload {

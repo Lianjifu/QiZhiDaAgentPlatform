@@ -88,6 +88,17 @@ class MCPRuntimeAdapter:
         tools = result.get("tools") or []
         return list(tools)
 
+    async def discover(
+        self, *, server_url: str, headers: dict[str, str] | None = None
+    ) -> list[dict]:
+        """Discover tools from a configured HTTP MCP server.
+
+        Header credentials are deliberately not accepted as raw secrets here;
+        callers must register a vault-backed auth config before invocation.
+        """
+        _ = headers
+        return await self.list_tools(server_url=server_url, auth=None)
+
     async def call_tool(
         self,
         *,

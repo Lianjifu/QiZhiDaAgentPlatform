@@ -186,3 +186,45 @@ async def test_overview_write_then_read(service: AdminOpsService) -> None:
         tenant_id=TENANT, workspace_id=WORKSPACE, range_key="24h"
     )
     assert trend["points"][0]["calls"] == 3200
+
+
+@pytest.mark.asyncio
+async def test_patch_records_history_and_logs(service: AdminOpsService) -> None:
+    created = await service.create(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        collection="feedback.list",
+        prefix="fb",
+        body={"status": "new", "comment": "bad answer"},
+    )
+    patched = await service.patch(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        collection="feedback.list",
+        doc_key=str(created["id"]),
+        patch={"status": "resolved"},
+    )
+    assert patched["status"] == "resolved"
+    assert patched["history"][-1]["action"] == "patch"
+    assert patched["logs"][-1]["status"] == "resolved"
+
+
+@pytest.mark.asyncio
+async def test_action_routes_use_persisted_document(service: AdminOpsService) -> None:
+    created = await service.create(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        collection="feedback.list",
+        prefix="fb",
+        body={"status": "new"},
+    )
+    replied = await service.action(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        collection="feedback.list",
+        doc_key=str(created["id"]),
+        action="reply",
+        body={"reply": "已处理"},
+    )
+    assert replied["reply"] == "已处理"
+    assert replied["status"] == "in-progress"

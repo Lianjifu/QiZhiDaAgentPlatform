@@ -219,16 +219,15 @@ export function ExportDialog({
   onConfirm: () => void;
 }) {
   const targetCount = scope === 'all' ? counts.all : scope === 'tab' ? counts.tab : counts.selected;
-  const enabledFieldCount = EXPORT_FIELDS.filter((f) => fields[f.id]).length;
 
   const title = <span className="flex items-center gap-2"><Download className="h-5 w-5 text-[var(--brand)]" />导出智能体</span>;
-  const description = `选择导出范围、格式与字段 · 预计 ${targetCount} 个智能体 · 约 ${Math.max(targetCount * 4, 4)} KB`;
+  const description = `选择导出范围 · ${targetCount} 个智能体 · JSON 配置快照`;
 
   const footer = (
     <>
       <button type="button" onClick={onClose} className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--brand)]">取消</button>
-      <button type="button" onClick={onConfirm} disabled={targetCount === 0 || enabledFieldCount === 0} className="inline-flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--brand-hover)] disabled:opacity-50">
-        <Download className="h-3.5 w-3.5" />确认导出 ({format.toUpperCase()})
+      <button type="button" onClick={onConfirm} disabled={targetCount === 0} className="inline-flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--brand-hover)] disabled:opacity-50">
+        <Download className="h-3.5 w-3.5" />确认导出 (JSON)
       </button>
     </>
   );
@@ -278,7 +277,7 @@ export function ExportDialog({
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">格式</p>
           <div className="mt-2 flex gap-2">
-            {(['json', 'csv', 'yaml'] as const).map((f) => {
+            {(['json'] as const).map((f) => {
               const active = format === f;
               return (
                 <button
@@ -295,29 +294,8 @@ export function ExportDialog({
           </div>
         </div>
 
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">字段</p>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            {EXPORT_FIELDS.map((f) => {
-              const active = fields[f.id];
-              return (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setFields((prev) => ({ ...prev, [f.id]: !prev[f.id] }))}
-                  aria-pressed={active}
-                  className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition ${active ? 'border-[var(--brand)] bg-[var(--brand-light)] text-[var(--brand)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--brand)] hover:text-[var(--brand)]'}`}
-                >
-                  {active ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
-                  {f.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 text-[11px] text-[var(--text-muted)]">
-          预览:<span className="font-semibold text-[var(--text)]">{targetCount}</span> 个 · {enabledFieldCount} 个字段 · 约 {Math.max(targetCount * 4, 4)} KB
+          导出 <span className="font-semibold text-[var(--text)]">{targetCount}</span> 个智能体的已保存配置快照。
         </div>
       </div>
     </CenterModal>

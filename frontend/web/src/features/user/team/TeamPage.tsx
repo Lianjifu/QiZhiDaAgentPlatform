@@ -40,7 +40,6 @@ export default function TeamPage() {
 
   const { data: remoteMembers } = useMembers(teamName);
   const { data: remoteShared } = useSharedItems(teamName);
-  const [invited, setInvited] = useState<Member[]>([]);
   const inviteMutation = useInviteMember();
   const favoriteMutation = useToggleTeamFavorite();
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -51,10 +50,7 @@ export default function TeamPage() {
   const [email, setEmail] = useState('');
   const [notice, setNotice] = useState('');
 
-  const members = useMemo(() => {
-    const remote = remoteMembers.filter((member) => !invited.some((row) => row.id === member.id));
-    return [...invited, ...remote];
-  }, [invited, remoteMembers]);
+  const members = remoteMembers;
 
   const visibleMembers = useMemo(
     () => members.filter((member) => (!teamName || member.team === teamName) && `${member.name} ${member.role}`.toLowerCase().includes(query.trim().toLowerCase())),
@@ -69,7 +65,7 @@ export default function TeamPage() {
   const submitInvite = () => {
     const trimmed = email.trim();
     if (!trimmed || !teamName) return;
-    inviteMutation.mutate({ team: teamName, email: trimmed }, { onSuccess: (invitee) => { setInvited((current) => [invitee, ...current]); setTab('members'); setQuery(''); setInviting(false); setEmail(''); setNotice(`已向 ${trimmed} 发送邀请。`); }, onError: (cause) => setNotice(`邀请失败：${String(cause)}`) });
+    inviteMutation.mutate({ team: teamName, email: trimmed }, { onSuccess: () => { setInviting(false); setEmail(''); setNotice(`已为 ${trimmed} 创建邀请，等待接受。`); }, onError: (cause) => setNotice(`邀请失败：${String(cause)}`) });
   };
 
   const isResource = (item: SharedItem | Member): item is SharedItem => 'kind' in item;
@@ -245,7 +241,7 @@ export default function TeamPage() {
             </div>
             <div className="mt-8 rounded-2xl bg-[var(--bg-elevated)] p-5">
               <p className="flex items-center gap-2 text-xs font-semibold"><MessageSquareText className="h-4 w-4 text-[var(--brand)]" />协作提示</p>
-              <p className="mt-2 text-xs leading-6 text-[var(--text-muted)]">成员来自当前登录身份，智能体与知识来自工作空间目录。邀请仅保存在本页，不会发送邮件。</p>
+              <p className="mt-2 text-xs leading-6 text-[var(--text-muted)]">成员、智能体与知识来自当前工作空间。邀请保存到后端，接受后才会加入成员列表。</p>
             </div>
           </>
         )}
@@ -255,7 +251,7 @@ export default function TeamPage() {
         onClose={() => setInviting(false)}
         ariaLabel="邀请协作者"
         title={`邀请加入 ${teamName || '协作空间'}`}
-        description="填写邮箱后将加入本页列表，不会发送邮件。"
+        description="邀请保存到后端，接受后才会加入成员列表。目前未配置邮件发送服务。"
         closeLabel="关闭邀请窗口"
         panelClassName="max-w-md"
         onSubmit={(event) => { event.preventDefault(); submitInvite(); }}
@@ -263,7 +259,7 @@ export default function TeamPage() {
           <>
             <button type="button" onClick={() => setInviting(false)} className="rounded-xl border border-[var(--border)] px-4 py-2.5 text-sm font-medium">取消</button>
             <button type="submit" disabled={!email.trim() || !teamName} className="inline-flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
-              <MailPlus className="h-4 w-4" />发送邀请
+              <MailPlus className="h-4 w-4" />创建邀请
             </button>
           </>
         }

@@ -85,6 +85,22 @@ class SqlAdminOpsRepository:
         await self._session.flush()
         return dict(row.payload)
 
+    async def delete_doc(
+        self, *, workspace_id: UUID, collection: str, doc_key: str
+    ) -> bool:
+        row = await self._session.scalar(
+            select(AdminOpsDocORM).where(
+                AdminOpsDocORM.workspace_id == workspace_id,
+                AdminOpsDocORM.collection == collection,
+                AdminOpsDocORM.doc_key == doc_key,
+            )
+        )
+        if row is None or _cross_tenant(row):
+            return False
+        await self._session.delete(row)
+        await self._session.flush()
+        return True
+
     async def seed_if_empty(
         self,
         *,

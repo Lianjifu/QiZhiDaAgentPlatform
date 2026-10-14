@@ -63,6 +63,10 @@ def create_app() -> FastAPI:
 
     app.include_router(identity_router())
 
+    from qzdap.modules.identity.adapter.http.account_router import build_account_router
+
+    app.include_router(build_account_router())
+
     # Agent runtime module
     from qzdap.modules.agent_runtime.adapter.http.router import (
         build_router as agent_runtime_router,

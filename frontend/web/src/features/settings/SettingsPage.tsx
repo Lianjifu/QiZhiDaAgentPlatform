@@ -73,7 +73,7 @@ export default function SettingsPage() {
       setNotice({ tone: 'amber', text: '这个邮箱已经在成员列表里。' });
       return;
     }
-    server.mutate({ path: '/api/workspaces/current/members/invite', body: { email, role: inviteRole }, success: `已向 ${email} 发送邀请。`, onSuccess: () => { setInviteEmail(''); setInviteOpen(false); } });
+    server.mutate({ path: '/api/workspaces/current/members/invite', body: { email, role: inviteRole }, success: `已为 ${email} 创建邀请，等待接受。`, onSuccess: () => { setInviteEmail(''); setInviteOpen(false); } });
   };
 
   return (
@@ -224,7 +224,7 @@ export default function SettingsPage() {
                   <option value="成员">成员</option>
                   <option value="管理员">管理员</option>
                 </select>
-                <button type="submit" className="h-8 rounded-lg bg-[var(--brand)] px-3 text-xs font-semibold text-white">发送邀请</button>
+                <button type="submit" className="h-8 rounded-lg bg-[var(--brand)] px-3 text-xs font-semibold text-white">创建邀请</button>
               </form>
             ) : null}
             <ul className="divide-y divide-[var(--border)]">

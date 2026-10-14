@@ -259,7 +259,7 @@ export default function EvaluationDetailPage() {
 
   const update = (patch: Partial<EvalSuite>) => setDraft({ ...draft, ...patch });
   const handleSave = () => server.mutate({ path: `/api/admin/evaluations/suites/${draft.id}`, method: 'PATCH', body: draft, onSuccess: () => navigate('/admin/evaluations') });
-  const handleRun = () => server.mutate({ path: `/api/admin/evaluations/suites/${draft.id}/run`, success: '已提交运行' });
+  const handleRun = () => server.mutate({ path: `/api/admin/evaluations/suites/${draft.id}/run`, success: '评测已完成' });
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">

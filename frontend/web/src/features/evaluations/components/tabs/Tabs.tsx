@@ -301,7 +301,7 @@ export function TemplateTab({ templates, onAddTemplate }: { templates: CaseTempl
               </ul>
               <div className="mt-auto pt-4">
                 <button type="button" onClick={() => onAddTemplate(tpl)} className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[var(--brand)] bg-[var(--brand-light)] px-3 py-2 text-xs font-semibold text-[var(--brand)] hover:bg-white">
-                  <Plus className="h-3.5 w-3.5" />加入队列
+                  <Plus className="h-3.5 w-3.5" />创建套件
                 </button>
               </div>
             </article>

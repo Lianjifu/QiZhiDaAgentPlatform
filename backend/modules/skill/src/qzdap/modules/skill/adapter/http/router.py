@@ -50,6 +50,43 @@ async def skill_dependency(request: Request) -> SkillService:
 def build_router() -> APIRouter:
     router = APIRouter(tags=["skills"])
 
+    @router.post("/api/admin/skills/mcp/probe")
+    async def probe_mcp(body: dict[str, Any], request: Request) -> dict[str, Any]:
+        runtime = getattr(request.app.state, "mcp_runtime", None)
+        if runtime is None:
+            raise HTTPException(status_code=503, detail="MCP runtime not wired")
+        transport = body.get("transport") or "streamable-http"
+        if transport == "stdio":
+            raise HTTPException(
+                status_code=422,
+                detail="stdio MCP discovery is unavailable in this HTTP deployment",
+            )
+        if transport == "sse":
+            raise HTTPException(
+                status_code=422,
+                detail="legacy SSE transport requires a streamable-http MCP endpoint",
+            )
+        from urllib.parse import urlparse
+
+        server_url = str(body.get("serverUrl") or "").strip()
+        if (
+            urlparse(server_url).scheme not in {"http", "https"}
+            or not urlparse(server_url).hostname
+        ):
+            raise HTTPException(
+                status_code=422, detail="valid HTTP serverUrl is required"
+            )
+        try:
+            tools = await runtime.discover(
+                server_url=server_url, headers=body.get("headers") or {}
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="MCP discovery failed; check server configuration",
+            ) from exc
+        return {"tools": tools}
+
     @router.get("/api/admin/skills")
     async def list_admin_skills(
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
@@ -174,9 +211,11 @@ def build_router() -> APIRouter:
         生产模式应禁用(通过 ALLOW_DEV_API 关闭),或加鉴权。
         """
         import os
+
         if os.environ.get("QZDAP_ALLOW_DEV_API", "0") != "1":
             raise HTTPException(status_code=403, detail="dev API disabled")
         from uuid import uuid4
+
         call_id = uuid4()
         result = await svc.invoke_in_sandbox(
             workspace_id=x_workspace_id,

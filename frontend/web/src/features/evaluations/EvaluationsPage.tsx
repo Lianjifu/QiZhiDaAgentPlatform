@@ -66,10 +66,10 @@ export default function EvaluationsPage() {
 
   const toggleSelect = (id: string) => setSelectedIds((current) => current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
   const toggleStar = (id: string) => server.mutate({ path: `/api/admin/evaluations/suites/${id}`, method: 'PATCH', body: { starred: !suites.find((s) => s.id === id)?.starred } });
-  const handleRun = (suite: EvalSuite) => server.mutate({ path: `/api/admin/evaluations/suites/${suite.id}/run`, success: `已加入运行队列：${suite.name}`, onSuccess: () => setRunTarget(null) });
+  const handleRun = (suite: EvalSuite) => server.mutate({ path: `/api/admin/evaluations/suites/${suite.id}/run`, success: `评测已完成：${suite.name}`, onSuccess: () => setRunTarget(null) });
   const handleDuplicate = (suite: EvalSuite) => server.mutate({ path: `/api/admin/evaluations/suites/${suite.id}/duplicate`, success: '已复制套件' });
   const handleDelete = (suite: EvalSuite) => server.mutate({ path: `/api/admin/evaluations/suites/${suite.id}`, method: 'DELETE', success: `已删除「${suite.name}」`, onSuccess: () => setDeleteTarget(null) });
-  const handleBatchRun = () => server.mutate({ path: '/api/admin/evaluations/suites/batch-run', body: { ids: selectedIds }, success: '已提交批量运行', onSuccess: () => setSelectedIds([]) });
+  const handleBatchRun = () => server.mutate({ path: '/api/admin/evaluations/suites/batch-run', body: { ids: selectedIds }, success: '批量评测已完成', onSuccess: () => setSelectedIds([]) });
   const handleBatchDelete = () => server.mutate({ path: '/api/admin/evaluations/suites/bulk-delete', method: 'DELETE', body: { ids: selectedIds }, success: '已批量删除', onSuccess: () => setSelectedIds([]) });
   const handleImport = (_count: number, content: string, format: ExchangeFormat) => server.mutate({ path: '/api/admin/evaluations/suites/import', body: { content, format }, success: '已导入', onSuccess: () => setImportOpen(false) });
 

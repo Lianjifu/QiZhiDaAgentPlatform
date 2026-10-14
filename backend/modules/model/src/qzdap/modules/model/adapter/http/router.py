@@ -114,6 +114,23 @@ def build_router() -> APIRouter:
     ) -> list[dict[str, Any]]:
         return await svc.list_health(workspace_id=x_workspace_id)
 
+    @router.post("/api/admin/models/providers/{provider_id}/health-check")
+    async def provider_health_check(
+        provider_id: UUID, svc: ModelService = Depends(model_dependency)
+    ) -> dict[str, Any]:  # noqa: B008
+        return await svc.health_check(provider_id)
+
+    @router.post("/api/admin/models/import")
+    async def import_models(
+        body: dict[str, Any],
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ModelService = Depends(model_dependency),
+    ) -> dict[str, Any]:  # noqa: B008
+        return await svc.import_models(
+            tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
+        )
+
     @router.post("/api/admin/models/catalog")
     async def probe_catalog(
         body: dict[str, Any],

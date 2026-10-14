@@ -90,7 +90,7 @@ export function EntryDetailDrawer({ entry, rules, onClose, onResolve }: EntryDet
         </button>
         <button
           type="button"
-          onClick={() => onResolve('已下发处置任务')}
+          onClick={() => onResolve('已标记处置')}
           className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-700"
         >
           <ShieldOff className="h-3.5 w-3.5" />

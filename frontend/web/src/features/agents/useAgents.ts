@@ -106,7 +106,9 @@ export function useImportAgents() {
 }
 
 export function useExportAgents() {
-  return useApiMutation<{ url: string; count: number }, ExportRequestVars>(
+  // The backend returns the exported agent rows as a JSON response with an
+  // attachment disposition; it does not return a client-side URL envelope.
+  return useApiMutation<AgentEntry[], ExportRequestVars>(
     '/api/admin/agents/export',
     {},
   );

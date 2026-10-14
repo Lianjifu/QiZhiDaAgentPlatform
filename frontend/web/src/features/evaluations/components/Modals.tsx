@@ -16,7 +16,7 @@ export function RunConfirmModal({ open, onClose, onConfirm, suite }: { open: boo
       ariaLabel="运行评测套件"
       panelClassName="max-w-md"
       title={<span className="flex items-center gap-2"><Play className="h-5 w-5 text-[var(--brand)]" />立即运行:{suite.name}</span>}
-      description="确认后将套件加入运行队列,运行期间状态切换为「运行中」。"
+      description="确认后调用后端执行评测，完成后展示实际结果。"
       footer={
         <>
           <button type="button" onClick={onClose} className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">取消</button>

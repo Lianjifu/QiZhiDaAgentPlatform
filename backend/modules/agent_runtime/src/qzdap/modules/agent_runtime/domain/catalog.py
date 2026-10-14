@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Literal, Self
-from uuid import UUID
+from uuid import UUID, uuid4
 
 AgentStatus = Literal["draft", "pending", "graying", "published", "retired"]
 Tone = Literal["brand", "info", "success", "warn", "danger", "purple"]
@@ -41,7 +41,12 @@ def _empty_prompts() -> dict[str, str]:
 
 
 def _default_memory() -> dict[str, Any]:
-    return {"enabled": True, "retentionDays": 30, "scope": "user", "autoSummarize": True}
+    return {
+        "enabled": True,
+        "retentionDays": 30,
+        "scope": "user",
+        "autoSummarize": True,
+    }
 
 
 @dataclass(slots=True)
@@ -81,6 +86,7 @@ class CatalogAgent:
     memory_policy: dict[str, Any] = field(default_factory=_default_memory)
     flow_refs: list[dict[str, Any]] = field(default_factory=list)
     profile: dict[str, Any] | None = None
+    audit_events: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
     def create(
@@ -142,19 +148,30 @@ class CatalogAgent:
         if "tools" in patch and isinstance(patch["tools"], list):
             data["tools"] = [item for item in patch["tools"] if isinstance(item, dict)]
         if "prompts" in patch and isinstance(patch["prompts"], dict):
-            data["prompts"] = {**_empty_prompts(), **{k: str(v) for k, v in patch["prompts"].items()}}
+            data["prompts"] = {
+                **_empty_prompts(),
+                **{k: str(v) for k, v in patch["prompts"].items()},
+            }
         if "customPrompts" in patch and isinstance(patch["customPrompts"], list):
-            data["custom_prompts"] = [item for item in patch["customPrompts"] if isinstance(item, dict)]
+            data["custom_prompts"] = [
+                item for item in patch["customPrompts"] if isinstance(item, dict)
+            ]
         if "knowledgeRefs" in patch and isinstance(patch["knowledgeRefs"], list):
-            data["knowledge_refs"] = [item for item in patch["knowledgeRefs"] if isinstance(item, dict)]
+            data["knowledge_refs"] = [
+                item for item in patch["knowledgeRefs"] if isinstance(item, dict)
+            ]
         if "memoryPolicy" in patch and isinstance(patch["memoryPolicy"], dict):
             policy = {**_default_memory(), **patch["memoryPolicy"]}
             if policy.get("scope") not in MEMORY_SCOPES:
                 policy["scope"] = "user"
             data["memory_policy"] = policy
         if "flowRefs" in patch and isinstance(patch["flowRefs"], list):
-            data["flow_refs"] = [item for item in patch["flowRefs"] if isinstance(item, dict)]
-        if "profile" in patch and (patch["profile"] is None or isinstance(patch["profile"], dict)):
+            data["flow_refs"] = [
+                item for item in patch["flowRefs"] if isinstance(item, dict)
+            ]
+        if "profile" in patch and (
+            patch["profile"] is None or isinstance(patch["profile"], dict)
+        ):
             data["profile"] = patch["profile"]
         data["updated_at"] = _utcnow()
         next_agent = replace(self, **data)
@@ -162,13 +179,50 @@ class CatalogAgent:
             return next_agent.publish()
         return next_agent
 
+    def add_audit(self, action: str, *, detail: str = "", actor: str = "系统") -> Self:
+        event = {
+            "id": str(uuid4()),
+            "at": _utcnow().isoformat(),
+            "actor": actor,
+            "action": action,
+            "detail": detail,
+        }
+        return replace(
+            self, audit_events=[*self.audit_events, event], updated_at=_utcnow()
+        )
+
     def publish(self) -> Self:
         stamp = _utcnow().strftime("%Y-%m-%d")
         versions = [{**item, "current": False} for item in self.versions]
         next_version = f"v{len(self.versions) + 1}"
+        snapshot = {
+            "name": self.name,
+            "description": self.description,
+            "category": self.category,
+            "owner": self.owner,
+            "tags": list(self.tags),
+            "tone": self.tone,
+            "visibleScope": list(self.visible_scope),
+            "dataAccess": self.data_access,
+            "model": self.model,
+            "maxSteps": self.max_steps,
+            "tools": list(self.tools),
+            "prompts": dict(self.prompts),
+            "customPrompts": list(self.custom_prompts),
+            "knowledgeRefs": list(self.knowledge_refs),
+            "memoryPolicy": dict(self.memory_policy),
+            "flowRefs": list(self.flow_refs),
+            "profile": self.profile,
+        }
         versions.insert(
             0,
-            {"version": next_version, "publisher": self.owner, "releasedAt": stamp, "current": True},
+            {
+                "version": next_version,
+                "publisher": self.owner,
+                "releasedAt": stamp,
+                "current": True,
+                "snapshot": snapshot,
+            },
         )
         return replace(
             self,
@@ -213,6 +267,7 @@ class CatalogAgent:
             "memoryPolicy": dict(self.memory_policy),
             "flowRefs": list(self.flow_refs),
             "profile": self.profile,
+            "auditEvents": list(self.audit_events),
         }
 
     def to_catalog_dict(self) -> dict[str, Any]:
@@ -242,7 +297,9 @@ class CatalogAgent:
             "category": mapped,
             "owner": self.owner,
             "useCase": "、".join(self.tags[:2]) or f"{mapped}相关工作",
-            "input": f"与「{self.data_access}」相关的上下文" if self.data_access else "任务目标与必要背景",
+            "input": f"与「{self.data_access}」相关的上下文"
+            if self.data_access
+            else "任务目标与必要背景",
             "output": "结构化结论与可执行建议",
             "example": example,
             "tone": self.tone,

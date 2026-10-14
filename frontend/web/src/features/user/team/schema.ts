@@ -34,3 +34,11 @@ export interface InviteMemberVars {
   team: string;
   email: string;
 }
+
+export interface WorkspaceInvitation {
+  id: string;
+  email: string;
+  role: string;
+  status: 'pending';
+  deliveryStatus: string;
+}

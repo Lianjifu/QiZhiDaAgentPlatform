@@ -8,7 +8,8 @@ Inbound adapter registry + outbound adapter registry are read from
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Body, Path, Query, Request, status
 
@@ -29,11 +30,8 @@ from qzdap.modules.channel.domain.errors import ChannelNotFound
 from qzdap.modules.channel.domain.value_objects import ChannelStatus, ChannelType
 from qzdap_schema.ids import ChannelId, TenantId
 
-if TYPE_CHECKING:
-    from uuid import UUID
-
-    from qzdap.modules.channel.application.ports import InboundAdapter, OutboundAdapter
-    from qzdap.modules.channel.application.services import ChannelService
+from qzdap.modules.channel.application.ports import InboundAdapter, OutboundAdapter
+from qzdap.modules.channel.application.services import ChannelService
 
 router = APIRouter(prefix="/v1", tags=["channel"])
 
