@@ -19,13 +19,16 @@ from ..context.budget import (
     InMemorySummaryModel,
     estimate_tokens,
 )
+from ..execution.executor import InMemoryToolExecutor
 from ..execution.lock import (
     LockManager,
     LockToken,
     RevisionConflictError,
     SessionBusyError,
 )
+from ..governance.policy import InMemoryPolicyGuard
 from ..memory.layered import InMemoryLayeredMemory, L1Source
+from .routing import AgentRouteConfig, TaskKind, classify_task_kind_heuristic
 from .state import SessionState
 
 logger = logging.getLogger(__name__)
@@ -39,6 +42,10 @@ _default_lock_manager: Optional[LockManager] = None
 _default_memory: Optional[InMemoryLayeredMemory] = None
 _default_compactor: Optional[Compactor] = None
 _default_assembler: Optional[ContextAssembler] = None
+_default_policy: Optional[Any] = None  # PolicyGuard
+_default_executor: Optional[InMemoryToolExecutor] = None
+_default_tool_registry: Optional[Any] = None  # ToolRegistry
+_default_agent_config: Optional[AgentRouteConfig] = None
 
 
 def set_default_lock_manager(manager: LockManager) -> None:
@@ -82,13 +89,54 @@ def get_default_assembler() -> ContextAssembler | None:
     return _default_assembler
 
 
+def set_default_policy(policy: Any) -> None:
+    global _default_policy
+    _default_policy = policy
+
+
+def get_default_policy() -> Any | None:
+    return _default_policy
+
+
+def set_default_executor(executor: InMemoryToolExecutor) -> None:
+    global _default_executor
+    _default_executor = executor
+
+
+def get_default_executor() -> InMemoryToolExecutor | None:
+    return _default_executor
+
+
+def set_default_tool_registry(registry: Any) -> None:
+    global _default_tool_registry
+    _default_tool_registry = registry
+
+
+def get_default_tool_registry() -> Any | None:
+    return _default_tool_registry
+
+
+def set_default_agent_config(config: AgentRouteConfig) -> None:
+    global _default_agent_config
+    _default_agent_config = config
+
+
+def get_default_agent_config() -> AgentRouteConfig | None:
+    return _default_agent_config
+
+
 def reset_default_dependencies() -> None:
     """测试辅助：清空所有默认依赖。"""
     global _default_lock_manager, _default_memory, _default_compactor, _default_assembler
+    global _default_policy, _default_executor, _default_tool_registry, _default_agent_config
     _default_lock_manager = None
     _default_memory = None
     _default_compactor = None
     _default_assembler = None
+    _default_policy = None
+    _default_executor = None
+    _default_tool_registry = None
+    _default_agent_config = None
 
 
 # ---------------------------------------------------------------------------
@@ -402,19 +450,40 @@ def load_agent_context(state: SessionState) -> dict[str, Any]:
 def route(state: SessionState) -> dict[str, Any]:
     """9 route: §13.2 节点 9。
 
-    Stage 1 范围内：
-    - 始终返回 `deep_task=False`（不启用 Deep Agents 路径）。
-    - 真实 `classify_task_kind_heuristic` 由 §2.5 阻塞 6 / Stage 4 接入。
+    Stage 4 PR C: 接入真实 `classify_task_kind_heuristic` (不再是 fake)。
+
+    行为：
+    - 取 state.messages 末尾作为 user query
+    - 调 classify_task_kind_heuristic 算 TaskKind
+    - 计算 route.deep_task
+    - 写 state.route 字段
     """
+    cfg = get_default_agent_config() or AgentRouteConfig(
+        agent_id=str(state.get("agent_id", "")),
+        deep_research=False,
+    )
+    msgs = state.get("messages") or []
+    text = str(msgs[-1].get("content", "")) if msgs else ""  # type: ignore[union-attr]
+    message_count = len(msgs)
+    registry = get_default_tool_registry()
+    tools_count = len(registry.list_by_risk("low")) + len(registry.list_by_risk("medium")) + len(registry.list_by_risk("high")) if registry else 0
+
+    kind = classify_task_kind_heuristic(
+        message_count=message_count,
+        tools_count=tools_count,
+        message_text=text,
+        agent_config=cfg,
+    )
+
     return {
         "route": {
-            "deep_task": False,
-            "task_kind": "SIMPLE_QA",
-            "rule_version": "stage-1-fake",
+            "deep_task": kind != TaskKind.SIMPLE_QA,
+            "task_kind": kind.value,
+            "rule_version": "stage-4-classifier",
             "classifier": "heuristic",
             "confidence": 1.0,
-            "candidates": ["simple_qa"],
-            "reason": "stage 1 fake; deep_task disabled",
+            "candidates": [kind.value],
+            "reason": f"task_kind={kind.value}",
         }
     }
 
@@ -436,13 +505,165 @@ def agent(state: SessionState) -> dict[str, Any]:
 
 
 def governance(state: SessionState) -> dict[str, Any]:
-    """11 governance: §13.2 节点 11。Stage 1 passthrough。"""
-    return {}
+    """11 governance: §13.2 节点 11。
+
+    Stage 4 PR C: 接入 PolicyGuard。
+
+    行为：
+    - 遍历 state.tool_calls 中 pending 的 tool_call
+    - 调 PolicyGuard.decide() 拿 ApprovalDecision
+    - approve_required → 写 state.pending_approval
+    - deny → 写 state.errors (ErrorCode.APPROVAL_EXPIRED 等)
+    - allow → 不动, 等 execute 节点执行
+    """
+    policy = get_default_policy()
+    registry = get_default_tool_registry()
+    if policy is None or registry is None:
+        return {}  # Stage 1 兼容: 未注入 policy/registry → passthrough
+
+    from ..ports import ActorContext
+    actor = ActorContext(
+        actor_id="u-1",  # Stage 5 注入
+        tenant_id=str(state.get("tenant_id", "")),
+        workspace_id=str(state.get("workspace_id", "")),
+        roles=(),
+    )
+
+    tool_calls = list(state.get("tool_calls") or [])
+    pending = list(state.get("pending_approval") or [])
+    new_errors = []
+
+    for tc in tool_calls:
+        if tc.get("status") not in (None, "pending", "approved"):
+            continue
+        tool_name = tc.get("tool_name", "")
+        try:
+            meta, _ = registry.get(tool_name)
+        except KeyError:
+            continue
+
+        decision, approval_id = _call_policy(policy, actor=actor,
+            tool_call_id=str(tc.get("tool_call_id", "")),
+            tool_meta=meta,
+            arguments=tc.get("arguments", {}))
+
+        if decision == "approve_required":
+            pending.append({
+                "approval_id": approval_id or "",
+                "tool_call_id": str(tc.get("tool_call_id", "")),
+                "tool_name": tool_name,
+                "arguments_hash": "",
+                "policy_id": meta.policy_id or "",
+                "requester": actor.actor_id,
+                "requested_at": "",
+                "expires_at": "",
+            })
+        elif decision == "deny":
+            new_errors.append({
+                "node": "governance",
+                "error_code": "APPROVAL_EXPIRED",
+                "message": f"tool {tool_name} denied by policy",
+                "trace_id": state.get("trace_id"),
+                "retriable": False,
+                "occurred_at": "",
+            })
+
+    out: dict[str, Any] = {}
+    if pending:
+        out["pending_approval"] = pending[-1]  # 取最后一个 pending 写 state
+    if new_errors:
+        out["errors"] = list(state.get("errors") or []) + new_errors
+    return out
+
+
+def _call_policy(policy: Any, *, actor: Any, tool_call_id: str, tool_meta: Any, arguments: dict[str, Any]) -> tuple[Any, str | None]:
+    """调 PolicyGuard.decide 兼容 sync/async。"""
+    import asyncio
+    decision_coro = policy.decide(
+        actor=actor, tool_call_id=tool_call_id,
+        tool_meta=tool_meta, arguments=arguments,
+    )
+    if asyncio.iscoroutine(decision_coro):
+        from ..memory import run_async_from_sync
+        result = run_async_from_sync(decision_coro)
+    else:
+        result = decision_coro
+    return result
 
 
 def execute(state: SessionState) -> dict[str, Any]:
-    """12 execute: §13.2 节点 12。Stage 1 passthrough。"""
-    return {}
+    """12 execute: §13.2 节点 12。
+
+    Stage 4 PR C: 接入 ToolExecutor (with timeout/retry/idempotency)。
+
+    行为：
+    - 遍历 pending tool_calls (status=pending 且 governance.allow)
+    - 调 ToolExecutor.execute() 跑工具
+    - 写 state.tool_results
+    - is_error=true 时写 state.errors (ErrorCode 映射)
+    """
+    executor = get_default_executor()
+    registry = get_default_tool_registry()
+    if executor is None or registry is None:
+        return {}
+
+    import asyncio
+    from ..memory import run_async_from_sync
+    tool_calls = list(state.get("tool_calls") or [])
+    tool_results = list(state.get("tool_results") or [])
+    new_errors = []
+
+    for tc in tool_calls:
+        if tc.get("status") != "pending":
+            continue
+        tool_name = tc.get("tool_name", "")
+        tool_call_id = str(tc.get("tool_call_id", ""))
+        try:
+            meta, tool = registry.get(tool_name)
+        except KeyError:
+            continue
+
+        try:
+            result = run_async_from_sync(executor.execute(
+                tool_call_id=tool_call_id,
+                tool=tool,
+                arguments=tc.get("arguments", {}),
+                meta=meta,
+                turn_id=str(state.get("turn_id", "")),
+                idempotency_key=str(tc.get("idempotency_key", tool_call_id)),
+            ))
+        except Exception as exc:  # noqa: BLE001
+            new_errors.append({
+                "node": "execute",
+                "error_code": "TOOL_TIMEOUT",
+                "message": str(exc),
+                "trace_id": state.get("trace_id"),
+                "retriable": True,
+                "occurred_at": "",
+            })
+            continue
+
+        tool_results.append({
+            "tool_call_id": tool_call_id,
+            "content": result.get("result"),
+            "is_error": result.get("is_error", False),
+            "raw_size_bytes": 0,
+            "pointer": None,
+        })
+        if result.get("is_error"):
+            new_errors.append({
+                "node": "execute",
+                "error_code": result.get("error_code", "INTERNAL_ERROR"),
+                "message": result.get("error_message", ""),
+                "trace_id": state.get("trace_id"),
+                "retriable": True,
+                "occurred_at": "",
+            })
+
+    out: dict[str, Any] = {"tool_results": tool_results}
+    if new_errors:
+        out["errors"] = list(state.get("errors") or []) + new_errors
+    return out
 
 
 # ---------------------------------------------------------------------------
