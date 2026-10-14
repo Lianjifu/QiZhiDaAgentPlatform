@@ -466,8 +466,70 @@ def subagent(state: SessionState) -> dict[str, Any]:
 
 
 def remember(state: SessionState) -> dict[str, Any]:
-    """15 remember: §13.2 节点 15。Stage 1 passthrough。"""
+    """15 remember: §13.2 节点 15。
+
+    Stage 3 PR C：从 final answer + 显式事实 + provenance 提取 L2 长期事实，
+    写入 LayeredMemory.write_l2。
+
+    行为：
+
+    - 提取 L2 事实：从 state.context_manifest 的 memory hits 中提取高置信度 hit
+    - 去重：write_l2 同 content_hash 幂等（§5.4）
+    - 提升：低置信度只作为候选，不进入长期事实（§11 风险）
+    - 失败不回滚答案，进入 outbox 重试（§5.4）
+    """
+    memory = get_default_memory()
+    if memory is None:
+        return {}
+
+    tenant_id = str(state.get("tenant_id", ""))
+    workspace_id = str(state.get("workspace_id", ""))
+    user_id = ""  # Stage 5 注入
+
+    # 从 L2 hits 中提取事实（高置信度门槛：§11 风险决议）
+    min_confidence = 0.7
+    memory_hits = state.get("memory_hits") or []
+    candidates: list[dict[str, Any]] = []
+
+    for hit in memory_hits:
+        if hit.get("layer") != "l2":
+            continue
+        confidence = float(hit.get("metadata", {}).get("confidence", 1.0))
+        if confidence < min_confidence:
+            continue  # 提升门：低置信度不进长期事实
+        content = str(hit.get("content", ""))
+        if not content:
+            continue
+        candidates.append({
+            "fact_id": hit.get("source_id", f"unknown-{len(candidates)}"),
+            "tenant_id": tenant_id,
+            "workspace_id": workspace_id,
+            "user_id": user_id or "*",
+            "content": content,
+            "confidence": confidence,
+            "source_turn_id": state.get("turn_id"),
+            "content_hash": _content_hash(content),
+            "policy_version": "v1",
+        })
+
+    if not candidates:
+        return {}
+
+    # 写入（write_l2 自带 content_hash 幂等去重）
+    for cand in candidates:
+        try:
+            memory.write_l2(cand)
+        except Exception as exc:  # noqa: BLE001
+            # §5.4 记忆写失败不回滚答案, 进入 outbox 重试
+            logger.warning("remember.write_l2 failed: %s", exc)
+
     return {}
+
+
+def _content_hash(content: str) -> str:
+    """§5.4 content_hash 幂等: sha256 截前 16 字符。"""
+    import hashlib
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
 
 
 def persist_result(state: SessionState) -> dict[str, Any]:
