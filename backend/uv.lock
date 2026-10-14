@@ -13,6 +13,7 @@ members = [
     "qizhida-agent-platform",
     "qzdap-agent-factory",
     "qzdap-agent-runtime",
+    "qzdap-agent-runtime-runtime",
     "qzdap-app",
     "qzdap-auth",
     "qzdap-channel",
@@ -2356,6 +2357,31 @@ requires-dist = [
     { name = "qzdap-kernel", editable = "libs/kernel" },
     { name = "qzdap-llm", editable = "libs/llm" },
     { name = "qzdap-messaging", editable = "libs/messaging" },
+    { name = "qzdap-persistence", editable = "libs/persistence" },
+    { name = "qzdap-schema", editable = "libs/schema" },
+]
+
+[[package]]
+name = "qzdap-agent-runtime-runtime"
+version = "0.1.0"
+source = { editable = "runtimes/agent_runtime" }
+dependencies = [
+    { name = "qzdap-auth" },
+    { name = "qzdap-kernel" },
+    { name = "qzdap-llm" },
+    { name = "qzdap-messaging" },
+    { name = "qzdap-observability" },
+    { name = "qzdap-persistence" },
+    { name = "qzdap-schema" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "qzdap-auth", editable = "libs/auth" },
+    { name = "qzdap-kernel", editable = "libs/kernel" },
+    { name = "qzdap-llm", editable = "libs/llm" },
+    { name = "qzdap-messaging", editable = "libs/messaging" },
+    { name = "qzdap-observability", editable = "libs/observability" },
     { name = "qzdap-persistence", editable = "libs/persistence" },
     { name = "qzdap-schema", editable = "libs/schema" },
 ]
