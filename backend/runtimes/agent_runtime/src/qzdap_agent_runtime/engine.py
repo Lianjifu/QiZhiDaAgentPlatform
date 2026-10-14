@@ -46,6 +46,8 @@ from .graph.nodes import (
     set_default_executor,
     set_default_tool_registry,
     set_default_agent_config,
+    set_default_approval_store,
+    set_default_audit,
     reset_default_dependencies,
 )
 from .graph.routing import AgentRouteConfig
@@ -87,6 +89,8 @@ class ResumeRequest:
     approval_id: str
     decision: str  # "approve" | "deny"
     actor_id: str
+    tool_call_id: str = ""
+    request_hash: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -104,11 +108,15 @@ class SessionEngine:
         lock_manager: LockManager | None = None,
         memory: InMemoryLayeredMemory | None = None,
         dispatcher: ResultDispatcher | None = None,
+        approval_store: Any | None = None,
+        audit: Any | None = None,
     ) -> None:
         self._graph = build_session_graph(checkpointer=checkpointer)
         self._lock = lock_manager or InMemoryLockManager()
         self._memory = memory or InMemoryLayeredMemory()
         self._dispatcher = dispatcher or ResultDispatcher()
+        self._approval_store = approval_store
+        self._audit = audit
 
         # 注入默认依赖（让 graph 节点能拿到）
         set_default_lock_manager(self._lock)
@@ -119,6 +127,10 @@ class SessionEngine:
         set_default_executor(None)
         set_default_tool_registry(None)
         set_default_agent_config(None)
+        if approval_store is not None:
+            set_default_approval_store(approval_store)
+        if audit is not None:
+            set_default_audit(audit)
 
         # 默认 sink: InMemoryResultSink (SSE 客户端从这里消费)
         self._sink = InMemoryResultSink()
@@ -139,6 +151,14 @@ class SessionEngine:
     @property
     def sink(self) -> InMemoryResultSink:
         return self._sink
+
+    @property
+    def approval_store(self) -> Any:
+        return self._approval_store
+
+    @property
+    def audit(self) -> Any:
+        return self._audit
 
     # ---- 6 个稳定入口 (§5.2) ----
 
@@ -246,17 +266,131 @@ class SessionEngine:
         *,
         expected_revision: int | None = None,
     ) -> AsyncIterator[ResultEvent]:
-        """§5.2 resume_turn: 审批恢复 (Stage 6a 完整实现, Stage 5 stub)。"""
-        # §13.2 节点 13 governance interrupt 恢复（Stage 6a 接入）
-        # Stage 5: stub - 仅 emit error event
-        err = ErrorEvent(
-            turn_id=request.turn_id, seq=1, event_id=f"err-resume",
-            error_code="APPROVAL_NOT_MATCH",
-            safe_message="approval_id does not match pending tool_call",
-            retriable=False,
+        """§5.2 resume_turn: 审批恢复 (Stage 6a 完整实现)。
+
+        行为：
+        - 调 ApprovalStore.consume() 校验 approval_id / tool_call_id / request_hash
+        - 校验 TTL：超时报 ApprovalExpiredError → emit ErrorEvent + AuditLogger
+        - 校验不匹配：报 ApprovalNotMatchError → emit ErrorEvent
+        - approve: AuditLogger.log(APPROVE) + emit DoneEvent(succeeded)
+        - deny: AuditLogger.log(DENY) + emit DoneEvent(failed)
+        """
+        from .governance.approval import (
+            ApprovalExpiredError,
+            ApprovalNotMatchError,
         )
-        await self._dispatcher.dispatch(err)
-        yield err
+        from .governance.audit import AuditEvent, AuditKind
+        from .graph.nodes import get_default_audit
+        from .result.events import DoneEvent
+
+        store = self._approval_store
+        if store is None:
+            err = ErrorEvent(
+                turn_id=request.turn_id, seq=1, event_id=f"err-resume",
+                error_code="APPROVAL_NOT_MATCH",
+                safe_message="approval store not configured",
+                retriable=False,
+            )
+            await self._dispatcher.dispatch(err)
+            yield err
+            return
+
+        # 审批 ID 形如 "apr-<tool_call_id>"; 简化: tool_call_id 在 request 里
+        # 实际系统应从 approval 记录里读 tool_call_id; 这里允许 request 传入
+        tool_call_id = getattr(request, "tool_call_id", "")
+        request_hash = getattr(request, "request_hash", "")
+        if not tool_call_id or not request_hash:
+            # 从 approval_id 解析 (apr-<tool_call_id> 格式)
+            parts = request.approval_id.split("-", 1)
+            if len(parts) == 2:
+                tool_call_id = parts[1]
+            # request_hash 必须由调用方提供
+            err = ErrorEvent(
+                turn_id=request.turn_id, seq=1, event_id="err-resume-args",
+                error_code="APPROVAL_NOT_MATCH",
+                safe_message="tool_call_id and request_hash required",
+                retriable=False,
+            )
+            await self._dispatcher.dispatch(err)
+            yield err
+            return
+
+        try:
+            rec = store.consume(
+                approval_id=request.approval_id,
+                tool_call_id=tool_call_id,
+                request_hash=request_hash,
+                actor_id=request.actor_id,
+                decision=request.decision,
+            )
+        except ApprovalExpiredError:
+            audit = get_default_audit()
+            if audit is not None:
+                audit.log(AuditEvent(
+                    kind=AuditKind.TIMEOUT,
+                    actor_id=request.actor_id,
+                    session_id="", turn_id=request.turn_id,
+                    tool_call_id=tool_call_id, tool_name="",
+                    policy_id=None, request_hash=request_hash,
+                    trace_id=None, reason="approval TTL expired",
+                ))
+            err = ErrorEvent(
+                turn_id=request.turn_id, seq=1, event_id="err-timeout",
+                error_code="APPROVAL_EXPIRED",
+                safe_message="approval expired",
+                retriable=False,
+            )
+            await self._dispatcher.dispatch(err)
+            yield err
+            return
+        except ApprovalNotMatchError:
+            err = ErrorEvent(
+                turn_id=request.turn_id, seq=1, event_id="err-mismatch",
+                error_code="APPROVAL_NOT_MATCH",
+                safe_message="approval does not match pending tool_call",
+                retriable=False,
+            )
+            await self._dispatcher.dispatch(err)
+            yield err
+            return
+        except KeyError:
+            err = ErrorEvent(
+                turn_id=request.turn_id, seq=1, event_id="err-not-found",
+                error_code="APPROVAL_NOT_MATCH",
+                safe_message="approval not found",
+                retriable=False,
+            )
+            await self._dispatcher.dispatch(err)
+            yield err
+            return
+
+        # 成功路径: 记 audit
+        audit = get_default_audit()
+        if audit is not None:
+            audit_kind = AuditKind.APPROVE if rec.decision == "approve" else AuditKind.DENY
+            audit.log(AuditEvent(
+                kind=audit_kind,
+                actor_id=rec.consumed_by or request.actor_id,
+                session_id=rec.session_id,
+                turn_id=rec.turn_id,
+                tool_call_id=rec.tool_call_id,
+                tool_name=rec.tool_name,
+                policy_id=rec.policy_id,
+                request_hash=rec.request_hash,
+                trace_id=None,
+                approval_id=rec.approval_id,
+            ))
+
+        # emit done event
+        status = "succeeded" if rec.decision == "approve" else "failed"
+        done = DoneEvent(
+            turn_id=request.turn_id, seq=1, event_id=f"done-resume",
+            final_message=f"approval {rec.decision}",
+            status=status,  # type: ignore[arg-type]
+            agent_version="v1", model_version="m1",
+        )
+        await self._dispatcher.dispatch(done)
+        yield done
 
     async def replay(
         self,
