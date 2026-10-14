@@ -66,10 +66,27 @@ class SessionORM(TenantScopedMixin, Base):
         server_default=text("'idle'"),
     )
 
+    # Stage 2 新增字段（§14.1）— migration 0035
+    current_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    current_turn_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), nullable=True
+    )
+    agent_version_pinned: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    channel_session_key: Mapped[str | None] = mapped_column(
+        String(512), nullable=True, index=True
+    )
+
     __table_args__ = (
         make_composite_index("owner_id", "status"),
         make_composite_index("agent_id"),
-        CheckConstraint("status IN ('open','closed')", name="status_enum"),
+        CheckConstraint(
+            "status IN ('open','closed','running','waiting_approval','cancelled')",
+            name="status_enum",
+        ),
     )
 
 
