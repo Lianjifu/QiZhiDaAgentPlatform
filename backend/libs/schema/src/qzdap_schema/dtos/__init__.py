@@ -6,6 +6,7 @@ These are wire-level types that move between layers and across the network.
 from __future__ import annotations
 
 from .common import PageRequest, PageResponse
+from .errors import ErrorCode
 from .memory import MemoryEntryDTO
 from .turn import (
     ChunkEnvelope,
@@ -23,6 +24,7 @@ __all__ = [
     "ChunkEnvelope",
     "DoneChunk",
     "ErrorChunk",
+    "ErrorCode",
     "MemoryEntryDTO",
     "MessageChunk",
     "PageRequest",
