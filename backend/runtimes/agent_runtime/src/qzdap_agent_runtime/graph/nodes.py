@@ -279,7 +279,17 @@ def recall_memory_and_knowledge(state: SessionState) -> dict[str, Any]:
         }
 
     msgs = state.get("messages") or []
-    query = str(msgs[-1].get("content", "")) if msgs else ""  # type: ignore[union-attr]
+    # 兼容 LangChain BaseMessage 和 dict 两种输入
+    if msgs:
+        last = msgs[-1]
+        if hasattr(last, "content"):
+            text = str(last.content)  # type: ignore[union-attr]
+        elif isinstance(last, dict):
+            text = str(last.get("content", ""))
+        else:
+            text = str(last)
+    else:
+        text = ""
     tenant_id = str(state.get("tenant_id", ""))
     workspace_id = str(state.get("workspace_id", ""))
     user_id = ""  # 从 authenticated actor 注入 (Stage 5)
@@ -288,11 +298,11 @@ def recall_memory_and_knowledge(state: SessionState) -> dict[str, Any]:
     try:
         # 始终调用方法（duck typing）；不依赖 isinstance 检查
         mem_hits = _call_memory_recall(memory, "recall_memory",
-            query=query, tenant_id=tenant_id, workspace_id=workspace_id,
+            query=text, tenant_id=tenant_id, workspace_id=workspace_id,
             user_id=user_id or "*", session_id=session_id,
             policy={"top_k": 5, "threshold": 0.05})
         knowledge_hits = _call_memory_recall(memory, "recall_knowledge",
-            query=query, tenant_id=tenant_id, workspace_id=workspace_id)
+            query=text, tenant_id=tenant_id, workspace_id=workspace_id)
     except Exception as exc:  # noqa: BLE001
         # §5.4 召回失败: 主回答继续, 标记 degraded
         logger.warning("recall failed: %s", exc)
@@ -463,7 +473,16 @@ def route(state: SessionState) -> dict[str, Any]:
         deep_research=False,
     )
     msgs = state.get("messages") or []
-    text = str(msgs[-1].get("content", "")) if msgs else ""  # type: ignore[union-attr]
+    if msgs:
+        last = msgs[-1]
+        if hasattr(last, "content"):
+            text = str(last.content)  # type: ignore[union-attr]
+        elif isinstance(last, dict):
+            text = str(last.get("content", ""))
+        else:
+            text = str(last)
+    else:
+        text = ""
     message_count = len(msgs)
     registry = get_default_tool_registry()
     tools_count = len(registry.list_by_risk("low")) + len(registry.list_by_risk("medium")) + len(registry.list_by_risk("high")) if registry else 0

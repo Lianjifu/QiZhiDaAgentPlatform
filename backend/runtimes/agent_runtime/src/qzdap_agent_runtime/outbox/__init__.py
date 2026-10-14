@@ -310,6 +310,201 @@ class OutboxWorker:
             self._stats.failed += 1
         self._stats.processed += 1
 
+    @property
+    def stats(self) -> WorkerStats:
+        return self._stats
+
+    async def tick(self) -> int:
+        """跑一轮 worker: 拉取一批 pending 事件并尝试投递。
+
+        Returns:
+            本轮处理的事件数。
+        """
+        events = await self._repo.list_pending(limit=100)
+        if not events:
+            return 0
+
+        for event in events:
+            await self._process_one(event)
+        return len(events)
+
+    async def _process_one(self, event: OutboxEvent) -> None:
+        """处理单条事件,根据投递结果走状态机。"""
+        next_attempt = event.delivery_attempts + 1
+        try:
+            await self._dispatcher.dispatch(event)
+        except DispatchError as exc:
+            await self._handle_failure(event, next_attempt, str(exc))
+            return  # 关键: 失败路径必须 return, 不能落到成功分支
+        except Exception as exc:  # noqa: BLE001
+            # 任何其他异常都按 FAILED 处理(不抛穿 worker)
+            logger.exception(
+                "outbox dispatch unexpected error: turn_id=%s seq=%s",
+                event.turn_id, event.seq,
+            )
+            await self._handle_failure(event, next_attempt, str(exc))
+            return
+        # 成功
+        await self._repo.mark_delivered(event.turn_id, event.seq)
+        self._stats.delivered += 1
+        self._stats.processed += 1
+
+    async def _handle_failure(
+        self, event: OutboxEvent, attempts: int, error: str
+    ) -> None:
+        """§4.4 状态机: FAILED 或 DEAD_LETTER。"""
+        if attempts >= MAX_DELIVERY_ATTEMPTS:
+            # §4.4: 超 MAX_DELIVERY_ATTEMPTS=8 进死信
+            await self._repo.move_to_dead_letter(
+                event.turn_id, event.seq, attempts, error
+            )
+            self._stats.dead_lettered += 1
+            logger.warning(
+                "outbox dead-letter: turn_id=%s seq=%s attempts=%s error=%s",
+                event.turn_id, event.seq, attempts, error,
+            )
+        else:
+            await self._repo.mark_failed(
+                event.turn_id, event.seq, attempts, error
+            )
+            self._stats.failed += 1
+        self._stats.processed += 1
+
+
+# ---------------------------------------------------------------------------
+# OutboxToSinkAdapter (Stage 5 PR B)
+# ---------------------------------------------------------------------------
+
+
+class OutboxToSinkAdapter:
+    """§4.4 / §13.5 adapter: 把 OutboxEvent 推给 ResultSink 集合。
+
+    - 每个 OutboxEvent 转换成对应 ResultEvent 类型
+    - 转换失败 / sink 失败 不抛穿 worker
+    - 用于 outbox_dead_letters 首次写入 (Stage 5 退出条件)
+    """
+
+    def __init__(self, sinks: Any) -> None:
+        if hasattr(sinks, "sinks"):
+            self._sinks: list[Any] = list(sinks.sinks)
+        else:
+            self._sinks = list(sinks)
+
+    async def dispatch(self, event: Any) -> None:
+        from ..result.events import (
+            MessageEvent, ToolCallEvent, ToolResultEvent, ErrorEvent,
+            SkillInvocationEvent, MemoryWriteEvent, KnowledgeSearchEvent,
+            ContextCompactedEvent, ApprovalRequiredEvent, UsageEvent, DoneEvent,
+        )
+
+        ev_type = getattr(event, "event_type", "message")
+        payload = getattr(event, "payload", {}) or {}
+        turn_id = getattr(event, "turn_id", "unknown")
+        seq = getattr(event, "seq", 0)
+        event_id = f"outbox-{turn_id}-{seq}"
+
+        result_event: Any = None
+        if ev_type == "message":
+            result_event = MessageEvent(
+                turn_id=turn_id, seq=seq, event_id=event_id,
+                delta=str(payload.get("content", "")),
+            )
+        elif ev_type == "tool_call":
+            result_event = ToolCallEvent(
+                turn_id=turn_id, seq=seq, event_id=event_id,
+                tool_name=str(payload.get("tool_name", "")),
+                tool_call_id=str(payload.get("tool_call_id", "")),
+                arguments=payload.get("arguments", {}),
+            )
+        elif ev_type == "tool_result":
+            result_event = ToolResultEvent(
+                turn_id=turn_id, seq=seq, event_id=event_id,
+                tool_call_id=str(payload.get("tool_call_id", "")),
+                output=payload.get("output"),
+                is_error=bool(payload.get("is_error", False)),
+                latency_ms=int(payload.get("latency_ms", 0)),
+            )
+        elif ev_type == "skill_invocation":
+            result_event = SkillInvocationEvent(
+                turn_id=turn_id, seq=seq, event_id=event_id,
+                invocation_id=str(payload.get("invocation_id", "")),
+                skill=str(payload.get("skill", "")),
+                status=str(payload.get("status", "started")),
+            )
+        elif ev_type == "memory_write":
+            result_event = MemoryWriteEvent(
+                turn_id=turn_id, seq=seq, event_id=event_id,
+                layer=str(payload.get("layer", "l1")),
+                source_turn_id=str(payload.get("source_turn_id", "")),
+                preview=str(payload.get("preview", "")),
+            )
+        elif ev_type == "knowledge_search":
+            result_event = KnowledgeSearchEvent(
+                turn_id=turn_id, seq=seq, event_id=event_id,
+                query_hash=str(payload.get("query_hash", "")),
+                hits=payload.get("hits", []),
+                citations=payload.get("citations", []),
+                degraded=bool(payload.get("degraded", False)),
+            )
+        elif ev_type == "context_compacted":
+            result_event = ContextCompactedEvent(
+                turn_id=turn_id, seq=seq, event_id=event_id,
+                tokens_before=int(payload.get("tokens_before", 0)),
+                tokens_after=int(payload.get("tokens_after", 0)),
+                removed_ids=payload.get("removed_ids", []),
+            )
+        elif ev_type == "approval_required":
+            result_event = ApprovalRequiredEvent(
+                turn_id=turn_id, seq=seq, event_id=event_id,
+                approval_id=str(payload.get("approval_id", "")),
+                tool_call_id=str(payload.get("tool_call_id", "")),
+                tool=str(payload.get("tool", "")),
+                args_preview=str(payload.get("args_preview", "")),
+                reason=str(payload.get("reason", "")),
+                expires_at=str(payload.get("expires_at", "2026-10-15T10:15:00Z")),
+            )
+        elif ev_type == "usage":
+            result_event = UsageEvent(
+                turn_id=turn_id, seq=seq, event_id=event_id,
+                input_tokens=int(payload.get("input_tokens", 0)),
+                output_tokens=int(payload.get("output_tokens", 0)),
+                cache_tokens=int(payload.get("cache_tokens", 0)),
+                cost_usd=payload.get("cost_usd"),
+                cost_unknown=bool(payload.get("cost_unknown", True)),
+                tenant_id=str(payload.get("tenant_id", "")),
+                workspace_id=str(payload.get("workspace_id", "")),
+                user_id=str(payload.get("user_id", "")),
+                agent_id=str(payload.get("agent_id", "")),
+                agent_version=str(payload.get("agent_version", "")),
+                model_version=str(payload.get("model_version", "")),
+                retry_count=int(payload.get("retry_count", 0)),
+            )
+        elif ev_type == "done":
+            result_event = DoneEvent(
+                turn_id=turn_id, seq=seq, event_id=event_id,
+                final_message=str(payload.get("final_message", "")),
+                status=str(payload.get("status", "succeeded")),
+                agent_version=str(payload.get("agent_version", "")),
+                model_version=str(payload.get("model_version", "")),
+            )
+        else:
+            result_event = ErrorEvent(
+                turn_id=turn_id, seq=seq, event_id=event_id,
+                error_code=str(payload.get("error_code", "INTERNAL_ERROR")),
+                safe_message=str(payload.get("message", ev_type)),
+                retriable=False,
+            )
+
+        import logging
+        for sink in self._sinks:
+            name = type(sink).__name__
+            try:
+                await sink.dispatch(result_event)
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger(__name__).warning(
+                    "OutboxToSink dispatch failed: sink=%s error=%s", name, exc,
+                )
+
 
 __all__ = [
     "DispatchError",
@@ -318,6 +513,7 @@ __all__ = [
     "OutboxDispatcher",
     "OutboxEvent",
     "OutboxRepository",
+    "OutboxToSinkAdapter",
     "OutboxWorker",
     "RETRY_BASE_SECONDS",
     "RETRY_MAX_SECONDS",
