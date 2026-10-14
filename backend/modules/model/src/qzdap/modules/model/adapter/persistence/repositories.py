@@ -40,6 +40,7 @@ def _provider_to_domain(row: ProviderORM) -> Provider:
         api_key_masked=row.api_key_masked,
         protocol=row.protocol,  # type: ignore[arg-type]
         encrypted_payload=bytes(row.encrypted_payload or b""),
+        api_version=row.api_version,
         error_rate=row.error_rate,
         avg_latency_ms=row.avg_latency_ms,
         qps=row.qps,
@@ -56,6 +57,7 @@ def _apply_provider(row: ProviderORM, provider: Provider) -> None:
     row.api_key_masked = provider.api_key_masked
     row.protocol = provider.protocol
     row.encrypted_payload = provider.encrypted_payload
+    row.api_version = provider.api_version
     row.error_rate = provider.error_rate
     row.avg_latency_ms = provider.avg_latency_ms
     row.qps = provider.qps
@@ -68,6 +70,7 @@ def _model_to_domain(row: CatalogModelORM) -> Model:
         tenant_id=row.tenant_id,
         workspace_id=row.workspace_id,
         name=row.name,
+        upstream_model=row.upstream_model or row.name,
         provider_id=row.provider_id,
         provider_name=row.provider_name,
         task=list(row.task or []),
@@ -80,7 +83,7 @@ def _model_to_domain(row: CatalogModelORM) -> Model:
         tier=row.tier,  # type: ignore[arg-type]
         starred=row.starred,
         calls=row.calls,
-        trend=list(row.trend or [0] * 12),
+        trend=list(row.trend or []),
         description=row.description,
         tags=list(row.tags or []),
         created_at=row.created_at,
@@ -90,6 +93,7 @@ def _model_to_domain(row: CatalogModelORM) -> Model:
 
 def _apply_model(row: CatalogModelORM, model: Model) -> None:
     row.name = model.name
+    row.upstream_model = model.upstream_model or model.name
     row.provider_id = model.provider_id
     row.provider_name = model.provider_name
     row.task = list(model.task)
@@ -133,7 +137,11 @@ class SqlProviderRepository(ProviderRepository):
         result = await self._s.execute(
             select(ProviderORM).where(ProviderORM.workspace_id == workspace_id)
         )
-        return [_provider_to_domain(row) for row in result.scalars().all() if not _cross_tenant(row)]
+        return [
+            _provider_to_domain(row)
+            for row in result.scalars().all()
+            if not _cross_tenant(row)
+        ]
 
     async def update(self, provider: Provider) -> None:
         row = await self._s.get(ProviderORM, provider.id)
@@ -167,7 +175,11 @@ class SqlModelRepository(ModelRepository):
         result = await self._s.execute(
             select(CatalogModelORM).where(CatalogModelORM.workspace_id == workspace_id)
         )
-        return [_model_to_domain(row) for row in result.scalars().all() if not _cross_tenant(row)]
+        return [
+            _model_to_domain(row)
+            for row in result.scalars().all()
+            if not _cross_tenant(row)
+        ]
 
     async def update(self, model: Model) -> None:
         row = await self._s.get(CatalogModelORM, model.id)
@@ -226,7 +238,9 @@ class SqlRouteRepository(RouteRepository):
         )
 
     async def list_for_workspace(self, workspace_id: UUID) -> list[RouteRule]:
-        result = await self._s.execute(select(RouteORM).where(RouteORM.workspace_id == workspace_id))
+        result = await self._s.execute(
+            select(RouteORM).where(RouteORM.workspace_id == workspace_id)
+        )
         out: list[RouteRule] = []
         for row in result.scalars().all():
             if _cross_tenant(row):
@@ -241,7 +255,9 @@ class SqlRouteRepository(RouteRepository):
                     strategy=row.strategy,  # type: ignore[arg-type]
                     priority=row.priority,
                     primary_model_id=row.primary_model_id,
-                    fallback_model_ids=[str(item) for item in (row.fallback_model_ids or [])],
+                    fallback_model_ids=[
+                        str(item) for item in (row.fallback_model_ids or [])
+                    ],
                     enabled=row.enabled,
                     description=row.description,
                     created_at=row.created_at,
@@ -291,7 +307,9 @@ class SqlHealthRepository(HealthRepository):
             )
         )
 
-    async def list_for_workspace(self, workspace_id: UUID, limit: int = 50) -> list[HealthEvent]:
+    async def list_for_workspace(
+        self, workspace_id: UUID, limit: int = 50
+    ) -> list[HealthEvent]:
         result = await self._s.execute(
             select(HealthEventORM)
             .where(HealthEventORM.workspace_id == workspace_id)

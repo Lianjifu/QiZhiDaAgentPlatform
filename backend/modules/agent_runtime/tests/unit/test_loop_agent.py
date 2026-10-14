@@ -7,11 +7,24 @@ from uuid import UUID, uuid4
 
 import pytest
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
-from qzdap_schema.dtos.turn import ApprovalRequiredChunk, ContextCompactedChunk, DoneChunk, MemoryWriteChunk
+from qzdap_schema.dtos.turn import (
+    ApprovalRequiredChunk,
+    ContextCompactedChunk,
+    DoneChunk,
+    MemoryWriteChunk,
+)
+from qzdap_schema.ids import ModelId
+from qzdap_vault.actor import ActorContext
 
+from qzdap.modules.agent_runtime.adapter.graph.chat_model import complete_chat
 from qzdap.modules.agent_runtime.adapter.graph.compact import compact_messages
-from qzdap.modules.agent_runtime.adapter.graph.loop import HARD_MAX_STEPS, apply_stall_guard, next_route
+from qzdap.modules.agent_runtime.adapter.graph.loop import (
+    HARD_MAX_STEPS,
+    apply_stall_guard,
+    next_route,
+)
 from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
+from qzdap.modules.agent_runtime.adapter.llm import LLMPortAdapter
 from qzdap.modules.agent_runtime.application.ports import LLMPort
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 
@@ -281,3 +294,102 @@ async def test_compact_chunk_on_long_history() -> None:
         kinds.append(chunk.kind)
     assert "context_compacted" in kinds
     assert isinstance(ContextCompactedChunk(turn_id=uuid4(), seq=1, tokens_before=1, tokens_after=1), ContextCompactedChunk)
+
+
+@pytest.mark.asyncio
+async def test_complete_chat_merges_indexed_tool_fragments_and_streams_deltas() -> None:
+    calls: list[dict] = []
+
+    class FragmentLLM(LLMPort):
+        async def stream(self, req: ChatRequest, **kwargs: object):
+            calls.append(dict(kwargs))
+            yield LLMChunk(model=req.model, delta="早")
+            yield LLMChunk(model=req.model, delta="见", tool_calls=[{"index": 0, "id": "call-1", "thought_signature": "sig", "function": {"name": "lo", "arguments": '{"q":'}}])
+            yield LLMChunk(model=req.model, delta="", tool_calls=[{"index": 0, "function": {"name": "ok", "arguments": '"x"}'}}])
+            yield LLMChunk(model=req.model, delta="", finish_reason="tool_calls")
+
+    deltas: list[str] = []
+    async def on_delta(piece: str) -> None:
+        deltas.append(piece)
+
+    result = await complete_chat(FragmentLLM(), model="demo", messages=[], on_delta=on_delta)
+    assert "".join(deltas) == "早见"
+    assert len(result["tool_calls"]) == 1
+    assert result["tool_calls"][0]["name"] == "look"
+    assert result["tool_calls"][0]["arguments"] == '{"q":"x"}'
+    assert result["tool_calls"][0]["thought_signature"] == "sig"
+    assert calls == [{}]
+
+
+@pytest.mark.asyncio
+async def test_saved_adapter_passes_actor_and_closes_stream() -> None:
+    model_id = ModelId(uuid4())
+    actor = ActorContext(tenant_id=TENANT, workspace_id=WORKSPACE, principal_id=OWNER)
+    closed = False
+
+    class SavedService:
+        def stream(self, **kwargs: object):
+            assert kwargs["actor"] == actor
+            async def inner():
+                nonlocal closed
+                try:
+                    yield LLMChunk(model="upstream", delta="x")
+                finally:
+                    closed = True
+            return inner()
+
+    adapter = LLMPortAdapter(ScriptedLLM([]), model_service=SavedService())
+    iterator = adapter.stream(ChatRequest(model="saved", messages=[]), model_id=model_id, actor=actor)
+    assert (await iterator.__anext__()).delta == "x"
+    await iterator.aclose()
+    assert closed
+
+
+@pytest.mark.asyncio
+async def test_saved_graph_early_delta_cancellation_closes_provider() -> None:
+    import asyncio
+
+    model_id = ModelId(uuid4())
+    entered = asyncio.Event()
+    closed = asyncio.Event()
+
+    class SavedService:
+        async def stream(self, *, actor, model_id: ModelId, req: ChatRequest):
+            assert actor == ActorContext(tenant_id=TENANT, workspace_id=WORKSPACE, principal_id=OWNER)
+            assert str(model_id) == req.model
+            assert req.tools and req.tools[0]["function"]["name"] == "sandbox_exec"
+            try:
+                yield LLMChunk(model="actual-upstream", delta="first")
+                entered.set()
+                await asyncio.Event().wait()
+            finally:
+                closed.set()
+
+    runner = SessionGraphRunner(llm=LLMPortAdapter(ScriptedLLM([]), model_service=SavedService()))
+    stream = runner.run_turn(tenant_id=TENANT, workspace_id=WORKSPACE, owner_id=OWNER,
+                             turn_id=uuid4(), user_input="hi", history=[], agent=None, model=str(model_id))
+    first = await asyncio.wait_for(anext(stream), timeout=1)
+    assert first.kind == "message" and first.content == "first"
+    assert not entered.is_set()  # no read-ahead / completion buffering
+    pending = asyncio.create_task(anext(stream))
+    await asyncio.wait_for(entered.wait(), timeout=1)
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    assert closed.is_set()
+    await stream.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("actor", [None, ActorContext(tenant_id=TENANT), ActorContext(tenant_id=TENANT, principal_id=UUID(int=0))])
+async def test_saved_model_requires_real_actor(actor: ActorContext | None) -> None:
+    adapter = LLMPortAdapter(ScriptedLLM([]), model_service=object())
+    with pytest.raises(RuntimeError, match="real caller"):
+        await anext(adapter.stream(ChatRequest(model="saved", messages=[]), model_id=ModelId(uuid4()), actor=actor))
+
+
+@pytest.mark.asyncio
+async def test_saved_model_never_silently_falls_back_when_service_absent() -> None:
+    adapter = LLMPortAdapter(ScriptedLLM([]))
+    with pytest.raises(RuntimeError, match="unavailable"):
+        await anext(adapter.stream(ChatRequest(model="saved", messages=[]), model_id=ModelId(uuid4())))

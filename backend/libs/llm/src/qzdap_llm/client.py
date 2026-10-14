@@ -75,5 +75,8 @@ class LLMClient:
         raise NotImplementedError
         yield
 
+    async def aclose(self) -> None:
+        """Release owned resources. Stateless/custom clients need not override."""
+
     async def embed(self, texts: list[str]) -> list[list[float]]:  # pragma: no cover
         raise NotImplementedError

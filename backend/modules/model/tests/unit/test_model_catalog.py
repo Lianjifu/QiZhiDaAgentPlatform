@@ -36,7 +36,9 @@ class _MemModels(ModelRepository):
         return self.rows.get(model_id)
 
     async def list_for_workspace(self, workspace_id: UUID) -> list[Model]:
-        return [item for item in self.rows.values() if item.workspace_id == workspace_id]
+        return [
+            item for item in self.rows.values() if item.workspace_id == workspace_id
+        ]
 
     async def update(self, model: Model) -> None:
         self.rows[model.id] = model
@@ -56,7 +58,9 @@ class _MemProviders(ProviderRepository):
         return self.rows.get(provider_id)
 
     async def list_for_workspace(self, workspace_id: UUID) -> list[Provider]:
-        return [item for item in self.rows.values() if item.workspace_id == workspace_id]
+        return [
+            item for item in self.rows.values() if item.workspace_id == workspace_id
+        ]
 
     async def update(self, provider: Provider) -> None:
         self.rows[provider.id] = provider
@@ -73,7 +77,9 @@ class _MemRoutes(RouteRepository):
         return self.rows.get(route_id)
 
     async def list_for_workspace(self, workspace_id: UUID) -> list[RouteRule]:
-        return [item for item in self.rows.values() if item.workspace_id == workspace_id]
+        return [
+            item for item in self.rows.values() if item.workspace_id == workspace_id
+        ]
 
     async def update(self, route: RouteRule) -> None:
         self.rows[route.id] = route
@@ -89,7 +95,9 @@ class _MemHealth(HealthRepository):
     async def add(self, event: HealthEvent) -> None:
         self.rows.insert(0, event)
 
-    async def list_for_workspace(self, workspace_id: UUID, limit: int = 50) -> list[HealthEvent]:
+    async def list_for_workspace(
+        self, workspace_id: UUID, limit: int = 50
+    ) -> list[HealthEvent]:
         return [item for item in self.rows if item.workspace_id == workspace_id][:limit]
 
 
@@ -106,6 +114,9 @@ class _PlainCipher:
 
 
 class _FakeClient:
+    async def aclose(self) -> None:
+        pass
+
     async def chat(self, req: ChatRequest) -> ChatResponse:
         _ = req
         return ChatResponse(
@@ -117,17 +128,28 @@ class _FakeClient:
 
 
 class _FakeFactory(ModelClientFactory):
-    def build(self, *, protocol: str, api_key: str, base_url: str | None) -> object:
+    def build(
+        self,
+        *,
+        protocol: str,
+        api_key: str,
+        base_url: str | None,
+        api_version: str = "",
+    ) -> object:
         _ = (protocol, api_key, base_url)
         return _FakeClient()
 
 
 class _FakeProber(CatalogProber):
-    def __init__(self, models: list[str] | None = None, *, raise_exc: Exception | None = None) -> None:
+    def __init__(
+        self, models: list[str] | None = None, *, raise_exc: Exception | None = None
+    ) -> None:
         self.models = models if models is not None else ["gpt-4o", "gpt-4o-mini"]
         self.raise_exc = raise_exc
 
-    async def list_models(self, *, api_key: str, base_url: str, protocol: str) -> list[str]:
+    async def list_models(
+        self, *, api_key: str, base_url: str, protocol: str
+    ) -> list[str]:
         _ = (api_key, base_url, protocol)
         if self.raise_exc is not None:
             raise self.raise_exc
@@ -135,6 +157,10 @@ class _FakeProber(CatalogProber):
 
 
 def _svc(*, prober: CatalogProber | None = None) -> ModelService:
+    if prober is None:
+        prober = _FakeProber(
+            ["gpt-4o", "gpt-4o-mini", "text-embedding-3-large", "qwen-max"]
+        )
     return ModelService(
         _MemModels(),
         _MemProviders(),
@@ -153,6 +179,7 @@ async def test_create_list_and_filters() -> None:
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         body={
+            "source": "catalog",
             "providerName": "OpenAI 官方",
             "apiKey": "sk-test-1234",
             "baseUrl": "https://api.openai.com/v1",
@@ -178,6 +205,7 @@ async def test_update_star_batch_and_delete() -> None:
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         body={
+            "source": "catalog",
             "providerName": "通义",
             "apiKey": "sk-abcd",
             "baseUrl": "https://dashscope.aliyuncs.com",
@@ -207,6 +235,7 @@ async def test_routes_and_probe_fallback() -> None:
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         body={
+            "source": "catalog",
             "providerName": "OpenAI",
             "apiKey": "sk-xxxx",
             "baseUrl": "https://api.openai.com/v1",
@@ -241,6 +270,7 @@ async def test_routes_and_probe_fallback() -> None:
 @pytest.mark.asyncio
 async def test_probe_catalog_no_prober_wired() -> None:
     svc = _svc()
+    svc._prober = None
     catalog = await svc.probe_catalog(
         {"apiKey": "sk", "baseUrl": "https://example.com", "protocol": "openai"}
     )
@@ -253,7 +283,7 @@ async def test_probe_catalog_prober_raises() -> None:
     catalog = await svc.probe_catalog(
         {"apiKey": "sk", "baseUrl": "https://example.com", "protocol": "openai"}
     )
-    assert catalog == {"models": [], "error": "探测失败：boom"}
+    assert catalog == {"models": [], "error": "无法拉取模型目录，请检查供应商配置。"}
 
 
 @pytest.mark.asyncio
@@ -264,7 +294,8 @@ async def test_probe_catalog_prober_returns_empty() -> None:
     )
     assert catalog == {
         "models": [],
-        "error": "供应商未返回模型列表，请确认协议或手动添加模型 ID。",
+        "error": "供应商未返回模型列表。",
+        "discoverySupported": True,
     }
 
 
@@ -275,6 +306,7 @@ async def test_invoke_requires_active_and_records_call() -> None:
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         body={
+            "source": "catalog",
             "providerName": "OpenAI",
             "apiKey": "sk-live",
             "baseUrl": "https://api.openai.com/v1",

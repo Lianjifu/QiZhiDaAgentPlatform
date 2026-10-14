@@ -382,3 +382,130 @@ async def test_run_turn_first_chunk_yields_within_first_message() -> None:
     # drain
     async for _ in it:
         pass
+
+
+@pytest.mark.asyncio
+async def test_legacy_saved_model_stream_preserves_actor_tools_and_fragments() -> None:
+    from qzdap_llm.client import LLMChunk
+    from qzdap_vault.actor import ActorContext
+
+    from qzdap.modules.agent_runtime.adapter.llm import LLMPortAdapter
+
+    tid, wid, uid, aid = _make_owners()
+    saved_id = uuid4()
+    closed = False
+
+    class SavedService:
+        async def stream(self, *, actor, model_id, req):
+            nonlocal closed
+            assert actor == ActorContext(tenant_id=tid, workspace_id=wid, principal_id=uid)
+            assert model_id == saved_id
+            try:
+                yield LLMChunk(model="saved-upstream", delta="first")
+                yield LLMChunk(model="saved-upstream", delta="", tool_calls=[{"index": 0, "id": "call-1", "function": {"name": "look", "arguments": '{"q":'}}])
+                yield LLMChunk(model="saved-upstream", delta="", tool_calls=[{"index": 0, "function": {"name": "up", "arguments": '"ok"}'}}])
+                yield LLMChunk(model="saved-upstream", delta="", finish_reason="tool_calls")
+            finally:
+                closed = True
+
+    deps = make_dependencies()
+    deps["llm"] = LLMPortAdapter(deps["llm"], model_service=SavedService())
+    svc = AgentRuntimeService(**deps)
+    session = await svc.create_session().execute(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid, agent_version="v1")
+    stream = svc.run_turn().execute(tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=session.id, user_input="hi", model=str(saved_id))
+    assert (await anext(stream)).content == "first"
+    remaining = [chunk async for chunk in stream]
+    calls = [chunk for chunk in remaining if chunk.kind == "tool_call"]
+    assert len(calls) == 1
+    assert calls[0].tool_name == "lookup"
+    assert calls[0].arguments == {"q": "ok"}
+    assert closed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("selection", ["agent", "session", "override"])
+async def test_copilot_saved_model_early_delta_and_close(selection: str) -> None:
+    from qzdap_llm.client import LLMChunk
+    from qzdap_vault.actor import ActorContext
+
+    from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
+    from qzdap.modules.agent_runtime.adapter.llm import LLMPortAdapter
+    from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+    from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
+
+    tid, wid, uid, aid = _make_owners()
+    saved_id = uuid4()
+    agent = CatalogAgent.create(id=aid, tenant_id=tid, workspace_id=wid, name="test", category="test", owner="test", model=str(saved_id) if selection == "agent" else "default")
+    advanced = False
+    closed = False
+
+    class Catalog:
+        async def get_published(self, agent_id):
+            assert agent_id == aid
+            return agent
+
+    class Messages:
+        def __init__(self) -> None:
+            self.rows: list[dict] = []
+
+        async def list_for_session(self, session_id):
+            return self.rows
+        async def append(self, **kwargs):
+            self.rows.append(kwargs)
+
+    class SavedService:
+        async def stream(self, *, actor, model_id, req):
+            nonlocal advanced, closed
+            assert model_id == saved_id
+            assert actor == ActorContext(tenant_id=tid, workspace_id=wid, principal_id=uid)
+            try:
+                yield LLMChunk(model="actual-upstream", delta="early")
+                advanced = True
+                yield LLMChunk(model="actual-upstream", delta=" final", finish_reason="stop")
+            finally:
+                closed = True
+
+    deps = make_dependencies()
+    messages = Messages()
+    runner = SessionGraphRunner(llm=LLMPortAdapter(deps["llm"], model_service=SavedService()))
+    svc = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=messages, catalog=Catalog(), events=deps["events"], graph=runner)
+    detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
+    sid = UUID(detail["id"])
+    if selection == "session":
+        session = await deps["sessions"].get(sid)
+        await deps["sessions"].update(session.with_runtime(metadata={**session.metadata, "model": str(saved_id)}, graph_state={}, wait_status="idle"))
+    stream = svc.stream_turn(tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=sid, user_input="hi", model=str(saved_id) if selection == "override" else None)
+    assert (await anext(stream)).content == "early"
+    assert not advanced
+    await stream.aclose()
+    assert closed
+    completed = [chunk async for chunk in svc.stream_turn(tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=sid, user_input="hi", model=str(saved_id) if selection == "override" else None)]
+    assert completed[-1].final_message == "early final"
+    assert messages.rows[-1]["role"] == "assistant"
+    assert messages.rows[-1]["content"] == "early final"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mismatch", ["tenant", "workspace", "owner"])
+async def test_legacy_rejects_caller_scope_mismatch_before_saved_invocation(mismatch: str) -> None:
+    from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+
+    deps = make_dependencies()
+    svc = AgentRuntimeService(**deps)
+    tid, wid, uid, aid = _make_owners()
+    session = await svc.create_session().execute(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid, agent_version="v1")
+    with pytest.raises(SessionNotFound):
+        await anext(svc.run_turn().execute(
+            tenant_id=TenantId(uuid4()) if mismatch == "tenant" else tid,
+            workspace_id=WorkspaceId(uuid4()) if mismatch == "workspace" else wid,
+            owner_id=uuid4() if mismatch == "owner" else uid,
+            session_id=session.id, user_input="hi", model=str(uuid4()),
+        ))
+    copilot = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=None, catalog=None, events=deps["events"], graph=None)
+    with pytest.raises(SessionNotFound):
+        await anext(copilot.stream_turn(
+            tenant_id=TenantId(uuid4()) if mismatch == "tenant" else tid,
+            workspace_id=WorkspaceId(uuid4()) if mismatch == "workspace" else wid,
+            owner_id=uuid4() if mismatch == "owner" else uid,
+            session_id=session.id, user_input="hi", model=str(uuid4()),
+        ))

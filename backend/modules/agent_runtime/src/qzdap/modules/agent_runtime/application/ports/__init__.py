@@ -16,6 +16,7 @@ from uuid import UUID
 from qzdap_kernel.events import DomainEvent
 from qzdap_llm.client import ChatRequest, LLMChunk
 from qzdap_schema.ids import ModelId
+from qzdap_vault.actor import ActorContext
 
 from qzdap.modules.agent_runtime.domain import Session, Turn
 
@@ -44,7 +45,7 @@ class LLMPort(ABC):
     """Async-iterator facade over `qzdap_llm.LLMClient.stream`.
 
     When ``model_id`` is supplied (P6), the adapter delegates to
-    ``ModelService.invoke`` for per-tenant routing, quota tracking, and
+    ``ModelService.stream`` for per-tenant routing, quota tracking, and
     credential decryption. When ``model_id`` is ``None``, the legacy
     default path is used (P0–P5 callers stay unchanged).
     """
@@ -55,6 +56,7 @@ class LLMPort(ABC):
         req: ChatRequest,
         *,
         model_id: ModelId | None = None,
+        actor: ActorContext | None = None,
     ) -> AsyncIterator[LLMChunk]: ...
 
 

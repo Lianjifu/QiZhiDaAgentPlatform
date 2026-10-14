@@ -3,7 +3,7 @@
  * endpoint; create / patch / delete round-trip through in-memory state.
  */
 import { describe, expect, it } from 'vitest';
-import { wrapMockHandlerWithAdminModels } from './mock-handler';
+import { wrapMockHandlerWithAdminModels } from '@/features/models/mock-handler';
 
 describe('admin-models-mock-handler', () => {
   it('returns list endpoints with seed counts', async () => {
@@ -14,21 +14,9 @@ describe('admin-models-mock-handler', () => {
     expect((await wrap('/api/admin/models/health', { method: 'GET' })) as unknown[]).toHaveLength(4);
   });
 
-  it('creates a model and a route', async () => {
+  it('refuses unverified model creation but allows demo route creation', async () => {
     const wrap = wrapMockHandlerWithAdminModels(async () => undefined);
-    const createdModel = (await wrap('/api/admin/models', {
-      method: 'POST',
-      body: {
-        providerName: '测试供应商',
-        apiKey: 'sk-test-1234',
-        baseUrl: 'https://api.openai.com/v1',
-        protocol: 'openai',
-        models: ['gpt-4o-mini'],
-      },
-    })) as { id: string; status: string; providerName: string; name: string };
-    expect(createdModel.status).toBe('draft');
-    expect(createdModel.providerName).toBe('测试供应商');
-    expect(createdModel.name).toBe('gpt-4o-mini');
+    await expect(wrap('/api/admin/models', { method: 'POST', body: { providerName: '测试', apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', protocol: 'openai', models: ['gpt-4o'] } })).rejects.toThrow('演示模式无法验证供应商模型');
 
     const createdRoute = (await wrap('/api/admin/models/routes', {
       method: 'POST',
@@ -37,18 +25,18 @@ describe('admin-models-mock-handler', () => {
     expect(createdRoute.enabled).toBe(true);
   });
 
-  it('probes provider catalog by protocol', async () => {
+  it('never fabricates supplier catalogs', async () => {
     const wrap = wrapMockHandlerWithAdminModels(async () => undefined);
     const openai = (await wrap('/api/admin/models/catalog', {
       method: 'POST',
       body: { apiKey: 'sk-test', baseUrl: 'https://api.openai.com/v1', protocol: 'openai' },
     })) as { models: string[] };
-    expect(openai.models).toContain('gpt-4o');
+    expect(openai.models).toEqual([]);
     const claude = (await wrap('/api/admin/models/catalog', {
       method: 'POST',
       body: { apiKey: 'sk-test', baseUrl: 'https://api.anthropic.com', protocol: 'anthropic' },
     })) as { models: string[] };
-    expect(claude.models).toContain('claude-3-5-sonnet');
+    expect(claude.models).toEqual([]);
   });
 
   it('toggles a route and patches a model', async () => {

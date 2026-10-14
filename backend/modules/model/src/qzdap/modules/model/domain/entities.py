@@ -10,18 +10,50 @@ from uuid import UUID
 ModelStatus = Literal["active", "graying", "draft", "retired"]
 ProviderStatus = Literal["healthy", "degraded", "down"]
 RouteStrategy = Literal["quality-first", "cost-first", "latency-first", "fallback"]
-TaskType = Literal["reasoning", "generation", "classification", "embedding", "summarization"]
+TaskType = Literal[
+    "reasoning", "generation", "classification", "embedding", "summarization"
+]
 ModelTier = Literal["premium", "balanced", "economy"]
 HealthEventType = Literal["incident", "latency", "quota", "recovery"]
-ModelProtocol = Literal["openai", "azure", "anthropic", "openai-compatible"]
+ModelProtocol = Literal[
+    "openai",
+    "azure",
+    "anthropic",
+    "openai-compatible",
+    "anthropic-compatible",
+    "google",
+    "deepseek",
+    "glm",
+    "kimi",
+    "qwen",
+    "minimax",
+]
 
 MODEL_STATUSES = frozenset({"active", "graying", "draft", "retired"})
 PROVIDER_STATUSES = frozenset({"healthy", "degraded", "down"})
-ROUTE_STRATEGIES = frozenset({"quality-first", "cost-first", "latency-first", "fallback"})
-TASK_TYPES = frozenset({"reasoning", "generation", "classification", "embedding", "summarization"})
+ROUTE_STRATEGIES = frozenset(
+    {"quality-first", "cost-first", "latency-first", "fallback"}
+)
+TASK_TYPES = frozenset(
+    {"reasoning", "generation", "classification", "embedding", "summarization"}
+)
 MODEL_TIERS = frozenset({"premium", "balanced", "economy"})
 HEALTH_TYPES = frozenset({"incident", "latency", "quota", "recovery"})
-PROTOCOLS = frozenset({"openai", "azure", "anthropic", "openai-compatible", "anthropic-compatible"})
+PROTOCOLS = frozenset(
+    {
+        "openai",
+        "azure",
+        "anthropic",
+        "openai-compatible",
+        "anthropic-compatible",
+        "google",
+        "deepseek",
+        "glm",
+        "kimi",
+        "qwen",
+        "minimax",
+    }
+)
 
 
 def _utcnow() -> datetime:
@@ -59,6 +91,7 @@ class Provider:
     qps: int
     created_at: datetime
     updated_at: datetime
+    api_version: str = ""
 
     @classmethod
     def create(
@@ -73,9 +106,12 @@ class Provider:
         api_key_masked: str,
         encrypted_payload: bytes = b"",
         region: str = "custom",
+        api_version: str = "",
     ) -> Self:
         now = _utcnow()
-        proto: ModelProtocol = protocol if protocol in PROTOCOLS else "openai-compatible"
+        proto: ModelProtocol = (
+            protocol if protocol in PROTOCOLS else "openai-compatible"
+        )
         return cls(
             id=id,
             tenant_id=tenant_id,
@@ -87,6 +123,7 @@ class Provider:
             api_key_masked=api_key_masked,
             protocol=proto,
             encrypted_payload=encrypted_payload,
+            api_version=api_version.strip(),
             error_rate=0,
             avg_latency_ms=0,
             qps=0,
@@ -102,6 +139,8 @@ class Provider:
             "status": self.status,
             "baseUrl": self.base_url,
             "apiKeyMasked": self.api_key_masked,
+            "apiVersion": self.api_version,
+            "hasCredential": bool(self.encrypted_payload),
             "protocol": self.protocol,
             "errorRate": self.error_rate,
             "avgLatencyMs": self.avg_latency_ms,
@@ -132,6 +171,7 @@ class Model:
     tags: list[str]
     created_at: datetime
     updated_at: datetime
+    upstream_model: str = ""
 
     @classmethod
     def create(
@@ -151,10 +191,11 @@ class Model:
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             name=name.strip(),
+            upstream_model=name.strip(),
             provider_id=provider_id,
             provider_name=provider_name,
             task=infer_tasks(name),
-            context_window=128000,
+            context_window=0,
             price_in=0,
             price_out=0,
             latency_ms=0,
@@ -163,7 +204,7 @@ class Model:
             tier="balanced",
             starred=False,
             calls=0,
-            trend=[0] * 12,
+            trend=[],
             description=f"经 {provider_name}（{protocol}）接入",
             tags=[protocol],
             created_at=now,
@@ -174,6 +215,8 @@ class Model:
         data: dict[str, Any] = {}
         if patch.get("name"):
             data["name"] = str(patch["name"]).strip()
+        if patch.get("upstreamModel"):
+            data["upstream_model"] = str(patch["upstreamModel"]).strip()
         if "description" in patch:
             data["description"] = str(patch["description"])
         if "status" in patch and patch["status"] in MODEL_STATUSES:
@@ -189,7 +232,9 @@ class Model:
         if "priceOut" in patch:
             data["price_out"] = float(patch["priceOut"] or 0)
         if "task" in patch and isinstance(patch["task"], list):
-            data["task"] = [item for item in patch["task"] if item in TASK_TYPES] or list(self.task)
+            data["task"] = [
+                item for item in patch["task"] if item in TASK_TYPES
+            ] or list(self.task)
         if "tags" in patch and isinstance(patch["tags"], list):
             data["tags"] = [str(item) for item in patch["tags"]]
         data["updated_at"] = _utcnow()
@@ -202,20 +247,23 @@ class Model:
         return replace(self, status=status, updated_at=_utcnow())
 
     def record_call(self, *, latency_ms: int, ok: bool) -> Self:
-        trend = list(self.trend or [0] * 12)
-        if len(trend) < 12:
-            trend = ([0] * (12 - len(trend))) + trend
-        trend = trend[1:] + [trend[-1] + 1]
+        # No timestamped usage buckets exist yet: preserve stored history, do not
+        # fabricate a rolling series from request counts.
+        trend = list(self.trend)
         calls = self.calls + 1
         success = self.success_rate
         if calls > 0:
             prev_ok = success / 100.0 * (calls - 1)
             success = round(((prev_ok + (1 if ok else 0)) / calls) * 100, 1)
-        avg = latency_ms if self.latency_ms == 0 else int((self.latency_ms * (calls - 1) + latency_ms) / calls)
+        avg = (
+            latency_ms
+            if self.latency_ms == 0
+            else int((self.latency_ms * (calls - 1) + latency_ms) / calls)
+        )
         return replace(
             self,
             calls=calls,
-            trend=trend[-12:],
+            trend=trend,
             success_rate=success,
             latency_ms=avg,
             updated_at=_utcnow(),
@@ -226,6 +274,7 @@ class Model:
             "id": str(self.id),
             "name": self.name,
             "providerId": str(self.provider_id),
+            "upstreamModel": self.upstream_model or self.name,
             "providerName": self.provider_name,
             "task": list(self.task),
             "contextWindow": self.context_window,

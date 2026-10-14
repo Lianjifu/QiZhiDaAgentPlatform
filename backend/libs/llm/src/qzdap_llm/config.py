@@ -22,6 +22,6 @@ class LLMConfig:
     default_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
-    timeout_seconds: int = 30
+    timeout_seconds: float = 30
     mock_latency_ms: int = 50
     failover_providers: tuple[LLMProvider, ...] = ()

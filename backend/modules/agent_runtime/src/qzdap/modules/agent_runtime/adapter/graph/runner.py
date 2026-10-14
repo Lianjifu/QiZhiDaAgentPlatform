@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -10,7 +11,6 @@ from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
     ContextCompactedChunk,
     DoneChunk,
-    ErrorChunk,
     MemoryWriteChunk,
     MessageChunk,
     ToolCallChunk,
@@ -19,10 +19,19 @@ from qzdap_schema.dtos.turn import (
     UsageChunk,
 )
 from qzdap_schema.ids import ModelId
+from qzdap_vault.actor import ActorContext
 
-from qzdap.modules.agent_runtime.adapter.graph.chat_model import complete_chat
-from qzdap.modules.agent_runtime.adapter.graph.compact import DEFAULT_WINDOW, compact_messages
-from qzdap.modules.agent_runtime.adapter.graph.loop import HARD_MAX_STEPS, apply_stall_guard, compile_loop_graph, next_route
+from qzdap.modules.agent_runtime.adapter.graph.chat_model import stream_chat
+from qzdap.modules.agent_runtime.adapter.graph.compact import (
+    DEFAULT_WINDOW,
+    compact_messages,
+)
+from qzdap.modules.agent_runtime.adapter.graph.loop import (
+    HARD_MAX_STEPS,
+    apply_stall_guard,
+    compile_loop_graph,
+    next_route,
+)
 from qzdap.modules.agent_runtime.adapter.graph.state import LoopState, estimate_tokens
 from qzdap.modules.agent_runtime.adapter.graph.tools import (
     execute_tool,
@@ -165,28 +174,31 @@ class SessionGraphRunner:
                     tokens_after=estimate_tokens(messages),
                 )
 
-            deltas: list[str] = []
-
-            async def on_delta(piece: str, _seq_holder: list[int] = [seq]) -> None:  # noqa: B006
-                deltas.append(piece)
-
-            assistant = await complete_chat(
+            chat_stream = stream_chat(
                 self._llm,
                 model=model or "default",
                 messages=list(state["messages"]),
                 tools=tools_schema,
                 model_id=ModelId(UUID(model)) if _looks_uuid(model) else None,
-                on_delta=on_delta,
+                actor=ActorContext(
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    principal_id=owner_id,
+                ),
             )
+            assistant: dict[str, Any] | None = None
+            async with aclosing(chat_stream):
+                async for event in chat_stream:
+                    if isinstance(event, str):
+                        seq += 1
+                        yield MessageChunk(turn_id=turn_id, seq=seq, content=event)
+                    else:
+                        assistant = event
+            if assistant is None:
+                raise RuntimeError("LLM stream ended without an assistant message")
             usage = assistant.get("usage") or {}
             input_tokens += int(usage.get("input_tokens") or 0)
             output_tokens += int(usage.get("output_tokens") or 0)
-            if "".join(deltas):
-                seq += 1
-                yield MessageChunk(turn_id=turn_id, seq=seq, content="".join(deltas))
-            elif assistant.get("content"):
-                seq += 1
-                yield MessageChunk(turn_id=turn_id, seq=seq, content=str(assistant["content"]))
 
             state["messages"] = list(state["messages"]) + [assistant]
             state["step"] = int(state.get("step") or 0) + 1

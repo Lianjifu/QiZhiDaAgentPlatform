@@ -43,8 +43,10 @@ from qzdap_schema.dtos.turn import (
     TurnChunk,
     UsageChunk,
 )
-from qzdap_schema.ids import TenantId, TurnId, WorkspaceId
+from qzdap_schema.ids import ModelId, TenantId, TurnId, WorkspaceId
+from qzdap_vault.actor import ActorContext
 
+from qzdap.modules.agent_runtime.adapter.graph.chat_model import ToolCallAccumulator
 from qzdap.modules.agent_runtime.adapter.llm.prompts import (
     build_system_prompt,
     build_system_prompt_with_knowledge,
@@ -105,6 +107,8 @@ class RunTurnUseCase:
     ) -> AsyncIterator[TurnChunk]:
         session = await self._sessions.get(session_id)
         if session is None or session.tenant_id != tenant_id:
+            raise SessionNotFound(f"session {session_id} not found")
+        if session.workspace_id != workspace_id or session.owner_id != owner_id:
             raise SessionNotFound(f"session {session_id} not found")
         if session.status is SessionStatus.CLOSED:
             raise SessionClosedError(
@@ -204,22 +208,33 @@ class RunTurnUseCase:
         collected_input_tokens: int | None = None
         collected_output_tokens: int | None = None
         try:
-            async for chunk in self._llm.stream(req):
+            model_id = ModelId(UUID(model))
+        except (ValueError, TypeError, AttributeError):
+            model_id = None
+        actor = ActorContext(tenant_id=tenant_id, workspace_id=workspace_id, principal_id=owner_id)
+        stream = self._llm.stream(req, model_id=model_id, actor=actor) if model_id is not None else self._llm.stream(req)
+        tool_calls = ToolCallAccumulator()
+        try:
+            async for chunk in stream:
                 if chunk.delta:
                     seq += 1
                     collected_text += chunk.delta
                     yield MessageChunk(turn_id=turn.id, seq=seq, content=chunk.delta)
                 if chunk.tool_calls:
-                    seq += 1
-                    for tc in chunk.tool_calls:
+                    tool_calls.add(chunk.tool_calls)
+                if chunk.finish_reason or (model_id is None and chunk.tool_calls):
+                    for tc in tool_calls.finish():
+                        seq += 1
+                        raw_args = tc.get("arguments") or {}
                         try:
-                            args = json.loads(
-                                tc.get("function", {}).get("arguments", "{}")
-                            )
+                            args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
                         except json.JSONDecodeError:
-                            args = {"_raw": tc.get("function", {}).get("arguments", "")}
-                        tool_call_id = UUID(tc["id"]) if tc.get("id") else uuid4()
-                        tool_name = tc.get("function", {}).get("name", "unknown")
+                            args = {"_raw": raw_args}
+                        try:
+                            tool_call_id = UUID(str(tc["id"]))
+                        except (ValueError, TypeError):
+                            tool_call_id = uuid4()
+                        tool_name = tc.get("name") or "unknown"
                         yield ToolCallChunk(
                             turn_id=turn.id,
                             seq=seq,
@@ -269,6 +284,7 @@ class RunTurnUseCase:
                                     is_error=True,
                                     latency_ms=latency_ms,
                                 )
+                    tool_calls = ToolCallAccumulator()
                 if chunk.usage is not None:
                     seq += 1
                     collected_input_tokens = chunk.usage.input_tokens
@@ -335,6 +351,8 @@ class RunTurnUseCase:
                 trace_id=current_trace_id(),
             )
             raise
+        finally:
+            await stream.aclose()
 
     async def _tool_defs(self) -> list[dict] | None:
         tools: list[dict] = []

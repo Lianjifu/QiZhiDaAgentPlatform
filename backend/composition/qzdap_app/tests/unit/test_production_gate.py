@@ -79,8 +79,83 @@ def _prod_settings(**overrides: object) -> Settings:
 
 def test_prod_settings_with_safe_values_passes() -> None:
     settings = _prod_settings()
-    # should not raise
     Container(settings)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["complete", "error", "close", "cancel"])
+async def test_saved_model_stream_facade_session_lifecycle(monkeypatch, outcome: str) -> None:
+    import asyncio
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from qzdap.modules.model.adapter.llm import client_factory
+    from qzdap.modules.model.adapter.persistence import repositories
+    from qzdap.modules.model.application import services
+    from qzdap_llm.client import ChatRequest, LLMChunk
+    from qzdap_vault.actor import ActorContext
+
+    events: list[str] = []
+    waiting = asyncio.Event()
+    actor = ActorContext(tenant_id=uuid4(), workspace_id=uuid4(), principal_id=uuid4())
+    saved_id = uuid4()
+    req = ChatRequest(model="saved", messages=[])
+
+    class DBSession:
+        async def commit(self):
+            events.append("commit")
+        async def rollback(self):
+            events.append("rollback")
+
+    class Sessions:
+        @asynccontextmanager
+        async def session(self):
+            events.append("open")
+            try:
+                yield DBSession()
+            finally:
+                events.append("exit")
+
+    class Service:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def stream(self, **kwargs):
+            assert kwargs == {"actor": actor, "model_id": saved_id, "req": req}
+            try:
+                yield LLMChunk(model="upstream", delta="first")
+                if outcome == "error":
+                    raise ValueError("provider failed")
+                if outcome == "cancel":
+                    waiting.set()
+                    await asyncio.Event().wait()
+                yield LLMChunk(model="upstream", delta="", finish_reason="stop")
+            finally:
+                events.append("provider_closed")
+
+    monkeypatch.setattr(services, "ModelService", Service)
+    monkeypatch.setattr(client_factory, "build_default_client_factory", lambda **kwargs: object())
+    for name in ("SqlModelRepository", "SqlProviderRepository", "SqlRouteRepository", "SqlHealthRepository"):
+        monkeypatch.setattr(repositories, name, lambda session: object())
+    host = SimpleNamespace(settings=SimpleNamespace(model_invocation_timeout_seconds=1), model_credential_cipher=lambda: object(), session_factory=lambda: Sessions())
+    facade = Container.model_service(host)
+    stream = facade.stream(actor=actor, model_id=saved_id, req=req)
+    assert (await anext(stream)).delta == "first"
+    assert events == ["open"]
+    if outcome == "complete":
+        assert len([chunk async for chunk in stream]) == 1
+    elif outcome == "error":
+        with pytest.raises(ValueError, match="provider failed"):
+            await anext(stream)
+    elif outcome == "close":
+        await stream.aclose()
+    else:
+        task = asyncio.create_task(anext(stream))
+        await waiting.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert events == ["open", "provider_closed", "commit" if outcome == "complete" else "rollback", "exit"]
 
 
 # ── raw-secret sentinel detection ────────────────────────────────────────

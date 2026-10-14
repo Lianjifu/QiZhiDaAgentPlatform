@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -22,7 +23,10 @@ from qzdap.modules.agent_runtime.application.ports import (
 )
 from qzdap.modules.agent_runtime.domain import Session, SessionStatus, Turn
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
-from qzdap.modules.agent_runtime.domain.errors import SessionClosedError, SessionNotFound
+from qzdap.modules.agent_runtime.domain.errors import (
+    SessionClosedError,
+    SessionNotFound,
+)
 
 
 class CopilotSessionService:
@@ -122,6 +126,8 @@ class CopilotSessionService:
         resume: dict[str, Any] | None = None,
     ) -> AsyncIterator[TurnChunk]:
         session = await self._require_session(tenant_id, session_id)
+        if session.workspace_id != workspace_id or session.owner_id != owner_id:
+            raise SessionNotFound(f"session {session_id} not found")
         if session.status is SessionStatus.CLOSED:
             raise SessionClosedError(f"session {session_id} is closed", code="SESSION_CLOSED")
         agent_row = await self._catalog.get_published(session.agent_id)
@@ -161,7 +167,7 @@ class CopilotSessionService:
         if resume:
             graph_resume = {**graph_resume, **resume}
         assistant_parts: list[str] = []
-        async for chunk in self._graph.run_turn(
+        graph_stream = self._graph.run_turn(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             owner_id=owner_id,
@@ -172,42 +178,44 @@ class CopilotSessionService:
             model=model or str(session.metadata.get("model") or agent_row.model or "default"),
             rolling_summary=str(session.metadata.get("rolling_summary") or ""),
             resume=graph_resume if graph_resume.get("pending_approval") or resume else None,
-        ):
-            yield chunk
-            if getattr(chunk, "kind", None) == "message":
-                assistant_parts.append(getattr(chunk, "content", "") or "")
-            if isinstance(chunk, ApprovalRequiredChunk):
-                meta = dict(session.metadata)
-                meta["preview"] = "等待确认操作"
-                updated = session.with_runtime(
-                    metadata=meta,
-                    graph_state=dict(self._graph.last_loop_state),
-                    wait_status="waiting_approval",
-                )
-                await self._sessions.update(updated)
-            if isinstance(chunk, DoneChunk):
-                final = chunk.final_message or "".join(assistant_parts)
-                await self._messages.append(
-                    tenant_id=tenant_id,
-                    workspace_id=workspace_id,
-                    session_id=session_id,
-                    turn_id=turn.id,
-                    seq=seq,
-                    role="assistant",
-                    content=final,
-                )
-                meta = dict(session.metadata)
-                meta["preview"] = final[:80]
-                summary = str((self._graph.last_loop_state or {}).get("rolling_summary") or meta.get("rolling_summary") or "")
-                meta["rolling_summary"] = summary
-                updated = session.with_runtime(
-                    metadata=meta,
-                    graph_state=dict(self._graph.last_loop_state or {}),
-                    wait_status="idle",
-                )
-                await self._sessions.update(updated)
-                finished = turn.succeed(final_response=final)
-                await self._turns.add(finished)
+        )
+        async with aclosing(graph_stream):
+            async for chunk in graph_stream:
+                yield chunk
+                if getattr(chunk, "kind", None) == "message":
+                    assistant_parts.append(getattr(chunk, "content", "") or "")
+                if isinstance(chunk, ApprovalRequiredChunk):
+                    meta = dict(session.metadata)
+                    meta["preview"] = "等待确认操作"
+                    updated = session.with_runtime(
+                        metadata=meta,
+                        graph_state=dict(self._graph.last_loop_state),
+                        wait_status="waiting_approval",
+                    )
+                    await self._sessions.update(updated)
+                if isinstance(chunk, DoneChunk):
+                    final = chunk.final_message or "".join(assistant_parts)
+                    await self._messages.append(
+                        tenant_id=tenant_id,
+                        workspace_id=workspace_id,
+                        session_id=session_id,
+                        turn_id=turn.id,
+                        seq=seq,
+                        role="assistant",
+                        content=final,
+                    )
+                    meta = dict(session.metadata)
+                    meta["preview"] = final[:80]
+                    summary = str((self._graph.last_loop_state or {}).get("rolling_summary") or meta.get("rolling_summary") or "")
+                    meta["rolling_summary"] = summary
+                    updated = session.with_runtime(
+                        metadata=meta,
+                        graph_state=dict(self._graph.last_loop_state or {}),
+                        wait_status="idle",
+                    )
+                    await self._sessions.update(updated)
+                    finished = turn.succeed(final_response=final)
+                    await self._turns.add(finished)
 
     async def decide_approval(
         self,
@@ -225,7 +233,9 @@ class CopilotSessionService:
         if str(pending.get("approval_id")) != str(approval_id):
             pending["approval_id"] = str(approval_id)
         if approval_service is not None:
-            from qzdap_schema.ids import ApprovalId, TenantId as TId, UserId as UId
+            from qzdap_schema.ids import ApprovalId
+            from qzdap_schema.ids import TenantId as TId
+            from qzdap_schema.ids import UserId as UId
 
             try:
                 if approved:

@@ -485,7 +485,7 @@ class Container:
             raise RuntimeError(f"QZDAP_MODEL_MASTER_KEY is invalid: {exc}") from exc
 
     def model_service(self):
-        """Facade used by agent_runtime: opens a session per invoke."""
+        """Runtime facade: keep a DB session alive through each provider stream."""
         from qzdap.modules.model.adapter.llm.client_factory import (
             build_default_client_factory,
         )
@@ -519,6 +519,29 @@ class Container:
                         await session.commit()
                         return result
                     except Exception:
+                        await session.rollback()
+                        raise
+
+            async def stream(self, *, actor, model_id, req):  # type: ignore[no-untyped-def]
+                from contextlib import aclosing
+
+                async with session_factory.session() as session:
+                    svc = ModelService(
+                        SqlModelRepository(session),
+                        SqlProviderRepository(session),
+                        SqlRouteRepository(session),
+                        SqlHealthRepository(session),
+                        cipher=cipher,
+                        client_factory=client_factory,
+                    )
+                    try:
+                        async with aclosing(svc.stream(actor=actor, model_id=model_id, req=req)) as stream:
+                            async for chunk in stream:
+                                yield chunk
+                        await session.commit()
+                    except BaseException:
+                        # Includes consumer disconnect / cancellation. The service
+                        # closes the provider stream before the DB session exits.
                         await session.rollback()
                         raise
 

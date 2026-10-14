@@ -1,97 +1,73 @@
-"""OpenAI-compatible client.
-
-Works for any provider exposing `/chat/completions`, `/embeddings` in
-OpenAI's shape. We route Anthropic and DeepSeek through here — both
-publish OpenAI-compatible endpoints.
-"""
+"""OpenAI Chat Completions transport, including branded compatible APIs."""
 
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncIterator
 
 import httpx
-from qzdap_kernel.errors import ExternalServiceError
 
 from qzdap_llm.client import (
     ChatMessage,
     ChatRequest,
     ChatResponse,
     LLMChunk,
-    LLMClient,
     Usage,
 )
 from qzdap_llm.config import LLMConfig
+from qzdap_llm.transport import HTTPProviderClient, ProviderTransportError
 
 
-class OpenAICompatibleClient(LLMClient):
+class OpenAICompatibleClient(HTTPProviderClient):
     name = "openai_compatible"
 
     def __init__(
         self, config: LLMConfig, *, http: httpx.AsyncClient | None = None
     ) -> None:
         self._cfg = config
-        self._http = http or httpx.AsyncClient(
+        super().__init__(
             base_url=config.base_url,
-            timeout=config.timeout_seconds,
             headers={"Authorization": f"Bearer {config.api_key}"}
             if config.api_key
             else {},
+            timeout_seconds=config.timeout_seconds,
+            http=http,
         )
 
+    def _chat_path(self, model: str) -> str:
+        return "chat/completions"
+
     async def chat(self, req: ChatRequest) -> ChatResponse:
-        payload = _build_payload(req, stream=False)
+        data = await self._post(
+            self._chat_path(req.model), _build_payload(req, stream=False)
+        )
         try:
-            resp = await self._http.post("/chat/completions", json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-        except httpx.HTTPError as e:
-            raise ExternalServiceError(
-                f"LLM chat failed: {e}", code="LLM_UPSTREAM_ERROR"
-            ) from e
-        return _parse_chat_response(data)
+            return _parse_chat_response(data)
+        except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+            raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
 
     async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
-        payload = _build_payload(req, stream=True)
+        events = self._events(
+            self._chat_path(req.model), _build_payload(req, stream=True)
+        )
         try:
-            async with self._http.stream(
-                "POST", "/chat/completions", json=payload
-            ) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line or not line.startswith("data: "):
-                        continue
-                    body = line[len("data: ") :]
-                    if body == "[DONE]":
-                        return
-                    try:
-                        data = json.loads(body)
-                    except json.JSONDecodeError:
-                        continue
+            async for _, data in events:
+                try:
                     chunk = _parse_stream_chunk(data)
-                    if chunk is not None:
-                        yield chunk
-        except httpx.HTTPError as e:
-            raise ExternalServiceError(
-                f"LLM stream failed: {e}", code="LLM_UPSTREAM_ERROR"
-            ) from e
+                except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+                    raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
+                if chunk is not None:
+                    yield chunk
+        finally:
+            await events.aclose()
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
+        data = await self._post(
+            "embeddings", {"input": texts, "model": self._cfg.embedding_model}
+        )
         try:
-            resp = await self._http.post(
-                "/embeddings",
-                json={"input": texts, "model": self._cfg.embedding_model},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except httpx.HTTPError as e:
-            raise ExternalServiceError(
-                f"LLM embed failed: {e}", code="LLM_UPSTREAM_ERROR"
-            ) from e
-        return [item["embedding"] for item in data["data"]]
-
-    async def aclose(self) -> None:
-        await self._http.aclose()
+            return [item["embedding"] for item in data["data"]]
+        except (KeyError, TypeError):
+            raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
 
 
 def _build_payload(req: ChatRequest, *, stream: bool) -> dict:
@@ -110,6 +86,8 @@ def _build_payload(req: ChatRequest, *, stream: bool) -> dict:
         "temperature": req.temperature,
         "stream": stream,
     }
+    if stream:
+        out["stream_options"] = {"include_usage": True}
     if req.max_tokens is not None:
         out["max_tokens"] = req.max_tokens
     if req.top_p is not None:
@@ -137,19 +115,30 @@ def _parse_chat_response(data: dict) -> ChatResponse:
             tool_calls=msg.get("tool_calls"),
         ),
         finish_reason=choice.get("finish_reason") or "stop",
-        usage=Usage(
-            input_tokens=usage_data.get("prompt_tokens", 0),
-            output_tokens=usage_data.get("completion_tokens", 0),
-            cache_read_tokens=usage_data.get("cache_read_input_tokens", 0),
-            cache_write_tokens=usage_data.get("cache_creation_input_tokens", 0),
-        ),
+        usage=_parse_usage(usage_data),
         raw=data,
     )
 
 
+def _parse_usage(data: dict) -> Usage:
+    return Usage(
+        input_tokens=data.get("prompt_tokens", 0),
+        output_tokens=data.get("completion_tokens", 0),
+        cache_read_tokens=(data.get("prompt_tokens_details") or {}).get(
+            "cached_tokens", data.get("cache_read_input_tokens", 0)
+        ),
+        cache_write_tokens=data.get("cache_creation_input_tokens", 0),
+    )
+
+
 def _parse_stream_chunk(data: dict) -> LLMChunk | None:
+    usage = _parse_usage(data["usage"]) if data.get("usage") is not None else None
     if not data.get("choices"):
-        return None
+        return (
+            LLMChunk(model=data.get("model", ""), delta="", usage=usage)
+            if usage
+            else None
+        )
     choice = data["choices"][0]
     delta = choice.get("delta") or {}
     return LLMChunk(
@@ -157,4 +146,5 @@ def _parse_stream_chunk(data: dict) -> LLMChunk | None:
         delta=delta.get("content") or "",
         finish_reason=choice.get("finish_reason"),
         tool_calls=delta.get("tool_calls"),
+        usage=usage,
     )

@@ -20,7 +20,9 @@ async def test_openai_compatible_parses_data_array(monkeypatch) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
         captured["auth"] = request.headers.get("authorization", "")
-        return httpx.Response(200, json={"data": [{"id": "gpt-4o"}, {"id": "gpt-4o-mini"}]})
+        return httpx.Response(
+            200, json={"data": [{"id": "gpt-4o"}, {"id": "gpt-4o-mini"}]}
+        )
 
     real_async_client = httpx.AsyncClient
     monkeypatch.setattr(
@@ -49,8 +51,14 @@ async def test_anthropic_uses_x_api_key_and_v1_models(monkeypatch) -> None:
             200,
             json={
                 "data": [
-                    {"id": "claude-3-5-sonnet-20241022", "display_name": "Claude 3.5 Sonnet"},
-                    {"id": "claude-3-5-haiku-20241022", "display_name": "Claude 3.5 Haiku"},
+                    {
+                        "id": "claude-3-5-sonnet-20241022",
+                        "display_name": "Claude 3.5 Sonnet",
+                    },
+                    {
+                        "id": "claude-3-5-haiku-20241022",
+                        "display_name": "Claude 3.5 Haiku",
+                    },
                 ],
                 "has_more": False,
             },
@@ -125,6 +133,121 @@ async def test_anthropic_compatible_uses_anthropic_headers(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https://api.deepseek.com/anthropic",
+        "https://api.deepseek.com/anthropic/",
+        "https://api.deepseek.com/anthropic/v1",
+        "https://api.deepseek.com/anthropic/v1/",
+    ],
+)
+async def test_deepseek_messages_base_uses_independent_openai_catalog(
+    monkeypatch, base_url
+) -> None:
+    """A gateway chat prefix can expose its catalog at the provider root."""
+    requests: list[tuple[str, str, str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(
+            (
+                str(request.url),
+                request.headers.get("x-api-key", ""),
+                request.headers.get("anthropic-version", ""),
+                request.headers.get("authorization", ""),
+            )
+        )
+        if request.url.path == "/anthropic/v1/models":
+            return httpx.Response(404, json={"error": "not found"})
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "deepseek-flash"}, {"id": "deepseek-v4-pro"}]},
+        )
+
+    real_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: _async_client_with(handler, real_async_client),
+    )
+    prober = HttpCatalogProber(timeout_seconds=2.0)
+    names = await prober.list_models(
+        api_key="sk-test",
+        base_url=base_url,
+        protocol="anthropic-compatible",
+    )
+
+    assert names == ["deepseek-flash", "deepseek-v4-pro"]
+    assert requests == [("https://api.deepseek.com/models", "", "", "Bearer sk-test")]
+
+
+@pytest.mark.asyncio
+async def test_anthropic_compatible_does_not_fallback_without_path(monkeypatch) -> None:
+    visited: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        visited.append(str(request.url))
+        return httpx.Response(404, json={"error": "not found"})
+
+    real_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: _async_client_with(handler, real_async_client),
+    )
+    prober = HttpCatalogProber(timeout_seconds=2.0)
+    with pytest.raises(httpx.HTTPStatusError):
+        await prober.list_models(
+            api_key="sk-test",
+            base_url="https://gateway.example.com",
+            protocol="anthropic-compatible",
+        )
+    assert visited == ["https://gateway.example.com/v1/models"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("protocol", "status"),
+    [
+        ("anthropic", 404),
+        ("anthropic", 401),
+        ("anthropic-compatible", 401),
+        ("anthropic-compatible", 403),
+        ("anthropic-compatible", 500),
+    ],
+)
+async def test_anthropic_does_not_retry_non_catalog_errors(
+    monkeypatch, protocol, status
+) -> None:
+    visited: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        visited.append(str(request.url))
+        return httpx.Response(status, json={"error": "request failed"})
+
+    real_async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda *args, **kwargs: _async_client_with(handler, real_async_client),
+    )
+    prober = HttpCatalogProber(timeout_seconds=2.0)
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        await prober.list_models(
+            api_key="sk-bad",
+            base_url="https://api.deepseek.com/anthropic",
+            protocol=protocol,
+        )
+    assert exc_info.value.response.status_code == status
+    expected = (
+        "https://api.deepseek.com/models"
+        if protocol == "anthropic-compatible"
+        else "https://api.deepseek.com/anthropic/v1/models"
+    )
+    assert visited == [expected]
+
+
+@pytest.mark.asyncio
 async def test_extract_ids_handles_plain_strings(monkeypatch) -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=["gpt-4o", "gpt-4o-mini"])
@@ -137,6 +260,8 @@ async def test_extract_ids_handles_plain_strings(monkeypatch) -> None:
     )
     prober = HttpCatalogProber(timeout_seconds=2.0)
     names = await prober.list_models(
-        api_key="sk-test", base_url="https://example.com/v1", protocol="openai-compatible"
+        api_key="sk-test",
+        base_url="https://example.com/v1",
+        protocol="openai-compatible",
     )
     assert names == ["gpt-4o", "gpt-4o-mini"]

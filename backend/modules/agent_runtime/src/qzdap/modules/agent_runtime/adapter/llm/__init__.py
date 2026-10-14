@@ -1,38 +1,22 @@
-"""LLM port adapter — wraps `qzdap_llm.LLMClient.stream` so the application
-layer sees a clean `LLMPort` ABC instead of an LLMClient concrete type.
-
-Single seam: swap implementations in composition root (`container.llm_client()`
-returns a `MockLLMClient` in dev/test, `OpenAICompatibleClient` in staging,
-`LLMRouter` for failover). The use cases don't care.
-
-P6: when ``model_id`` is supplied, delegate to ``ModelService.invoke`` so
-the per-tenant registry drives credential decryption, routing, and quota
-tracking. When ``model_id`` is ``None``, fall back to the injected
-``LLMClient`` (preserves P0–P5 behavior).
-"""
+"""LLM port adapter: saved models use tenant-scoped provider streaming."""
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from dataclasses import dataclass
 from uuid import UUID
 
-from qzdap.modules.model.application.services import ModelService
 from qzdap_llm.client import ChatRequest, LLMChunk, LLMClient
 from qzdap_schema.ids import ModelId
+from qzdap_vault.actor import ActorContext
 
 from qzdap.modules.agent_runtime.application.ports import LLMPort
 
 
 @dataclass(slots=True, frozen=True)
 class ModelInvocationMeta:
-    """Lightweight caller context used by ModelService.invoke().
-
-    The agent_runtime owns its own actor resolution (auth middleware); the
-    adapter threads the resulting identity through to the model layer
-    without leaking the kernel's ``ActorContext`` type into the model
-    module's domain.
-    """
+    """Compatibility projection of a real caller identity (never a system actor)."""
 
     tenant_id: str
     workspace_id: str | None = None
@@ -40,12 +24,7 @@ class ModelInvocationMeta:
 
 
 class LLMPortAdapter(LLMPort):
-    def __init__(
-        self,
-        client: LLMClient,
-        *,
-        model_service: ModelService | None = None,
-    ) -> None:
+    def __init__(self, client: LLMClient, *, model_service=None) -> None:
         self._client = client
         self._model_service = model_service
 
@@ -54,36 +33,27 @@ class LLMPortAdapter(LLMPort):
         req: ChatRequest,
         *,
         model_id: ModelId | None = None,
-        actor: ModelInvocationMeta | None = None,
+        actor: ActorContext | ModelInvocationMeta | None = None,
     ) -> AsyncIterator[LLMChunk]:
-        if model_id is None or self._model_service is None:
-            async for chunk in self._client.stream(req):
+        if model_id is None:
+            stream = self._client.stream(req)
+        else:
+            if self._model_service is None:
+                raise RuntimeError("saved model requested but model service is unavailable")
+            if actor is None or actor.principal_id is None:
+                raise RuntimeError("saved model streaming requires a real caller actor context")
+            if isinstance(actor, ModelInvocationMeta):
+                actor = ActorContext(
+                    tenant_id=UUID(actor.tenant_id),
+                    workspace_id=UUID(actor.workspace_id) if actor.workspace_id else None,
+                    principal_id=UUID(actor.principal_id),
+                )
+            if actor.principal_id.int == 0:
+                raise RuntimeError("saved model streaming requires a real caller identity")
+            stream = self._model_service.stream(actor=actor, model_id=model_id, req=req)
+        async with aclosing(stream):
+            async for chunk in stream:
                 yield chunk
-            return
-
-        if actor is None:
-            raise RuntimeError(
-                "model_id was supplied without an actor context; "
-                "ModelService.invoke requires tenant scope"
-            )
-
-        from qzdap_vault.actor import ActorContext
-
-        model_actor = ActorContext(
-            tenant_id=UUID(actor.tenant_id),  # type: ignore[arg-type]
-            workspace_id=UUID(actor.workspace_id) if actor.workspace_id else None,  # type: ignore[arg-type]
-            principal_id=UUID(actor.principal_id) if actor.principal_id else None,  # type: ignore[arg-type]
-            roles=frozenset({"agent"}),
-        )
-        resp = await self._model_service.invoke(
-            actor=model_actor, model_id=model_id, req=req
-        )
-        yield LLMChunk(
-            model=resp.model,
-            delta=resp.message.content or "",
-            finish_reason=resp.finish_reason,
-            usage=resp.usage,
-        )
 
 
 __all__ = ["LLMPortAdapter", "ModelInvocationMeta"]

@@ -30,17 +30,28 @@ class LLMRouter(LLMClient):
         # chunk failure. Mid-stream errors terminate the stream.
         last_exc: Exception | None = None
         for client in self._chain:
+            started = False
+            stream = client.stream(req)
             try:
-                stream = client.stream(req)
                 async for chunk in stream:
+                    started = True
                     yield chunk
                 return
             except ExternalServiceError as e:
+                if started:
+                    raise
                 last_exc = e
-                continue
+            finally:
+                close = getattr(stream, "aclose", None)
+                if close is not None:
+                    await close()
         raise last_exc or ExternalServiceError(
             "no provider succeeded", code="LLM_ALL_FAILED"
         )
+
+    async def aclose(self) -> None:
+        for client in self._chain:
+            await client.aclose()
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         resp = await self._with_failover(lambda c: c.embed(texts))
