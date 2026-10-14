@@ -22,6 +22,7 @@ import {
   DrawerPanelMemory, DrawerPanelPermission, DrawerPanelPrompt, DrawerPanelSkills, DrawerPanelVersions,
 } from './components/DrawerPanels';
 import { statusBadge, toneClass } from './components/constants';
+import { useAuthStore } from '@/features/auth';
 
 type Mode = 'create' | 'edit' | 'view';
 
@@ -351,8 +352,8 @@ function DryRunPanel({
       setRunning(false);
       return;
     }
-    const token = localStorage.getItem('qzdap.access_token') ?? '';
-    const tenant = localStorage.getItem('qzdap.tenant_id') ?? '';
+    const token = useAuthStore.getState().token ?? '';
+    const tenant = useAuthStore.getState().user?.tenantId ?? '';
     try {
       const resp = await fetch(`/api/dev/skills/${encodeURIComponent(skill.name)}/invoke`, {
         method: 'POST',

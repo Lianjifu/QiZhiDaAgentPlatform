@@ -7,7 +7,8 @@ import { I18nProvider } from './i18n';
 import './styles/global.css';
 import { setApiClient, ApiClient, mockHandlerWithAdapters } from '@qzdap/web-api';
 import { useAuthStore } from './features/auth';
-import { apiBaseURL, isDemoApiMode } from './lib/api-mode';
+import { apiBaseURL, runtimeConfig } from './lib/api-mode';
+import { runtimeStorageKey } from './lib/environment';
 import { resolveWorkspaceHeader } from './lib/workspace-header';
 import { wrapMockHandlerWithCatalog } from './features/user/catalog';
 import { wrapMockHandlerWithSkills } from './features/user/skills/mock-handler';
@@ -31,10 +32,11 @@ import { wrapMockHandlerWithAdminRegressions } from './features/regressions/mock
 import { wrapMockHandlerWithAdminFeedback } from './features/feedback/mock-handler';
 
 function installApiClient() {
-  // 默认真实 API；仅演示模式注入本地 Handler。
+  // 演示和开发纯 Mock 直接使用本地 Handler；开发 API 模式将它作为查询回退。
   // Catalog 投影需在最外层，优先于旧用户 mock，读取内层 admin store。
-  const demoMode = isDemoApiMode();
-  const mockHandler = demoMode
+  const config = runtimeConfig();
+  const mockMode = config.dataMode === 'demo' || config.dataMode === 'development-mock' || config.dataMode === 'development-api';
+  const localMockHandler = mockMode
     ? wrapMockHandlerWithCatalog(
         wrapMockHandlerWithSkills(
           wrapMockHandlerWithAutomations(
@@ -78,8 +80,8 @@ function installApiClient() {
   setApiClient(
     new ApiClient(
       apiBaseURL(),
-      () => localStorage.getItem('token'),
-      mockHandler,
+      () => localStorage.getItem(runtimeStorageKey('token')),
+      config.dataMode === 'demo' || config.dataMode === 'development-mock' ? localMockHandler : undefined,
       () => {
         const user = useAuthStore.getState().user;
         const base: Record<string, string> = {
@@ -90,7 +92,7 @@ function installApiClient() {
           ...base,
           'x-tenant-id': user.tenantId,
           'x-user-id': user.id,
-          ...(demoMode ? {
+          ...(!config.apiEnabled ? {
             'x-mock-role': user.role,
             'x-mock-actor': user.name,
             'x-mock-user-id': user.id,
@@ -116,6 +118,7 @@ function installApiClient() {
       },
       // uid-注入型路径(/api/api-keys 等):从 auth store 拿当前用户 id
       () => useAuthStore.getState().user?.id ?? null,
+      config.dataMode === 'development-api' ? localMockHandler : undefined,
     ),
   );
 }

@@ -1,9 +1,11 @@
-/**
- * API 运行模式：默认走真实控制面（de-gateway）；仅当显式演示模式时注入本地 Handler。
- * VITE_USE_DEMO=true 或兼容旧名 VITE_USE_MOCK=true。
- */
+import { resolveRuntimeConfig, type RuntimeConfig } from './environment';
+
 export function isDemoApiMode(): boolean {
-  return import.meta.env.VITE_USE_DEMO === 'true' || import.meta.env.VITE_USE_MOCK === 'true';
+  return resolveRuntimeConfig().environment === 'demo';
+}
+
+export function runtimeConfig(): RuntimeConfig {
+  return resolveRuntimeConfig();
 }
 
 function isLoopbackBase(url: string): boolean {
@@ -21,6 +23,7 @@ function isLoopbackBase(url: string): boolean {
  * 需要直连时设置 `VITE_API_DIRECT=true` 并填写非空 `VITE_API_BASE`。
  */
 export function apiBaseURL(): string {
+  if (!resolveRuntimeConfig().apiEnabled) return '';
   const raw = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
   const forceDirect = import.meta.env.VITE_API_DIRECT === 'true';
 

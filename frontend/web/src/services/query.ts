@@ -4,6 +4,7 @@
 import { useQuery, useMutation, useQueryClient, type UseQueryOptions, type UseMutationOptions } from '@tanstack/react-query';
 import { getApiClient } from '@qzdap/web-api';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { runtimeStorageKey } from '@/lib/environment';
 
 export function useApiQuery<T>(
   key: readonly unknown[],
@@ -13,13 +14,14 @@ export function useApiQuery<T>(
 ) {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId ?? 'w1');
   const q = useQuery<T>({
-    queryKey: [...key, workspaceId],
+    queryKey: [...key, workspaceId, runtimeStorageKey('query')],
     queryFn: async () => {
       const c = getApiClient();
       return c.request<T>(path, {
         method: params?.method ?? 'GET',
         query: params?.query,
         body: params?.body,
+        fallback: 'on-network-error-or-empty',
       });
     },
     ...options,

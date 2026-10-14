@@ -984,8 +984,8 @@ async def _seed_builtin_eval_datasets(app: FastAPI, container: Container) -> Non
 async def ensure_default_resources(container: Container) -> None:
     """Seed a demo tenant + workspace + admin user when the DB is empty.
 
-    Runs only in dev/test (skipped in production / ci unless explicitly
-    enabled via ``QZDAP_DEV_SEED_DEFAULT_RESOURCES=1``). Idempotent: a no-op
+    Runs only in dev/test by default (other environments require explicit
+    ``QZDAP_DEV_SEED_DEFAULT_RESOURCES=1``). Idempotent: a no-op
     once any tenant row exists.
 
     Also seeds built-in custom tools (echo/reverse/clock) for the demo
@@ -1006,7 +1006,7 @@ async def ensure_default_resources(container: Container) -> None:
     settings = container.settings
     if (
         settings.env not in {"development", "test"}
-        and os.environ.get("QZDAP_DEV_SEED_DEFAULT_RESOURCES", "1") != "1"
+        and os.environ.get("QZDAP_DEV_SEED_DEFAULT_RESOURCES", "0") != "1"
     ):
         return
 

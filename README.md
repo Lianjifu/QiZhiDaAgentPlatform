@@ -67,6 +67,23 @@
 
 ## 快速开始
 
+### 数据环境
+
+前端业务只提供两个环境：`demo` 与 `development`。
+
+- `demo`：仅使用前端内存 Mock，不请求后端，也不写入数据库。
+- `development`：默认使用后端 API 和开发数据库；查询返回空或遇到网络/5xx 故障时，可使用开发 Mock 补充。创建、编辑、删除、上传和流式操作失败时直接返回错误，不用 Mock 假装成功。
+- `development-mock`：开发环境的纯前端 Mock 模式，用于没有后端时开发页面；它和 `demo` 使用不同的运行时和浏览器存储命名空间。
+
+```bash
+cd frontend
+pnpm --filter web dev:demo       # 演示环境
+pnpm --filter web dev            # 开发 API 优先
+pnpm --filter web dev:mock       # 开发纯 Mock
+```
+
+演示与开发的登录状态、查询缓存和本地选择记录互不复用。开发 API 成功写入的数据保存在开发数据库中；前端 Mock 数据不会写入数据库。
+
 依赖：后端 `uv`，前端 `pnpm`。开发栈脚本拉起 qzdap-app + 网关 + Vite，默认端口 9152 / 9150 / 9151 / 9153。
 
 ```bash

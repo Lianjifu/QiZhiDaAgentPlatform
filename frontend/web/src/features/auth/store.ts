@@ -4,6 +4,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User, Permission, Role } from '@qzdap/web-types';
+import { runtimeStorageKey } from '@/lib/environment';
+
+const AUTH_STORAGE_KEY = runtimeStorageKey('auth');
+const TOKEN_STORAGE_KEY = runtimeStorageKey('token');
 
 interface AuthState {
   user: User | null;
@@ -22,11 +26,11 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isAuthed: false,
       login: (user, token) => {
-        localStorage.setItem('token', token);
+        localStorage.setItem(TOKEN_STORAGE_KEY, token);
         set({ user, token, isAuthed: true });
       },
       logout: () => {
-        localStorage.removeItem('token');
+        localStorage.removeItem(TOKEN_STORAGE_KEY);
         set({ user: null, token: null, isAuthed: false });
       },
       hasPermission: (p) => {
@@ -38,6 +42,6 @@ export const useAuthStore = create<AuthState>()(
         return !!r && roles.includes(r);
       },
     }),
-    { name: 'qzdap-auth' },
+    { name: AUTH_STORAGE_KEY },
   ),
 );

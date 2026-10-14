@@ -10,8 +10,10 @@
  * (see `src/features/auth/store.ts`). If the store ever moves to httpOnly
  * cookies, swap the implementation here.
  */
+import { runtimeStorageKey } from './environment';
+
 export function authHeader(): Record<string, string> {
   if (typeof window === 'undefined') return {};
-  const token = window.localStorage.getItem('token');
+  const token = window.localStorage.getItem(runtimeStorageKey('token'));
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
