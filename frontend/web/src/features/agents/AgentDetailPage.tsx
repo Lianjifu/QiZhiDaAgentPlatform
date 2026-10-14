@@ -5,22 +5,27 @@
  *
  * 编辑态切换:URL ?edit=1
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { Edit3, Save } from 'lucide-react';
 import type { AgentEntry, EvalCase, PromptKey } from './schema';
 import { useAgentDetail, useAgentVersions, useDiffVersions, useRunEval, useUpdateAgent } from './useAgents';
-import { mockAgents } from './fixtures';
 import { DiffDialog, type DiffPair } from './components/DiffDialog';
 import { EvalProgress } from './components/Primitives';
 import { AgentEditor } from './AgentEditor';
 
-function NotFound() {
+function NotFound({ reason }: { reason: 'loading' | 'notfound' | 'error' }) {
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-4 p-5 pb-16 sm:p-8 xl:px-6">
       <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-1)] p-8 text-center">
-        <p className="text-sm font-semibold">智能体不存在或已被删除</p>
-        <p className="mt-1 text-xs text-[var(--text-muted)]">请返回列表重新选择。</p>
+        <p className="text-sm font-semibold">
+          {reason === 'loading' && '正在加载智能体…'}
+          {reason === 'notfound' && '智能体不存在或已被删除'}
+          {reason === 'error' && '加载失败,后端不可达'}
+        </p>
+        <p className="mt-1 text-xs text-[var(--text-muted)]">
+          {reason === 'error' ? '请检查后端服务是否启动。' : '请返回列表重新选择。'}
+        </p>
       </div>
     </div>
   );
@@ -32,11 +37,9 @@ export default function AgentDetailPage() {
   const [params, setSearchParams] = useSearchParams();
   const editing = params.get('edit') === '1';
 
-  // 走 /api/admin/agents/{id},与 mock-handler / 真后端都通(避免读 fixtures 与 mock state 不同源的问题)
-  const { data: remoteAgent, isLoading, isError } = useAgentDetail(id);
-  // 兜底:若 API 失败(fixtures-only 模式/开发早期),从 fixtures 直接读
-  const fallbackAgent = useMemo(() => mockAgents.find((a) => a.id === id) ?? null, [id]);
-  const agent = remoteAgent ?? fallbackAgent;
+  // 严格走 API — 不再兜底 fixtures / mockAgents。
+  // 任何非成功路径(loading / 404 / 5xx)都直接展示 NotFound,避免 fixtures 数据闪现到生产/真后端视图。
+  const { data: agent, isLoading, isError } = useAgentDetail(id);
 
   const [promptDoc] = useState<string>('prompt');  // 预留,后续 AgentEditor 支持
   const [evalRunning, setEvalRunning] = useState<{ progress: number } | null>(null);
@@ -87,15 +90,9 @@ export default function AgentDetailPage() {
     return <Navigate to={`/admin/agents/${id}?edit=1`} replace />;
   }
 
-  if (isLoading) {
-    return (
-      <div className="mx-auto w-full max-w-[1440px] p-5 pb-16 sm:p-8 xl:px-6">
-        <p className="text-xs text-[var(--text-muted)]">正在加载智能体…</p>
-      </div>
-    );
-  }
-
-  if (!agent) return <NotFound />;
+  if (isLoading) return <NotFound reason="loading" />;
+  if (isError) return <NotFound reason="error" />;
+  if (!agent) return <NotFound reason="notfound" />;
 
   const toggleEdit = () => {
     const next = new URLSearchParams(params);
