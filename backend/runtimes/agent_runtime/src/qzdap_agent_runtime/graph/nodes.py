@@ -35,6 +35,15 @@ from ..governance.approval import (
 from ..governance.audit import AuditEvent, AuditKind, InMemoryAuditLogger
 from ..governance.policy import InMemoryPolicyGuard
 from ..memory.layered import InMemoryLayeredMemory, L1Source
+from ..graph.deep_agent import (
+    DEEP_AGENT_BUDGET_EXCEEDED_ERROR_CODE,
+    DEEP_AGENT_FAILED_ERROR_CODE,
+    DeepAgentBudgetExceeded,
+    DeepAgentConfig,
+    InMemoryDeepAgent,
+    InMemoryDeepAgentFactory,
+    SubAgentSpec,
+)
 from .routing import AgentRouteConfig, TaskKind, classify_task_kind_heuristic
 from .state import SessionState
 
@@ -55,6 +64,7 @@ _default_tool_registry: Optional[Any] = None  # ToolRegistry
 _default_agent_config: Optional[AgentRouteConfig] = None
 _default_approval_store: Optional[InMemoryApprovalStore] = None
 _default_audit: Optional[InMemoryAuditLogger] = None
+_default_deep_agent_factory: Optional[Any] = None  # DeepAgentFactory (Stage 6b)
 
 
 def set_default_lock_manager(manager: LockManager) -> None:
@@ -154,11 +164,21 @@ def get_default_audit() -> InMemoryAuditLogger | None:
     return _default_audit
 
 
+def set_default_deep_agent_factory(factory: Any) -> None:
+    """composition root 注入 DeepAgentFactory (§5.5 / Stage 6b)."""
+    global _default_deep_agent_factory
+    _default_deep_agent_factory = factory
+
+
+def get_default_deep_agent_factory() -> Any | None:
+    return _default_deep_agent_factory
+
+
 def reset_default_dependencies() -> None:
     """测试辅助：清空所有默认依赖。"""
     global _default_lock_manager, _default_memory, _default_compactor, _default_assembler
     global _default_policy, _default_executor, _default_tool_registry, _default_agent_config
-    global _default_approval_store, _default_audit
+    global _default_approval_store, _default_audit, _default_deep_agent_factory
     _default_lock_manager = None
     _default_memory = None
     _default_compactor = None
@@ -169,6 +189,7 @@ def reset_default_dependencies() -> None:
     _default_agent_config = None
     _default_approval_store = None
     _default_audit = None
+    _default_deep_agent_factory = None
 
 
 # ---------------------------------------------------------------------------
@@ -775,17 +796,155 @@ def execute(state: SessionState) -> dict[str, Any]:
 
 
 def deep_agent_plan(state: SessionState) -> dict[str, Any]:
-    """13 deep_agent_plan: §13.2 节点 13。Stage 1 passthrough（不挂载）。"""
-    return {}
+    """13 deep_agent_plan: §13.2 节点 13。
+
+    Stage 6b PR B: 接入 DeepAgentFactory (§5.5)。
+
+    行为：
+    - 调 factory.create() 拿到 DeepAgent 实例
+    - emit todos via emit_plan (Stage 6b 退出条件: todos 推到 SSE)
+    - budget 超限 → state.errors DEEP_AGENT_BUDGET_EXCEEDED
+    - 其他异常 → state.errors DEEP_AGENT_FAILED
+    """
+    factory = get_default_deep_agent_factory()
+    if factory is None:
+        return {}  # Stage 1 兼容: 未注入 factory → passthrough
+
+    import asyncio
+    cfg = DeepAgentConfig(
+        agent_id=str(state.get("agent_id", "")),
+        deep_research=True,
+        max_steps=20,
+        max_cost_usd=1.0,
+        system_prompt=str(state.get("route", {}).get("reason", "")),
+    )
+    try:
+        agent = asyncio.run(factory.create(cfg))
+    except DeepAgentBudgetExceeded as exc:
+        return {
+            "errors": list(state.get("errors") or []) + [{
+                "node": "deep_agent_plan",
+                "error_code": DEEP_AGENT_BUDGET_EXCEEDED_ERROR_CODE,
+                "message": exc.message,
+                "trace_id": state.get("trace_id"),
+                "retriable": False,
+                "occurred_at": "",
+            }]
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "errors": list(state.get("errors") or []) + [{
+                "node": "deep_agent_plan",
+                "error_code": DEEP_AGENT_FAILED_ERROR_CODE,
+                "message": str(exc),
+                "trace_id": state.get("trace_id"),
+                "retriable": False,
+                "occurred_at": "",
+            }]
+        }
+
+    # emit todos
+    if hasattr(agent, "emit_plan"):
+        plan = [
+            {"id": f"todo-{i}", "status": "pending",
+             "content": f"step {i+1}: investigate {q}",
+             "assigned_subagent": "research-1"}
+            for i, q in enumerate(_extract_questions(state))
+        ]
+        agent.emit_plan(plan)
+
+    return {
+        "todos": getattr(agent, "todos", []),
+    }
 
 
 def subagent(state: SessionState) -> dict[str, Any]:
-    """14 subagent: §13.2 节点 14。Stage 1 passthrough（不挂载）。"""
+    """14 subagent: §13.2 节点 14。
+
+    Stage 6b PR B: 摘要 sub-agent 执行结果回主 agent。
+
+    行为：
+    - 调 factory.create() 拿到 DeepAgent (sub-agent 委派)
+    - 模拟 sub-agent 跑 1 step + 累加 cost
+    - 失败时把 sub-agent 错误码写进 state.errors
+    - 成功时把 sub-agent 输出合并到 state.context_manifest
+    - todos 全部 mark done
+    """
+    factory = get_default_deep_agent_factory()
+    if factory is None:
+        return {}
+
+    import asyncio
+    cfg = DeepAgentConfig(
+        agent_id=f"{state.get('agent_id', '')}-sub",
+        deep_research=True,
+        max_steps=10,
+        max_cost_usd=0.5,
+    )
+    try:
+        agent = asyncio.run(factory.create(cfg))
+        if hasattr(agent, "step"):
+            agent.step(cost=0.05)
+    except DeepAgentBudgetExceeded as exc:
+        return {
+            "errors": list(state.get("errors") or []) + [{
+                "node": "subagent",
+                "error_code": DEEP_AGENT_BUDGET_EXCEEDED_ERROR_CODE,
+                "message": exc.message,
+                "trace_id": state.get("trace_id"),
+                "retriable": False,
+                "occurred_at": "",
+            }],
+            "todos": _mark_todos_done(state.get("todos") or []),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "errors": list(state.get("errors") or []) + [{
+                "node": "subagent",
+                "error_code": DEEP_AGENT_FAILED_ERROR_CODE,
+                "message": str(exc),
+                "trace_id": state.get("trace_id"),
+                "retriable": True,
+                "occurred_at": "",
+            }],
+        }
+
+    return {
+        "todos": _mark_todos_done(state.get("todos") or []),
+        "context_manifest": {
+            **(state.get("context_manifest") or {}),
+            "subagent": {
+                "agent": agent.name,
+                "steps": agent.steps,
+                "cost_usd": agent.cost,
+            },
+        },
+    }
+
+
+def _extract_questions(state: SessionState) -> list[str]:
+    """从 messages 末尾提取 N 个问题作为 plan 的子任务。"""
+    msgs = state.get("messages") or []
+    if not msgs:
+        return ["未知子任务"]
+    last = msgs[-1]
+    if hasattr(last, "content"):
+        text = str(last.content)  # type: ignore[union-attr]
+    elif isinstance(last, dict):
+        text = str(last.get("content", ""))
+    else:
+        text = str(last)
+    return [text[:30] + "...", "文献调研", "总结输出"]
+
+
+def _mark_todos_done(todos: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """§5.5: sub-agent 完成后 todos 标记为 done。"""
+    return [{**t, "status": "done"} for t in todos]
+
+
+def agent(state: SessionState) -> dict[str, Any]:
+    """10 agent: §13.2 节点 10。Stage 1 passthrough。"""
     return {}
-
-
-# ---------------------------------------------------------------------------
-# 15-19 收尾段
 # ---------------------------------------------------------------------------
 
 
