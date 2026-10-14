@@ -10,6 +10,7 @@ Routes (mounted as-is so the web client `/api/admin/skills` and
   GET          /api/catalog/skills/{id}
   POST         /api/catalog/skills/{id}/favorite
   POST         /api/catalog/skills/{id}/record-use
+  POST         /api/dev/skills/{name}/invoke   (dev-only direct invocation)
 """
 
 from __future__ import annotations
@@ -158,6 +159,33 @@ def build_router() -> APIRouter:
     ) -> dict[str, Any]:
         user_id = _owner_id(request, x_user_id)
         return await svc.record_use(skill_id=skill_id, user_id=user_id)
+
+    # ── dev-only: 直接触发一个 skill,跳过 LLM 决策,验证 E2E 沙箱路径 ──
+    @router.post("/api/dev/skills/{name}/invoke")
+    async def dev_invoke_skill(
+        name: str,
+        body: dict[str, Any],
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+    ) -> dict[str, Any]:
+        """Dev hook: 跳过 agent runtime,直调 SkillService.invoke_in_sandbox。
+
+        用途:验证 Skill.runtime.source 的 Python 代码真能跑,无需接 LLM。
+        生产模式应禁用(通过 ALLOW_DEV_API 关闭),或加鉴权。
+        """
+        import os
+        if os.environ.get("QZDAP_ALLOW_DEV_API", "0") != "1":
+            raise HTTPException(status_code=403, detail="dev API disabled")
+        from uuid import uuid4
+        call_id = uuid4()
+        result = await svc.invoke_in_sandbox(
+            workspace_id=x_workspace_id,
+            name=name,
+            arguments=body.get("arguments") or {},
+            call_id=call_id,
+            confirmed=bool(body.get("confirmed", False)),
+        )
+        return {**result, "call_id": str(call_id)}
 
     @router.get("/api/user/skills")
     async def list_user_skills_alias(
