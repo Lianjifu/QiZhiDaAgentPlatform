@@ -188,10 +188,10 @@ export async function adminAgentsMockHandler(path: string, opts: MockOpts): Prom
     rowsToImport.forEach((row, idx) => {
       const created: AgentEntry = {
         id: uid('a-imp'),
-        name: row.source.name || `导入智能体 ${idx + 1}`,
-        description: row.source.description || '通过导入创建的智能体',
-        category: row.source.category || '未分类',
-        owner: row.source.owner || '未指定',
+        name: String(row.source.name || `导入智能体 ${idx + 1}`),
+        description: String(row.source.description || '通过导入创建的智能体'),
+        category: String(row.source.category || '未分类'),
+        owner: String(row.source.owner || '未指定'),
         tags: [],
         tone: tonePalette[idx % tonePalette.length],
         status: 'draft',
@@ -212,11 +212,11 @@ export async function adminAgentsMockHandler(path: string, opts: MockOpts): Prom
         evaluationRuns: 0,
         evaluationFailedCases: 0,
         trend: Array.from({ length: 12 }, () => 0),
-        prompts: buildPrompts(row.source.name || `导入智能体 ${idx + 1}`, row.source.category || '未分类', row.source.owner || '未指定'),
+        prompts: buildPrompts(String(row.source.name || `导入智能体 ${idx + 1}`), String(row.source.category || '未分类'), String(row.source.owner || '未指定')),
         customPrompts: [],
-        knowledgeRefs: buildKnowledgeRefs(row.source.category || '未分类'),
+        knowledgeRefs: buildKnowledgeRefs(String(row.source.category || '未分类')),
         memoryPolicy: { ...DEFAULT_MEMORY_POLICY },
-        flowRefs: buildFlowRefs(row.source.category || '未分类'),
+        flowRefs: buildFlowRefs(String(row.source.category || '未分类')),
       };
       state.agents.unshift(created);
     });

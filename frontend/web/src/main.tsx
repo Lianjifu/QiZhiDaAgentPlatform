@@ -118,7 +118,6 @@ function installApiClient() {
       },
       // uid-注入型路径(/api/api-keys 等):从 auth store 拿当前用户 id
       () => useAuthStore.getState().user?.id ?? null,
-      undefined,
     ),
   );
 }

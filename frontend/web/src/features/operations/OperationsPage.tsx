@@ -1,3 +1,4 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * AdminOperations 编排 — 对齐技能管理 / ModelsPage：无子模块 Tab，Hero 轻量，列表工具栏 + 视图筛选。
  */
@@ -48,22 +49,17 @@ export default function OperationsPage() {
   const baseIncidents = incidentsQuery.data ?? [];
   const baseKindStats = kindStatsQuery.data ?? [];
 
-  const [sessions, setSessions] = useState<Session[]>(baseSessions);
-  const [incidents, setIncidents] = useState<Incident[]>(baseIncidents);
+  const sessions = baseSessions;
+  const incidents = baseIncidents;
   const [view, setView] = useState<ViewId>('session');
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [filters, setFilters] = useState<FilterSelection>({ status: 'all', agent: 'all', severity: 'all' });
   const [exportOpen, setExportOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    if (sessions.length === 0 && baseSessions.length > 0) setSessions(baseSessions);
-  }, [baseSessions, sessions.length]);
-  useEffect(() => {
-    if (incidents.length === 0 && baseIncidents.length > 0) setIncidents(baseIncidents);
-  }, [baseIncidents, incidents.length]);
 
   const stats = useMemo(() => {
     const total = sessions.length;
@@ -76,28 +72,22 @@ export default function OperationsPage() {
   const visibleSessions = useMemo(() => {
     const q = search.trim().toLowerCase();
     return sessions.filter((s) =>
-      q.length === 0 || `${s.id} ${s.user} ${s.agentName} ${s.summary}`.toLowerCase().includes(q),
+      (q.length === 0 || `${s.id} ${s.user} ${s.agentName} ${s.summary}`.toLowerCase().includes(q)) &&
+      (filters.status === 'all' || s.status === filters.status) &&
+      (filters.agent === 'all' || s.agentName === filters.agent) &&
+      (filters.severity === 'all' || incidents.some((item) => item.sessionId === s.id && item.severity === filters.severity)),
     );
-  }, [sessions, search]);
+  }, [sessions, search, filters, incidents]);
 
-  useEffect(() => { setPage(1); }, [search, view]);
+  useEffect(() => { setPage(1); }, [search, view, filters]);
   const paged = useMemo(() => paginateItems(visibleSessions, page), [visibleSessions, page]);
 
   const toggleSelect = (id: string) =>
     setSelectedIds((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]));
 
-  const toggleStar = (id: string) =>
-    setSessions((current) => current.map((s) => (s.id === id ? { ...s, starred: !s.starred } : s)));
-
+  const toggleStar = (id: string) => server.mutate({ path: `/api/admin/operations/sessions/${id}`, method: 'PATCH', body: { starred: !sessions.find((s) => s.id === id)?.starred } });
   const handleBatchExport = () => setExportOpen(true);
-
-  const handleBatchResolve = () => {
-    setIncidents((current) =>
-      current.map((i) => (selectedIds.includes(i.sessionId) ? { ...i, resolved: true } : i)),
-    );
-    setNotice(`已批量标记 ${selectedIds.length} 个事件为已解决。`);
-    setSelectedIds([]);
-  };
+  const handleBatchResolve = () => server.mutate({ path: '/api/admin/operations/incidents/batch-resolve', body: { sessionIds: selectedIds }, success: '已批量解决', onSuccess: () => setSelectedIds([]) });
 
   const handleExport = (format: ExchangeFormat) => {
     const list = selectedIds.length > 0 ? sessions.filter((s) => selectedIds.includes(s.id)) : sessions;
@@ -116,27 +106,16 @@ export default function OperationsPage() {
     setNotice(`已导出会话「${session.id}」。`);
   };
 
-  const handleResolveSession = (session: Session) => {
-    setIncidents((current) =>
-      current.map((i) => (i.sessionId === session.id ? { ...i, resolved: true } : i)),
-    );
-    setNotice(`已标记会话「${session.id}」相关异常为已解决。`);
-  };
+  const handleResolveSession = (session: Session) => server.mutate({ path: '/api/admin/operations/incidents/batch-resolve', body: { sessionIds: [session.id] }, success: '已解决会话相关异常' });
+  const handleResolve = (id: string) => server.mutate({ path: `/api/admin/operations/incidents/${id}`, method: 'PATCH', body: { resolved: !incidents.find((i) => i.id === id)?.resolved } });
 
-  const handleResolve = (id: string) =>
-    setIncidents((current) => current.map((i) => (i.id === id ? { ...i, resolved: !i.resolved } : i)));
-
-  const handleFilter = (f: FilterSelection) =>
-    setNotice(`已应用筛选 · 状态 ${f.status} · 智能体 ${f.agent} · 级别 ${f.severity}`);
+  const handleFilter = (f: FilterSelection) => setFilters(f);
 
   const goSessionDetail = (s: Session) => navigate(`/admin/operations/${s.id}`);
 
-  const handleRefresh = () => {
-    sessionsQuery.refetch();
-    spansQuery.refetch();
-    incidentsQuery.refetch();
-    kindStatsQuery.refetch();
-    setNotice('已开启实时刷新');
+  const handleRefresh = async () => {
+    const results = await Promise.all([sessionsQuery.refetch(), spansQuery.refetch(), incidentsQuery.refetch(), kindStatsQuery.refetch()]);
+    setNotice(results.some((result) => result.isError) ? '刷新失败，请查看请求错误。' : '数据已从后端刷新');
   };
 
   const viewSelect = (
@@ -279,7 +258,7 @@ export default function OperationsPage() {
         </div>
       )}
 
-      <FilterModal open={filterOpen} onClose={() => setFilterOpen(false)} onApply={handleFilter} />
+      <FilterModal open={filterOpen} agents={[...new Set(sessions.map((session) => session.agentName))]} onClose={() => setFilterOpen(false)} onApply={handleFilter} />
       <ExportTraceModal
         open={exportOpen}
         onClose={() => setExportOpen(false)}

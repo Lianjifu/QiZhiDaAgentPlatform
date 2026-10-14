@@ -63,6 +63,7 @@ export default function AgentDetailPage() {
     if (versions.length < 2) return;
     const previous = versions.find((v) => !v.current) ?? versions[versions.length - 1];
     const current = versions.find((v) => v.current) ?? versions[0];
+    try {
     const resp = await diffVersions.mutateAsync({
       agentId: agent.id,
       leftVersion: previous.version,
@@ -72,18 +73,18 @@ export default function AgentDetailPage() {
     setDiffBase(resp.leftPrompts);
     setDiffTarget(resp.rightPrompts);
     setDiffOpen(true);
+    } catch { /* API 错误由全局提示展示，不打开伪造的比较结果。 */ }
   };
 
   const handleRunEval = async () => {
     if (!agent) return;
     setEvalRunning({ progress: 0 });
-    const timer = window.setInterval(() => {
-      setEvalRunning((prev) => prev ? { progress: Math.min(prev.progress + 12, 96) } : null);
-    }, 220);
-    const resp = await runEval.mutateAsync({ id: agent.id });
-    window.clearInterval(timer);
-    setEvalRunning(null);
-    setLastEvalResult(resp.cases);
+    setLastEvalResult(null);
+    try {
+      const resp = await runEval.mutateAsync({ id: agent.id });
+      setLastEvalResult(resp.cases);
+    } catch { /* API 错误由全局提示展示。 */ }
+    finally { setEvalRunning(null); }
   };
 
   if (location.pathname.endsWith('/edit')) {

@@ -17,7 +17,7 @@ function readEnv(input?: EnvInput): EnvInput {
 export function resolveRuntimeConfig(input?: EnvInput): RuntimeConfig {
   const env = readEnv(input);
   const rawEnvironment = (env.VITE_QZDAP_ENV ?? '').trim().toLowerCase();
-  const isDemo = rawEnvironment === 'demo' || env.VITE_USE_DEMO === 'true';
+  const isDemo = rawEnvironment === 'demo' || (!rawEnvironment && env.VITE_USE_DEMO === 'true');
   if (rawEnvironment && rawEnvironment !== 'demo' && rawEnvironment !== 'development') {
     throw new Error('企智搭仅支持 demo 或 development 环境');
   }

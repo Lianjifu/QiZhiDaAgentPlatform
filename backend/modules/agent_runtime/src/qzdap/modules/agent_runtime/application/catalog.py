@@ -12,6 +12,7 @@ from qzdap.modules.agent_runtime.application.catalog_ports import (
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent, is_workspace_visible
 from qzdap.modules.agent_runtime.domain.catalog_errors import (
     CatalogAgentDisabled,
+    CatalogCapabilityUnavailable,
     CatalogAgentNotFound,
 )
 
@@ -127,41 +128,16 @@ class AgentCatalogService:
 
     async def evaluations(self, agent_id: UUID) -> dict[str, Any]:
         agent = await self._require(agent_id)
-        return {
-            "agentId": str(agent.id),
-            "runs": [
-                {
-                    "runId": f"run-{agent.id}-{agent.evaluation_runs}",
-                    "passRate": agent.evaluation_pass_rate,
-                    "failedCases": agent.evaluation_failed_cases,
-                    "at": agent.updated_at.isoformat(),
-                }
-            ],
-        }
+        # Aggregate counters are not persisted evaluation-run records.
+        return {"agentId": str(agent.id), "runs": []}
 
     async def run_eval(self, agent_id: UUID) -> dict[str, Any]:
-        agent = await self._require(agent_id)
-        cases = [
-            {"id": f"c-{i}", "name": name, "status": "pass", "latency": 1.0 + i * 0.1}
-            for i, name in enumerate(["订单查询", "FAQ 检索", "多轮上下文", "工具路由"], start=1)
-        ]
-        updated = agent.apply_patch({})
-        from dataclasses import replace
-
-        updated = replace(
-            agent,
-            evaluation_runs=agent.evaluation_runs + 1,
-            evaluation_pass_rate=100.0,
-            evaluation_failed_cases=0,
-        )
-        await self._agents.update(updated)
-        _ = cases
-        return {"cases": cases, "passRate": 100.0}
+        await self._require(agent_id)
+        raise CatalogCapabilityUnavailable("智能体基线评测尚未接入执行器，未执行评测")
 
     async def diff(self, *, agent_id: UUID, left_version: str, right_version: str) -> dict[str, Any]:
-        agent = await self._require(agent_id)
-        _ = (left_version, right_version)
-        return {"leftPrompts": dict(agent.prompts), "rightPrompts": dict(agent.prompts)}
+        await self._require(agent_id)
+        raise CatalogCapabilityUnavailable("尚未存储智能体版本快照，无法比较历史版本")
 
     async def list_catalog(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
         items = await self._agents.list_for_workspace(workspace_id)

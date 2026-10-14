@@ -9,6 +9,9 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Layers, ShieldCheck, Plus, Sparkles, Wrench, Network } from 'lucide-react';
+import { runtimeConfig } from '@/lib/api-mode';
+import { useApiMutation } from '@/services/query';
+import { normalizeError } from '@/api/shared/http-error';
 import { CenterModal } from '@/components/feedback/CenterModal';
 import type {
   MCPConfig, MCPToolInfo, RiskLevel, Skill, SkillProfile, SkillType, SchemaField, ToolConfig,
@@ -133,12 +136,26 @@ print(json.dumps({
     return false;
   }, [type, inputJson, outputJson, toolConfig, mcpConfig]);
 
-  // Mock 探测(后端 probe 端点未到位前的本地模拟,Phase 2 替换为真实 server.tools/list)
+  const probe = useApiMutation<{ tools: MCPToolInfo[] }, MCPConfig>('/api/admin/skills/mcp/probe');
+
+  // 演示环境可模拟发现；开发环境必须请求后端。
   const probeMcp = async () => {
     setProbing(true);
     setProbeError(null);
     setMcpTools([]);
-    await new Promise((r) => setTimeout(r, 800));
+    if (runtimeConfig().dataMode !== 'demo') {
+      try {
+        const result = await probe.mutateAsync(mcpConfig);
+        const tools = result.tools ?? [];
+        setMcpTools(tools);
+        setMcpConfig((c) => ({ ...c, selectedTools: c.selectedTools.filter((n) => tools.some((t) => t.name === n)) }));
+      } catch (error) {
+        setProbeError(normalizeError(error).message);
+      } finally {
+        setProbing(false);
+      }
+      return;
+    }
     const url = mcpConfig.serverUrl.toLowerCase();
     let tools: MCPToolInfo[] = [];
     if (url.includes('github')) {

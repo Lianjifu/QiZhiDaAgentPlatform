@@ -1,3 +1,4 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * Admin 回归追踪详情 — 独立页面 /admin/regressions/:id
  *
@@ -186,6 +187,8 @@ export default function RegressionDetailPage() {
   const tracksQuery = useRegressionTracks();
   const tracks = tracksQuery.data ?? [];
   const original = useMemo(() => tracks.find((t) => t.id === id), [tracks, id]);
+  const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [draft, setDraft] = useState<RegressionTrack | null>(null);
   const [panel, setPanel] = useState<DrawerPanel>('basic');
 
@@ -201,11 +204,12 @@ export default function RegressionDetailPage() {
   const RiskIcon = riskIconMap[risk.icon] ?? ShieldCheck;
 
   const update = (patch: Partial<RegressionTrack>) => setDraft({ ...draft, ...patch });
-  const handleSave = () => navigate('/admin/regressions');
-  const handleRun = () => navigate('/admin/regressions');
+  const handleSave = () => server.mutate({ path: `/api/admin/regressions/tracks/${draft.id}`, method: 'PATCH', body: draft, onSuccess: () => navigate('/admin/regressions') });
+  const handleRun = () => server.mutate({ path: `/api/admin/regressions/tracks/${draft.id}/run`, success: '已提交运行' });
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+      {notice && <p role="alert" className="text-sm text-rose-700">{notice}</p>}
       <Link to="/admin/regressions" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <span aria-hidden="true">←</span>返回回归追踪
       </Link>
@@ -250,7 +254,7 @@ export default function RegressionDetailPage() {
         </div>
       </section>
 
-      <p className="text-center text-xs text-[var(--text-muted)]">本页为前端演示数据,生产环境将接入企智搭回归追踪中台。</p>
+
     </div>
   );
 }

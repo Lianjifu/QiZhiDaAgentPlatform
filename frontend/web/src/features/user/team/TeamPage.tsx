@@ -4,7 +4,7 @@ import { CenterModal } from '@/components/feedback/CenterModal';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { SideDrawer } from '@/components/feedback/SideDrawer';
 import { CardActionButton, CardActions, CatalogToolbar, EmptyFilterState, PageIntro, WorkspacePage } from '../components';
-import { useMembers, useSharedItems, useTeams } from './useTeam';
+import { useMembers, useSharedItems, useTeams, useInviteMember, useToggleTeamFavorite } from './useTeam';
 import type { Member, SharedItem, SharedKind, Team } from './schema';
 
 type TabLabel = '成员' | '智能体' | '知识' | '产出物';
@@ -41,6 +41,8 @@ export default function TeamPage() {
   const { data: remoteMembers } = useMembers(teamName);
   const { data: remoteShared } = useSharedItems(teamName);
   const [invited, setInvited] = useState<Member[]>([]);
+  const inviteMutation = useInviteMember();
+  const favoriteMutation = useToggleTeamFavorite();
   const [favorites, setFavorites] = useState<string[]>([]);
   const [tab, setTab] = useState<TabValue>('members');
   const [query, setQuery] = useState('');
@@ -67,20 +69,7 @@ export default function TeamPage() {
   const submitInvite = () => {
     const trimmed = email.trim();
     if (!trimmed || !teamName) return;
-    const invitee: Member = {
-      id: `local-${Date.now()}`,
-      name: trimmed,
-      role: '待邀请 · 本地记录',
-      team: teamName,
-      initials: trimmed.slice(0, 1).toUpperCase(),
-      color: 'bg-[var(--brand-light)] text-[var(--brand)]',
-    };
-    setInvited((current) => [invitee, ...current]);
-    setTab('members');
-    setQuery('');
-    setInviting(false);
-    setEmail('');
-    setNotice(`"${trimmed}"已加入本页待邀请列表，未发送真实邀请。`);
+    inviteMutation.mutate({ team: teamName, email: trimmed }, { onSuccess: (invitee) => { setInvited((current) => [invitee, ...current]); setTab('members'); setQuery(''); setInviting(false); setEmail(''); setNotice(`已向 ${trimmed} 发送邀请。`); }, onError: (cause) => setNotice(`邀请失败：${String(cause)}`) });
   };
 
   const isResource = (item: SharedItem | Member): item is SharedItem => 'kind' in item;
@@ -199,7 +188,7 @@ export default function TeamPage() {
                         type="button"
                         aria-label={`${favorites.includes(item.id) ? '取消收藏' : '收藏'}${item.title}`}
                         aria-pressed={favorites.includes(item.id)}
-                        onClick={() => setFavorites((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])}
+                        onClick={() => favoriteMutation.mutate({ id: item.id, kind: item.kind, on: !favorites.includes(item.id) }, { onSuccess: () => setFavorites((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id]), onError: (cause) => setNotice(`收藏失败：${String(cause)}`) })}
                         className={`rounded-lg p-2 ${favorites.includes(item.id) ? 'text-rose-500' : 'text-[var(--text-muted)] hover:text-rose-500'}`}
                       >
                         <Heart className="h-4 w-4" fill={favorites.includes(item.id) ? 'currentColor' : 'none'} />
@@ -274,7 +263,7 @@ export default function TeamPage() {
           <>
             <button type="button" onClick={() => setInviting(false)} className="rounded-xl border border-[var(--border)] px-4 py-2.5 text-sm font-medium">取消</button>
             <button type="submit" disabled={!email.trim() || !teamName} className="inline-flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
-              <MailPlus className="h-4 w-4" />加入演示列表
+              <MailPlus className="h-4 w-4" />发送邀请
             </button>
           </>
         }

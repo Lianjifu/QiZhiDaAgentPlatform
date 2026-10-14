@@ -1,3 +1,4 @@
+import { useApiQuery } from '@/services/query';
 import { CircleDollarSign, Save, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { SideDrawer } from '@/components/feedback/SideDrawer';
@@ -93,11 +94,7 @@ export function DrawerPanelAllocation({ budget, depts }: { budget: EnterpriseBud
 }
 
 export function DrawerPanelHistory({ budget }: { budget: EnterpriseBudget }) {
-  const events = [
-    { time: '今天 11:00', actor: '张敏', action: `调高预警阈值 70% → ${budget.alertThreshold}%` },
-    { time: '昨天 09:00', actor: '李雷', action: '新增部门分配:运营分析 ¥60,000' },
-    { time: '上周', actor: '王芳', action: '提交预算调整申请' },
-  ];
+  const { data: events = [] } = useApiQuery<{ time: string; actor: string; action: string }[]>(['detail', `/api/admin/quotas/budgets/${budget.id}/history`], `/api/admin/quotas/budgets/${budget.id}/history`);
   return (
     <ul className="space-y-2">
       {events.map((e, idx) => (

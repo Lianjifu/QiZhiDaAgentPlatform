@@ -1,3 +1,4 @@
+import { runtimeConfig } from '@/lib/api-mode';
 /**
  * 管理侧「智能体工作台」主面板 — Hero + Tab + 筛选 + 卡片网格(分页)+ 批量工具栏 + 向导/导入/导出/删除。
  *
@@ -15,7 +16,7 @@ import {
   useAgentsList, useBatchSetStatus, useDeleteAgents, useExportAgents, useImportAgents, useToggleStar,
 } from './useAgents';
 import {
-  mockAgents, SAMPLE_IMPORT, SAMPLE_IMPORT_ZIP,
+  SAMPLE_IMPORT, SAMPLE_IMPORT_ZIP,
 } from './fixtures';
 import { AgentCard } from './components/AgentCard';
 import { BatchToolbar } from './components/DrawerSidebar';
@@ -28,7 +29,7 @@ const PAGE_SIZE = 4;
 export default function AgentsPage() {
   const navigate = useNavigate();
   const [filters, setFilters] = useState<AgentFilters>({ tab: 'all', sortKey: 'calls', search: '', scene: '全部场景' });
-  const { data: list = mockAgents, isLoading } = useAgentsList(filters);
+  const { data: list = [], isLoading } = useAgentsList(filters);
   const deleteAgents = useDeleteAgents();
   const batchStatus = useBatchSetStatus();
   const toggleStar = useToggleStar();
@@ -126,30 +127,36 @@ export default function AgentsPage() {
     const ids = deletePayload.kind === 'single'
       ? list.filter((a) => a.name === deletePayload.agentName).map((a) => a.id)
       : selectedIds;
-    deleteAgents.mutate({ ids });
-    setDeletePayload(null);
-    setSelectedIds([]);
+    deleteAgents.mutate({ ids }, { onSuccess: () => { setDeletePayload(null); setSelectedIds([]); } });
   };
 
-  const handleImportFile = (file: File) => {
+  const handleImportFile = async (file: File) => {
     const ext = file.name.split('.').pop()?.toLowerCase() as ImportExtension ?? 'json';
     setImportFileName(file.name);
     setImportExtension(ext);
-    setImportPreview(SAMPLE_IMPORT);
+    try {
+      if (ext !== 'json') throw new Error('当前仅支持 JSON 文件解析');
+      const parsed: unknown = JSON.parse(await file.text());
+      const records = Array.isArray(parsed) ? parsed : [parsed];
+      const rows: ImportRow[] = records.map((record) => {
+        if (!record || typeof record !== 'object') throw new Error('导入条目必须是对象');
+        const source = record as Partial<AgentEntry>;
+        if (!source.name) throw new Error('缺少智能体名称');
+        return { name: source.name, category: source.category ?? '', owner: source.owner ?? '', status: 'ok', source: record as Record<string, unknown> };
+      });
+      setImportPreview(rows);
+    } catch (error) { setImportPreview([]); window.alert(`导入失败：${String(error)}`); return; }
     setImportStep(2);
   };
   const handleLoadSample = (ext: ImportExtension) => {
+    if (runtimeConfig().dataMode !== 'demo') { window.alert('开发模式请上传真实文件，不能载入演示数据。'); return; }
     setImportExtension(ext);
     setImportFileName(`agents-sample.${ext}`);
     setImportPreview(ext === 'zip' ? SAMPLE_IMPORT_ZIP : SAMPLE_IMPORT);
     setImportStep(2);
   };
   const handleConfirmImport = (force: boolean) => {
-    importAgents.mutate({ rows: importPreview, force });
-    setImportOpen(false);
-    setImportStep(1);
-    setImportPreview([]);
-    setImportFileName('');
+    importAgents.mutate({ rows: importPreview, force }, { onSuccess: () => { setImportOpen(false); setImportStep(1); setImportPreview([]); setImportFileName(''); } });
   };
 
   const handleConfirmExport = () => {
@@ -159,8 +166,14 @@ export default function AgentsPage() {
       format: exportFormat,
       fields: enabledFields,
       ids: exportScope === 'selected' ? selectedIds : undefined,
-    });
-    setExportOpen(false);
+    }, { onSuccess: (result) => {
+      if (!result.url) { window.alert('后端未返回导出文件，导出失败。'); return; }
+      const link = document.createElement('a');
+      link.href = result.url;
+      link.download = `agents.${exportFormat}`;
+      link.click();
+      setExportOpen(false);
+    } });
   };
 
   const countsForExport = { all: list.length, tab: filteredList.length, selected: selectedIds.length };

@@ -128,6 +128,11 @@ async def test_overview_and_create_dashboard_rule(service: AdminOpsService) -> N
     summary = await service.overview_summary(tenant_id=TENANT, workspace_id=WORKSPACE)
     assert len(summary["kpis"]) == 6
     assert summary["alerts"] == []
+    assert summary["services"] == []
+    assert summary["topAgents"] == []
+    assert next(kpi for kpi in summary["kpis"] if kpi["label"] == "可用率")["value"] == "—"
+    assert all(not kpi["sparkline"] for kpi in summary["kpis"])
+    assert (await service.overview_trend(tenant_id=TENANT, workspace_id=WORKSPACE, range_key="24h"))["points"] == []
     dash = await service.create_dashboard(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,

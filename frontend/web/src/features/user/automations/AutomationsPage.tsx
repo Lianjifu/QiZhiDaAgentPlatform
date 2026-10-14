@@ -1,3 +1,4 @@
+import { runtimeStorageKey } from '@/lib/environment';
 import { Activity, CalendarClock, Check, CirclePlay, Heart, Workflow } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CenterModal } from '@/components/feedback/CenterModal';
@@ -5,10 +6,10 @@ import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { SideDrawer } from '@/components/feedback/SideDrawer';
 import { CardActionButton, CardActions, CatalogToolbar, EmptyFilterState, PageIntro, WorkspacePage } from '../components';
 import { BrowseWorkflowsDrawer } from './components/BrowseWorkflowsDrawer';
-import { useFlows, useFlowRuns, useRecordFlowRun } from './useAutomations';
+import { useFlows, useFlowRuns, useRecordFlowRun, useToggleFlowFavorite } from './useAutomations';
 import type { Flow, FlowRun, FlowAvailability } from './schema';
 
-const CHOSEN_STORAGE_KEY = 'qzdap.user.automations.chosen';
+const CHOSEN_STORAGE_KEY = runtimeStorageKey('user.automations.chosen');
 
 function readChosenIds(): string[] {
   try {
@@ -22,11 +23,12 @@ function readChosenIds(): string[] {
 }
 
 export default function AutomationsPage() {
-  const { data: flows = [], isLoading, isFetching, refetch } = useFlows();
+  const { data: flows = [], isLoading, isFetching, isError, error, refetch } = useFlows();
   const { data: remoteRuns = [] } = useFlowRuns();
   const recordRun = useRecordFlowRun();
+  const toggleFlowFavorite = useToggleFlowFavorite();
 
-  const [runs, setRuns] = useState<FlowRun[]>([]);
+  const runs = remoteRuns;
   const [favorites, setFavorites] = useState<string[]>([]);
   const [chosenIds, setChosenIds] = useState<string[]>(() => readChosenIds());
   const [browseOpen, setBrowseOpen] = useState(false);
@@ -39,9 +41,6 @@ export default function AutomationsPage() {
   const [notice, setNotice] = useState('');
   const browseTriggerRef = useRef<HTMLButtonElement | null>(null);
 
-  useEffect(() => {
-    setRuns(remoteRuns);
-  }, [remoteRuns]);
 
   useEffect(() => {
     sessionStorage.setItem(CHOSEN_STORAGE_KEY, JSON.stringify(chosenIds));
@@ -107,22 +106,10 @@ export default function AutomationsPage() {
   const runFlow = () => {
     if (!runTarget || runTarget.availability !== 'available') return;
     ensureChosen(runTarget.id);
-    const next: FlowRun = {
-      id: `local-${Date.now()}`,
-      name: runTarget.name,
-      time: '刚刚 · 本地演示',
-      result: runNote.trim() ? '已记录使用说明' : '演示完成',
-    };
-    setRuns((current) => [next, ...current]);
-    setNotice(`"${runTarget.name}"已加入本地使用记录，未触发真实工作流。`);
-    setRunNote('');
-    setRunTarget(null);
-    setBrowseOpen(false);
-    recordRun.mutate({ flowId: runTarget.id, note: runNote });
+    recordRun.mutate({ flowId: runTarget.id, note: runNote }, { onSuccess: (next) => { setNotice(`"${runTarget.name}"使用记录已保存。`); setRunNote(''); setRunTarget(null); setBrowseOpen(false); }, onError: (cause) => setNotice(`执行失败：${String(cause)}`) });
   };
 
-  const toggleFavorite = (flow: Flow) =>
-    setFavorites((current) => current.includes(flow.id) ? current.filter((id) => id !== flow.id) : [...current, flow.id]);
+  const toggleFavorite = (flow: Flow) => toggleFlowFavorite.mutate({ id: flow.id, on: !favorites.includes(flow.id) }, { onSuccess: () => setFavorites((current) => current.includes(flow.id) ? current.filter((id) => id !== flow.id) : [...current, flow.id]), onError: (cause) => setNotice(`收藏失败：${String(cause)}`) });
 
   const resetFilters = () => {
     setSearch('');
@@ -156,6 +143,7 @@ export default function AutomationsPage() {
         }
       />
       {notice && <NoticeBanner tone="amber" onClose={() => setNotice('')}>{notice}</NoticeBanner>}
+      {isError && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">加载失败：{String(error)}</p>}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
         <section id="automation-list" aria-labelledby="automation-list-title" className="min-w-0 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-1)]">
@@ -258,7 +246,7 @@ export default function AutomationsPage() {
         <aside>
           <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5">
             <h3 className="flex items-center gap-2 text-sm font-semibold"><Activity className="h-4 w-4 text-[var(--brand)]" />最近使用</h3>
-            <p className="mt-2 text-xs text-[var(--text-muted)]">本地演示记录，不代表真实执行。</p>
+            <p className="mt-2 text-xs text-[var(--text-muted)]">执行记录来自后端。</p>
             {runs.length === 0 ? (
               <p className="mt-5 text-xs leading-6 text-[var(--text-muted)]">加入并使用后，会显示在这里。</p>
             ) : (
@@ -337,7 +325,7 @@ export default function AutomationsPage() {
                 <CirclePlay className="h-4 w-4" />使用这个工作流
               </button>
             </div>
-            <p className="mt-4 text-xs leading-6 text-[var(--text-muted)]">工作流由管理员维护；使用操作只会创建当前页面的演示记录。</p>
+            <p className="mt-4 text-xs leading-6 text-[var(--text-muted)]">工作流由管理员维护，使用操作由后端执行。</p>
           </>
         )}
       </SideDrawer>
@@ -346,7 +334,7 @@ export default function AutomationsPage() {
         onClose={() => setRunTarget(null)}
         ariaLabel={runTarget ? `使用${runTarget.name}` : '使用工作流'}
         title={runTarget ? `使用工作流：${runTarget.name}` : '使用工作流'}
-        description="确认后会创建一条本地演示使用记录，不会触发真实工作流。"
+        description="确认后请求后端执行工作流。"
         closeLabel="关闭使用工作流窗口"
         onSubmit={(event) => { event.preventDefault(); runFlow(); }}
         footer={

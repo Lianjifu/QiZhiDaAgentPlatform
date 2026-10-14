@@ -1,7 +1,8 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * AdminRegressions — orchestrator。
  * 对齐技能管理：无子模块 Tab，Hero 轻量，列表工具栏承载导入/新建。
- * 追踪 / 告警 / 时间线 走 useApiQuery 拉取;写操作(CRUD/批量/导入导出/告警)走本地乐观更新。
+ * 追踪 / 告警 / 时间线 走 useApiQuery 拉取;写操作(CRUD/批量/导入导出/告警)走真实 API。
  */
 import { Plus, Search, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -31,8 +32,8 @@ export default function RegressionsPage() {
   const alertsData = remoteAlerts.data ?? EMPTY_ALERTS;
   const timelineData = remoteTimeline.data ?? [];
 
-  const [tracks, setTracks] = useState<RegressionTrack[]>([]);
-  const [alerts, setAlerts] = useState<AlertRule[]>([]);
+  const tracks = tracksData;
+  const alerts = alertsData;
   const [view, setView] = useState<ViewId>('track');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | RegressionTrack['status']>('all');
@@ -43,10 +44,11 @@ export default function RegressionsPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [editingAlert, setEditingAlert] = useState<AlertRule | null>(null);
   const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [page, setPage] = useState(1);
 
-  useEffect(() => { setTracks(tracksData); }, [remoteTracks.data]);
-  useEffect(() => { setAlerts(alertsData); }, [remoteAlerts.data]);
+
+
 
   const counts = useMemo(() => {
     const total = tracks.length;
@@ -68,80 +70,18 @@ export default function RegressionsPage() {
   const paged = useMemo(() => paginateItems(visibleTracks, page), [visibleTracks, page]);
 
   const toggleSelect = (id: string) => setSelectedIds((current) => current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
-  const toggleStar = (id: string) => setTracks((current) => current.map((t) => t.id === id ? { ...t, starred: !t.starred } : t));
-
-  const openTrack = (track: RegressionTrack) => {
-    navigate(`/admin/regressions/${track.id}`);
-  };
-
-  const handleDuplicate = (track: RegressionTrack) => {
-    const copy: RegressionTrack = { ...track, id: uid('track'), name: `${track.name} 副本`, starred: false, lastCheckedAt: '未运行', history: [], casesList: [] };
-    setTracks((current) => [copy, ...current]);
-    setNotice(`已复制追踪:${copy.name}`);
-  };
-
-  const handleDelete = (track: RegressionTrack) => {
-    setTracks((current) => current.filter((t) => t.id !== track.id));
-    setNotice(`已删除「${track.name}」。`);
-    setDeleteTarget(null);
-  };
-
-  const handleInvestigate = (track: RegressionTrack) => {
-    setTracks((current) => current.map((t) => t.id === track.id ? { ...t, status: 'investigating' } : t));
-    setNotice(`已标记排查中:${track.name}`);
-  };
-
-  const handleResolve = (track: RegressionTrack) => {
-    setTracks((current) => current.map((t) => t.id === track.id ? { ...t, status: 'stable' } : t));
-    setNotice(`已标记已解决:${track.name}`);
-  };
-
-  const handleBatchInvestigate = () => {
-    setTracks((current) => current.map((t) => selectedIds.includes(t.id) ? { ...t, status: 'investigating' } : t));
-    setNotice(`已批量标记排查中 ${selectedIds.length} 条。`);
-    setSelectedIds([]);
-  };
-
-  const handleBatchResolve = () => {
-    setTracks((current) => current.map((t) => selectedIds.includes(t.id) ? { ...t, status: 'stable' } : t));
-    setNotice(`已批量标记已解决 ${selectedIds.length} 条。`);
-    setSelectedIds([]);
-  };
-
-  const handleBatchDelete = () => {
-    setTracks((current) => current.filter((t) => !selectedIds.includes(t.id)));
-    setNotice(`已批量删除 ${selectedIds.length} 条。`);
-    setSelectedIds([]);
-  };
-
-  const handleCreate = (track: RegressionTrack) => {
-    setTracks((current) => [track, ...current]);
-    setNotice(`已创建回归追踪「${track.name}」。`);
-    setView('track');
-  };
-
-  const handleImport = (count: number) => {
-    for (let i = 0; i < count; i += 1) {
-      const newTrack: RegressionTrack = {
-        id: uid('track'),
-        name: `导入追踪 ${i + 1}`,
-        agent: '待指定', owner: '张敏',
-        status: 'stable', risk: 'low',
-        baselineVersion: 'v1.0', currentVersion: 'v1.0',
-        passRateDelta: 0, latencyDelta: 0, costDelta: 0, scoreDelta: 0,
-        baseline: { passRate: 95, avgScore: 4.4, latencyMs: 1200, cost: 10 },
-        current: { passRate: 95, avgScore: 4.4, latencyMs: 1200, cost: 10 },
-        passRateTrend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        latencyTrend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        costTrend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        lastCheckedAt: '未运行', cases: 0, starred: false,
-        schedule: '每次发布后', tags: [], notes: '从外部文件导入',
-        history: [], casesList: [],
-      };
-      setTracks((current) => [newTrack, ...current]);
-    }
-    setNotice(`已导入 ${count} 条追踪。`);
-  };
+  const toggleStar = (id: string) => server.mutate({ path: `/api/admin/regressions/tracks/${id}`, method: 'PATCH', body: { starred: !tracks.find((t) => t.id === id)?.starred } });
+  const openTrack = (track: RegressionTrack) => navigate(`/admin/regressions/${track.id}`);
+  const handleDuplicate = (track: RegressionTrack) => server.mutate({ path: `/api/admin/regressions/tracks/${track.id}/duplicate`, success: '已复制追踪' });
+  const handleDelete = (track: RegressionTrack) => server.mutate({ path: `/api/admin/regressions/tracks/${track.id}`, method: 'DELETE', success: '已删除追踪', onSuccess: () => setDeleteTarget(null) });
+  const handleInvestigate = (track: RegressionTrack) => server.mutate({ path: `/api/admin/regressions/tracks/${track.id}`, method: 'PATCH', body: { status: 'investigating' }, success: '已标记排查中' });
+  const handleResolve = (track: RegressionTrack) => server.mutate({ path: `/api/admin/regressions/tracks/${track.id}`, method: 'PATCH', body: { status: 'stable' }, success: '已标记已解决' });
+  const batch = (action: string) => server.mutate({ path: `/api/admin/regressions/tracks/batch-${action}`, body: { ids: selectedIds }, success: '已完成批量操作', onSuccess: () => setSelectedIds([]) });
+  const handleBatchInvestigate = () => batch('investigate');
+  const handleBatchResolve = () => batch('resolve');
+  const handleBatchDelete = () => batch('delete');
+  const handleCreate = (track: RegressionTrack) => server.mutate({ path: '/api/admin/regressions/tracks', body: track, success: '已创建追踪', onSuccess: () => setView('track') });
+  const handleImport = (_count: number, content: string, format: ExchangeFormat) => server.mutate({ path: '/api/admin/regressions/tracks/import', body: { content, format }, success: '已导入', onSuccess: () => setImportOpen(false) });
 
   const handleExport = (format: ExchangeFormat) => {
     const list = selectedIds.length > 0 ? tracks.filter((t) => selectedIds.includes(t.id)) : tracks;
@@ -158,23 +98,9 @@ export default function RegressionsPage() {
     setNotice(`已导出 ${list.length} 条追踪为 ${format.toUpperCase()} 文件。`);
   };
 
-  const handleAlertSave = (rule: AlertRule) => {
-    setAlerts((current) => current.map((a) => a.id === rule.id ? { ...rule } : a));
-    setNotice(`已保存告警规则「${rule.name}」。`);
-    setEditingAlert(null);
-  };
-
-  const handleAlertToggle = (id: string) => {
-    const target = alerts.find((x) => x.id === id);
-    setAlerts((current) => current.map((a) => a.id === id ? { ...a, enabled: !a.enabled } : a));
-    if (target) setNotice(`已${target.enabled ? '停用' : '启用'}规则「${target.name}」`);
-  };
-
-  const handleAlertDelete = (id: string) => {
-    const target = alerts.find((x) => x.id === id);
-    setAlerts((current) => current.filter((x) => x.id !== id));
-    if (target) setNotice(`已删除规则「${target.name}」`);
-  };
+  const handleAlertSave = (rule: AlertRule) => server.mutate({ path: `/api/admin/regressions/alerts/${rule.id}`, method: 'PATCH', body: rule, success: '已保存告警规则', onSuccess: () => setEditingAlert(null) });
+  const handleAlertToggle = (id: string) => server.mutate({ path: `/api/admin/regressions/alerts/${id}`, method: 'PATCH', body: { enabled: !alerts.find((a) => a.id === id)?.enabled }, success: '已更新规则' });
+  const handleAlertDelete = (id: string) => server.mutate({ path: `/api/admin/regressions/alerts/${id}`, method: 'DELETE', success: '已删除规则' });
 
   const viewSelect = (
     <select

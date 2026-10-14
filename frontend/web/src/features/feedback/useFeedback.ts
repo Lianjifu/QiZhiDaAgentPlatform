@@ -1,6 +1,6 @@
 /**
  * AdminFeedback — 用户反馈数据 hooks。
- * 列表 / 工单 / 主题 / 规则 走 useApiQuery;CRUD 走本地乐观更新。
+ * 列表 / 工单 / 主题 / 规则 走 useApiQuery;CRUD 走真实 API。
  */
 import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';

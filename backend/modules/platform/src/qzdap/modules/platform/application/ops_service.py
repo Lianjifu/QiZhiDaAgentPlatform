@@ -237,7 +237,6 @@ class AdminOpsService:
     async def create_regression_track(
         self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
     ) -> dict[str, Any]:
-        zeros = [0] * 12
         return await self.create(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -255,11 +254,11 @@ class AdminOpsService:
                 "latencyDelta": 0,
                 "costDelta": 0,
                 "scoreDelta": 0,
-                "baseline": {"passRate": 95, "avgScore": 4.4, "latencyMs": 1200, "cost": 10},
-                "current": {"passRate": 95, "avgScore": 4.4, "latencyMs": 1200, "cost": 10},
-                "passRateTrend": zeros,
-                "latencyTrend": zeros,
-                "costTrend": zeros,
+                "baseline": {"passRate": 0, "avgScore": 0, "latencyMs": 0, "cost": 0},
+                "current": {"passRate": 0, "avgScore": 0, "latencyMs": 0, "cost": 0},
+                "passRateTrend": [],
+                "latencyTrend": [],
+                "costTrend": [],
                 "lastCheckedAt": "未运行",
                 "cases": 0,
                 "starred": False,
@@ -427,10 +426,7 @@ class AdminOpsService:
         key = range_key if range_key in self._TREND_LABELS else "24h"
         points = body.get("points")
         if not isinstance(points, list) or not points:
-            points = [
-                {"label": label, "calls": 0, "success": 100, "errors": 0}
-                for label in self._TREND_LABELS[key]
-            ]
+            points = []
         normalized = []
         for item in points:
             if not isinstance(item, dict):
@@ -439,7 +435,7 @@ class AdminOpsService:
                 {
                     "label": str(item.get("label") or ""),
                     "calls": int(item.get("calls") or 0),
-                    "success": float(item.get("success") or 100),
+                    "success": float(item.get("success") or 0),
                     "errors": float(item.get("errors") or 0),
                 }
             )
@@ -462,10 +458,7 @@ class AdminOpsService:
             return {"range": key, "points": list(stored["points"])}
         return {
             "range": key,
-            "points": [
-                {"label": label, "calls": 0, "success": 100, "errors": 0}
-                for label in self._TREND_LABELS[key]
-            ],
+            "points": [],
         }
 
     async def overview_alerts(
@@ -545,8 +538,6 @@ class AdminOpsService:
             tenant_id=tenant_id, workspace_id=workspace_id, range_key="24h"
         )
         spark = [int(point.get("calls") or 0) for point in (trend.get("points") or [])][:12]
-        if len(spark) < 12:
-            spark = spark + [0] * (12 - len(spark))
         calls = sum(int(item.get("calls") or 0) for item in models)
         if not calls:
             calls = sum(int(point.get("calls") or 0) for point in (trend.get("points") or []))
@@ -554,7 +545,7 @@ class AdminOpsService:
             sum(float(item.get("errorRate") or 0) for item in models) / len(models) if models else 0.0
         )
         avail = (
-            sum(float(item.get("availability") or 0) for item in models) / len(models) if models else 100.0
+            sum(float(item.get("availability") or 0) for item in models) / len(models) if models else 0.0
         )
         p95 = int(sum(int(item.get("p95") or 0) for item in models) / max(len(models), 1))
         open_incidents = [item for item in incidents if not item.get("resolved")]
@@ -573,37 +564,37 @@ class AdminOpsService:
             },
             {
                 "label": "可用率",
-                "value": f"{avail:.2f}%",
+                "value": f"{avail:.2f}%" if models else "—",
                 "delta": f"{len(models)} 个模型",
                 "deltaTone": "flat",
                 "tone": "success",
                 "href": "/admin/metrics",
-                "sparkline": [avail] * 12,
+                "sparkline": [],
                 "iconName": "ShieldCheck",
             },
             {
                 "label": "P95 延迟",
-                "value": f"{p95} ms",
+                "value": f"{p95} ms" if models else "—",
                 "delta": "运行指标均值",
                 "deltaTone": "down" if p95 else "flat",
                 "tone": "info",
                 "href": "/admin/metrics",
-                "sparkline": [p95] * 12,
+                "sparkline": [],
                 "iconName": "Timer",
             },
             {
                 "label": "错误率",
-                "value": f"{error_rate:.2f}%",
+                "value": f"{error_rate:.2f}%" if models else "—",
                 "delta": f"{len(open_incidents)} 条未解决异常",
                 "deltaTone": "up" if open_incidents else "flat",
                 "tone": "danger" if open_incidents or error_rate else "success",
                 "href": "/admin/operations",
-                "sparkline": [error_rate] * 12,
+                "sparkline": [],
                 "iconName": "AlertTriangle",
             },
             {
                 "label": "活跃智能体",
-                "value": str(len(active_agents) or len(sessions)),
+                "value": str(len(active_agents)),
                 "delta": f"{len(suites)} 个评测对象",
                 "deltaTone": "up" if active_agents else "flat",
                 "tone": "purple",
@@ -618,73 +609,18 @@ class AdminOpsService:
                 "deltaTone": "up" if high_alerts else "flat",
                 "tone": "warn",
                 "href": "/admin/overview",
-                "sparkline": [len(alerts)] * 12,
+                "sparkline": [],
                 "iconName": "BellRing",
             },
         ]
         stored_services = await self.list_collection(
             tenant_id=tenant_id, workspace_id=workspace_id, collection="overview.services"
         )
-        if stored_services:
-            services = stored_services
-        else:
-            degraded_models = [
-                item for item in models if float(item.get("availability") or 100) < 99
-            ]
-            services = [
-                {
-                    "name": "模型服务",
-                    "status": "ok" if models else "degraded",
-                    "latency": f"{p95} ms" if models else "—",
-                    "detail": f"{len(models)} 个模型 · 平均可用率 {avail:.2f}%",
-                },
-                {
-                    "name": "知识检索",
-                    "status": "ok",
-                    "latency": "—",
-                    "detail": "接入知识管理索引",
-                },
-                {
-                    "name": "工具网关",
-                    "status": "ok" if channels else "degraded",
-                    "latency": "—",
-                    "detail": f"{len(channels)} 个渠道 · {len(audit_entries)} 条审计",
-                },
-                {
-                    "name": "模型降级池",
-                    "status": "degraded" if degraded_models else "ok",
-                    "latency": "—",
-                    "detail": (
-                        f"{len(degraded_models)} 个模型触发降级"
-                        if degraded_models
-                        else "未触发降级"
-                    ),
-                },
-                {
-                    "name": "审计服务",
-                    "status": "ok",
-                    "latency": "—",
-                    "detail": f"实时落库 · {len(audit_entries)} 条记录",
-                },
-            ]
+        services = stored_services
         stored_agents = await self.list_collection(
             tenant_id=tenant_id, workspace_id=workspace_id, collection="overview.top-agents"
         )
-        if stored_agents:
-            top_agents = stored_agents
-        else:
-            tones = ["brand", "success", "info", "purple", "warn"]
-            ranked = sorted(models, key=lambda row: int(row.get("calls") or 0), reverse=True)[:5]
-            total = sum(int(item.get("calls") or 0) for item in ranked) or 1
-            top_agents = [
-                {
-                    "name": str(item.get("model") or "模型"),
-                    "calls": f"{int(item.get('calls') or 0):,}",
-                    "share": round(int(item.get("calls") or 0) / total, 2),
-                    "tone": tones[index % len(tones)],
-                }
-                for index, item in enumerate(ranked)
-            ]
+        top_agents = stored_agents
         return {
             "kpis": kpis,
             "alerts": alerts,

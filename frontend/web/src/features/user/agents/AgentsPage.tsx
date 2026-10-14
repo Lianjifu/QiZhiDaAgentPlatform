@@ -1,13 +1,14 @@
+import { runtimeStorageKey } from '@/lib/environment';
 import { ArrowRight, Bot, FileText, Heart, MessageSquareText, ShieldCheck, Sparkles, UsersRound } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { SideDrawer } from '@/components/feedback/SideDrawer';
 import { CardActionButton, CardActions, CatalogToolbar, EmptyFilterState, PageIntro, WorkspacePage } from '../components';
 import { BrowseAndUseDrawer } from './components/BrowseAndUseDrawer';
-import { useAgents } from './useAgents';
+import { useAgents, useToggleAgentFavorite } from './useAgents';
 import type { Agent, AgentCategory } from './schema';
 
-const CHOSEN_STORAGE_KEY = 'qzdap.user.agents.chosen';
+const CHOSEN_STORAGE_KEY = runtimeStorageKey('user.agents.chosen');
 
 const ICON_BY_CATEGORY: Record<AgentCategory, typeof UsersRound> = {
   '销售支持': UsersRound,
@@ -35,7 +36,8 @@ function readChosenIds(): string[] {
 export default function AgentsPage() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { data: remoteList = [], isLoading, isFetching, refetch } = useAgents();
+  const { data: remoteList = [], isLoading, isFetching, isError, error, refetch } = useAgents();
+  const favoriteMutation = useToggleAgentFavorite();
   const agents = remoteList;
 
   const [category, setCategory] = useState<'all' | AgentCategory>('all');
@@ -87,7 +89,7 @@ export default function AgentsPage() {
     setSelected(null);
     triggerRef.current?.focus();
   };
-  const toggleFavorite = (id: string) => setFavorites((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  const toggleFavorite = (id: string) => favoriteMutation.mutate({ id, on: !favorites.includes(id) }, { onSuccess: () => setFavorites((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]), onError: (cause) => window.alert(`收藏失败：${String(cause)}`) });
   const toggleChosen = (id: string) => setChosenIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   const startConversation = (agent: Agent) => {
     if (!chosenIds.includes(agent.id)) {
@@ -140,6 +142,7 @@ export default function AgentsPage() {
           </button>
         }
       />
+      {isError && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">加载失败：{String(error)}</p>}
 
       <section id="agent-catalog" aria-labelledby="agent-catalog-title" className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-1)]">
         <h2 id="agent-catalog-title" className="sr-only">已选用智能体</h2>

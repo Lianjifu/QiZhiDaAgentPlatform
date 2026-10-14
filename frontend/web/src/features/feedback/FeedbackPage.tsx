@@ -1,3 +1,4 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * AdminFeedback — orchestrator。
  * 对齐技能管理 / 模型配置：无子模块 Tab，Hero 轻量，列表工具栏承载筛选与导入/新建。
@@ -35,10 +36,10 @@ export default function FeedbackPage() {
   const topicsData = remoteTopics.data ?? EMPTY_TOPICS;
   const rulesData = remoteRules.data ?? EMPTY_RULES;
 
-  const [feedback, setFeedback] = useState<Feedback[]>([]);
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [topics, setTopics] = useState<TopicCluster[]>([]);
-  const [rules, setRules] = useState<RoutingRule[]>([]);
+  const feedback = feedbackData;
+  const tickets = ticketsData;
+  const topics = topicsData;
+  const rules = rulesData;
   const [view, setView] = useState<ViewId>('list');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | FeedbackStatus>('all');
@@ -49,12 +50,13 @@ export default function FeedbackPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [page, setPage] = useState(1);
 
-  useEffect(() => { setFeedback(feedbackData); }, [remoteList.data]);
-  useEffect(() => { setTickets(ticketsData); }, [remoteTickets.data]);
-  useEffect(() => { setTopics(topicsData); }, [remoteTopics.data]);
-  useEffect(() => { setRules(rulesData); }, [remoteRules.data]);
+
+
+
+
 
   const counts = useMemo(() => {
     const total = feedback.length;
@@ -81,59 +83,14 @@ export default function FeedbackPage() {
 
   const handleSelectFeedback = (id: string) => navigate('/admin/feedback/' + id);
 
-  const handleDelete = (fb: Feedback) => {
-    setFeedback((current) => current.filter((f) => f.id !== fb.id));
-    setNotice(`已删除反馈「${fb.id}」。`);
-    setDeleteTarget(null);
-  };
-
-  const handleQuickTriage = (fb: Feedback) => {
-    setFeedback((current) => current.map((f) => f.id === fb.id ? { ...f, status: 'triaged' } : f));
-    setNotice(`已分诊:${fb.id}`);
-  };
-
-  const handleQuickResolve = (fb: Feedback) => {
-    setFeedback((current) => current.map((f) => f.id === fb.id ? { ...f, status: 'resolved' } : f));
-    setNotice(`已标记已解决:${fb.id}`);
-  };
-
-  const handleBatchTriage = () => {
-    setFeedback((current) => current.map((f) => selectedIds.includes(f.id) ? { ...f, status: 'triaged' } : f));
-    setNotice(`已批量分诊 ${selectedIds.length} 条。`);
-    setSelectedIds([]);
-  };
-  const handleBatchResolve = () => {
-    setFeedback((current) => current.map((f) => selectedIds.includes(f.id) ? { ...f, status: 'resolved' } : f));
-    setNotice(`已批量标记已解决 ${selectedIds.length} 条。`);
-    setSelectedIds([]);
-  };
-  const handleBatchDelete = () => {
-    setFeedback((current) => current.filter((f) => !selectedIds.includes(f.id)));
-    setNotice(`已批量删除 ${selectedIds.length} 条。`);
-    setSelectedIds([]);
-  };
-
-  const handleImport = (count: number) => {
-    for (let i = 0; i < count; i += 1) {
-      const newFb: Feedback = {
-        id: uid('fb'),
-        agent: '客户沟通助手',
-        user: '导入用户',
-        session: '会话 #XXXX',
-        type: 'comment',
-        rating: 4,
-        sentiment: 'neutral',
-        status: 'new',
-        priority: 'medium',
-        topic: '导入主题',
-        comment: '从外部文件导入的反馈,等待分诊。',
-        submittedAt: '刚刚',
-        tags: [],
-      };
-      setFeedback((current) => [newFb, ...current]);
-    }
-    setNotice(`已导入 ${count} 条反馈。`);
-  };
+  const handleDelete = (fb: Feedback) => server.mutate({ path: `/api/admin/feedback/${fb.id}`, method: 'DELETE', success: '已删除反馈', onSuccess: () => setDeleteTarget(null) });
+  const handleQuickTriage = (fb: Feedback) => server.mutate({ path: `/api/admin/feedback/${fb.id}`, method: 'PATCH', body: { status: 'triaged' }, success: '已分诊' });
+  const handleQuickResolve = (fb: Feedback) => server.mutate({ path: `/api/admin/feedback/${fb.id}`, method: 'PATCH', body: { status: 'resolved' }, success: '已解决' });
+  const batch = (action: string) => server.mutate({ path: `/api/admin/feedback/batch-${action}`, body: { ids: selectedIds }, success: '已完成批量操作', onSuccess: () => setSelectedIds([]) });
+  const handleBatchTriage = () => batch('triage');
+  const handleBatchResolve = () => batch('resolve');
+  const handleBatchDelete = () => batch('delete');
+  const handleImport = (_count: number, content: string, format: ExchangeFormat) => server.mutate({ path: '/api/admin/feedback/import', body: { content, format }, success: '已导入', onSuccess: () => setImportOpen(false) });
 
   const handleExport = (format: ExchangeFormat) => {
     const list = selectedIds.length > 0 ? feedback.filter((f) => selectedIds.includes(f.id)) : feedback;
@@ -148,17 +105,8 @@ export default function FeedbackPage() {
     setNotice(`已导出 ${list.length} 条反馈为 ${format.toUpperCase()} 文件。`);
   };
 
-  const handleRuleToggle = (id: string) => {
-    setRules((current) => current.map((r) => r.id === id ? { ...r, enabled: !r.enabled } : r));
-    const r = rules.find((x) => x.id === id);
-    if (r) setNotice(`已${r.enabled ? '停用' : '启用'}规则「${r.name}」`);
-  };
-
-  const handleRuleDelete = (id: string) => {
-    const r = rules.find((x) => x.id === id);
-    setRules((current) => current.filter((x) => x.id !== id));
-    if (r) setNotice(`已删除规则「${r.name}」`);
-  };
+  const handleRuleToggle = (id: string) => server.mutate({ path: `/api/admin/feedback/rules/${id}`, method: 'PATCH', body: { enabled: !rules.find((r) => r.id === id)?.enabled }, success: '已更新规则' });
+  const handleRuleDelete = (id: string) => server.mutate({ path: `/api/admin/feedback/rules/${id}`, method: 'DELETE', success: '已删除规则' });
 
   const positivePct = counts.total > 0 ? (counts.positive / counts.total) * 100 : 0;
 

@@ -12,7 +12,11 @@ from qzdap.modules.agent_runtime.application.catalog_ports import (
     CatalogAgentUserStateRepository,
 )
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
-from qzdap.modules.agent_runtime.domain.catalog_errors import CatalogAgentDisabled, CatalogAgentNotFound
+from qzdap.modules.agent_runtime.domain.catalog_errors import (
+    CatalogAgentDisabled,
+    CatalogAgentNotFound,
+    CatalogCapabilityUnavailable,
+)
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
 WORKSPACE = UUID("00000000-0000-0000-0000-000000000002")
@@ -72,3 +76,16 @@ async def test_missing_agent() -> None:
     svc = AgentCatalogService(InMemoryCatalogRepo())
     with pytest.raises(CatalogAgentNotFound):
         await svc.get_admin(UUID(int=9))
+
+
+@pytest.mark.asyncio
+async def test_unimplemented_evaluation_does_not_write_fake_results() -> None:
+    svc = AgentCatalogService(InMemoryCatalogRepo())
+    created = await svc.create(tenant_id=TENANT, workspace_id=WORKSPACE, body={"name": "test"})
+    agent_id = UUID(created["id"])
+    with pytest.raises(CatalogCapabilityUnavailable):
+        await svc.run_eval(agent_id)
+    assert await svc.get_admin(agent_id) == created
+    assert (await svc.evaluations(agent_id))["runs"] == []
+    with pytest.raises(CatalogCapabilityUnavailable):
+        await svc.diff(agent_id=agent_id, left_version="v1", right_version="v2")

@@ -1,3 +1,4 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * AdminEvaluations — 评测中心 orchestrator。
  * 对齐技能管理 / ModelsPage：无子模块 Tab，Hero 轻量，列表工具栏 + 视图筛选。
@@ -10,7 +11,7 @@ import { AdminListHeader, AdminListHeaderMetrics } from '@/components/feedback/A
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { useEvalResults, useEvalSuites, useEvalSuiteStats } from './useEvaluations';
 import type { CaseTemplate, EvalResult, EvalSuite, EvalStatus, EvalSuiteType, ExchangeFormat } from './schema';
-import { mockCaseTemplates } from './fixtures';
+import { useApiQuery } from '@/services/query';
 import { BatchToolbar } from './components/BatchToolbar';
 import { STATUS_FILTER, TYPE_FILTER, uid } from './components/constants';
 import { DeleteSuiteModal, ExportSuiteModal, ImportSuiteModal, RunConfirmModal } from './components/Modals';
@@ -29,7 +30,9 @@ export default function EvaluationsPage() {
   const suitesData = remoteSuites.data ?? EMPTY_SUITES;
   const resultsData = remoteResults.data ?? EMPTY_RESULTS;
 
-  const [suites, setSuites] = useState<EvalSuite[]>([]);
+  const suites = suitesData;
+  const templatesQuery = useApiQuery<CaseTemplate[]>(['admin', 'evaluations', 'templates'], '/api/admin/evaluations/templates');
+  const caseTemplates = templatesQuery.data ?? [];
   const [view, setView] = useState<ViewId>('suite');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | EvalSuiteType>('all');
@@ -40,11 +43,12 @@ export default function EvaluationsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [page, setPage] = useState(1);
 
   const stats = useEvalSuiteStats(suites);
 
-  useEffect(() => { setSuites(suitesData); }, [remoteSuites.data]);
+
 
   const visibleSuites = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -61,63 +65,13 @@ export default function EvaluationsPage() {
   const goDetail = (suite: EvalSuite) => navigate(`/admin/evaluations/${suite.id}`);
 
   const toggleSelect = (id: string) => setSelectedIds((current) => current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
-  const toggleStar = (id: string) => setSuites((current) => current.map((s) => s.id === id ? { ...s, starred: !s.starred } : s));
-
-  const handleRun = (suite: EvalSuite) => {
-    setSuites((current) => current.map((s) => s.id === suite.id ? { ...s, status: 'running', lastRunAt: '运行中' } : s));
-    setNotice(`已加入运行队列:${suite.name}`);
-    setRunTarget(null);
-  };
-
-  const handleDuplicate = (suite: EvalSuite) => {
-    const copy: EvalSuite = { ...suite, id: uid('suite'), name: `${suite.name} 副本`, status: 'queued', cases: 0, passRate: 0, avgScore: 0, lastRunAt: '排队中', starred: false, trend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], history: [] };
-    setSuites((current) => [copy, ...current]);
-    setNotice(`已复制套件:${copy.name}`);
-  };
-
-  const handleDelete = (suite: EvalSuite) => {
-    setSuites((current) => current.filter((s) => s.id !== suite.id));
-    setNotice(`已删除「${suite.name}」。`);
-    setDeleteTarget(null);
-  };
-
-  const handleBatchRun = () => {
-    setSuites((current) => current.map((s) => selectedIds.includes(s.id) ? { ...s, status: 'running', lastRunAt: '运行中' } : s));
-    setNotice(`已批量运行 ${selectedIds.length} 个套件。`);
-    setSelectedIds([]);
-  };
-  const handleBatchDelete = () => {
-    setSuites((current) => current.filter((s) => !selectedIds.includes(s.id)));
-    setNotice(`已批量删除 ${selectedIds.length} 个套件。`);
-    setSelectedIds([]);
-  };
-
-  const handleImport = (count: number) => {
-    for (let i = 0; i < count; i += 1) {
-      const newSuite: EvalSuite = {
-        id: uid('suite'),
-        name: `导入套件 ${i + 1}`,
-        description: '从外部文件导入,根据系统提示配置评分标准与用例。',
-        type: 'capability',
-        owner: '张敏',
-        status: 'queued',
-        cases: 0,
-        passRate: 0,
-        avgScore: 0,
-        lastRunAt: '排队中',
-        schedule: '每周一 09:00',
-        target: '待指定',
-        starred: false,
-        tags: [],
-        trend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        casesList: [],
-        criteria: [],
-        history: [],
-      };
-      setSuites((current) => [newSuite, ...current]);
-    }
-    setNotice(`已导入 ${count} 个套件(以草稿状态进入)。`);
-  };
+  const toggleStar = (id: string) => server.mutate({ path: `/api/admin/evaluations/suites/${id}`, method: 'PATCH', body: { starred: !suites.find((s) => s.id === id)?.starred } });
+  const handleRun = (suite: EvalSuite) => server.mutate({ path: `/api/admin/evaluations/suites/${suite.id}/run`, success: `已加入运行队列：${suite.name}`, onSuccess: () => setRunTarget(null) });
+  const handleDuplicate = (suite: EvalSuite) => server.mutate({ path: `/api/admin/evaluations/suites/${suite.id}/duplicate`, success: '已复制套件' });
+  const handleDelete = (suite: EvalSuite) => server.mutate({ path: `/api/admin/evaluations/suites/${suite.id}`, method: 'DELETE', success: `已删除「${suite.name}」`, onSuccess: () => setDeleteTarget(null) });
+  const handleBatchRun = () => server.mutate({ path: '/api/admin/evaluations/suites/batch-run', body: { ids: selectedIds }, success: '已提交批量运行', onSuccess: () => setSelectedIds([]) });
+  const handleBatchDelete = () => server.mutate({ path: '/api/admin/evaluations/suites/bulk-delete', method: 'DELETE', body: { ids: selectedIds }, success: '已批量删除', onSuccess: () => setSelectedIds([]) });
+  const handleImport = (_count: number, content: string, format: ExchangeFormat) => server.mutate({ path: '/api/admin/evaluations/suites/import', body: { content, format }, success: '已导入', onSuccess: () => setImportOpen(false) });
 
   const handleExport = (format: ExchangeFormat) => {
     const list = selectedIds.length > 0 ? suites.filter((s) => selectedIds.includes(s.id)) : suites;
@@ -134,31 +88,7 @@ export default function EvaluationsPage() {
     setNotice(`已导出 ${list.length} 个套件为 ${format.toUpperCase()} 文件。`);
   };
 
-  const handleAddTemplate = (template: CaseTemplate) => {
-    const newSuite: EvalSuite = {
-      id: uid('suite'),
-      name: `${template.name} 套件`,
-      description: template.description,
-      type: template.type,
-      owner: '张敏',
-      status: 'queued',
-      cases: 0,
-      passRate: 0,
-      avgScore: 0,
-      lastRunAt: '排队中',
-      schedule: '每周一 09:00',
-      target: '待指定',
-      starred: false,
-      tags: [],
-      trend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-      casesList: [{ id: uid('case'), name: `${template.name} 示例`, input: template.inputExample, expected: template.expectedExample, status: 'skipped', durationMs: 0, score: 0 }],
-      criteria: [...template.criteria],
-      history: [],
-    };
-    setSuites((current) => [newSuite, ...current]);
-    setNotice(`已从模板加入:${newSuite.name}`);
-    setView('suite');
-  };
+  const handleAddTemplate = (template: CaseTemplate) => server.mutate({ path: '/api/admin/evaluations/suites', body: { name: `${template.name} 套件`, description: template.description, type: template.type, criteria: template.criteria, casesList: [{ name: template.name, input: template.inputExample, expected: template.expectedExample }] }, success: '已从模板创建套件', onSuccess: () => setView('suite') });
 
   return (
     <div className="evaluations-page mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
@@ -291,7 +221,7 @@ export default function EvaluationsPage() {
             {view === 'case' && <CaseTab suites={suites} />}
             {view === 'template' && (
               <TemplateTab
-                templates={mockCaseTemplates}
+                templates={caseTemplates}
                 onAddTemplate={handleAddTemplate}
               />
             )}

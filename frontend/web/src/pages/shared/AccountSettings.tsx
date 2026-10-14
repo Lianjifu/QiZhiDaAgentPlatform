@@ -1,3 +1,6 @@
+import { useServerAction } from '@/services/useServerAction';
+import { useApiQuery } from '@/services/query';
+import { useEffect } from 'react';
 import { Bell, Check, ChevronRight, KeyRound, LogOut, Monitor, Palette, Save, ShieldCheck, UserRound } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -21,15 +24,25 @@ export default function AccountSettings() {
   const logout = useAuthStore((state) => state.logout);
   const { theme, toggleTheme } = useUiStore();
   const [tab, setTab] = useState<SettingTab>('个人资料');
-  const [displayName, setDisplayName] = useState(user?.name ?? '平台成员');
-  const [email, setEmail] = useState(user?.email ?? 'member@example.com');
+  const [displayName, setDisplayName] = useState(user?.name ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
   const [language, setLanguage] = useState('简体中文');
   const [digest, setDigest] = useState(true);
   const [taskAlert, setTaskAlert] = useState(true);
   const [saved, setSaved] = useState(false);
   const [notice, setNotice] = useState('');
   const current = tabs.find((item) => item.id === tab);
-  const save = () => { setSaved(true); setNotice('设置已保存在当前页面演示状态。'); window.setTimeout(() => setSaved(false), 1600); };
+  const server = useServerAction(setNotice);
+  const account = useApiQuery<{ displayName?: string; email?: string; language?: string; digest?: boolean; taskAlert?: boolean }>(['user', 'account'], '/api/account/settings');
+  useEffect(() => {
+    const value = account.data;
+    setDisplayName(value?.displayName ?? user?.name ?? '');
+    setEmail(value?.email ?? user?.email ?? '');
+    setLanguage(value?.language ?? '');
+    setDigest(value?.digest ?? false);
+    setTaskAlert(value?.taskAlert ?? false);
+  }, [account.data, user]);
+  const save = () => server.mutate({ path: '/api/account/settings', method: 'PUT', body: { displayName, email, language, digest, taskAlert }, success: '设置已保存到后端。', onSuccess: () => setSaved(true) });
   const handleLogout = () => { logout(); navigate('/login', { replace: true }); };
 
   return (
@@ -40,7 +53,7 @@ export default function AccountSettings() {
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--brand)]">ACCOUNT / 设置</p>
             <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">把工作台调成你的样子。</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">管理个人信息、通知偏好和账号安全。设置只影响当前浏览器中的前端演示状态。</p>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">管理个人信息、通知偏好和账号安全。设置通过后端 API 保存。</p>
           </div>
           <div className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-3">
             <span className="grid h-11 w-11 place-items-center rounded-xl bg-[var(--brand-light)] text-lg font-bold text-[var(--brand)]">{displayName.slice(0, 1)}</span>
@@ -99,7 +112,7 @@ export default function AccountSettings() {
                 <div className="rounded-xl border border-[var(--border)] p-5">
                   <p className="text-xs font-semibold">当前工作空间</p>
                   <p className="mt-2 text-sm font-medium">默认工作空间</p>
-                  <p className="mt-1 text-xs text-[var(--text-muted)]">你的演示数据、对话和协作内容会显示在这里。</p>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">你的资料、对话和协作内容会显示在这里。</p>
                 </div>
               </div>
             )}

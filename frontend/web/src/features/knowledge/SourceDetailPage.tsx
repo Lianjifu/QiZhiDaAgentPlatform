@@ -4,6 +4,7 @@
  * 顶栏面包屑返回知识管理;页内无返回链。
  * Header 同步操作 + KPI + 关联知识库 / 文档 / 同步任务。
  */
+import { useServerAction } from '@/services/useServerAction';
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { FileText, ListChecks, AlertTriangle, RefreshCw } from 'lucide-react';
@@ -27,6 +28,8 @@ export default function SourceDetailPage() {
   const docs = docsQuery.data ?? [];
   const tasks = tasksQuery.data ?? [];
   const [notice, setNotice] = useState<string | null>(null);
+
+  const server = useServerAction(setNotice);
 
   const source = useMemo(() => sources.find((s) => s.id === id), [sources, id]);
 
@@ -94,7 +97,7 @@ export default function SourceDetailPage() {
         actions={(
           <button
             type="button"
-            onClick={() => flash('同步接口暂未提供,请求未执行')}
+            onClick={() => server.mutate({ path: `/api/admin/knowledge/sources/${source.id}/sync`, success: '同步请求已提交' })}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             <RefreshCw className="h-3.5 w-3.5" />

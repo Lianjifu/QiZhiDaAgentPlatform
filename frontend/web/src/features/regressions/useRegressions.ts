@@ -1,6 +1,6 @@
 /**
  * AdminRegressions — 回归追踪数据 hooks。
- * 列表 / 告警 / 时间线 走 useApiQuery;CRUD 走本地乐观更新。
+ * 列表 / 告警 / 时间线 走 useApiQuery;CRUD 走真实 API。
  */
 import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';

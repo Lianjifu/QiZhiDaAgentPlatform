@@ -4,7 +4,6 @@
 import { useEffect, useState } from 'react';
 import { Filter } from 'lucide-react';
 import { CenterModal } from '@/components/feedback/CenterModal';
-import { AGENT_OPTIONS } from './constants';
 
 export interface FilterSelection {
   status: string;
@@ -16,10 +15,12 @@ export function FilterModal({
   open,
   onClose,
   onApply,
+  agents,
 }: {
   open: boolean;
   onClose: () => void;
   onApply: (f: FilterSelection) => void;
+  agents: string[];
 }) {
   const [status, setStatus] = useState('all');
   const [agent, setAgent] = useState('all');
@@ -84,11 +85,8 @@ export function FilterModal({
             onChange={(e) => setAgent(e.target.value)}
             className="mt-1.5 h-10 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-sm outline-none focus:border-[var(--brand)]"
           >
-            {AGENT_OPTIONS.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
+            <option value="all">全部</option>
+            {agents.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         </div>
         <div>

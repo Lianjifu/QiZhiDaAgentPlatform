@@ -12,4 +12,9 @@ class CatalogAgentDisabled(AppError):
     status = 409
 
 
-__all__ = ["CatalogAgentDisabled", "CatalogAgentNotFound"]
+class CatalogCapabilityUnavailable(AppError):
+    code = "AGENT_CAPABILITY_UNAVAILABLE"
+    status = 501
+
+
+__all__ = ["CatalogAgentDisabled", "CatalogAgentNotFound", "CatalogCapabilityUnavailable"]

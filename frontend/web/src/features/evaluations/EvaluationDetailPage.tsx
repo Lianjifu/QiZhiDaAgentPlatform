@@ -1,9 +1,10 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * Admin 评测详情 — 独立页面 /admin/evaluations/:id
  *
  * 把 SuiteDetailDrawer 的 5 个 panel + header + footer 提到页面形态。
  * 单条 suite 从 `useEvalSuites()` list 中派生。
- * 本地编辑缓冲(草稿),「保存修改」调 onSave 把 draft 写回 suites 状态。
+ * 本地编辑缓冲(草稿),「保存修改」提交到后端。
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -241,6 +242,8 @@ export default function EvaluationDetailPage() {
   const suitesQuery = useEvalSuites();
   const suites = suitesQuery.data ?? [];
   const original = useMemo(() => suites.find((s) => s.id === id), [suites, id]);
+  const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [draft, setDraft] = useState<EvalSuite | null>(null);
   const [panel, setPanel] = useState<DrawerPanel>('basic');
 
@@ -255,20 +258,12 @@ export default function EvaluationDetailPage() {
   const Icon = (iconMap as any)[meta.icon] ?? BookOpen;
 
   const update = (patch: Partial<EvalSuite>) => setDraft({ ...draft, ...patch });
-  const handleSave = () => {
-    // 把 upsert 数据合并回 suites — 通过 queryClient.setQueryData
-    // 这里 EvaluationsPage 的本地 suites state 是 source-of-truth,
-    // 我们只在页面内做反馈提示,真正持久化由 EvaluationsPage 的 handleSaveDetail 完成。
-    // 页面形态下不直接改 list,只显示保存成功提示。
-    navigate('/admin/evaluations');
-  };
-  const handleRun = () => {
-    // 同上,实际"运行"在 EvaluationsPage 的 RunConfirmModal 流程里。
-    navigate('/admin/evaluations');
-  };
+  const handleSave = () => server.mutate({ path: `/api/admin/evaluations/suites/${draft.id}`, method: 'PATCH', body: draft, onSuccess: () => navigate('/admin/evaluations') });
+  const handleRun = () => server.mutate({ path: `/api/admin/evaluations/suites/${draft.id}/run`, success: '已提交运行' });
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+      {notice && <p role="alert" className="text-sm text-rose-700">{notice}</p>}
       <Link to="/admin/evaluations" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回评测中心
       </Link>
@@ -316,7 +311,7 @@ export default function EvaluationDetailPage() {
         </div>
       </section>
 
-      <p className="text-center text-xs text-[var(--text-muted)]">本页为前端演示数据,生产环境将接入企智搭评测中台。</p>
+
     </div>
   );
 }

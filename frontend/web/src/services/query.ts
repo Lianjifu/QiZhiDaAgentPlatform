@@ -24,9 +24,10 @@ export function useApiQuery<T>(
       });
     },
     ...options,
+    placeholderData: undefined,
   });
   return {
-    data: q.data === null ? undefined : q.data,
+    data: q.isError || q.data === null ? undefined : q.data,
     error: q.error,
     isLoading: q.isLoading,
     isFetching: q.isFetching,
@@ -48,8 +49,11 @@ export function useApiMutation<TData, TVar>(
   method: 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'POST',
 ) {
   const qc = useQueryClient();
+  const pathname = typeof window === 'undefined' ? '' : window.location.pathname;
   // 4 个泛型让 TanStack Query 类型完整
   return useMutation<TData, unknown, TVar>({
+    mutationKey: [method, String(path)],
+    meta: { pathname },
     mutationFn: async (vars: TVar) => {
       const c = getApiClient();
       const p = typeof path === 'function' ? path(vars) : path;
@@ -77,7 +81,10 @@ export function useApiUploadMutation<TData>(
   options?: MutationOpts<TData, FormData>,
 ) {
   const qc = useQueryClient();
+  const pathname = typeof window === 'undefined' ? '' : window.location.pathname;
   return useMutation<TData, unknown, FormData>({
+    mutationKey: ['upload', path],
+    meta: { pathname },
     mutationFn: async (form: FormData) => getApiClient().upload<TData>(path, form),
     onSuccess: (data, vars) => {
       options?.onSuccess?.(data, vars);

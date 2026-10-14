@@ -9,7 +9,8 @@ import {
   Activity, BarChart3, Clock, HardDrive, Hash, Layers, Percent, Settings, Trash2, Users,
 } from 'lucide-react';
 import { useRetentionPolicy, useL1Sessions, useL2Facts, useL3Entries } from './useMemory';
-import { mockAgents } from '@/features/agents/fixtures';
+import { useApiQuery } from '@/services/query';
+import type { AgentEntry } from '@/features/agents/schema';
 import {
   DetailShell, DetailHeader, DetailStatGrid, DetailStat,
   DetailSection, DetailField, DetailNotFound, DetailSkeleton,
@@ -36,6 +37,7 @@ function policyHealth(hitRate: number): { tone: 'success' | 'warn' | 'danger'; l
 export default function PolicyDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
   const decoded = useMemo(() => decodeURIComponent(id), [id]);
+  const { data: boundAgents = [] } = useApiQuery<AgentEntry[]>(['memory', 'policies', decoded, 'agents'], `/api/admin/memory/policies/${encodeURIComponent(decoded)}/agents`, undefined, { enabled: Boolean(decoded) });
   const { data: policy, isLoading } = useRetentionPolicy(decoded || null);
   const { data: l1Sessions } = useL1Sessions();
   const { data: l2Facts } = useL2Facts();
@@ -57,10 +59,6 @@ export default function PolicyDetailPage() {
     return items;
   }, [policy, l1Sessions, l2Facts, l3Entries]);
 
-  const boundAgents = useMemo(() => {
-    if (!policy) return [] as typeof mockAgents;
-    return mockAgents.filter((a) => a.memoryPolicy.enabled);
-  }, [policy]);
 
   if (isLoading) {
     return (

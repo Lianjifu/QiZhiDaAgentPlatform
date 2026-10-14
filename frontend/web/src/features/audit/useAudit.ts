@@ -1,6 +1,6 @@
 /**
  * AdminToolAudit hooks — 5 个列表查询(entries/risks/rules/scopes/stats)。
- * 收藏 / 选中 / 风险解决等乐观更新保持在 page 层 local state。
+ * 收藏与风险处置由后端处理，选中项属于页面 UI 状态。
  */
 import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';

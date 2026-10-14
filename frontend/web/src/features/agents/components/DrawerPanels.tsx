@@ -1,20 +1,23 @@
 /**
  * Drawer 9 个子面板 — basic / prompt / skills / knowledge / memory / flow / versions / evaluation / permission。
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import {
   AlertTriangle, ArrowRight, Beaker, Brain, CheckCircle2, Copy, Database, Download, Edit3, ExternalLink, FileText,
   FolderTree, GitBranch, Hash, History, Layers, Play, Plus, RotateCcw,
-  Save, ShieldCheck, Sparkles, Tag, Workflow, X,
+  ShieldCheck, Sparkles, Tag, Workflow, X,
 } from 'lucide-react';
 import type { AgentEntry, KnowledgeRef, MemoryPolicy, FlowRef, PromptDocs, PromptKey, EvalCase, CustomPromptDoc, SkillRef } from '../schema';
 import { KNOWN_TONES, formatCalls, buildPrompts } from '../fixtures';
+import { useAgentEvalHistory } from '../useAgents';
+import { useApiQuery } from '@/services/query';
+import { useServerAction } from '@/services/useServerAction';
 import { useAdminSkills } from '@/features/skills/useAdminSkills';
 import { useKnowledgeBases } from '@/features/knowledge/useKnowledge';
 import { useL1Sessions, useL2Facts, useL3Entries, useRetentionPolicies } from '@/features/memory/useMemory';
 import { useWorkflows } from '@/features/workflows/useWorkflows';
-import { EvalProgress, PanelPagination } from './Primitives';
+import { PanelPagination } from './Primitives';
 import { MarkdownView } from './MarkdownView';
 import { KnowledgePicker } from './KnowledgePicker';
 import { SkillPicker } from './SkillPicker';
@@ -276,6 +279,8 @@ function TrendBars({ values }: { values: number[] }) {
 }
 
 export function DrawerPanelVersions({ draft, onOpenDiff }: { draft: AgentEntry; onOpenDiff?: () => void }) {
+  const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   if (draft.versions.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-[var(--border)] p-6 text-center">
@@ -295,10 +300,11 @@ export function DrawerPanelVersions({ draft, onOpenDiff }: { draft: AgentEntry; 
         icon={<GitBranch className="h-4 w-4" />}
         eyebrow="智能体自有"
         title="版本历史 · Diff 对比"
-        subtitle="所有 Prompt / 模板变更都会保留为版本;回滚会立刻生效。"
+        subtitle="查看后端返回的版本记录，回滚结果以服务端响应为准。"
         sourceHref="/admin/agents"
         sourceLabel="返回工作台"
       />
+      {notice && <p role="status" className="text-xs">{notice}</p>}
       <section className="grid gap-3 sm:grid-cols-4">
         <PanelStat label="版本总数" value={`${draft.versions.length}`} />
         <PanelStat label="当前版本" value={current?.version ?? '—'} tone="success" />
@@ -332,7 +338,7 @@ export function DrawerPanelVersions({ draft, onOpenDiff }: { draft: AgentEntry; 
                 >
                   查看 diff
                 </button>
-                {!version.current && <button type="button" className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[11px] font-semibold hover:border-[var(--brand)]">回滚</button>}
+                {!version.current && <button type="button" onClick={() => server.mutate({ path: `/api/admin/agents/${draft.id}/rollback`, body: { version: version.version }, success: '版本已回滚' })} className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[11px] font-semibold hover:border-[var(--brand)]">回滚</button>}
               </div>
             </li>
           ))}
@@ -391,13 +397,15 @@ export function DrawerPanelEvaluation({
   lastResult?: EvalCase[] | null;
   onRunEval?: () => void;
 }) {
+  const { data: history } = useAgentEvalHistory(draft.id);
+  const runs = history?.runs ?? [];
   return (
     <div className="space-y-4">
       <PanelHero
         icon={<Beaker className="h-4 w-4" />}
         eyebrow="来自评测中心"
         title="基线评测 & 回归追踪"
-        subtitle="每次提交审核会自动触发评测,结果进入回归追踪面板。"
+        subtitle="评测结果和历史记录由后端提供。"
         sourceHref="/admin/evaluations"
         sourceLabel="前往评测中心"
       />
@@ -428,7 +436,7 @@ export function DrawerPanelEvaluation({
           <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
             <div>
               <p className="text-xs font-semibold">运行基线评测</p>
-              <p className="text-[11px] text-[var(--text-muted)]">本智能体共完成 {draft.evaluationRuns} 个评测批次 · {Math.max(draft.evaluationRuns * 12, 12)} 条回归用例</p>
+              <p className="text-[11px] text-[var(--text-muted)]">本智能体共完成 {draft.evaluationRuns} 个评测批次</p>
             </div>
             {onRunEval && (
               <button
@@ -441,7 +449,7 @@ export function DrawerPanelEvaluation({
               </button>
             )}
           </section>
-          {isRunning && <EvalProgress progress={progress ?? 0} />}
+          {isRunning && <p role="status" className="text-xs">评测请求处理中，等待后端返回结果…</p>}
           {lastResult && (
             <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5">
               <header className="flex items-center justify-between">
@@ -467,12 +475,13 @@ export function DrawerPanelEvaluation({
                 <a href="/admin/regressions" className="text-[10px] font-semibold text-[var(--brand)] hover:underline">在回归追踪查看 →</a>
               </header>
               <ul className="mt-3 space-y-2 text-xs">
-                {[0, 1, 2].map((i) => (
-                  <li key={i} className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] px-3 py-2">
-                    <span>基线评测 #{draft.evaluationRuns - i} · 通过 {Math.max(draft.evaluationPassRate - i, 60).toFixed(1)}%</span>
-                    <span className="text-[var(--text-muted)]">{i === 0 ? '刚刚' : i === 1 ? '昨天' : '3 天前'}</span>
+                {runs.map((run) => (
+                  <li key={run.runId} className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] px-3 py-2">
+                    <span>{run.runId} · 通过 {run.passRate.toFixed(1)}%</span>
+                    <span className="text-[var(--text-muted)]">{run.at}</span>
                   </li>
                 ))}
+                {!runs.length && <li className="text-[var(--text-muted)]">暂无评测记录</li>}
               </ul>
             </section>
           )}
@@ -483,6 +492,7 @@ export function DrawerPanelEvaluation({
 }
 
 export function DrawerPanelPermission({ draft }: { draft: AgentEntry }) {
+  const { data: events = [] } = useApiQuery<{ id: string; actor: string; action: string; at: string }[]>(['agent-audit', draft.id], `/api/admin/agents/${draft.id}/audit`);
   return (
     <div className="space-y-4">
       <PanelHero
@@ -520,9 +530,8 @@ export function DrawerPanelPermission({ draft }: { draft: AgentEntry }) {
         </header>
         <p className="mt-1 text-[11px] text-[var(--text-muted)]">查看该智能体的发布、权限变更与下线记录。</p>
         <ul className="mt-3 space-y-2 text-xs">
-          <li className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] px-3 py-2"><span>{draft.owner} · 调整可见范围</span><span className="text-[var(--text-muted)]">{draft.lastUpdate}</span></li>
-          <li className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] px-3 py-2"><span>系统 · 自动回归通过</span><span className="text-[var(--text-muted)]">3 天前</span></li>
-          <li className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] px-3 py-2"><span>合规 · 内容安全扫描通过</span><span className="text-[var(--text-muted)]">上周</span></li>
+          {events.map((event) => <li key={event.id} className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] px-3 py-2"><span>{event.actor} · {event.action}</span><span className="text-[var(--text-muted)]">{event.at}</span></li>)}
+          {!events.length && <li className="text-[var(--text-muted)]">暂无审计记录</li>}
         </ul>
       </section>
     </div>
@@ -550,8 +559,6 @@ export function DrawerPanelPrompt({
   const [draftLabel, setDraftLabel] = useState('');
   const [draftDescription, setDraftDescription] = useState('');
   const [metaOpen, setMetaOpen] = useState(false);
-  const [savedAt, setSavedAt] = useState<Date | null>(null);
-  const saveTimer = useRef<number | null>(null);
 
   const content = coreMeta ? draft.prompts[coreMeta.key] : customDoc?.content ?? '';
   const currentLabel = coreMeta?.label ?? customDoc?.label ?? '';
@@ -583,22 +590,13 @@ export function DrawerPanelPrompt({
           ? 'warning'
           : 'danger';
 
-  // 自动暂存指示器:每次内容变化 → 600ms 后设 savedAt
-  useEffect(() => {
-    if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => setSavedAt(new Date()), 600);
-    return () => {
-      if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    };
-  }, [content]);
-
   const handleCopy = async () => {
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(content);
       }
     } catch {
-      // 静默失败,演示场景无需提示
+      window.alert('复制失败，请检查剪贴板权限');
     }
   };
 
@@ -684,7 +682,7 @@ export function DrawerPanelPrompt({
             <h3 className="mt-1 text-sm font-semibold">智能体运行时由 {totalDocs} 份文档组成 · 共 {totalChars.toLocaleString()} 字</h3>
           </div>
           <div className="text-right text-[10px] text-[var(--text-muted)]">
-            {savedAt ? <span className="inline-flex items-center gap-1"><Save className="h-3 w-3" />已自动暂存 · {savedAt.toLocaleTimeString('zh-Hans-CN', { hour: '2-digit', minute: '2-digit' })}</span> : '尚未编辑'}
+            编辑变更的保存结果以服务端响应为准
           </div>
         </header>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

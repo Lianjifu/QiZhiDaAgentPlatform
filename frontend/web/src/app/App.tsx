@@ -1,3 +1,4 @@
+import { ApiFailureNotice } from '@/components/feedback/ApiFailureNotice';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { ToastHost, Spinner } from '@qzdap/web-ui';
@@ -102,6 +103,7 @@ function NotFound() {
 export default function App() {
   return (
     <ErrorBoundary fallbackTitle="应用遇到问题">
+      <ApiFailureNotice />
       <a href="#main-content" className="skip-link">跳转到主内容</a>
       <Suspense fallback={<PageFallback />}>
         <Routes>

@@ -17,7 +17,7 @@ export type ImportExtension = 'json' | 'csv' | 'yaml' | 'zip';
 export type VisibleScope = '公开' | '部门' | '个人';
 
 export interface ImportRow {
-  source: Record<string, string>;
+  source: Record<string, unknown>;
   status: 'ok' | 'duplicate' | 'missing';
   message?: string;
 }

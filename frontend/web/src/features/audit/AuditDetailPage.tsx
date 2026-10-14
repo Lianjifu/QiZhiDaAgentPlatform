@@ -1,3 +1,4 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * Admin 工具审计详情 — 独立页面 /admin/tool-audit/:id
  */
@@ -58,6 +59,7 @@ export default function AuditDetailPage() {
   const entry = useMemo(() => entries.find((e) => e.id === id), [entries, id]);
   const [panel, setPanel] = useState<AuditDrawerPanel>('overview');
   const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
 
   useEffect(() => {
     setPanel('overview');
@@ -68,8 +70,7 @@ export default function AuditDetailPage() {
   const sev = SEVERITY_BADGE[entry.severity];
 
   const handleResolve = () => {
-    setNotice('已下发处置任务');
-    window.setTimeout(() => navigate('/admin/tool-audit'), 800);
+    server.mutate({ path: `/api/admin/audit/entries/${id}/resolve`, success: '已下发处置任务', onSuccess: () => navigate('/admin/tool-audit') });
   };
 
   return (

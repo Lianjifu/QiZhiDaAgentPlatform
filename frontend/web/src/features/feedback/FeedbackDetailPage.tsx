@@ -1,3 +1,5 @@
+import { useApiQuery } from '@/services/query';
+import { useServerAction } from '@/services/useServerAction';
 /**
  * Admin 反馈详情 — 独立页面 /admin/feedback/:id
  *
@@ -95,6 +97,8 @@ function DrawerPanelDetail({ fb, onChange }: { fb: Feedback; onChange: (patch: P
 
 function DrawerPanelReply({ fb }: { fb: Feedback }) {
   const [reply, setReply] = useState('');
+  const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [tone, setTone] = useState<'empathy' | 'thanks' | 'escalate'>('empathy');
   return (
     <div className="space-y-4">
@@ -126,19 +130,17 @@ function DrawerPanelReply({ fb }: { fb: Feedback }) {
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--brand)] bg-[var(--brand-light)] px-4 py-3">
+        <button type="button" disabled={!reply.trim() || server.isPending} onClick={() => server.mutate({ path: `/api/admin/feedback/${fb.id}/reply`, body: { reply }, success: '回复已发送' })}>发送回复</button>
+        {notice && <p role="alert">{notice}</p>}
         <Send className="h-4 w-4 text-[var(--brand)]" />
-        <span className="text-xs font-semibold text-[var(--brand)]">本地预览模式:不会真正发送,仅模拟回复流程。</span>
+        <span className="text-xs font-semibold text-[var(--brand)]">回复草稿，发送后以服务端结果为准。</span>
       </div>
     </div>
   );
 }
 
 function DrawerPanelHistory({ fb }: { fb: Feedback }) {
-  const events = [
-    { time: fb.submittedAt, actor: fb.user, action: '提交反馈' },
-    { time: '分诊后 12 分钟', actor: '客服小张', action: '标记分诊完成' },
-    { time: '今天 11:30', actor: '安全团队', action: '认领紧急工单' },
-  ];
+  const { data: events = [] } = useApiQuery<{ time: string; actor: string; action: string }[]>(['detail', `/api/admin/feedback/${fb.id}/history`], `/api/admin/feedback/${fb.id}/history`);
   return (
     <ul className="space-y-2">
       {events.map((e, idx) => (
@@ -180,6 +182,8 @@ export default function FeedbackDetailPage() {
   const feedbacksQuery = useFeedbackList();
   const feedbacks = feedbacksQuery.data ?? [];
   const original = useMemo(() => feedbacks.find((f) => f.id === id), [feedbacks, id]);
+  const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [draft, setDraft] = useState<Feedback | null>(null);
   const [panel, setPanel] = useState<DrawerPanel>('detail');
 
@@ -195,11 +199,12 @@ export default function FeedbackDetailPage() {
   const badge = STATUS_BADGE[draft.status];
 
   const update = (patch: Partial<Feedback>) => setDraft({ ...draft, ...patch });
-  const handleSave = () => navigate('/admin/feedback');
+  const handleSave = () => server.mutate({ path: `/api/admin/feedback/${draft.id}`, method: 'PATCH', body: draft, onSuccess: () => navigate('/admin/feedback') });
   const handleCreateTicket = () => navigate(`/admin/feedback/new?fromFeedback=${draft.id}`);
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+      {notice && <p role="alert" className="text-sm text-rose-700">{notice}</p>}
       <Link to="/admin/feedback" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <span aria-hidden="true">←</span>返回用户反馈
       </Link>
@@ -243,7 +248,7 @@ export default function FeedbackDetailPage() {
         </div>
       </section>
 
-      <p className="text-center text-xs text-[var(--text-muted)]">本页为前端演示数据,生产环境将接入企智搭用户反馈中台。</p>
+
     </div>
   );
 }

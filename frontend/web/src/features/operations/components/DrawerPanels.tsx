@@ -1,3 +1,4 @@
+import { useApiQuery } from '@/services/query';
 /**
  * 4 个 SideDrawer 子面板(概要 / 调用链 / 上下文 / 日志)+ 工作区侧栏。
  */
@@ -125,13 +126,8 @@ export function DrawerPanelSpans({ session, spans }: { session: Session; spans: 
   );
 }
 
-export function DrawerPanelContext({ session: _ }: { session: Session }) {
-  const ctx = [
-    { label: '用户输入', value: '"请帮我查询最近 3 单订单的状态,并发邮件给我"' },
-    { label: '检索结果', value: '· 订单 #A001 已发货 · 订单 #A002 已签收 · 订单 #A003 处理中' },
-    { label: '记忆摘要', value: '用户偏好:简洁答复 · 历史偏好:邮件通知' },
-    { label: '工具输出', value: '{ "customers": 3, "orders": 3, "ok": true }' },
-  ];
+export function DrawerPanelContext({ session }: { session: Session }) {
+  const { data: ctx = [] } = useApiQuery<{ label: string; value: string }[]>(['detail', `/api/admin/operations/sessions/${session.id}/context`], `/api/admin/operations/sessions/${session.id}/context`);
   return (
     <ul className="space-y-2">
       {ctx.map((c) => (
@@ -147,13 +143,7 @@ export function DrawerPanelContext({ session: _ }: { session: Session }) {
 }
 
 export function DrawerPanelLogs({ session }: { session: Session }) {
-  const logs = [
-    { time: '11:42:01', level: 'info', text: `agent.run start · session=${session.id}` },
-    { time: '11:42:01', level: 'info', text: 'kb.search 命中 3 条结果' },
-    { time: '11:42:03', level: 'info', text: 'llm.chat 完成 · tokens=1280' },
-    { time: '11:42:04', level: 'info', text: 'tool.search_crm 完成' },
-    { time: '11:42:05', level: 'info', text: 'tool.send_email 完成' },
-  ];
+  const { data: logs = [] } = useApiQuery<{ time: string; level: string; text: string }[]>(['detail', `/api/admin/operations/sessions/${session.id}/logs`], `/api/admin/operations/sessions/${session.id}/logs`);
   return (
     <ol className="space-y-1.5">
       {logs.map((l, idx) => (

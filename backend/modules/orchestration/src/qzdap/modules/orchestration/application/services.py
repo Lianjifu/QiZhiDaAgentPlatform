@@ -133,7 +133,7 @@ class OrchestrationService:
             workflow_id=flow.id,
             name=flow.name,
             time="刚刚",
-            result="已记录使用说明" if trimmed else "演示完成",
+            result="已记录使用说明" if trimmed else "使用记录已保存",
         )
         await self._runs.add(run)
         return run.to_catalog_dict()

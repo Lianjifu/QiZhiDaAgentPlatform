@@ -26,6 +26,7 @@ describe('runtime environment', () => {
       VITE_QZDAP_ENV: 'development',
       VITE_DATA_MODE: 'development-mock',
       VITE_USE_MOCK: 'true',
+      VITE_USE_DEMO: 'true',
     });
     expect(development).toMatchObject({
       environment: 'development',

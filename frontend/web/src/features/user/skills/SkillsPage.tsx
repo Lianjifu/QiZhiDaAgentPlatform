@@ -1,3 +1,4 @@
+import { runtimeStorageKey } from '@/lib/environment';
 import { Bot, Clock3, Heart, Network, Sparkles, Wrench } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,7 +13,7 @@ import { UseModal } from './components/UseModal';
 
 interface RecentUseItem { id: string; name: string; type: CapabilityType; time: string }
 
-const CHOSEN_STORAGE_KEY = 'qzdap.user.skills.chosen';
+const CHOSEN_STORAGE_KEY = runtimeStorageKey('user.skills.chosen');
 
 const TYPE_META = {
   Skill: { icon: Sparkles, tone: 'bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300', label: '工作技能' },
@@ -45,7 +46,7 @@ export default function SkillsPage() {
   const [notice, setNotice] = useState('');
   const browseTriggerRef = useRef<HTMLButtonElement | null>(null);
 
-  const { data: list = [], isLoading, isFetching, refetch } = useCapabilities();
+  const { data: list = [], isLoading, isFetching, isError, error, refetch } = useCapabilities();
   const { data: agents = [] } = useAgents();
   const toggleFav = useToggleFavorite();
   const recordUse = useRecordUse();
@@ -81,8 +82,7 @@ export default function SkillsPage() {
   const availableCount = list.filter((item) => item.status === 'available').length;
 
   const toggleFavorite = (item: Capability) => {
-    setFavorites((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id]);
-    toggleFav.mutate({ id: item.id, on: !favorites.includes(item.id) });
+    toggleFav.mutate({ id: item.id, on: !favorites.includes(item.id) }, { onSuccess: () => setFavorites((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id]), onError: (cause) => setNotice(`收藏失败：${String(cause)}`) });
   };
 
   const toggleChosen = (id: string) => {
@@ -104,11 +104,7 @@ export default function SkillsPage() {
 
   const confirmUse = (goal: string) => {
     if (!useTarget) return;
-    setRecent((current) => [{ id: `recent-${Date.now()}`, name: useTarget.name, type: useTarget.type, time: '刚刚 · 本地演示' }, ...current].slice(0, 5));
-    setNotice(`「${useTarget.name}」已加入本地使用记录，未触发真实连接。`);
-    recordUse.mutate({ id: useTarget.id, goal });
-    setUseTarget(null);
-    setBrowseOpen(false);
+    recordUse.mutate({ id: useTarget.id, goal }, { onSuccess: (result) => { setRecent((current) => [{ id: result.id, name: useTarget.name, type: useTarget.type, time: result.recordedAt }, ...current].slice(0, 5)); setNotice(`「${useTarget.name}」使用记录已保存。`); setUseTarget(null); setBrowseOpen(false); }, onError: (cause) => setNotice(`使用失败：${String(cause)}`) });
   };
 
   const useToolInCopilot = (item: Capability) => {
@@ -173,6 +169,7 @@ export default function SkillsPage() {
       />
 
       {notice && <NoticeBanner tone="violet" onClose={() => setNotice('')}>{notice}</NoticeBanner>}
+      {isError && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">加载失败：{String(error)}</p>}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
         <section id="skills-catalog" aria-labelledby="skills-title" className="min-w-0 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-1)]">

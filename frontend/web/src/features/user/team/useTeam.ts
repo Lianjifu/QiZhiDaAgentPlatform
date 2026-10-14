@@ -1,6 +1,5 @@
-import { useApiQuery } from '@/services/query';
+import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';
-import { useAuthStore } from '@/features/auth';
 import type { Member, SharedItem, Team, TeamAccent } from './schema';
 
 const ACCENTS: TeamAccent[] = ['emerald', 'sky', 'amber'];
@@ -76,20 +75,6 @@ export function mapSharedItems(raw: unknown, team: string, kind: SharedItem['kin
   });
 }
 
-export function memberFromSession(team: string): Member | null {
-  const user = useAuthStore.getState().user;
-  if (!user?.id && !user?.email) return null;
-  const name = user.name || user.email || '当前用户';
-  return {
-    id: user.id || user.email,
-    name,
-    role: user.role === 'admin' ? '管理员' : '工作空间成员',
-    team,
-    initials: name.slice(0, 1).toUpperCase(),
-    color: MEMBER_COLOR,
-  };
-}
-
 export function useTeams() {
   const q = useApiQuery<unknown>(
     [...qk.user.team.root, 'teams'],
@@ -103,13 +88,12 @@ export function useTeams() {
 export function useMembers(teamName: string) {
   const q = useApiQuery<unknown>(
     [...qk.user.team.members],
-    '/api/auth/me',
+    '/api/workspaces/current/members',
     undefined,
     { staleTime: 30_000, retry: false },
   );
   const mapped = mapMembers(q.data, teamName);
-  const self = memberFromSession(teamName);
-  const data = mapped.length > 0 ? mapped : self ? [{ ...self, team: teamName }] : [];
+  const data = mapped;
   return { ...q, data };
 }
 
@@ -132,11 +116,27 @@ export function useSharedItems(teamName: string) {
       ...mapSharedItems(knowledge.data, teamName, 'knowledge'),
     ],
     isLoading: agents.isLoading || knowledge.isLoading,
-    isError: agents.isError && knowledge.isError,
+    isError: agents.isError || knowledge.isError,
     error: agents.error ?? knowledge.error,
     refetch: () => {
       void agents.refetch();
       void knowledge.refetch();
     },
   };
+}
+
+export function useInviteMember() {
+  return useApiMutation<Member, { team: string; email: string }>(
+    (vars) => `/api/workspaces/${encodeURIComponent(vars.team)}/members/invite`,
+    undefined,
+    'POST',
+  );
+}
+
+export function useToggleTeamFavorite() {
+  return useApiMutation<SharedItem, { id: string; kind: SharedItem['kind']; on: boolean }>(
+    (vars) => `/api/catalog/${vars.kind === 'agent' ? 'agents' : 'knowledge'}/${vars.id}/favorite`,
+    undefined,
+    'POST',
+  );
 }

@@ -186,8 +186,8 @@ export function ImportDialog({
               <tbody>
                 {preview.map((row, idx) => (
                   <tr key={idx} className="border-t border-[var(--border)]">
-                    <td className="px-3 py-2 font-medium">{row.source.name || '—'}</td>
-                    <td className="px-3 py-2 text-[var(--text-muted)]">{row.source.owner || '未指定'}</td>
+                    <td className="px-3 py-2 font-medium">{String(row.source.name || '—')}</td>
+                    <td className="px-3 py-2 text-[var(--text-muted)]">{String(row.source.owner || '未指定')}</td>
                     <td className="px-3 py-2">
                       {row.status === 'ok' && <span className="inline-flex items-center gap-1 text-[var(--success)]"><CheckCircle2 className="h-3 w-3" />通过</span>}
                       {row.status === 'duplicate' && <span className="inline-flex items-center gap-1 text-[var(--warning)]"><AlertTriangle className="h-3 w-3" />{row.message}</span>}

@@ -3,9 +3,8 @@ import { useMemo, useState } from 'react';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { SideDrawer } from '@/components/feedback/SideDrawer';
 import { CardActionButton, CardActions, CatalogToolbar, EmptyFilterState, PageIntro, WorkspacePage } from '../components';
-import { useUpdateTask } from './useTasks';
+import { useTasks, useUpdateTask } from './useTasks';
 import type { Task, TaskFilter, TaskView, TaskStatus } from './schema';
-import { mockTasks } from './fixtures';
 
 const STATUS_META: Record<TaskStatus, { icon: typeof CircleDot; className: string; hint: string }> = {
   '待处理': { icon: Clock3, className: 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300', hint: '需要你的确认' },
@@ -72,7 +71,8 @@ function StatusCard({ status, count, active, onSelect }: { status: TaskStatus; c
 }
 
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  const tasksQuery = useTasks();
+  const tasks = tasksQuery.data ?? [];
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<TaskFilter>('all');
   const [view, setView] = useState<TaskView>('list');
@@ -98,17 +98,10 @@ export default function TasksPage() {
 
   const updateTask = (task: Task, action: 'complete' | 'retry' | 'archive') => {
     if (action === 'archive') {
-      setTasks((current) => current.filter((item) => item.id !== task.id));
-      setSelected(null);
-      setNotice(`"${task.title}"已从本页演示记录中归档。`);
-      updateMutation.mutate({ id: task.id, action });
+      updateMutation.mutate({ id: task.id, action }, { onSuccess: () => { setSelected(null); setNotice(`"${task.title}"已归档。`); }, onError: (error) => setNotice(`归档失败：${String(error)}`) });
       return;
     }
-    const nextStatus: TaskStatus = action === 'retry' ? '执行中' : '已完成';
-    setTasks((current) => current.map((item) => item.id === task.id ? { ...item, status: nextStatus, time: action === 'retry' ? '刚刚重新运行' : '刚刚完成' } : item));
-    setSelected((current) => current?.id === task.id ? { ...current, status: nextStatus } : current);
-    setNotice(action === 'retry' ? `"${task.title}"已重新加入本地演示队列。` : `"${task.title}"已标记为完成。`);
-    updateMutation.mutate({ id: task.id, action });
+    updateMutation.mutate({ id: task.id, action }, { onSuccess: () => { setSelected(null); setNotice(action === 'retry' ? `"${task.title}"已重新运行。` : `"${task.title}"已完成。`); }, onError: (error) => setNotice(`操作失败：${String(error)}`) });
   };
 
   return (
@@ -126,7 +119,7 @@ export default function TasksPage() {
         actions={
           <button
             type="button"
-            onClick={() => setNotice('任务创建入口将在连接真实智能体后开放。')}
+            onClick={() => setNotice('创建任务接口暂未提供。')}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--brand)] px-3 text-xs font-semibold text-white hover:bg-[var(--brand-hover)]"
           >
             <ListTodo className="h-3.5 w-3.5" />记录新任务
@@ -134,6 +127,7 @@ export default function TasksPage() {
         }
       />
       {notice && <NoticeBanner tone="sky" onClose={() => setNotice('')}>{notice}</NoticeBanner>}
+      {tasksQuery.isError && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">加载失败：{String(tasksQuery.error)}</p>}
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {STATUSES.map((item) => (
           <StatusCard
@@ -226,7 +220,7 @@ export default function TasksPage() {
                 <Archive className="h-3.5 w-3.5" />归档记录
               </CardActionButton>
             </CardActions>
-            <p className="mt-7 text-xs leading-6 text-[var(--text-muted)]">这是前端演示任务，操作只会更新当前页面状态。</p>
+            <p className="mt-7 text-xs leading-6 text-[var(--text-muted)]">任务数据来自后端 API，操作结果以服务端返回为准。</p>
           </>
         )}
       </SideDrawer>

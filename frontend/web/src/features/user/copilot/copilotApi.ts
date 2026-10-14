@@ -9,46 +9,19 @@ export type ChatMessage = {
   compacted?: boolean;
 };
 
-export async function safeClient() {
-  try {
-    return getApiClient();
-  } catch {
-    return null;
-  }
-}
-
 export async function listCopilotSessions(): Promise<CopilotSession[]> {
-  const client = await safeClient();
-  if (!client) return [];
-  try {
-    const rows = await client.request<CopilotSession[]>('/api/sessions');
-    return Array.isArray(rows) ? rows : [];
-  } catch {
-    return [];
-  }
+  const rows = await getApiClient().get<CopilotSession[] | null>('/api/sessions');
+  if (rows == null) return [];
+  if (!Array.isArray(rows)) throw new Error('后端会话列表格式错误');
+  return rows;
 }
 
 export async function createCopilotSession(agentId: string, title?: string): Promise<SessionDetail | null> {
-  const client = await safeClient();
-  if (!client) return null;
-  try {
-    return await client.request<SessionDetail>('/api/sessions', {
-      method: 'POST',
-      body: { agentId, title },
-    });
-  } catch {
-    return null;
-  }
+  return getApiClient().post<SessionDetail>('/api/sessions', { agentId, title });
 }
 
 export async function loadCopilotSession(id: string): Promise<SessionDetail | null> {
-  const client = await safeClient();
-  if (!client) return null;
-  try {
-    return await client.request<SessionDetail>(`/api/sessions/${id}`);
-  } catch {
-    return null;
-  }
+  return getApiClient().get<SessionDetail>(`/api/sessions/${id}`);
 }
 
 export async function streamCopilotTurn(
@@ -56,10 +29,10 @@ export async function streamCopilotTurn(
   content: string,
   onEvent: (event: string, data: Record<string, unknown>) => void,
 ): Promise<void> {
-  const client = await safeClient();
-  if (!client) throw new Error('no client');
+  const client = getApiClient();
   for await (const item of client.streamEvents(`/api/sessions/${sessionId}/turns/stream`, { content })) {
     const data = (item.data && typeof item.data === 'object' ? item.data : {}) as Record<string, unknown>;
+    if (item.event === 'error') throw new Error(String(data.message || data.error || '后端执行失败'));
     onEvent(item.event, data);
   }
 }
@@ -70,11 +43,11 @@ export async function decideCopilotApproval(
   approved: boolean,
   onEvent: (event: string, data: Record<string, unknown>) => void,
 ): Promise<void> {
-  const client = await safeClient();
-  if (!client) throw new Error('no client');
+  const client = getApiClient();
   const verb = approved ? 'approve' : 'deny';
   for await (const item of client.streamEvents(`/api/sessions/${sessionId}/approvals/${approvalId}/${verb}`, {})) {
     const data = (item.data && typeof item.data === 'object' ? item.data : {}) as Record<string, unknown>;
+    if (item.event === 'error') throw new Error(String(data.message || data.error || '后端执行失败'));
     onEvent(item.event, data);
   }
 }

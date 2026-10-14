@@ -24,8 +24,16 @@ export function useKnowledgeResources(params: KnowledgeListParams = {}) {
 
 export function useAskQuestion() {
   return useApiMutation<{ question: string; resourceId: string }, AskQuestionVars>(
-    () => `${PATH}/__noop__/ask`,
+    () => `${PATH}/ask`,
     { invalidateKeys: [qk.user.knowledge.history] },
+    'POST',
+  );
+}
+
+export function useToggleKnowledgeFavorite() {
+  return useApiMutation<KnowledgeResource, { id: string; on: boolean }>(
+    (vars) => `${PATH}/${vars.id}/favorite`,
+    { invalidateKeys: [qk.user.knowledge.root] },
     'POST',
   );
 }

@@ -1,3 +1,4 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * AdminToolAudit 编排 — 对齐技能/模型：无子模块 Tab，列表工具栏 + 视图筛选。
  */
@@ -52,25 +53,16 @@ export default function AuditPage() {
   const baseRules = rulesQuery.data ?? [];
   const baseScopes = scopesQuery.data ?? [];
 
-  const [entries, setEntries] = useState<AuditEntry[]>(baseEntries);
-  const [risks, setRisks] = useState<RiskEvent[]>(baseRisks);
-  const [rules, setRules] = useState<AuditRule[]>(baseRules);
+  const entries = baseEntries;
+  const risks = baseRisks;
+  const rules = baseRules;
   const [view, setView] = useState<ViewId>('record');
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [exportOpen, setExportOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    if (entries.length === 0 && baseEntries.length > 0) setEntries(baseEntries);
-  }, [baseEntries, entries.length]);
-  useEffect(() => {
-    if (risks.length === 0 && baseRisks.length > 0) setRisks(baseRisks);
-  }, [baseRisks, risks.length]);
-  useEffect(() => {
-    if (rules.length === 0 && baseRules.length > 0) setRules(baseRules);
-  }, [baseRules, rules.length]);
 
   const unresolvedRisks = risks.filter((r) => !r.resolved).length;
 
@@ -88,18 +80,10 @@ export default function AuditPage() {
   const toggleSelect = (id: string) =>
     setSelectedIds((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]));
 
-  const toggleStar = (id: string) =>
-    setEntries((current) => current.map((e) => (e.id === id ? { ...e, starred: !e.starred } : e)));
-
+  const toggleStar = (id: string) => server.mutate({ path: `/api/admin/audit/entries/${id}`, method: 'PATCH', body: { starred: !entries.find((e) => e.id === id)?.starred } });
   const handleBatchExport = () => setExportOpen(true);
-  const handleBatchResolve = () => {
-    setNotice(`已批量标记 ${selectedIds.length} 条记录进入处置流程。`);
-    setSelectedIds([]);
-  };
-  const handleBatchMark = () => {
-    setNotice(`已标记 ${selectedIds.length} 条审计为已审。`);
-    setSelectedIds([]);
-  };
+  const handleBatchResolve = () => server.mutate({ path: '/api/admin/audit/entries/batch-resolve', body: { ids: selectedIds }, success: '已提交处置', onSuccess: () => setSelectedIds([]) });
+  const handleBatchMark = () => server.mutate({ path: '/api/admin/audit/entries/batch-review', body: { ids: selectedIds }, success: '已审查', onSuccess: () => setSelectedIds([]) });
 
   const handleExport = (format: ExportFormat) => {
     const list = selectedIds.length > 0 ? entries.filter((s) => selectedIds.includes(s.id)) : entries;
@@ -120,17 +104,10 @@ export default function AuditPage() {
     setNotice(`已导出审计条目「${entry.toolName}」。`);
   };
 
-  const handleResolveEntry = (entry: AuditEntry) => {
-    setNotice(`已将「${entry.toolName}」标记进入处置流程。`);
-  };
-
-  const handleResolveRisk = (id: string) =>
-    setRisks((current) => current.map((r) => (r.id === id ? { ...r, resolved: !r.resolved } : r)));
-
-  const handleToggleRule = (id: string) =>
-    setRules((current) => current.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)));
-
-  const handleReReview = (role: string) => setNotice(`已重新审查 ${role}`);
+  const handleResolveEntry = (entry: AuditEntry) => server.mutate({ path: `/api/admin/audit/entries/${entry.id}/resolve`, success: '已提交处置' });
+  const handleResolveRisk = (id: string) => server.mutate({ path: `/api/admin/audit/risks/${id}`, method: 'PATCH', body: { resolved: !risks.find((r) => r.id === id)?.resolved } });
+  const handleToggleRule = (id: string) => server.mutate({ path: `/api/admin/audit/rules/${id}`, method: 'PATCH', body: { enabled: !rules.find((r) => r.id === id)?.enabled } });
+  const handleReReview = (role: string) => server.mutate({ path: '/api/admin/audit/scopes/review', body: { role }, success: '已重新审查' });
   const goEntryDetail = (e: AuditEntry) => navigate(`/admin/tool-audit/${e.id}`);
 
   const viewSelect = (
@@ -206,7 +183,7 @@ export default function AuditPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setNotice('已下发紧急核查任务')}
+                onClick={() => server.mutate({ path: '/api/admin/audit/investigations', success: '已下发核查任务' })}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-3 text-xs font-semibold text-[var(--text-secondary)] hover:border-rose-500 hover:text-rose-600"
               >
                 <ShieldQuestion className="h-3.5 w-3.5" />

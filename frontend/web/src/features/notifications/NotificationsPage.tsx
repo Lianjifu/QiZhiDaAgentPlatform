@@ -1,3 +1,4 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * NotificationsPage — 对齐模型管理：无子模块 Tab，Hero 轻量，列表工具栏承载导入/新建。
  * 视图筛选：渠道列表 / Webhook / 接收人组；渠道视图可按类型筛选。
@@ -55,6 +56,7 @@ export default function NotificationsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [page, setPage] = useState(1);
 
   const stats = useMemo(() => {
@@ -82,8 +84,7 @@ export default function NotificationsPage() {
 
   const handleEnable = (c: NotificationChannel) => {
     if (c.status === 'active') return;
-    updateChannel.mutate({ id: c.id, patch: { status: 'active' } });
-    setNotice(`已启用渠道「${c.name}」。`);
+    updateChannel.mutate({ id: c.id, patch: { status: 'active' } }, { onSuccess: () => setNotice(`已启用渠道「${c.name}」。`) });
   };
 
   const handleExportOne = (c: NotificationChannel) => {
@@ -97,15 +98,13 @@ export default function NotificationsPage() {
 
   const handleBatchEnable = () => {
     batchStatus.mutate({ ids: selectedIds, status: 'active' }, {
-      onSuccess: () => setNotice(`已批量启用 ${selectedIds.length} 个渠道。`),
+      onSuccess: () => { setNotice(`已批量启用 ${selectedIds.length} 个渠道。`); setSelectedIds([]); },
     });
-    setSelectedIds([]);
   };
   const handleBatchPause = () => {
     batchStatus.mutate({ ids: selectedIds, status: 'paused' }, {
-      onSuccess: () => setNotice(`已批量暂停 ${selectedIds.length} 个渠道。`),
+      onSuccess: () => { setNotice(`已批量暂停 ${selectedIds.length} 个渠道。`); setSelectedIds([]); },
     });
-    setSelectedIds([]);
   };
   const handleBatchExport = () => setExportOpen(true);
 
@@ -113,14 +112,13 @@ export default function NotificationsPage() {
     createGroup.mutate(
       { name: g.name, description: g.description, members: g.members },
       {
-        onSuccess: (created) => setNotice(`已创建接收人组「${created.name}」。`),
+        onSuccess: (created) => { setNotice(`已创建接收人组「${created.name}」。`); setCreateGroupOpen(false); },
         onError: () => setNotice(`创建失败,请重试。`),
       },
     );
-    setCreateGroupOpen(false);
   };
 
-  const handleImport = (count: number) => setNotice(`已导入 ${count} 个渠道。`);
+  const handleImport = (_count: number, content: string, format: ExchangeFormat) => server.mutate({ path: '/api/admin/notifications/channels/import', body: { content, format }, success: '已导入', onSuccess: () => setImportOpen(false) });
 
   const handleExport = (format: ExchangeFormat) => {
     const list = selectedIds.length > 0 ? channels.filter((c) => selectedIds.includes(c.id)) : channels;
@@ -264,7 +262,7 @@ export default function NotificationsPage() {
               <option value="group">接收人组</option>
             </select>
             {view === 'webhook' && (
-              <button type="button" onClick={() => setNotice('已生成 Webhook 接入指南')} className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-3 text-xs font-semibold hover:border-[var(--brand)]">
+              <button type="button" onClick={() => setNotice('Webhook 指南接口暂未提供。')} className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-3 text-xs font-semibold hover:border-[var(--brand)]">
                 <Globe className="h-3.5 w-3.5" />接入指南
               </button>
             )}

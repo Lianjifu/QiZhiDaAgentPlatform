@@ -1,6 +1,6 @@
 /**
  * API 客户端层 — 默认请求真实后端（粗粒度网关 / Vite 代理）。
- * Mock 适配器仅在应用入口显式注入时启用（VITE_USE_MOCK=true）。
+ * Mock 适配器仅在演示环境的应用入口显式注入时启用。
  */
 import type { ApiResponse } from '@qzdap/web-types';
 import { translateApiPath, USER_ID_PLACEHOLDER, type HttpMethod } from './pathMap';
@@ -13,8 +13,6 @@ export interface RequestOptions {
   headers?: Record<string, string>;
   signal?: AbortSignal;
   timeoutMs?: number;
-  /** Development read-only fallback; write requests never use it. */
-  fallback?: 'on-network-error' | 'on-empty' | 'on-network-error-or-empty';
 }
 
 export class ApiError extends Error {
@@ -40,10 +38,6 @@ function sanitizeHeaders(headers: Record<string, string>): Record<string, string
     out[k] = sanitizeHeaderValue(String(v));
   }
   return out;
-}
-
-function isEmptyResponse(value: unknown): boolean {
-  return Array.isArray(value) && value.length === 0;
 }
 
 function extractErrorPayload(json: unknown, fallback: string): { code: string; message: string } {
@@ -99,18 +93,7 @@ export class ApiClient {
     /** uid-注入型路径(/api/api-keys 等)需要替换 <<USER_ID>> 占位符时调用;
      *  返回 null 表示未登录,会在 request() 抛 E_AUTH_REQUIRED */
     private getUserId?: () => string | null,
-    private fallbackMockHandler?: (path: string, opts: RequestOptions) => Promise<unknown>,
   ) {}
-
-  private async tryReadFallback<T>(path: string, opts: RequestOptions, reason: string): Promise<T | undefined> {
-    const method = (opts.method ?? 'GET').toUpperCase();
-    if (method !== 'GET' || !this.fallbackMockHandler || !opts.fallback) return undefined;
-    const canFallback = reason === 'network'
-      ? opts.fallback === 'on-network-error' || opts.fallback === 'on-network-error-or-empty'
-      : opts.fallback === 'on-empty' || opts.fallback === 'on-network-error-or-empty';
-    if (!canFallback) return undefined;
-    return (await this.fallbackMockHandler(path, opts)) as T;
-  }
 
   async request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     const token = this.getAuthToken();
@@ -161,25 +144,16 @@ export class ApiClient {
         const hint = this.baseURL
           ? `无法连接控制面 ${this.baseURL}，请先启动：cd backend && make run`
           : '无法连接控制面（同源 /api → Vite 代理 → :9150 网关）。请确认已启动后端栈（cd backend && make compose-up-monolith 或 make run），并重启前端 dev（环境变量变更需重启 Vite）';
-        const fallback = await this.tryReadFallback<T>(path, { ...opts, headers: requestHeaders }, 'network');
-        if (fallback !== undefined) return fallback;
         throw new ApiError('E_NETWORK', hint, 0);
       }
+      if (res.status === 204) return null as T;
       let json: ApiResponse<T>;
       try {
         json = (await res.json()) as ApiResponse<T>;
       } catch {
-        if (res.status >= 500) {
-          const fallback = await this.tryReadFallback<T>(path, { ...opts, headers: requestHeaders }, 'network');
-          if (fallback !== undefined) return fallback;
-        }
         throw new ApiError('E_BAD_RESPONSE', `控制面返回非 JSON（HTTP ${res.status}）`, res.status);
       }
-      if (!res.ok) {
-        if (res.status >= 500 || res.status === 0) {
-          const fallback = await this.tryReadFallback<T>(path, { ...opts, headers: requestHeaders }, 'network');
-          if (fallback !== undefined) return fallback;
-        }
+      if (!res.ok || (json && typeof json === 'object' && 'ok' in json && json.ok === false)) {
         const { code, message } = extractErrorPayload(json, '请求失败');
         if ((res.status === 401 || code === 'E_IDENTITY_MOCK_FORBIDDEN') && !isLoginPath(backendPath)) {
           this.onUnauthorized?.({ path: backendPath, status: res.status });
@@ -196,10 +170,6 @@ export class ApiClient {
         isEnvelope ? (json as { data?: unknown }).data ?? null : (json as unknown)
       ) as T;
       const adapted = applyResponseAdapter(method, backendPath, rawData) as T;
-      if (opts.fallback && (opts.fallback === 'on-empty' || opts.fallback === 'on-network-error-or-empty') && isEmptyResponse(adapted)) {
-        const fallback = await this.tryReadFallback<T>(path, { ...opts, headers: requestHeaders }, 'empty');
-        if (fallback !== undefined) return fallback;
-      }
       return adapted;
     } finally {
       clearTimeout(t);

@@ -152,7 +152,8 @@ def build_router() -> APIRouter:
     ) -> list[dict[str, Any]]:
         return await svc.list_catalog(workspace_id=x_workspace_id)
 
-    @router.post("/api/catalog/knowledge/__noop__/ask")
+    @router.post("/api/catalog/knowledge/ask")
+    @router.post("/api/catalog/knowledge/__noop__/ask", include_in_schema=False)
     async def ask_catalog(
         body: dict[str, Any],
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008

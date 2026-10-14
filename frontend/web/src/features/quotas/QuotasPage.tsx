@@ -1,3 +1,4 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * QuotasPage — 对齐模型管理：无子模块 Tab，Hero 轻量，列表工具栏承载导入/新建。
  * 视图筛选：企业预算 / 部门额度 / 用量分析 / 告警规则。
@@ -39,6 +40,7 @@ export default function QuotasPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [page, setPage] = useState(1);
 
   const totals = useMemo(() => {
@@ -62,8 +64,7 @@ export default function QuotasPage() {
 
   const handleFreeze = (b: EnterpriseBudget) => {
     if (b.status === 'frozen') return;
-    updateBudget.mutate({ id: b.id, patch: { status: 'frozen' } });
-    setNotice(`已冻结预算「${b.name}」。`);
+    updateBudget.mutate({ id: b.id, patch: { status: 'frozen' } }, { onSuccess: () => setNotice(`已冻结预算「${b.name}」。`) });
   };
 
   const handleExportOne = (b: EnterpriseBudget) => {
@@ -72,16 +73,12 @@ export default function QuotasPage() {
   };
 
   const handleBatchFreeze = () => {
-    selectedIds.forEach((id) => updateBudget.mutate({ id, patch: { status: 'frozen' } }));
-    setNotice(`已批量冻结 ${selectedIds.length} 个预算。`);
-    setSelectedIds([]);
+    void Promise.all(selectedIds.map((id) => updateBudget.mutateAsync({ id, patch: { status: 'frozen' } }))).then(() => { setNotice(`已批量冻结 ${selectedIds.length} 个预算。`); setSelectedIds([]); }).catch((error) => setNotice(`冻结失败：${String(error)}`));
   };
 
   const handleBatchExport = () => setExportOpen(true);
 
-  const handleImport = (count: number) => {
-    setNotice(`已导入 ${count} 个预算。`);
-  };
+  const handleImport = (_count: number, content: string, format: ExchangeFormat) => server.mutate({ path: '/api/admin/quotas/budgets/import', body: { content, format }, success: '已导入', onSuccess: () => setImportOpen(false) });
 
   const handleExport = (format: ExchangeFormat) => {
     const list = selectedIds.length > 0 ? budgets.filter((b) => selectedIds.includes(b.id)) : budgets;
@@ -100,9 +97,7 @@ export default function QuotasPage() {
   };
 
   const handleAlertToggle = (id: string) => {
-    toggleAlert.mutate({ id });
-    const a = alerts.find((x) => x.id === id);
-    if (a) setNotice(`已${a.enabled ? '停用' : '启用'}规则「${a.name}」`);
+    toggleAlert.mutate({ id }, { onSuccess: () => setNotice('规则已更新。') });
   };
 
   return (
@@ -213,7 +208,7 @@ export default function QuotasPage() {
               <option value="alert">告警规则</option>
             </select>
             {view === 'department' && (
-              <button type="button" onClick={() => setNotice('已生成部门额度报告')} className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-3 text-xs font-semibold hover:border-[var(--brand)]">
+              <button type="button" onClick={() => setNotice('部门额度报告导出接口暂未提供。')} className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-3 text-xs font-semibold hover:border-[var(--brand)]">
                 <ClipboardList className="h-3.5 w-3.5" />生成报告
               </button>
             )}

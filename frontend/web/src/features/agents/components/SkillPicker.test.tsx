@@ -7,21 +7,21 @@ import type { Skill } from '@/features/skills/schema';
 
 const SKILLS: Skill[] = [
   {
-    id: 'sk-doc', name: '文档摘要', description: '提炼长文档重点', type: 'Skill', owner: '知识',
+    id: 'sk-doc', name: '文档摘要', description: '提炼长文档重点', type: 'Skill', versions: [], trend: [], usedByAgents: [], auditLog: [], owner: '知识',
     status: 'published', version: 'v1.0', lastUpdate: '今天',
     calls: 0, successRate: 0, errorRate: 0, avgLatencyMs: 0, rating: 0,
     risk: 'low', needConfirm: false, visibleScope: ['部门'],
     tags: ['整理', '写作'], starred: false, inputSchema: [], outputSchema: [],
   },
   {
-    id: 'sk-mailer', name: '邮件发送', description: '在授权邮箱内发送邮件', type: 'Tool', owner: '平台工具',
+    id: 'sk-mailer', name: '邮件发送', description: '在授权邮箱内发送邮件', type: 'Tool', versions: [], trend: [], usedByAgents: [], auditLog: [], owner: '平台工具',
     status: 'published', version: 'v1.0', lastUpdate: '今天',
     calls: 0, successRate: 0, errorRate: 0, avgLatencyMs: 0, rating: 0,
     risk: 'high', needConfirm: true, visibleScope: ['部门'],
     tags: ['邮件'], starred: false, inputSchema: [], outputSchema: [],
   },
   {
-    id: 'sk-github', name: 'GitHub MCP', description: '查询仓库、Issue 与 PR', type: 'MCP', owner: '平台连接',
+    id: 'sk-github', name: 'GitHub MCP', description: '查询仓库、Issue 与 PR', type: 'MCP', versions: [], trend: [], usedByAgents: [], auditLog: [], owner: '平台连接',
     status: 'published', version: 'v1.0', lastUpdate: '今天',
     calls: 0, successRate: 0, errorRate: 0, avgLatencyMs: 0, rating: 0,
     risk: 'medium', needConfirm: true, visibleScope: ['部门'],

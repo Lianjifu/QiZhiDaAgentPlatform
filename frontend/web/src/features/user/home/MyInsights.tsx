@@ -1,3 +1,4 @@
+import { useApiQuery } from '@/services/query';
 import { ArrowUpRight, BarChart3, CheckCircle2, ChevronDown, Clock3, Download, FileText, Gauge, MoreHorizontal, Sparkles, Target, TrendingUp } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
@@ -12,31 +13,6 @@ const INSIGHT_RANGES: { id: Range; label: string }[] = [
 ];
 
 type TrendPoint = { label: string; value: number; tasks: number };
-
-const trendByRange: Record<Range, TrendPoint[]> = {
-  '近 7 天': [
-    { label: '周一', value: 68, tasks: 8 }, { label: '周二', value: 74, tasks: 11 }, { label: '周三', value: 71, tasks: 9 }, { label: '周四', value: 83, tasks: 14 }, { label: '周五', value: 88, tasks: 16 }, { label: '周六', value: 79, tasks: 7 }, { label: '今天', value: 92, tasks: 18 },
-  ],
-  '近 30 天': [
-    { label: '第 1 周', value: 64, tasks: 28 }, { label: '第 2 周', value: 72, tasks: 34 }, { label: '第 3 周', value: 79, tasks: 41 }, { label: '第 4 周', value: 88, tasks: 52 },
-  ],
-  本季度: [
-    { label: '7 月', value: 61, tasks: 96 }, { label: '8 月', value: 76, tasks: 132 }, { label: '9 月', value: 88, tasks: 168 },
-  ],
-};
-
-const scenarios = [
-  { label: '资料整理', value: 96, detail: '32 次任务 · 节省 18.4 小时', color: 'bg-emerald-500' },
-  { label: '客户跟进', value: 91, detail: '24 次任务 · 节省 12.8 小时', color: 'bg-sky-500' },
-  { label: '周报与汇总', value: 84, detail: '18 次任务 · 节省 8.6 小时', color: 'bg-amber-500' },
-  { label: '团队协作', value: 77, detail: '12 次任务 · 节省 5.1 小时', color: 'bg-violet-500' },
-];
-
-const outcomes = [
-  { title: '销售周报自动整理', meta: '工作流 · 今天 09:42', type: '工作流', status: '已完成' },
-  { title: '客户沟通助手', meta: '智能体 · 昨天 16:18', type: '智能体', status: '已完成' },
-  { title: '九月用户反馈纪要', meta: '协作 · 周一 14:06', type: '产出物', status: '已保存' },
-];
 
 function TrendChart({ points, showTable }: { points: TrendPoint[]; showTable: boolean }) {
   const width = 720;
@@ -109,10 +85,13 @@ export default function MyInsights({ embedded = false }: { embedded?: boolean })
   const [range, setRange] = useState<Range>('近 7 天');
   const [showTable, setShowTable] = useState(false);
   const [notice, setNotice] = useState('');
-  const points = trendByRange[range];
-  const average = Math.round(points.reduce((sum, point) => sum + point.value, 0) / points.length);
+  const query = useApiQuery<{ points: TrendPoint[]; scenarios: Array<{ label: string; value: number; detail: string; color: string }>; outcomes: Array<{ title: string; meta: string; type: string; status: string }>; savedHours?: number }>(['user', 'insights', range], '/api/home/insights', { query: { range } });
+  const points = query.data?.points ?? [];
+  const scenarios = query.data?.scenarios ?? [];
+  const outcomes = query.data?.outcomes ?? [];
+  const average = Math.round(points.reduce((sum, point) => sum + point.value, 0) / Math.max(points.length, 1));
   const totalTasks = points.reduce((sum, point) => sum + point.tasks, 0);
-  const bestDay = useMemo(() => points.reduce((best, point) => (point.value > best.value ? point : best), points[0]), [points]);
+  const bestDay = useMemo(() => points.reduce((best, point) => (point.value > best.value ? point : best), points[0] ?? { label: '暂无数据', value: 0, tasks: 0 }), [points]);
 
   const intro = (
     <PageIntro
@@ -124,7 +103,11 @@ export default function MyInsights({ embedded = false }: { embedded?: boolean })
           <TimeRangeDropdown value={range} onChange={setRange} options={INSIGHT_RANGES} />
           <button
             type="button"
-            onClick={() => setNotice('报告已准备好下载（本地演示）。')}
+            onClick={() => {
+              if (!query.data) { setNotice('暂无数据可导出。'); return; }
+              const url = URL.createObjectURL(new Blob([JSON.stringify(query.data, null, 2)], { type: 'application/json' }));
+              const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'insights.json'; anchor.click(); URL.revokeObjectURL(url);
+            }}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             <Download className="h-3.5 w-3.5" />{embedded ? '导出摘要' : '导出报告'}
@@ -149,7 +132,7 @@ export default function MyInsights({ embedded = false }: { embedded?: boolean })
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--brand-light)] text-[var(--brand)]"><CheckCircle2 className="h-4 w-4" /></span>
           </div>
           <p className="mt-4 text-3xl font-semibold tabular-nums">{totalTasks}</p>
-          <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-600"><ArrowUpRight className="h-3.5 w-3.5" />较上期 +18%</p>
+          <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-600"><ArrowUpRight className="h-3.5 w-3.5" /></p>
         </div>
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5">
           <div className="flex items-center justify-between">
@@ -157,22 +140,22 @@ export default function MyInsights({ embedded = false }: { embedded?: boolean })
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300"><Gauge className="h-4 w-4" /></span>
           </div>
           <p className="mt-4 text-3xl font-semibold tabular-nums">{average}%</p>
-          <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-600"><ArrowUpRight className="h-3.5 w-3.5" />较上期 +12%</p>
+          <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-600"><ArrowUpRight className="h-3.5 w-3.5" /></p>
         </div>
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs text-[var(--text-muted)]">预计节省</span>
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300"><Clock3 className="h-4 w-4" /></span>
           </div>
-          <p className="mt-4 text-3xl font-semibold tabular-nums">44.9<span className="ml-1 text-base font-medium">小时</span></p>
-          <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-600"><ArrowUpRight className="h-3.5 w-3.5" />较上期 +9.6 小时</p>
+          <p className="mt-4 text-3xl font-semibold tabular-nums">{query.data?.savedHours ?? 0}<span className="ml-1 text-base font-medium">小时</span></p>
+          <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-600"><ArrowUpRight className="h-3.5 w-3.5" /></p>
         </div>
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs text-[var(--text-muted)]">活跃场景</span>
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300"><Target className="h-4 w-4" /></span>
           </div>
-          <p className="mt-4 text-3xl font-semibold tabular-nums">8</p>
+          <p className="mt-4 text-3xl font-semibold tabular-nums">{scenarios.length}</p>
           <p className="mt-2 text-xs text-[var(--text-muted)]">最近表现最好：{bestDay.label}</p>
         </div>
       </section>
@@ -196,7 +179,7 @@ export default function MyInsights({ embedded = false }: { embedded?: boolean })
               <ChevronDown className={`h-3.5 w-3.5 transition ${showTable ? 'rotate-180' : ''}`} />
             </button>
           </div>
-          <div className="mt-6"><TrendChart points={points} showTable={showTable} /></div>
+          <div className="mt-6">{points.length ? <TrendChart points={points} showTable={showTable} /> : <p className="text-sm text-[var(--text-muted)]">暂无数据</p>}</div>
         </section>
         <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
           <div className="flex items-center justify-between">

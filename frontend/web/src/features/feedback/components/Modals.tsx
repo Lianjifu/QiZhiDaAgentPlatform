@@ -12,7 +12,7 @@ import { StepIndicator } from './Primitives';
 interface ImportFeedbackModalProps {
   open: boolean;
   onClose: () => void;
-  onImport: (count: number) => void;
+  onImport: (count: number, content: string, format: ExchangeFormat) => void;
 }
 
 export function ImportFeedbackModal({ open, onClose, onImport }: ImportFeedbackModalProps) {
@@ -52,7 +52,7 @@ export function ImportFeedbackModal({ open, onClose, onImport }: ImportFeedbackM
         <>
           {step > 1 && <button type="button" onClick={() => setStep(1)} className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">上一步</button>}
           {step === 1 && <button type="button" onClick={handlePreview} disabled={text.trim().length === 0} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">预览解析</button>}
-          {step === 2 && <button type="button" onClick={() => { onImport(parsedCount); onClose(); }} disabled={parsedCount === 0} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">导入 {parsedCount} 条</button>}
+          {step === 2 && <button type="button" onClick={() => { onImport(parsedCount, text, format); }} disabled={parsedCount === 0} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">导入 {parsedCount} 条</button>}
         </>
       }
     >

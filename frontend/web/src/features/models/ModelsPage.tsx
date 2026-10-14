@@ -1,3 +1,4 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * ModelsPage — 对齐技能管理：无子模块 Tab，Hero 轻量，列表工具栏承载导入/新建。
  * 视图筛选：模型 / 提供商 / 路由 / 健康。
@@ -30,6 +31,7 @@ export default function ModelsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [page, setPage] = useState(1);
 
   const modelsQ = useModelsList(filters);
@@ -74,9 +76,7 @@ export default function ModelsPage() {
   const openModel = (m: Model) => navigate(`/admin/models/${m.id}`);
 
   const handleDelete = (m: Model) => {
-    deleteModel.mutate({ id: m.id });
-    setNotice(`已删除模型「${m.name}」。`);
-    setDeleteTarget(null);
+    deleteModel.mutate({ id: m.id }, { onSuccess: () => { setNotice(`已删除模型「${m.name}」。`); setDeleteTarget(null); } });
   };
 
   const handleToggleStar = (id: string) => {
@@ -87,8 +87,7 @@ export default function ModelsPage() {
 
   const handleEnable = (m: Model) => {
     if (m.status === 'active') return;
-    updateModel.mutate({ id: m.id, patch: { status: 'active' } });
-    setNotice(`已启用模型「${m.name}」。`);
+    updateModel.mutate({ id: m.id, patch: { status: 'active' } }, { onSuccess: () => setNotice(`已启用模型「${m.name}」。`) });
   };
 
   const handleExportOne = (m: Model) => {
@@ -97,20 +96,14 @@ export default function ModelsPage() {
   };
 
   const handleBatchEnable = () => {
-    batchStatus.mutate({ ids: selectedIds, status: 'active' });
-    setNotice(`已批量启用 ${selectedIds.length} 个模型。`);
-    setSelectedIds([]);
+    batchStatus.mutate({ ids: selectedIds, status: 'active' }, { onSuccess: () => { setNotice(`已批量启用 ${selectedIds.length} 个模型。`); setSelectedIds([]); } });
   };
   const handleBatchDisable = () => {
-    batchStatus.mutate({ ids: selectedIds, status: 'retired' });
-    setNotice(`已批量下线 ${selectedIds.length} 个模型。`);
-    setSelectedIds([]);
+    batchStatus.mutate({ ids: selectedIds, status: 'retired' }, { onSuccess: () => { setNotice(`已批量下线 ${selectedIds.length} 个模型。`); setSelectedIds([]); } });
   };
   const handleBatchExport = () => setExportOpen(true);
 
-  const handleImport = (count: number) => {
-    setNotice(`已导入 ${count} 个模型。`);
-  };
+  const handleImport = (_count: number, content: string, format: ExchangeFormat) => server.mutate({ path: '/api/admin/models/import', body: { content, format }, success: '已导入', onSuccess: () => setImportOpen(false) });
 
   const handleExport = (format: ExchangeFormat) => {
     const list = selectedIds.length > 0 ? models.filter((m) => selectedIds.includes(m.id)) : models;
@@ -125,15 +118,12 @@ export default function ModelsPage() {
   };
 
   const handleRouteToggle = (id: string) => {
-    toggleRoute.mutate({ id });
-    const r = routes.find((x) => x.id === id);
-    if (r) setNotice(`已${r.enabled ? '停用' : '启用'}规则「${r.name}」`);
+    toggleRoute.mutate({ id }, { onSuccess: () => setNotice('规则已更新。') });
   };
 
   const handleRouteDelete = (id: string) => {
     const r = routes.find((x) => x.id === id);
-    deleteRoute.mutate({ id });
-    if (r) setNotice(`已删除规则「${r.name}」`);
+    deleteRoute.mutate({ id }, { onSuccess: () => setNotice('规则已删除。') });
   };
 
   const findModel = (id: string) => models.find((m) => m.id === id);
@@ -294,7 +284,7 @@ export default function ModelsPage() {
                       <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.className}`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} aria-hidden="true" />{badge.label}
                       </span>
-                      <button type="button" onClick={() => setNotice(`已触发 ${p.name} 的健康检查`)} className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1 text-[10px] font-semibold hover:border-[var(--brand)]">
+                      <button type="button" onClick={() => server.mutate({ path: `/api/admin/models/providers/${p.id}/health-check`, success: '健康检查已完成' })} className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1 text-[10px] font-semibold hover:border-[var(--brand)]">
                         <RefreshCw className="h-3 w-3" />健康检查
                       </button>
                     </header>

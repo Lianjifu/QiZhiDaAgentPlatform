@@ -1,3 +1,4 @@
+import { useApiQuery } from '@/services/query';
 /**
  * Drawer 4 个面板 — 调用概要 / 入参输出 / 命中规则 / 审计日志。
  */
@@ -64,12 +65,8 @@ export function DrawerPanelOverview({ entry }: { entry: AuditEntry }) {
 }
 
 export function DrawerPanelArgs({ entry }: { entry: AuditEntry }) {
-  const responseText =
-    entry.outcome === 'denied'
-      ? '{ "error": "permission_denied" }'
-      : entry.outcome === 'timeout'
-        ? '{ "error": "request_timeout" }'
-        : '{ "ok": true, "took_ms": 320 }';
+  const { data: response } = useApiQuery<unknown>(['audit', entry.id, 'response'], `/api/admin/audit/entries/${entry.id}/response`);
+  const responseText = response === undefined ? '暂无返回数据' : JSON.stringify(response, null, 2);
   return (
     <div className="space-y-3">
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
@@ -116,11 +113,7 @@ export function DrawerPanelRule({ entry, rules }: { entry: AuditEntry; rules: Au
 }
 
 export function DrawerPanelLog({ entry }: { entry: AuditEntry }) {
-  const logs = [
-    { time: entry.occurredAt, level: 'info' as const, text: `${entry.toolName} 收到调用请求` },
-    { time: entry.occurredAt, level: entry.outcome === 'allowed' ? ('info' as const) : ('warn' as const), text: `审计规则匹配: ${entry.toolName}` },
-    { time: entry.occurredAt, level: entry.outcome === 'denied' ? ('error' as const) : ('info' as const), text: `调用 ${entry.outcome === 'denied' ? '被拒绝' : '已执行'},耗时 320ms` },
-  ];
+  const { data: logs = [] } = useApiQuery<{ time: string; level: string; text: string }[]>(['detail', `/api/admin/audit/entries/${entry.id}/logs`], `/api/admin/audit/entries/${entry.id}/logs`);
   return (
     <ol className="space-y-1.5">
       {logs.map((l, idx) => (

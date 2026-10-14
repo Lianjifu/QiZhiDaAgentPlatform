@@ -158,7 +158,7 @@ export function AgentEditor({
 
       {/* 试运行面板 — mode=edit 且有 skills 时可用 */}
       {dryRunOpen && firstSkill && (
-        <DryRunPanel skill={firstSkill} workspaceId={draft.workspaceId} onClose={() => setDryRunOpen(false)} />
+        <DryRunPanel skill={firstSkill} workspaceId={undefined} onClose={() => setDryRunOpen(false)} />
       )}
     </div>
   );

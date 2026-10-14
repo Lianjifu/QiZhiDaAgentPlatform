@@ -1,3 +1,4 @@
+import { useTasks } from '../tasks/useTasks';
 import { ArrowRight, Bot, CheckCircle2, Clock3, MessageSquarePlus, Search, Workflow } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { PageIntro, WorkspacePage } from '../components';
@@ -10,17 +11,9 @@ const quickActions = [
   { label: '选择工作流', description: '运行团队流程', href: '/automations', icon: Workflow },
 ] as const;
 
-const pendingItems = [
-  {
-    id: 'quote',
-    title: '销售报价单需要确认',
-    meta: '销售支持助手 · 待处理',
-    href: '/tasks',
-    tone: 'warning' as const,
-  },
-];
-
 export default function Home() {
+  const tasks = useTasks();
+  const pendingItems = (tasks.data ?? []).filter((task) => task.status === '待处理').map((task) => ({ id: task.id, title: task.title, meta: `${task.source} · ${task.status}`, href: '/tasks' }));
   return (
     <WorkspacePage>
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
@@ -49,7 +42,7 @@ export default function Home() {
               </NavLink>
             </div>
           ))}
-          <div className="flex items-center gap-3 rounded-xl border border-dashed border-[var(--border)] p-4">
+          {pendingItems.length === 0 && !tasks.isLoading && !tasks.isError && <div className="flex items-center gap-3 rounded-xl border border-dashed border-[var(--border)] p-4">
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--success-bg)] text-[var(--success)]">
               <CheckCircle2 className="h-4 w-4" />
             </span>
@@ -57,7 +50,7 @@ export default function Home() {
               <p className="text-sm font-semibold">暂无其他待处理事项</p>
               <p className="mt-1 text-xs text-[var(--text-muted)]">新的确认和任务会显示在这里</p>
             </div>
-          </div>
+          </div>}
         </div>
       </section>
 

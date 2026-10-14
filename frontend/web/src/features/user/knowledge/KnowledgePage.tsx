@@ -1,3 +1,4 @@
+import { runtimeStorageKey } from '@/lib/environment';
 import { BookOpen, Check, FilePlus2, FileText, Heart, MessageCircleQuestion, Share2, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -5,10 +6,10 @@ import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { SideDrawer } from '@/components/feedback/SideDrawer';
 import { CardActionButton, CardActions, CatalogToolbar, EmptyFilterState, PageIntro, WorkspacePage } from '../components';
 import { BrowseKnowledgeDrawer } from './components/BrowseKnowledgeDrawer';
-import { useKnowledgeResources } from './useKnowledge';
+import { useKnowledgeResources, useAskQuestion, useToggleKnowledgeFavorite } from './useKnowledge';
 import type { KnowledgeResource, KnowledgeFilter, KnowledgeSort } from './schema';
 
-const CHOSEN_STORAGE_KEY = 'qzdap.user.knowledge.chosen';
+const CHOSEN_STORAGE_KEY = runtimeStorageKey('user.knowledge.chosen');
 
 const kinds: Array<KnowledgeFilter | 'favorites'> = ['all', '制度', '项目', '指南', 'favorites'];
 const KIND_LABEL: Record<KnowledgeFilter | 'favorites', string> = {
@@ -28,7 +29,9 @@ function readChosenIds(): string[] {
 
 export default function KnowledgePage() {
   const navigate = useNavigate();
-  const { data: remoteList = [], isLoading, isFetching, refetch } = useKnowledgeResources();
+  const { data: remoteList = [], isLoading, isFetching, isError, error, refetch } = useKnowledgeResources();
+  const askMutation = useAskQuestion();
+  const favoriteMutation = useToggleKnowledgeFavorite();
   const resources = remoteList;
 
   const [query, setQuery] = useState('');
@@ -96,8 +99,7 @@ export default function KnowledgePage() {
     if (!text || askPool.length === 0) return;
     const resource = askPool.find((item) => `${item.title} ${item.tags.join(' ')} ${item.description}`.includes(text)) ?? askPool[0];
     ensureChosen(resource.id);
-    setAnswer({ question: text, resource });
-    setQuestion('');
+    askMutation.mutate({ question: text }, { onSuccess: (result) => { const matched = resources.find((item) => item.id === result.resourceId); if (!matched) { setAnswer(null); setNotice('后端未返回可用的知识引用。'); return; } setAnswer({ question: result.question, resource: matched }); setQuestion(''); }, onError: (cause) => setNotice(`提问失败：${String(cause)}`) });
   };
 
   const browseKnowledge = async () => {
@@ -113,11 +115,10 @@ export default function KnowledgePage() {
     browseTriggerRef.current?.focus();
   };
 
-  const toggleFavorite = (resource: KnowledgeResource) =>
-    setFavorites((current) => current.includes(resource.id) ? current.filter((id) => id !== resource.id) : [...current, resource.id]);
+  const toggleFavorite = (resource: KnowledgeResource) => favoriteMutation.mutate({ id: resource.id, on: !favorites.includes(resource.id) }, { onSuccess: () => setFavorites((current) => current.includes(resource.id) ? current.filter((id) => id !== resource.id) : [...current, resource.id]), onError: (cause) => setNotice(`收藏失败：${String(cause)}`) });
 
   const copyCitation = (resource: KnowledgeResource) => {
-    setNotice(`"${resource.title}"的引用摘要已复制（本地演示）。`);
+    void navigator.clipboard.writeText(`${resource.title}\n${resource.excerpt}`).then(() => setNotice(`"${resource.title}"的引用摘要已复制。`)).catch((error) => setNotice(`复制失败：${String(error)}`));
   };
 
   const useKnowledge = (resource: KnowledgeResource) => {
@@ -150,6 +151,7 @@ export default function KnowledgePage() {
         }
       />
       {notice && <NoticeBanner tone="emerald" onClose={() => setNotice('')}>{notice}</NoticeBanner>}
+      {isError && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">加载失败：{String(error)}</p>}
 
       <section id="knowledge-ask" className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
         <div className="flex items-start gap-3">
@@ -157,7 +159,7 @@ export default function KnowledgePage() {
           <div>
             <h3 className="text-sm font-semibold">基于资料提问</h3>
             <p className="mt-1 text-xs text-[var(--text-muted)]">
-              {chosenList.length === 0 ? '先浏览并加入资料，再基于知识查看示例回答。' : '在已加入的资料中查看示例回答与参考来源。'}
+              {chosenList.length === 0 ? '先浏览并加入资料，再检索知识来源。' : '通过知识服务检索参考来源。'}
             </p>
           </div>
         </div>
@@ -171,12 +173,12 @@ export default function KnowledgePage() {
             className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 text-sm outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--brand)]"
           />
           <button type="submit" disabled={!question.trim() || askPool.length === 0} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--brand)] px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">
-            查看示例
+            检索知识
           </button>
         </form>
         {answer && (
           <div className="mt-4 rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-elevated)] p-4">
-            <p className="text-[11px] font-semibold text-[var(--brand)]">示例回答 · 未连接知识服务</p>
+            <p className="text-[11px] font-semibold text-[var(--brand)]">知识服务返回的参考来源</p>
             <p className="mt-2 text-xs font-medium">{answer.question}</p>
             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{answer.resource.excerpt}</p>
             <button type="button" onClick={() => setSelected(answer.resource)} className="mt-3 text-xs font-semibold text-[var(--brand)] hover:underline">
@@ -309,12 +311,12 @@ export default function KnowledgePage() {
               <div className="flex justify-between gap-4 py-4 text-xs">
                 <span className="text-[var(--text-muted)]">引用状态</span>
                 <span className="inline-flex items-center gap-1 font-semibold text-[var(--success)]">
-                  <Check className="h-3.5 w-3.5" />示例来源信息
+                  <Check className="h-3.5 w-3.5" />后端知识来源
                 </span>
               </div>
             </div>
             <div className="mt-8 rounded-2xl bg-[var(--bg-elevated)] p-5">
-              <p className="text-xs font-semibold">内容摘要 · 演示</p>
+              <p className="text-xs font-semibold">内容摘要</p>
               <p className="mt-3 text-sm leading-7 text-[var(--text-secondary)]">{selected.excerpt}</p>
             </div>
             <CardActions>

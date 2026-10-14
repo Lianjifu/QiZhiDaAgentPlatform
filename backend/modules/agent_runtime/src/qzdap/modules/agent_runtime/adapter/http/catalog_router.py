@@ -73,6 +73,13 @@ def build_catalog_router() -> APIRouter:
     ) -> dict[str, Any]:
         return await svc.update(agent_id=agent_id, body=body)
 
+    @router.delete("/api/admin/agents/bulk-delete")
+    async def bulk_delete(
+        body: dict[str, Any],
+        svc: AgentCatalogService = Depends(catalog_dependency),  # noqa: B008
+    ) -> dict[str, Any]:
+        return await svc.bulk_delete([str(item) for item in (body.get("ids") or [])])
+
     @router.delete("/api/admin/agents/{agent_id}")
     async def delete_admin_agent(
         agent_id: UUID,
@@ -108,13 +115,6 @@ def build_catalog_router() -> APIRouter:
         svc: AgentCatalogService = Depends(catalog_dependency),  # noqa: B008
     ) -> dict[str, Any]:
         return await svc.run_eval(agent_id)
-
-    @router.delete("/api/admin/agents/bulk-delete")
-    async def bulk_delete(
-        body: dict[str, Any],
-        svc: AgentCatalogService = Depends(catalog_dependency),  # noqa: B008
-    ) -> dict[str, Any]:
-        return await svc.bulk_delete([str(item) for item in (body.get("ids") or [])])
 
     @router.post("/api/admin/agents/batch-status")
     async def batch_status(
@@ -159,9 +159,7 @@ def build_catalog_router() -> APIRouter:
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
         svc: AgentCatalogService = Depends(catalog_dependency),  # noqa: B008
     ) -> dict[str, Any]:
-        items = await svc.list_admin(workspace_id=x_workspace_id)
-        _ = body
-        return {"url": "", "count": len(items)}
+        raise HTTPException(status_code=501, detail="智能体导出服务尚未实现，未生成导出文件")
 
     @router.get("/api/catalog/agents")
     async def list_catalog_agents(

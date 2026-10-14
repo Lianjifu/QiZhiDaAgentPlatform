@@ -226,7 +226,7 @@ export default function MemoryPage() {
           onOpen={openL3}
           onRetire={retireEntry}
           onPublish={publishEntry}
-          onCreate={() => window.alert('演示版本未提供新建表单;真实环境会打开向导')}
+          onCreate={() => window.alert('长期记忆新建入口尚未实现，未创建数据。')}
           pagination={{ page: pagedL3.safePage, totalPages: pagedL3.totalPages, total: pagedL3.total, pageStart: pagedL3.pageStart, pageEnd: pagedL3.pageEnd, onPageChange: setL3Page }}
         />
       )}

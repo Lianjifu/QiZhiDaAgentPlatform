@@ -196,6 +196,10 @@ class Container:
     def llm_client(self):
         cfg: LLMConfig = self.settings.llm_config()
         if cfg.provider.value == "mock":
+            if self.settings.env not in {"test", "ci"}:
+                from qzdap.composition.unavailable_providers import UnavailableLLMClient
+
+                return UnavailableLLMClient()
             return MockLLMClient(cfg)
         return OpenAICompatibleClient(cfg)
 
@@ -447,6 +451,10 @@ class Container:
                 base_url=self.settings.embedding_runtime_url,
                 api_key=self.settings.embedding_runtime_api_key,
             )
+        if self.settings.env not in {"test", "ci"}:
+            from qzdap.composition.unavailable_providers import UnavailableEmbeddingAdapter
+
+            return UnavailableEmbeddingAdapter()
         from qzdap.modules.memory.adapter.embedding.noop_adapter import (
             NoOpEmbeddingAdapter,
         )

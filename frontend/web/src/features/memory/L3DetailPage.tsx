@@ -12,12 +12,14 @@ import {
   DetailShell, DetailHeader, DetailStatGrid, DetailStat,
   DetailSection, DetailField, DetailNotFound, DetailSkeleton,
 } from '@/features/knowledge/components/DetailLayout';
-import { mockAgents } from '@/features/agents/fixtures';
+import { useApiQuery } from '@/services/query';
+import type { AgentEntry } from '@/features/agents/schema';
 import { L3_STATUS_BADGE, LAYER_META } from './components/constants';
 
 export default function L3DetailPage() {
   const { id = '' } = useParams<{ id: string }>();
   const decoded = useMemo(() => decodeURIComponent(id), [id]);
+  const { data: referencedAgents = [] } = useApiQuery<AgentEntry[]>(['memory', 'l3', decoded, 'agents'], `/api/admin/memory/l3/${encodeURIComponent(decoded)}/agents`, undefined, { enabled: Boolean(decoded) });
   const { data: entry, isLoading } = useL3Entry(decoded || null);
   const { data: allL3 } = useL3Entries();
   const { data: allL2 } = useL2Facts();
@@ -37,7 +39,6 @@ export default function L3DetailPage() {
     return (allL2 ?? []).filter((f) => ids.has(f.id)).slice(0, 4);
   }, [entry, allL2]);
 
-  const referencedAgents = useMemo(() => mockAgents.slice(0, 3), []);
 
   if (isLoading) {
     return (

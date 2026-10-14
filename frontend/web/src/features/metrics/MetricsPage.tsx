@@ -1,3 +1,4 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * MetricsPage — 对齐技能/模型管理：无子模块 Tab，Hero 轻量，工具栏承载视图与时间范围。
  */
@@ -56,6 +57,7 @@ export default function MetricsPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [pickedDashboards, setPickedDashboards] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
   const [page, setPage] = useState(1);
 
   const models = useModelMetrics();
@@ -70,10 +72,8 @@ export default function MetricsPage() {
   const remoteLatency = latency.data ?? EMPTY_LATENCY;
   const remoteBreakdown = breakdown.data ?? EMPTY_BREAKDOWN;
 
-  const [localDashboards, setLocalDashboards] = useState(remoteDashboards);
-  const [localRules, setLocalRules] = useState(remoteRules);
-  useEffect(() => { setLocalDashboards(remoteDashboards); }, [remoteDashboards]);
-  useEffect(() => { setLocalRules(remoteRules); }, [remoteRules]);
+  const localDashboards = remoteDashboards;
+  const localRules = remoteRules;
 
   const enabledRules = useMemo(() => localRules.filter((r) => r.enabled).length, [localRules]);
 
@@ -88,12 +88,9 @@ export default function MetricsPage() {
   useEffect(() => { setPage(1); }, [search, view, range]);
   const paged = useMemo(() => paginateItems(visibleModels, page), [visibleModels, page]);
 
-  const toggleStar = (id: string) => {
-    setLocalDashboards((prev) => prev.map((d) => (d.id === id ? { ...d, starred: !d.starred } : d)));
-  };
-  const toggleRule = (id: string) => {
-    setLocalRules((prev) => prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)));
-  };
+  const toggleStar = (id: string) => server.mutate({ path: `/api/admin/metrics/dashboards/${id}`, method: 'PATCH', body: { starred: !localDashboards.find((d) => d.id === id)?.starred } });
+  const toggleRule = (id: string) => server.mutate({ path: `/api/admin/metrics/thresholds/${id}`, method: 'PATCH', body: { enabled: !localRules.find((r) => r.id === id)?.enabled } });
+  const batch = (action: string) => server.mutate({ path: `/api/admin/metrics/dashboards/batch-${action}`, body: { ids: [...pickedDashboards] }, success: '已完成批量操作', onSuccess: () => setPickedDashboards(new Set()) });
   const togglePick = (id: string) => {
     setPickedDashboards((prev) => {
       const next = new Set(prev);
@@ -148,9 +145,9 @@ export default function MetricsPage() {
       {view === 'dashboard' && pickedDashboards.size > 0 && (
         <BatchToolbar
           count={pickedDashboards.size}
-          onEnable={() => { flash(`已启用 ${pickedDashboards.size} 个看板`); setPickedDashboards(new Set()); }}
-          onDisable={() => { flash(`已停用 ${pickedDashboards.size} 个看板`); setPickedDashboards(new Set()); }}
-          onDelete={() => { flash(`已删除 ${pickedDashboards.size} 个看板`); setPickedDashboards(new Set()); }}
+          onEnable={() => batch('enable')}
+          onDisable={() => batch('disable')}
+          onDelete={() => batch('delete')}
         />
       )}
 
@@ -269,10 +266,21 @@ export default function MetricsPage() {
       <ExportMetricModal
         open={exportOpen}
         onClose={() => setExportOpen(false)}
-        onExport={(sections) => { flash(`已导出 ${sections.length} 个区段`); setExportOpen(false); }}
+        onExport={(sections) => {
+          const sources = { models, latency, cost: breakdown, dashboards };
+          const payload: Record<string, unknown> = {};
+          for (const section of sections) {
+            const query = sources[section as keyof typeof sources];
+            if (query.isError || query.data == null) { flash('数据尚未加载或请求失败，无法导出。'); return; }
+            payload[section] = query.data;
+          }
+          downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), 'metrics.json');
+          flash(`已导出 ${sections.length} 个区段`);
+          setExportOpen(false);
+        }}
       />
 
-      <p className="text-center text-xs text-[var(--text-muted)]">本页为前端演示数据,生产环境将接入企智搭指标中台。</p>
+
     </div>
   );
 }

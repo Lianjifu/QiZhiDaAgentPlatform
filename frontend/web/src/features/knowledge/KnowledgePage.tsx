@@ -1,3 +1,4 @@
+import { useServerAction } from '@/services/useServerAction';
 /**
  * AdminKnowledge — 知识管理编排:Hero + 知识库 / 数据源两个一级入口。
  *
@@ -75,6 +76,7 @@ export default function KnowledgePage() {
   const kbPageItems = useMemo(() => paginateItems(visibleKbs, kbPage), [visibleKbs, kbPage]);
   const sourcePageItems = useMemo(() => paginateItems(visibleSources, sourcePage), [visibleSources, sourcePage]);
 
+  const server = useServerAction((text) => setNotice(text));
   const flash = (text: string) => {
     setNotice(text);
     window.setTimeout(() => setNotice(null), 2400);
@@ -240,8 +242,8 @@ export default function KnowledgePage() {
                 key={s.id}
                 source={s}
                 onOpen={(src) => navigate(`/admin/knowledge/sources/${src.id}`)}
-                onSync={() => flash(`已触发 ${s.name} 同步`)}
-                onConfig={(src) => flash(`配置 ${src.name}(占位)`)}
+                onSync={() => server.mutate({ path: `/api/admin/knowledge/sources/${s.id}/sync`, success: `已触发 ${s.name} 同步` })}
+                onConfig={(src) => navigate(`/admin/knowledge/sources/${src.id}`)}
               />
             ))}
           </div>

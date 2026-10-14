@@ -1,6 +1,9 @@
+import { useApiQuery } from '@/services/query';
+import { useServerAction } from '@/services/useServerAction';
+import { useEffect } from 'react';
 /**
  * 平台设置 — 品牌、合规、审计、成员。
- * 品牌名称和主题色会立刻反映到右侧预览，保存只确认当前页的演示状态。
+ * 品牌名称和主题色支持草稿预览，保存结果以服务端响应为准。
  */
 import { Building2, Check, ListTodo, Save, Search, ShieldCheck, Upload, UsersRound } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
@@ -14,34 +17,30 @@ type Policies = { sensitive: boolean; block: boolean; egress: boolean; trail: bo
 
 const SWATCHES = ['#6828D8', '#F87818', '#0f766e', '#b45309', '#be123c'];
 
-const AUDIT_ROWS = [
-  { time: '今天 16:20', actor: '张敏', action: '发布智能体「客户沟通助手」', result: '成功' },
-  { time: '今天 10:32', actor: '李雷', action: '修改知识库访问权限', result: '成功' },
-  { time: '昨天 18:14', actor: '系统', action: '启用 SSO 配置', result: '成功' },
-  { time: '昨天 09:06', actor: '王芳', action: '导出近 7 天审计', result: '成功' },
-];
-
-const SEED_MEMBERS: Member[] = [
-  { id: 'm1', name: '张敏', email: 'zhangmin@acme.com', role: '管理员', team: '客服一组' },
-  { id: 'm2', name: '李雷', email: 'lilei@acme.com', role: '管理员', team: '销售支持' },
-  { id: 'm3', name: '王芳', email: 'wangfang@acme.com', role: '成员', team: '数据团队' },
-  { id: 'm4', name: '赵强', email: 'zhaoqiang@acme.com', role: '成员', team: '客服一组' },
-  { id: 'm5', name: '陈静', email: 'chenjing@acme.com', role: '成员', team: '销售支持' },
-  { id: 'm6', name: '平台管理员', email: 'admin@acme.com', role: '管理员', team: '平台' },
-];
-
 export default function SettingsPage() {
   const [tab, setTab] = useState<SettingTab>('brand');
-  const [brandName, setBrandName] = useState('企智搭 · 智能体平台');
+  const settingsQuery = useApiQuery<{ items: Array<{ key: string; value: { brandName?: string; brandColor?: string; policies?: Policies } }> }>(['admin', 'settings'], '/v1/platform/settings');
+  const membersQuery = useApiQuery<Member[]>(['admin', 'settings', 'members'], '/api/workspaces/current/members');
+  const auditQuery = useApiQuery<Array<{ time: string; actor: string; action: string; result: string }>>(['admin', 'settings', 'audit'], '/api/admin/settings/audit');
+  const members = membersQuery.data ?? [];
+  const auditRows = auditQuery.data ?? [];
+  const [brandName, setBrandName] = useState('');
   const [brandColor, setBrandColor] = useState('#6828D8');
-  const [policies, setPolicies] = useState<Policies>({ sensitive: true, block: true, egress: true, trail: true });
-  const [members, setMembers] = useState<Member[]>(SEED_MEMBERS);
+  const [policies, setPolicies] = useState<Policies>({ sensitive: false, block: false, egress: false, trail: false });
+
   const [query, setQuery] = useState('');
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<MemberRole>('成员');
   const [saved, setSaved] = useState(false);
   const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
+  const server = useServerAction((text) => setNotice({ tone: text.startsWith('请求失败') ? 'amber' : 'emerald', text }));
+  useEffect(() => {
+    const value = settingsQuery.data?.items.find((item) => item.key === 'console')?.value;
+    setBrandName(value?.brandName ?? '');
+    setBrandColor(value?.brandColor ?? '#6828D8');
+    setPolicies(value?.policies ?? { sensitive: false, block: false, egress: false, trail: false });
+  }, [settingsQuery.data]);
 
   const policyOn = Object.values(policies).filter(Boolean).length;
   const adminCount = members.filter((item) => item.role === '管理员').length;
@@ -54,15 +53,11 @@ export default function SettingsPage() {
   const tabs: { id: SettingTab; label: string; hint: string; icon: typeof Building2 }[] = [
     { id: 'brand', label: '品牌与界面', hint: brandName, icon: Building2 },
     { id: 'compliance', label: '合规策略', hint: `${policyOn}/4 项开启`, icon: ShieldCheck },
-    { id: 'audit', label: '审计日志', hint: `近 7 天 ${AUDIT_ROWS.length} 条`, icon: ListTodo },
+    { id: 'audit', label: '审计日志', hint: `近 7 天 ${auditRows.length} 条`, icon: ListTodo },
     { id: 'members', label: '成员管理', hint: `${members.length} 人 · ${adminCount} 位管理员`, icon: UsersRound },
   ];
 
-  const save = () => {
-    setSaved(true);
-    setNotice({ tone: 'emerald', text: '设置已保存在当前页面。刷新后会回到演示数据。' });
-    window.setTimeout(() => setSaved(false), 1600);
-  };
+  const save = () => server.mutate({ path: '/v1/platform/settings/console', method: 'PUT', body: { value: { brandName, brandColor, policies } }, success: '设置已保存到后端。', onSuccess: () => setSaved(true) });
 
   const togglePolicy = (key: keyof Policies) => {
     setPolicies((current) => ({ ...current, [key]: !current[key] }));
@@ -78,11 +73,7 @@ export default function SettingsPage() {
       setNotice({ tone: 'amber', text: '这个邮箱已经在成员列表里。' });
       return;
     }
-    const name = email.split('@')[0] || '新成员';
-    setMembers((current) => [{ id: `m-${Date.now()}`, name, email, role: inviteRole, team: '待分配' }, ...current]);
-    setInviteEmail('');
-    setInviteOpen(false);
-    setNotice({ tone: 'emerald', text: `已向 ${email} 发送邀请（演示）。` });
+    server.mutate({ path: '/api/workspaces/current/members/invite', body: { email, role: inviteRole }, success: `已向 ${email} 发送邀请。`, onSuccess: () => { setInviteEmail(''); setInviteOpen(false); } });
   };
 
   return (
@@ -174,12 +165,8 @@ export default function SettingsPage() {
             </div>
             <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
               <p className="text-sm font-semibold">近 30 天风险</p>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">1 项需要看一眼，其余在阈值内。</p>
-              <ul className="mt-3 space-y-2 text-xs">
-                <li className="flex items-center justify-between rounded-lg bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200"><span>外部工具访问偏高</span><span>中</span></li>
-                <li className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-200"><span>登录异常拦截</span><span>低</span></li>
-              </ul>
-              <button type="button" onClick={() => setNotice({ tone: 'sky', text: '策略说明已准备好，连接内容服务后可下载。' })} className="mt-3 text-xs font-semibold text-[var(--brand)] hover:underline">导出策略说明</button>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">风险数据请查看工具审计。</p>
+              <button type="button" onClick={() => setNotice({ tone: 'sky', text: '策略说明导出接口暂未提供。' })} className="mt-3 text-xs font-semibold text-[var(--brand)] hover:underline">导出策略说明</button>
             </div>
           </div>
         )}
@@ -188,7 +175,7 @@ export default function SettingsPage() {
           <div>
             <div className="mb-4 flex items-center justify-between gap-3">
               <PanelTitle title="最近活动" desc="只展示这个工作空间近 7 天的关键操作。" />
-              <button type="button" onClick={() => setNotice({ tone: 'sky', text: '审计导出正在准备（演示）。' })} className="inline-flex h-8 shrink-0 items-center rounded-lg border border-[var(--border)] px-3 text-xs font-semibold hover:border-[var(--brand)]">导出</button>
+              <button type="button" onClick={() => setNotice({ tone: 'sky', text: '审计导出接口暂未提供。' })} className="inline-flex h-8 shrink-0 items-center rounded-lg border border-[var(--border)] px-3 text-xs font-semibold hover:border-[var(--brand)]">导出</button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-left text-sm">
@@ -201,7 +188,7 @@ export default function SettingsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {AUDIT_ROWS.map((row) => (
+                  {auditRows.map((row) => (
                     <tr key={`${row.time}-${row.action}`} className="border-b border-[var(--border)] last:border-0">
                       <td className="px-2 py-2.5 text-xs text-[var(--text-muted)]">{row.time}</td>
                       <td className="px-2 py-2.5 text-sm">{row.actor}</td>
