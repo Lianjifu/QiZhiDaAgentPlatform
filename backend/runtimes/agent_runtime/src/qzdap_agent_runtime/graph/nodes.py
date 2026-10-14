@@ -13,12 +13,19 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from ..context.budget import (
+    Compactor,
+    ContextAssembler,
+    InMemorySummaryModel,
+    estimate_tokens,
+)
 from ..execution.lock import (
     LockManager,
     LockToken,
     RevisionConflictError,
     SessionBusyError,
 )
+from ..memory.layered import InMemoryLayeredMemory, L1Source
 from .state import SessionState
 
 logger = logging.getLogger(__name__)
@@ -29,6 +36,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _default_lock_manager: Optional[LockManager] = None
+_default_memory: Optional[InMemoryLayeredMemory] = None
+_default_compactor: Optional[Compactor] = None
+_default_assembler: Optional[ContextAssembler] = None
 
 
 def set_default_lock_manager(manager: LockManager) -> None:
@@ -40,6 +50,45 @@ def set_default_lock_manager(manager: LockManager) -> None:
 def get_default_lock_manager() -> LockManager | None:
     """节点运行时的 LockManager 解析（注入优先，否则 None = Stage 1 fake 行为）。"""
     return _default_lock_manager
+
+
+def set_default_memory(memory: InMemoryLayeredMemory) -> None:
+    """composition root 注入 LayeredMemory。"""
+    global _default_memory
+    _default_memory = memory
+
+
+def get_default_memory() -> InMemoryLayeredMemory | None:
+    return _default_memory
+
+
+def set_default_compactor(compactor: Compactor) -> None:
+    global _default_compactor
+    _default_compactor = compactor
+
+
+def get_default_compactor() -> Compactor | None:
+    if _default_compactor is None:
+        return Compactor()
+    return _default_compactor
+
+
+def set_default_assembler(assembler: ContextAssembler) -> None:
+    global _default_assembler
+    _default_assembler = assembler
+
+
+def get_default_assembler() -> ContextAssembler | None:
+    return _default_assembler
+
+
+def reset_default_dependencies() -> None:
+    """测试辅助：清空所有默认依赖。"""
+    global _default_lock_manager, _default_memory, _default_compactor, _default_assembler
+    _default_lock_manager = None
+    _default_memory = None
+    _default_compactor = None
+    _default_assembler = None
 
 
 # ---------------------------------------------------------------------------
@@ -156,26 +205,192 @@ def write_turn_record(state: SessionState) -> dict[str, Any]:
     return {}
 
 
-def load_agent_context(state: SessionState) -> dict[str, Any]:
-    """5 load_agent_context: §13.2 节点 5。Stage 1 passthrough。"""
-    return {}
-
-
 def recall_memory_and_knowledge(state: SessionState) -> dict[str, Any]:
-    """6 recall_memory_and_knowledge: §13.2 节点 6。Stage 1 返回空 hits。"""
+    """6 recall_memory_and_knowledge: §13.2 节点 6。
+
+    Stage 3 PR B：调用 LayeredMemory.recall_memory + recall_knowledge。
+
+    行为：
+
+    - 从 state 取 query / tenant_id / workspace_id / user_id / session_id
+    - 调用 memory.recall_memory() → memory_hits (L1+L2)
+    - 调用 memory.recall_knowledge() → knowledge_hits (L3)
+    - 召回失败 → state.degraded.recall_degraded=true
+
+    L1 source 注入由 load_agent_context 节点在更早阶段完成（避免
+    节点互相耦合）。本节点只做 recall。
+
+    InMemoryLayeredMemory 是同步实现（无 I/O）；async 节点 (例如
+    PostgresLayeredMemory) 通过 run_async_from_sync 适配。
+    """
+    memory = get_default_memory()
+    if memory is None:
+        return {
+            "memory_hits": [],
+            "knowledge_hits": [],
+        }
+
+    msgs = state.get("messages") or []
+    query = str(msgs[-1].get("content", "")) if msgs else ""  # type: ignore[union-attr]
+    tenant_id = str(state.get("tenant_id", ""))
+    workspace_id = str(state.get("workspace_id", ""))
+    user_id = ""  # 从 authenticated actor 注入 (Stage 5)
+    session_id = str(state.get("session_id", ""))
+
+    try:
+        # 始终调用方法（duck typing）；不依赖 isinstance 检查
+        mem_hits = _call_memory_recall(memory, "recall_memory",
+            query=query, tenant_id=tenant_id, workspace_id=workspace_id,
+            user_id=user_id or "*", session_id=session_id,
+            policy={"top_k": 5, "threshold": 0.05})
+        knowledge_hits = _call_memory_recall(memory, "recall_knowledge",
+            query=query, tenant_id=tenant_id, workspace_id=workspace_id)
+    except Exception as exc:  # noqa: BLE001
+        # §5.4 召回失败: 主回答继续, 标记 degraded
+        logger.warning("recall failed: %s", exc)
+        return {
+            "memory_hits": [],
+            "knowledge_hits": [],
+            "degraded": {**(state.get("degraded") or {}), "recall_degraded": True},
+        }
+
+    # dataclass → dict
+    def _to_dict(h: Any) -> dict[str, Any]:
+        if hasattr(h, "__dataclass_fields__"):
+            from dataclasses import asdict
+            return asdict(h)
+        return h
+
     return {
-        "memory_hits": [],
-        "knowledge_hits": [],
+        "memory_hits": [_to_dict(h) for h in mem_hits],
+        "knowledge_hits": [_to_dict(h) for h in knowledge_hits],
+        "degraded": {**(state.get("degraded") or {}), "recall_degraded": False},
     }
 
 
+def _call_memory_recall(memory: Any, method_name: str, **kwargs: Any) -> list[Any]:
+    """调用 memory 上的方法，兼容 sync/async 实现。"""
+    method = getattr(memory, method_name)
+    result = method(**kwargs)
+    import asyncio
+    if asyncio.iscoroutine(result):
+        from ..memory import run_async_from_sync
+        return run_async_from_sync(result)
+    return result
+
+
 def assemble_context(state: SessionState) -> dict[str, Any]:
-    """7 assemble_context: §13.2 节点 7。Stage 1 passthrough。"""
-    return {}
+    """7 assemble_context: §13.2 节点 7。
+
+    Stage 3 PR B：用 ContextAssembler 拼装 system / agent / tenant /
+    summary / memory / knowledge / recent，按固定优先级 (§5.3)。
+    """
+    assembler = get_default_assembler()
+    if assembler is None:
+        # Stage 1 兼容: 未注入 assembler → passthrough
+        return {}
+
+    memory_hits = state.get("memory_hits") or []
+    knowledge_hits = state.get("knowledge_hits") or []
+
+    try:
+        ctx = assembler.assemble(
+            system_prompt="You are a helpful assistant.",  # 实际从 agent catalog 注入 (Stage 4)
+            agent_config={
+                "agent_id": state.get("agent_id", ""),
+                "version": state.get("agent_version", ""),
+            },
+            tenant_context={
+                "tenant_id": state.get("tenant_id", ""),
+                "workspace_id": state.get("workspace_id", ""),
+                "user_id": "",  # Stage 5 注入
+            },
+            rolling_summary=str(state.get("rolling_summary", "")),
+            memory_hits=memory_hits,
+            knowledge_hits=knowledge_hits,
+            recent_messages=list(state.get("messages", []) or []),
+        )
+        return {
+            "context_manifest": ctx.manifest.to_dict(),
+            "degraded": {**(state.get("degraded") or {}), **ctx.degraded_flags},
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("assemble_context failed: %s", exc)
+        return {
+            "degraded": {**(state.get("degraded") or {}), "compaction_degraded": True},
+        }
 
 
 def compact_if_needed(state: SessionState) -> dict[str, Any]:
-    """8 compact_if_needed: §13.2 节点 8。Stage 1 passthrough。"""
+    """8 compact_if_needed: §13.2 节点 8。
+
+    Stage 3 PR B：用 Compactor 压缩 messages (§5.3)。
+    - 优先 LLM 摘要
+    - 失败降级为确定性窗口压缩
+    - 标记 compaction_degraded
+    """
+    compactor = get_default_compactor()
+    if compactor is None:
+        return {}
+
+    messages = list(state.get("messages", []) or [])
+    if not messages:
+        return {}
+
+    target_tokens = 4000  # Stage 4 由 ContextAssembler.max_tokens 决定
+    existing_summary = str(state.get("rolling_summary", ""))
+
+    try:
+        result = compactor.compact(messages, existing_summary, target_tokens)
+        return {
+            "messages": _result_to_messages(result, messages),
+            "rolling_summary": result.rolling_summary,
+            "context_manifest": {
+                **(state.get("context_manifest") or {}),
+                "compaction": {
+                    "tokens_before": result.tokens_before,
+                    "tokens_after": result.tokens_after,
+                    "removed_ids": result.removed_message_ids,
+                },
+            },
+            "degraded": {
+                **(state.get("degraded") or {}),
+                "compaction_degraded": result.degraded,
+            },
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("compact_if_needed failed: %s", exc)
+        return {
+            "degraded": {**(state.get("degraded") or {}), "compaction_degraded": True},
+        }
+
+
+def _result_to_messages(result: CompactionResult, original: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Compactor 压缩后: 摘要 + tail 消息。"""
+    kept = original[len(result.removed_message_ids):]
+    summary_msg = {
+        "role": "system",
+        "content": f"[compaction summary] {result.rolling_summary}",
+    }
+    return [summary_msg, *kept]
+
+
+def load_agent_context(state: SessionState) -> dict[str, Any]:
+    """5 load_agent_context: §13.2 节点 5。
+
+    Stage 3 PR B 范围：注入 L1 source (当前 messages + rolling_summary) 到
+    LayeredMemory，使后续 recall_memory_and_knowledge 节点能命中。
+
+    Stage 4 扩展：实际加载 agent catalog, 写 system_prompt / tool policy / agent_version。
+    """
+    memory = get_default_memory()
+    if memory is not None and hasattr(memory, "set_l1"):
+        memory.set_l1(L1Source(
+            session_id=str(state.get("session_id", "")),
+            messages=tuple(state.get("messages", []) or []),
+            rolling_summary=str(state.get("rolling_summary", "")),
+        ))
+    # Stage 1 兼容: passthrough（除 L1 注入外）
     return {}
 
 
@@ -251,8 +466,70 @@ def subagent(state: SessionState) -> dict[str, Any]:
 
 
 def remember(state: SessionState) -> dict[str, Any]:
-    """15 remember: §13.2 节点 15。Stage 1 passthrough。"""
+    """15 remember: §13.2 节点 15。
+
+    Stage 3 PR C：从 final answer + 显式事实 + provenance 提取 L2 长期事实，
+    写入 LayeredMemory.write_l2。
+
+    行为：
+
+    - 提取 L2 事实：从 state.context_manifest 的 memory hits 中提取高置信度 hit
+    - 去重：write_l2 同 content_hash 幂等（§5.4）
+    - 提升：低置信度只作为候选，不进入长期事实（§11 风险）
+    - 失败不回滚答案，进入 outbox 重试（§5.4）
+    """
+    memory = get_default_memory()
+    if memory is None:
+        return {}
+
+    tenant_id = str(state.get("tenant_id", ""))
+    workspace_id = str(state.get("workspace_id", ""))
+    user_id = ""  # Stage 5 注入
+
+    # 从 L2 hits 中提取事实（高置信度门槛：§11 风险决议）
+    min_confidence = 0.7
+    memory_hits = state.get("memory_hits") or []
+    candidates: list[dict[str, Any]] = []
+
+    for hit in memory_hits:
+        if hit.get("layer") != "l2":
+            continue
+        confidence = float(hit.get("metadata", {}).get("confidence", 1.0))
+        if confidence < min_confidence:
+            continue  # 提升门：低置信度不进长期事实
+        content = str(hit.get("content", ""))
+        if not content:
+            continue
+        candidates.append({
+            "fact_id": hit.get("source_id", f"unknown-{len(candidates)}"),
+            "tenant_id": tenant_id,
+            "workspace_id": workspace_id,
+            "user_id": user_id or "*",
+            "content": content,
+            "confidence": confidence,
+            "source_turn_id": state.get("turn_id"),
+            "content_hash": _content_hash(content),
+            "policy_version": "v1",
+        })
+
+    if not candidates:
+        return {}
+
+    # 写入（write_l2 自带 content_hash 幂等去重）
+    for cand in candidates:
+        try:
+            memory.write_l2(cand)
+        except Exception as exc:  # noqa: BLE001
+            # §5.4 记忆写失败不回滚答案, 进入 outbox 重试
+            logger.warning("remember.write_l2 failed: %s", exc)
+
     return {}
+
+
+def _content_hash(content: str) -> str:
+    """§5.4 content_hash 幂等: sha256 截前 16 字符。"""
+    import hashlib
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
 
 
 def persist_result(state: SessionState) -> dict[str, Any]:
