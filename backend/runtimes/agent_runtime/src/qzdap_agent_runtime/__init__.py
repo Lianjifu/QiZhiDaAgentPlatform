@@ -17,7 +17,7 @@ Stage 1 + Stage 2 PR A/B/C/D 范围内交付：
 
 from __future__ import annotations
 
-from . import channels, execution, governance, graph, memory, observability, outbox, ports, result, tools
+from . import channels, evaluation, execution, governance, graph, memory, observability, outbox, ports, result, tools
 from .engine import ChannelGateway, ResumeRequest, SessionEngine, SessionRef, TurnRequest
 
 __all__ = [
@@ -27,6 +27,7 @@ __all__ = [
     "SessionRef",
     "TurnRequest",
     "channels",
+    "evaluation",
     "execution",
     "governance",
     "graph",

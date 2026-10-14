@@ -49,6 +49,7 @@ from ..observability import (
     InMemoryCostAttribution,
     UsageTracker,
 )
+from ..evaluation import OnlineEvaluator
 from .routing import AgentRouteConfig, TaskKind, classify_task_kind_heuristic
 from .state import SessionState
 
@@ -72,6 +73,7 @@ _default_audit: Optional[InMemoryAuditLogger] = None
 _default_deep_agent_factory: Optional[Any] = None  # DeepAgentFactory (Stage 6b)
 _default_usage_tracker: Optional[UsageTracker] = None  # Stage 7a
 _default_cost_attribution: Optional[InMemoryCostAttribution] = None  # Stage 7a
+_default_evaluator: Optional[OnlineEvaluator] = None  # Stage 7b
 
 
 def set_default_lock_manager(manager: LockManager) -> None:
@@ -201,12 +203,22 @@ def get_default_cost_attribution() -> InMemoryCostAttribution | None:
     return _default_cost_attribution
 
 
+def set_default_evaluator(evaluator: OnlineEvaluator) -> None:
+    """composition root 注入 OnlineEvaluator (§8 Stage 7b)."""
+    global _default_evaluator
+    _default_evaluator = evaluator
+
+
+def get_default_evaluator() -> OnlineEvaluator | None:
+    return _default_evaluator
+
+
 def reset_default_dependencies() -> None:
     """测试辅助：清空所有默认依赖。"""
     global _default_lock_manager, _default_memory, _default_compactor, _default_assembler
     global _default_policy, _default_executor, _default_tool_registry, _default_agent_config
     global _default_approval_store, _default_audit, _default_deep_agent_factory
-    global _default_usage_tracker, _default_cost_attribution
+    global _default_usage_tracker, _default_cost_attribution, _default_evaluator
     _default_lock_manager = None
     _default_memory = None
     _default_compactor = None
@@ -220,6 +232,7 @@ def reset_default_dependencies() -> None:
     _default_deep_agent_factory = None
     _default_usage_tracker = None
     _default_cost_attribution = None
+    _default_evaluator = None
 
 
 # ---------------------------------------------------------------------------
@@ -1048,27 +1061,59 @@ def persist_result(state: SessionState) -> dict[str, Any]:
     """16 persist_result: §13.2 节点 16。
 
     Stage 7a PR C: 写入 UsageEvent 到 state.usage, CostAttribution + UsageTracker。
+    Stage 7b PR B: 触发 OnlineEvaluator (不阻塞主路径, 走 background task)。
     失败仅记日志 (§13.2 节点 17 失败处理: 不影响已成功的 turn 状态)。
     """
     tracker = get_default_usage_tracker()
     attribution = get_default_cost_attribution()
+    evaluator = get_default_evaluator()
     turn_id = str(state.get("turn_id", ""))
 
+    out: dict[str, Any] = {}
+
     if tracker is not None and turn_id:
-        # 把 tracker 的 UsageRecord 写进 state.usage (汇总)
         rec = tracker.get(turn_id)
         if rec is not None:
             state_usage = dict(state.get("usage") or {})
             tracker_rec = rec.to_usage_event_dict()
-            # 合并: tracker 是 source of truth
             for k, v in tracker_rec.items():
                 if k != "kind":
                     state_usage[k] = v
-            # 同时累加 cost 到 attribution
             if attribution is not None:
                 attribution.record(rec)
-            return {"usage": state_usage}
-    return {}
+            out["usage"] = state_usage
+
+    # §8 Stage 7b: 异步评测 (不阻塞主路径)
+    if evaluator is not None and turn_id:
+        try:
+            import asyncio
+            query = ""
+            msgs = state.get("messages") or []
+            if msgs:
+                last = msgs[-1]
+                if hasattr(last, "content"):
+                    query = str(last.content)  # type: ignore[union-attr]
+                elif isinstance(last, dict):
+                    query = str(last.get("content", ""))
+            answer = ""
+            result = state.get("result")
+            if isinstance(result, dict):
+                answer = str(result.get("final_message", ""))
+            knowledge_hits = state.get("knowledge_hits") or []
+            asyncio.create_task(evaluator.evaluate(
+                turn_id=turn_id,
+                agent_id=str(state.get("agent_id", "")),
+                tenant_id=str(state.get("tenant_id", "")),
+                engine_version="v1",  # Stage 7b: 实际由 EngineSwitch 决定
+                query=query,
+                answer=answer,
+                retrieved_context=list(knowledge_hits),
+            ))
+        except Exception:  # noqa: BLE001
+            # §8 Stage 7b: 评测失败不阻塞主路径
+            pass
+
+    return out
 
 
 def emit_result(state: SessionState) -> dict[str, Any]:
