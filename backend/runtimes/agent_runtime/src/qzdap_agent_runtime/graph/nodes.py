@@ -44,6 +44,11 @@ from ..graph.deep_agent import (
     InMemoryDeepAgentFactory,
     SubAgentSpec,
 )
+from ..observability import (
+    DegradedKind,
+    InMemoryCostAttribution,
+    UsageTracker,
+)
 from .routing import AgentRouteConfig, TaskKind, classify_task_kind_heuristic
 from .state import SessionState
 
@@ -65,6 +70,8 @@ _default_agent_config: Optional[AgentRouteConfig] = None
 _default_approval_store: Optional[InMemoryApprovalStore] = None
 _default_audit: Optional[InMemoryAuditLogger] = None
 _default_deep_agent_factory: Optional[Any] = None  # DeepAgentFactory (Stage 6b)
+_default_usage_tracker: Optional[UsageTracker] = None  # Stage 7a
+_default_cost_attribution: Optional[InMemoryCostAttribution] = None  # Stage 7a
 
 
 def set_default_lock_manager(manager: LockManager) -> None:
@@ -174,11 +181,32 @@ def get_default_deep_agent_factory() -> Any | None:
     return _default_deep_agent_factory
 
 
+def set_default_usage_tracker(tracker: UsageTracker) -> None:
+    """composition root 注入 UsageTracker (§5.10 / Stage 7a)."""
+    global _default_usage_tracker
+    _default_usage_tracker = tracker
+
+
+def get_default_usage_tracker() -> UsageTracker | None:
+    return _default_usage_tracker
+
+
+def set_default_cost_attribution(attribution: InMemoryCostAttribution) -> None:
+    """composition root 注入 CostAttribution (§5.10 / Stage 7a)."""
+    global _default_cost_attribution
+    _default_cost_attribution = attribution
+
+
+def get_default_cost_attribution() -> InMemoryCostAttribution | None:
+    return _default_cost_attribution
+
+
 def reset_default_dependencies() -> None:
     """测试辅助：清空所有默认依赖。"""
     global _default_lock_manager, _default_memory, _default_compactor, _default_assembler
     global _default_policy, _default_executor, _default_tool_registry, _default_agent_config
     global _default_approval_store, _default_audit, _default_deep_agent_factory
+    global _default_usage_tracker, _default_cost_attribution
     _default_lock_manager = None
     _default_memory = None
     _default_compactor = None
@@ -190,6 +218,8 @@ def reset_default_dependencies() -> None:
     _default_approval_store = None
     _default_audit = None
     _default_deep_agent_factory = None
+    _default_usage_tracker = None
+    _default_cost_attribution = None
 
 
 # ---------------------------------------------------------------------------
@@ -942,9 +972,6 @@ def _mark_todos_done(todos: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{**t, "status": "done"} for t in todos]
 
 
-def agent(state: SessionState) -> dict[str, Any]:
-    """10 agent: §13.2 节点 10。Stage 1 passthrough。"""
-    return {}
 # ---------------------------------------------------------------------------
 
 
@@ -954,13 +981,15 @@ def remember(state: SessionState) -> dict[str, Any]:
     Stage 3 PR C：从 final answer + 显式事实 + provenance 提取 L2 长期事实，
     写入 LayeredMemory.write_l2。
 
-    行为：
-
-    - 提取 L2 事实：从 state.context_manifest 的 memory hits 中提取高置信度 hit
-    - 去重：write_l2 同 content_hash 幂等（§5.4）
-    - 提升：低置信度只作为候选，不进入长期事实（§11 风险）
-    - 失败不回滚答案，进入 outbox 重试（§5.4）
+    Stage 7a: 同步把 UsageRecord 写入 CostAttribution。
     """
+    tracker = get_default_usage_tracker()
+    attribution = get_default_cost_attribution()
+    if tracker is not None:
+        rec = tracker.get(str(state.get("turn_id", "")))
+        if rec is not None and attribution is not None:
+            attribution.record(rec)
+
     memory = get_default_memory()
     if memory is None:
         return {}
@@ -1016,7 +1045,29 @@ def _content_hash(content: str) -> str:
 
 
 def persist_result(state: SessionState) -> dict[str, Any]:
-    """16 persist_result: §13.2 节点 16。Stage 1 passthrough。"""
+    """16 persist_result: §13.2 节点 16。
+
+    Stage 7a PR C: 写入 UsageEvent 到 state.usage, CostAttribution + UsageTracker。
+    失败仅记日志 (§13.2 节点 17 失败处理: 不影响已成功的 turn 状态)。
+    """
+    tracker = get_default_usage_tracker()
+    attribution = get_default_cost_attribution()
+    turn_id = str(state.get("turn_id", ""))
+
+    if tracker is not None and turn_id:
+        # 把 tracker 的 UsageRecord 写进 state.usage (汇总)
+        rec = tracker.get(turn_id)
+        if rec is not None:
+            state_usage = dict(state.get("usage") or {})
+            tracker_rec = rec.to_usage_event_dict()
+            # 合并: tracker 是 source of truth
+            for k, v in tracker_rec.items():
+                if k != "kind":
+                    state_usage[k] = v
+            # 同时累加 cost 到 attribution
+            if attribution is not None:
+                attribution.record(rec)
+            return {"usage": state_usage}
     return {}
 
 
