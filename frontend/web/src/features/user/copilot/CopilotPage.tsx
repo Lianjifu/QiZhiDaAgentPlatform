@@ -318,7 +318,9 @@ export default function Copilot() {
         if (event === 'artifact_ready') {
           const a: ArtifactReady = {
             artifact_id: String(data.artifact_id || ''),
-            kind: (data.kind as ArtifactReady['kind']) || 'markdown',
+            // 后端 ArtifactReadyChunk 通过 Field(alias="kind") 输出 kind_ (避免与 envelope kind 冲突),
+            // 优先读 data.kind_, 兜底读 data.kind (兼容老数据)
+            kind: (data.kind_ as ArtifactReady['kind']) || (data.kind as ArtifactReady['kind']) || 'markdown',
             name: String(data.name || 'artifact.md'),
             mime: String(data.mime || 'text/markdown'),
             size_bytes: Number(data.size_bytes || 0),
@@ -797,7 +799,7 @@ export default function Copilot() {
         )}
       </main>
 
-      {showContext && demoMode ? (
+      {showContext ? (
         <aside
           id="copilot-workspace-preview"
           className="hidden min-h-0 w-[min(100%,22rem)] shrink-0 border-l border-[var(--border)] bg-[var(--surface-1)] xl:flex xl:flex-col 2xl:w-[26rem]"
