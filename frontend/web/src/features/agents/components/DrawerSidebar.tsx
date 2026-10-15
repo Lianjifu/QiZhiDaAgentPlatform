@@ -3,56 +3,77 @@
  *
  * panels: 必填/推荐/可选 三档徽标在每个 panel 名称右侧。
  * 错误:validation.errors[panel] 有值时,徽标变红。
- * 访问:跟踪已访问面板,做"已完成"打勾。
+ * 完成:基于 draft 实际内容判断,而不只是"点过";避免重新打开页面后
+ * visited useState 丢失导致状态回退.
  */
 import { AlertTriangle, Check, CheckCircle2, CheckSquare, Circle, Clock, Download, Trash2, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import type { DrawerPanel } from '../schema';
+import type { AgentEntry, DrawerPanel } from '../schema';
 import { DRAWER_NAV_ITEMS } from './constants';
 
 interface PanelMeta {
   required?: boolean;
   recommended?: boolean;
   error?: string | null;
-  visited?: boolean;
+  filled?: boolean;
 }
 
 interface ValidationLike {
   errors: Partial<Record<DrawerPanel, string>>;
 }
 
+/** 判断单个 panel 是否"实际填了" (基于 draft, 跨刷新稳定). */
+function isPanelFilled(panel: DrawerPanel, draft: AgentEntry): boolean {
+  switch (panel) {
+    case 'basic':
+      return draft.name.trim().length > 0 && draft.description.trim().length > 0;
+    case 'skills':
+      return draft.tools.length > 0;
+    case 'knowledge':
+      return draft.knowledgeRefs.length > 0;
+    case 'flow':
+      return draft.flowRefs.length > 0;
+    case 'memory':
+      return draft.memoryPolicy.enabled;
+    case 'prompt': {
+      const p = draft.prompts ?? ({} as AgentEntry['prompts']);
+      return [p.prompt, p.soul, p.agents, p.user, p.tools].some(
+        (s) => typeof s === 'string' && s.trim().length > 0,
+      );
+    }
+    case 'permission':
+      return draft.visibleScope.length > 0;
+    case 'versions':
+    case 'evaluation':
+      // 这两个 panel 状态由 detail 页签独立跟踪, 不参与基础"已填"判断
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function DrawerSidebar({
   panel,
   setPanel,
   validation,
+  draft,
   showTierBadges = true,
   className,
 }: {
   panel: DrawerPanel;
   setPanel: (p: DrawerPanel) => void;
   validation?: ValidationLike;
+  draft: AgentEntry;
   showTierBadges?: boolean;
   className?: string;
 }) {
-  const [visited, setVisited] = useState<Set<DrawerPanel>>(() => new Set([panel]));
-
-  useEffect(() => {
-    setVisited((prev) => {
-      if (prev.has(panel)) return prev;
-      const next = new Set(prev);
-      next.add(panel);
-      return next;
-    });
-  }, [panel]);
-
   const tierFor = (id: DrawerPanel): PanelMeta => {
     const error = validation?.errors[id] ?? null;
-    const isVisited = visited.has(id);
+    const filled = isPanelFilled(id, draft);
     return {
       required: id === 'basic' || id === 'skills',
       recommended: id === 'knowledge' || id === 'prompt' || id === 'flow',
       error,
-      visited: isVisited && !error,
+      filled: filled && !error,
     };
   };
 
@@ -82,8 +103,8 @@ export function DrawerSidebar({
               <span className="flex shrink-0 items-center gap-1">
                 {meta.error ? (
                   <AlertTriangle className="h-3.5 w-3.5 text-rose-500" aria-label="未填必填" />
-                ) : meta.visited ? (
-                  <Check className="h-3.5 w-3.5 text-emerald-500" aria-label="已访问" />
+                ) : meta.filled ? (
+                  <Check className="h-3.5 w-3.5 text-emerald-500" aria-label="已填写" />
                 ) : meta.required ? (
                   <span className="rounded-full bg-rose-100 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-rose-600">必填</span>
                 ) : meta.recommended ? (

@@ -111,7 +111,7 @@ export function AgentEditor({
       {mode === 'create' && <OnboardingBanner validation={validation} />}
 
       <section className="flex min-h-[480px] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] lg:flex-row">
-        <DrawerSidebar panel={panel} setPanel={setPanel} validation={validation} />
+        <DrawerSidebar panel={panel} setPanel={setPanel} validation={validation} draft={draft} />
         <main
           className={
             isReadonly

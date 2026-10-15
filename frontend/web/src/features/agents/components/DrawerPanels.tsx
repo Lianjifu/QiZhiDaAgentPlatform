@@ -733,7 +733,7 @@ export function DrawerPanelPrompt({
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-1.5">
         {PROMPT_DOCS.map((item) => {
           const active = item.key === promptDoc;
-          const isDirty = draft.prompts[item.key] !== initialPrompts[item.key];
+          const isFilled = (draft.prompts[item.key] ?? '').trim().length > 0;
           return (
             <button
               key={item.key}
@@ -745,7 +745,14 @@ export function DrawerPanelPrompt({
             >
               <FileText className="h-3.5 w-3.5" />
               {item.file}
-              {isDirty && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-[var(--danger)]" aria-label="已修改" />}
+              {isFilled ? (
+                <CheckCircle2
+                  className="h-3.5 w-3.5 text-emerald-500"
+                  aria-label="已填写"
+                />
+              ) : (
+                <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-rose-500" aria-label="待填写" />
+              )}
             </button>
           );
         })}
