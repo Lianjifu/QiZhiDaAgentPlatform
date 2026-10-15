@@ -24,11 +24,18 @@ ChunkKind = Literal[
     "usage",
     "done",
     "error",
+    # Round-7 增量: 计划 / 产物 / 附件 / 工作流
+    "plan_proposed",
+    "artifact_ready",
+    "attachment_ready",
+    "workflow_invocation",
 ]
 
 
 class ChunkEnvelope(BaseModel):
     """Wrapper around every chunk with shared metadata."""
+
+    model_config = {"populate_by_name": True}
 
     turn_id: UUID
     seq: int = Field(ge=0)
@@ -104,6 +111,76 @@ class ErrorChunk(ChunkEnvelope):
     retriable: bool = False
 
 
+# ---------------------------------------------------------------------------
+# Round-7 增量: 计划 / 产物 / 附件 / 工作流 (与 ResultEvent 一一对应)
+# ---------------------------------------------------------------------------
+
+
+class PlanProposedChunk(ChunkEnvelope):
+    """模型提议的待执行计划; 前端用作 plan card (按步批准 / 拒绝)."""
+
+    kind: Literal["plan_proposed"] = "plan_proposed"
+    plan_id: UUID
+    title: str
+    steps: list[dict] = Field(
+        default_factory=list,
+        description="每步 {id, title, description, kind: tool|subagent|ask, tool_name?}",
+    )
+    reason: str = ""
+
+
+class ArtifactReadyChunk(ChunkEnvelope):
+    """工具 / 模型生成了可下载的产物 (报告 / 代码 / html / json)."""
+
+    kind: Literal["artifact_ready"] = "artifact_ready"
+    artifact_id: UUID
+    kind_: Literal["markdown", "code", "html", "json", "image", "text"] = Field(
+        alias="kind",
+        description="产物类别 (字段名 kind 与 envelope 重复, 用 alias 暴露为 kind_)",
+    )
+    name: str
+    mime: str
+    size_bytes: int = Field(ge=0)
+    download_path: str = Field(
+        description="相对路径 e.g. /api/sessions/{sid}/artifacts/{aid}/content",
+    )
+    preview_path: str | None = None
+    snippet: str = Field(default="", description="前 800 字预览; markdown 渲染用")
+
+
+class AttachmentReadyChunk(ChunkEnvelope):
+    """用户附件已就绪 (上传完成 / 解析完成)."""
+
+    kind: Literal["attachment_ready"] = "attachment_ready"
+    attachment_id: UUID
+    name: str
+    mime: str
+    size_bytes: int = Field(ge=0)
+    download_path: str
+
+
+class WorkflowInvocationChunk(ChunkEnvelope):
+    """工作流调用状态 (类似 skill_invocation, 但目标是一个工作流)."""
+
+    kind: Literal["workflow_invocation"] = "workflow_invocation"
+    invocation_id: UUID
+    workflow_name: str
+    status: Literal["started", "succeeded", "failed", "cancelled"]
+
+
+class KnowledgeSearchChunk(ChunkEnvelope):
+    """知识检索结果 (hit 摘要 + 引用 + 降级标记)."""
+
+    kind: Literal["knowledge_search"] = "knowledge_search"
+    query: str
+    hits: list[dict] = Field(
+        default_factory=list,
+        description="每条 {id, title, snippet, score}",
+    )
+    citations: list[str] = Field(default_factory=list)
+    degraded: bool = False
+
+
 # Type union for client-side discriminated parsing
 TurnChunk = (
     MessageChunk
@@ -111,9 +188,14 @@ TurnChunk = (
     | ToolResultChunk
     | SkillInvocationChunk
     | MemoryWriteChunk
+    | KnowledgeSearchChunk
     | ApprovalRequiredChunk
     | ContextCompactedChunk
     | UsageChunk
     | DoneChunk
     | ErrorChunk
+    | PlanProposedChunk
+    | ArtifactReadyChunk
+    | AttachmentReadyChunk
+    | WorkflowInvocationChunk
 )

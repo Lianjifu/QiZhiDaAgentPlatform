@@ -28,6 +28,11 @@ EventKind = Literal[
     "usage",
     "done",
     "error",
+    # Round-7 增量
+    "plan_proposed",
+    "artifact_ready",
+    "attachment_ready",
+    "workflow_invocation",
 ]
 
 
@@ -168,6 +173,55 @@ class ErrorEvent(_EventBase):
 
 
 # ---------------------------------------------------------------------------
+# Round-7 增量: 计划 / 产物 / 附件 / 工作流
+# ---------------------------------------------------------------------------
+
+
+class PlanProposedEvent(_EventBase):
+    """模型提议计划 (前端用作可批准/拒绝的步骤卡片)."""
+
+    kind: Literal["plan_proposed"] = "plan_proposed"
+    plan_id: str
+    title: str
+    steps: list[dict]
+    reason: str = ""
+
+
+class ArtifactReadyEvent(_EventBase):
+    """工具/模型产出可下载产物 (报告/代码/html/json)."""
+
+    kind: Literal["artifact_ready"] = "artifact_ready"
+    artifact_id: str
+    kind_: Literal["markdown", "code", "html", "json", "image", "text"]
+    name: str
+    mime: str
+    size_bytes: int
+    download_path: str
+    preview_path: str | None = None
+    snippet: str = ""
+
+
+class AttachmentReadyEvent(_EventBase):
+    """用户附件就绪 (上传完成 / 解析完成)."""
+
+    kind: Literal["attachment_ready"] = "attachment_ready"
+    attachment_id: str
+    name: str
+    mime: str
+    size_bytes: int
+    download_path: str
+
+
+class WorkflowInvocationEvent(_EventBase):
+    """工作流调用状态 (类似 skill_invocation)."""
+
+    kind: Literal["workflow_invocation"] = "workflow_invocation"
+    invocation_id: str
+    workflow_name: str
+    status: Literal["started", "succeeded", "failed", "cancelled"]
+
+
+# ---------------------------------------------------------------------------
 # ResultEvent 联合类型（discriminated by kind）
 # ---------------------------------------------------------------------------
 
@@ -184,11 +238,17 @@ ResultEvent = (
     | UsageEvent
     | DoneEvent
     | ErrorEvent
+    | PlanProposedEvent
+    | ArtifactReadyEvent
+    | AttachmentReadyEvent
+    | WorkflowInvocationEvent
 )
 
 
 __all__ = [
     "ApprovalRequiredEvent",
+    "ArtifactReadyEvent",
+    "AttachmentReadyEvent",
     "ContextCompactedEvent",
     "DoneEvent",
     "ErrorEvent",
@@ -196,9 +256,11 @@ __all__ = [
     "KnowledgeSearchEvent",
     "MemoryWriteEvent",
     "MessageEvent",
+    "PlanProposedEvent",
     "ResultEvent",
     "SkillInvocationEvent",
     "ToolCallEvent",
     "ToolResultEvent",
     "UsageEvent",
+    "WorkflowInvocationEvent",
 ]

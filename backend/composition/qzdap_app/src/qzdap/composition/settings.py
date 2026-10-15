@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     )
 
     # core
-    env: Literal["development", "test", "ci", "staging", "production"] = "development"
+    env: Literal["development", "demo", "test", "ci", "staging", "production"] = "development"
     debug: bool = True
     log_level: str = "INFO"
     log_json: bool = True

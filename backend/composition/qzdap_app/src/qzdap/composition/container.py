@@ -196,7 +196,9 @@ class Container:
     def llm_client(self):
         cfg: LLMConfig = self.settings.llm_config()
         if cfg.provider.value == "mock":
-            if self.settings.env not in {"test", "ci"}:
+            # Mock LLM 仅在 demo / test / ci 环境允许.
+            # dev / staging / production 必须用真实供应商 (openai-compatible).
+            if self.settings.env not in {"demo", "test", "ci"}:
                 from qzdap.composition.unavailable_providers import UnavailableLLMClient
 
                 return UnavailableLLMClient()
@@ -451,7 +453,7 @@ class Container:
                 base_url=self.settings.embedding_runtime_url,
                 api_key=self.settings.embedding_runtime_api_key,
             )
-        if self.settings.env not in {"test", "ci"}:
+        if self.settings.env not in {"demo", "test", "ci"}:
             from qzdap.composition.unavailable_providers import UnavailableEmbeddingAdapter
 
             return UnavailableEmbeddingAdapter()
