@@ -80,3 +80,16 @@ class LLMClient:
 
     async def embed(self, texts: list[str]) -> list[list[float]]:  # pragma: no cover
         raise NotImplementedError
+
+    # ------------------------------------------------------------------
+    # Round-7 增量: side channel, 让 LLM 客户端在主 chat stream 之外注入
+    # 额外的 TurnChunk (plan_proposed / artifact_ready / workflow_invocation).
+    # mock 模式用 prompt 触发词决定; 真 LLM 默认返回 [].
+    # ------------------------------------------------------------------
+    async def synthetic_chunks(
+        self,
+        user_input: str,
+        *,
+        turn_id: Any = None,
+    ) -> list[dict]:
+        return []

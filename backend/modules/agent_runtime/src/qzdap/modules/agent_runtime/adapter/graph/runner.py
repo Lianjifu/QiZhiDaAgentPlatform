@@ -9,14 +9,18 @@ from uuid import UUID, uuid4
 
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
+    ArtifactReadyChunk,
+    AttachmentReadyChunk,
     ContextCompactedChunk,
     DoneChunk,
     MemoryWriteChunk,
     MessageChunk,
+    PlanProposedChunk,
     ToolCallChunk,
     ToolResultChunk,
     TurnChunk,
     UsageChunk,
+    WorkflowInvocationChunk,
 )
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
@@ -196,6 +200,16 @@ class SessionGraphRunner:
                         assistant = event
             if assistant is None:
                 raise RuntimeError("LLM stream ended without an assistant message")
+
+            # Round-7: LLM side-channel 注入 plan / artifact / workflow 事件.
+            # 真 LLM 默认 []; mock LLM 按触发词返回 chunk dicts.
+            synth = await self._llm.synthetic_chunks(user_input, turn_id=turn_id)
+            for raw in synth:
+                chunk = _build_synthetic_chunk(raw, turn_id=turn_id, seq=seq + 1)
+                if chunk is None:
+                    continue
+                seq += 1
+                yield chunk
             usage = assistant.get("usage") or {}
             input_tokens += int(usage.get("input_tokens") or 0)
             output_tokens += int(usage.get("output_tokens") or 0)
@@ -527,6 +541,72 @@ def _as_uuid(raw: Any) -> UUID:
         return UUID(str(raw))
     except (ValueError, TypeError):
         return uuid4()
+
+
+def _build_synthetic_chunk(raw: dict[str, Any], *, turn_id: UUID, seq: int) -> TurnChunk | None:
+    """把 MockLLMClient.synthetic_chunks 返回的 dict 包装为 TurnChunk.
+
+    支持 5 类: plan_proposed / artifact_ready / attachment_ready /
+    workflow_invocation / tool_call / tool_result. 后两类用于 mock
+    "执行命令" 触发词, 让前端能展示一段 shell 记录.
+    """
+    kind = raw.get("_kind") or raw.get("kind")
+    if not kind:
+        return None
+    try:
+        if kind == "plan_proposed":
+            return PlanProposedChunk(
+                turn_id=turn_id,
+                seq=seq,
+                plan_id=UUID(str(raw["plan_id"])),
+                title=str(raw.get("title") or ""),
+                steps=list(raw.get("steps") or []),
+                reason=str(raw.get("reason") or ""),
+            )
+        if kind == "artifact_ready":
+            payload = dict(raw)
+            payload.pop("_kind", None)
+            return ArtifactReadyChunk.model_validate(
+                {**payload, "turn_id": turn_id, "seq": seq}
+            )
+        if kind == "attachment_ready":
+            return AttachmentReadyChunk(
+                turn_id=turn_id,
+                seq=seq,
+                attachment_id=UUID(str(raw["attachment_id"])),
+                name=str(raw.get("name") or ""),
+                mime=str(raw.get("mime") or "application/octet-stream"),
+                size_bytes=int(raw.get("size_bytes") or 0),
+                download_path=str(raw.get("download_path") or ""),
+            )
+        if kind == "workflow_invocation":
+            return WorkflowInvocationChunk(
+                turn_id=turn_id,
+                seq=seq,
+                invocation_id=UUID(str(raw["invocation_id"])),
+                workflow_name=str(raw.get("workflow_name") or ""),
+                status=str(raw.get("status") or "started"),
+            )
+        if kind == "tool_call":
+            return ToolCallChunk(
+                turn_id=turn_id,
+                seq=seq,
+                tool_call_id=_as_uuid(raw.get("tool_call_id")),
+                tool_name=str(raw.get("tool_name") or ""),
+                arguments=dict(raw.get("arguments") or {}),
+            )
+        if kind == "tool_result":
+            return ToolResultChunk(
+                turn_id=turn_id,
+                seq=seq,
+                tool_call_id=_as_uuid(raw.get("tool_call_id")),
+                output=raw.get("output"),
+                is_error=bool(raw.get("is_error") or False),
+                latency_ms=int(raw.get("latency_ms") or 0),
+            )
+    except Exception:  # noqa: BLE001
+        return None
+    return None
 
 
 __all__ = ["SessionGraphRunner"]

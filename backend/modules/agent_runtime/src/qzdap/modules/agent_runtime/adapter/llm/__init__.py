@@ -55,5 +55,16 @@ class LLMPortAdapter(LLMPort):
             async for chunk in stream:
                 yield chunk
 
+    async def synthetic_chunks(self, user_input: str, *, turn_id=None) -> list[dict]:
+        """Side-channel: 让 mock LLM 在主 chat stream 之外注入 plan /
+        artifact / workflow 事件. 真 LLM 默认返回 [].
+        delegated to the underlying LLMClient; ModelServiceProvider 不
+        实现, 因此走这条路径时 LLM 必须是 LLMClient.
+        """
+        method = getattr(self._client, "synthetic_chunks", None)
+        if method is None:
+            return []
+        return await method(user_input, turn_id=turn_id)
+
 
 __all__ = ["LLMPortAdapter", "ModelInvocationMeta"]
