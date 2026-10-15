@@ -66,6 +66,19 @@ type CopilotEntryState = { knowledgeTitle?: string; agentId?: string; agentName?
 type PreviewTab = 'review' | 'browser' | 'files' | 'terminal';
 
 const starters = ['帮我整理今天的工作重点', '分析这份资料并提炼结论', '生成一份客户跟进计划'];
+
+/**
+ * pushNotice: 加一条提示, 同样的内容在最近 N 条里已存在则跳过 (避免
+ * onEvent('error') 和 streamCopilotTurn.throw 两次 add 到 notices).
+ */
+const DEDUPE_WINDOW = 6;
+const pushNotice = (current: string[], next: string): string[] => {
+  const trimmed = next.trim();
+  if (!trimmed) return current;
+  const recent = current.slice(-DEDUPE_WINDOW);
+  if (recent.includes(trimmed)) return current;
+  return [...current, trimmed];
+};
 const composerOptions = {
   slash: [
     { label: '/整理', value: '/整理 ' },
@@ -95,7 +108,7 @@ export default function Copilot() {
   const [pendingApproval, setPendingApproval] = useState<{ id: string; toolName: string; reason: string } | null>(null);
   const [notices, setNotices] = useState<string[]>([]);
   useEffect(() => {
-    void listCopilotSessions().then(setSessions).catch((error) => setNotices((current) => [...current, `查询失败：${String(error)}`]));
+    void listCopilotSessions().then(setSessions).catch((error) => setNotices((current) => pushNotice(current, `查询失败：${String(error)}`)));
   }, []);
   useEffect(() => {
     if (!sessionId) return;
@@ -114,14 +127,14 @@ export default function Copilot() {
           reason: String(pending.reason || '需要确认后才会执行'),
         });
       }
-    }).catch((error) => { setMessages([]); setNotices((current) => [...current, `详情加载失败：${String(error)}`]); });
+    }).catch((error) => { setMessages([]); setNotices((current) => pushNotice(current, `详情加载失败：${String(error)}`)); });
   }, [sessionId]);
   const [terminalCommand, setTerminalCommand] = useState('');
   const [terminalOutput, setTerminalOutput] = useState<string[]>(['$ workspace status', 'Workspace ready · qizhida-agent-platform', '$']);
   const runTerminalCommand = () => {
     const command = terminalCommand.trim();
     if (!command) return;
-    if (!demoMode) { void getApiClient().post<{ output: string }>('/api/workspace/terminal', { command }).then((result) => setTerminalOutput((current) => [...current, result.output])).catch((error) => setNotices((current) => [...current, `执行失败：${String(error)}`])); return; }
+    if (!demoMode) { void getApiClient().post<{ output: string }>('/api/workspace/terminal', { command }).then((result) => setTerminalOutput((current) => [...current, result.output])).catch((error) => setNotices((current) => pushNotice(current, `执行失败：${String(error)}`))); return; }
     setTerminalOutput((current) => [...current.filter((line) => line !== '$').slice(-8), `$ ${command}`, command === 'pwd' ? '/workspace/qizhida-agent-platform' : command === 'ls' ? 'frontend  backend  docs  README.md' : `Command accepted: ${command}`, '$']);
     setTerminalCommand('');
   };
@@ -209,7 +222,7 @@ export default function Copilot() {
       return;
     }
     // 兜底: 不切 tab, 留个 notice
-    setNotices((current) => [...current, `工具 ${toolName} 已调用`]);
+    setNotices((current) => pushNotice(current, `工具 ${toolName} 已调用`));
   };
 
   const sendMessage = async (value = input) => {
@@ -349,8 +362,8 @@ export default function Copilot() {
             reason: String(data.reason || '需要确认后才会执行'),
           });
         }
-        if (event === 'context_compacted') setNotices((n) => [...n, '上下文已压缩']);
-        if (event === 'memory_write') setNotices((n) => [...n, '已写入记忆']);
+        if (event === 'context_compacted') setNotices((n) => pushNotice(n, '上下文已压缩'));
+        if (event === 'memory_write') setNotices((n) => pushNotice(n, '已写入记忆'));
         if (event === 'done') {
           const final = String(data.final_message || '');
           if (final) {
@@ -365,7 +378,8 @@ export default function Copilot() {
           }
         }
         if (event === 'error') {
-          setNotices((n) => [...n, `流式错误: ${String(data.message || data.code || '未知')}`]);
+          // 不在这里 pushNotice, 让 streamCopilotTurn 的 throw 走 sendMessage 的 catch
+          // (统一出口 + dedupe 避免双显示)
         }
       });
       // 把累积的 extras / plan / artifacts / attachments 写回这条 assistant 消息
@@ -389,9 +403,16 @@ export default function Copilot() {
         };
         return next;
       });
-      void listCopilotSessions().then(setSessions).catch((error) => setNotices((current) => [...current, `查询失败：${String(error)}`]));
+      void listCopilotSessions().then(setSessions).catch((error) => setNotices((current) => pushNotice(current, `查询失败：${String(error)}`)));
     } catch (error) {
-      setNotices((current) => [...current, `请求失败：${error instanceof Error ? error.message : String(error)}`]);
+      const raw = error instanceof Error ? error.message : String(error);
+      // dev 模式 503 + PROVIDER_UNAVAILABLE: 把生硬的 "流式请求失败 (HTTP 503)"
+      // 替换成可操作提示
+      const friendly =
+        /PROVIDER_UNAVAILABLE|Mock\s*LLM/.test(raw) || /\(HTTP\s*503\)/.test(raw)
+          ? '当前后端没接真实模型: dev 模式不允许 mock LLM. 演示用 `QZDAP_ENV=demo` 重启后端, 或在 backend/.env.local 配 QZDAP_LLM_PROVIDER=openai-compatible + QZDAP_LLM_API_KEY=...'
+          : raw;
+      setNotices((current) => pushNotice(current, `请求失败：${friendly}`));
     } finally {
       setIsSending(false);
     }
@@ -413,7 +434,7 @@ export default function Copilot() {
         setMessages([]);
       }
     } catch (error) {
-      setNotices((current) => [...current, `删除失败：${String(error)}`]);
+      setNotices((current) => pushNotice(current, `删除失败：${String(error)}`));
     }
   };
   const resolveApproval = async (approved: boolean) => {
@@ -427,7 +448,7 @@ export default function Copilot() {
       });
       setPendingApproval(null);
       if (assistant) setMessages((current) => [...current, { role: 'assistant', content: assistant }]);
-    } catch (error) { setNotices((current) => [...current, `审批失败：${String(error)}`]); } finally {
+    } catch (error) { setNotices((current) => pushNotice(current, `审批失败：${String(error)}`)); } finally {
       setIsSending(false);
     }
   };
@@ -436,14 +457,14 @@ export default function Copilot() {
       setInput((current) => `${current}\n[附件: ${file.name}]`);
       return;
     }
-    if (!sessionId) { setNotices((current) => [...current, '请先打开会话，再上传附件。']); return; }
+    if (!sessionId) { setNotices((current) => pushNotice(current, '请先打开会话，再上传附件。')); return; }
     try {
       const form = new FormData();
       form.append('file', file);
       const result = await getApiClient().upload<{ id: string }>(`/api/sessions/${sessionId}/attachments`, form);
       if (!result?.id) throw new Error('后端未返回附件 ID');
       setInput((current) => `${current}\n[附件: ${file.name}, ID: ${result.id}]`);
-    } catch (error) { setNotices((current) => [...current, `上传失败：${String(error)}`]); }
+    } catch (error) { setNotices((current) => pushNotice(current, `上传失败：${String(error)}`)); }
   };
   const selectComposerOption = (value: string) => {
     setInput((current) => `${current.slice(0, -1)}${value}`);
