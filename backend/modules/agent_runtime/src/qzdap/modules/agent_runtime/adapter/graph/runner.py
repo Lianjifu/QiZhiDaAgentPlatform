@@ -13,9 +13,11 @@ from qzdap_schema.dtos.turn import (
     AttachmentReadyChunk,
     ContextCompactedChunk,
     DoneChunk,
+    KnowledgeSearchChunk,
     MemoryWriteChunk,
     MessageChunk,
     PlanProposedChunk,
+    SkillInvocationChunk,
     ToolCallChunk,
     ToolResultChunk,
     TurnChunk,
@@ -603,6 +605,23 @@ def _build_synthetic_chunk(raw: dict[str, Any], *, turn_id: UUID, seq: int) -> T
                 output=raw.get("output"),
                 is_error=bool(raw.get("is_error") or False),
                 latency_ms=int(raw.get("latency_ms") or 0),
+            )
+        if kind == "skill_invocation":
+            return SkillInvocationChunk(
+                turn_id=turn_id,
+                seq=seq,
+                invocation_id=_as_uuid(raw.get("invocation_id")),
+                skill_name=str(raw.get("skill_name") or ""),
+                status=str(raw.get("status") or "started"),
+            )
+        if kind == "knowledge_search":
+            return KnowledgeSearchChunk(
+                turn_id=turn_id,
+                seq=seq,
+                query=str(raw.get("query") or ""),
+                hits=list(raw.get("hits") or []),
+                citations=list(raw.get("citations") or []),
+                degraded=bool(raw.get("degraded") or False),
             )
     except Exception:  # noqa: BLE001
         return None
