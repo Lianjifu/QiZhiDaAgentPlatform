@@ -9,6 +9,25 @@ import { runtimeStorageKey } from '@/lib/environment';
 const AUTH_STORAGE_KEY = runtimeStorageKey('auth');
 const TOKEN_STORAGE_KEY = runtimeStorageKey('token');
 
+/** 解析 JWT payload (不验签, 仅用于读取 exp 检查客户端过期). */
+function decodeJwtPayload(token: string): { exp?: number } | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(payload));
+  } catch {
+    return null;
+  }
+}
+
+/** JWT 是否已过期 (留 30s 缓冲避免边界). */
+export function isTokenExpired(token: string, skewSeconds = 30): boolean {
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) return true;
+  return payload.exp - skewSeconds <= Math.floor(Date.now() / 1000);
+}
+
 interface AuthState {
   user: User | null;
   token: string | null;
@@ -42,6 +61,26 @@ export const useAuthStore = create<AuthState>()(
         return !!r && roles.includes(r);
       },
     }),
-    { name: AUTH_STORAGE_KEY },
+    {
+      name: AUTH_STORAGE_KEY,
+      // Rehydrate 后把 zustand 持久化的 token 写回独立 localStorage key,
+      // 让 ApiClient.getAuthToken() (在 main.tsx 注入, 直接读 localStorage)
+      // 在页面刷新后能拿到 token. 否则 zustand state 有 token 但
+      // localStorage[TOKEN_STORAGE_KEY] 是空的, 所有 /api/* 请求都 401.
+      onRehydrateStorage: () => (state) => {
+        if (state?.token) {
+          // §8 Stage 8: 页面刷新后 token 可能已过期 (默认 TTL 1h, 跑过夜的话必过期).
+          // 过期 token 会让 AuthMiddleware 401 → 整个 admin 页面 401.
+          // 这里主动 logout, 把 user / token 全部清掉, 强制重登.
+          if (isTokenExpired(state.token)) {
+            localStorage.removeItem(TOKEN_STORAGE_KEY);
+            // 触发 logout 同步 state (会清掉 persisted user)
+            useAuthStore.setState({ user: null, token: null, isAuthed: false });
+            return;
+          }
+          localStorage.setItem(TOKEN_STORAGE_KEY, state.token);
+        }
+      },
+    },
   ),
 );

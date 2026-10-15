@@ -6,7 +6,7 @@ import App from './app/App';
 import { I18nProvider } from './i18n';
 import './styles/global.css';
 import { setApiClient, ApiClient, mockHandlerWithAdapters } from '@qzdap/web-api';
-import { useAuthStore } from './features/auth';
+import { useAuthStore, isTokenExpired } from './features/auth';
 import { apiBaseURL, runtimeConfig } from './lib/api-mode';
 import { runtimeStorageKey } from './lib/environment';
 import { resolveWorkspaceHeader } from './lib/workspace-header';
@@ -80,7 +80,17 @@ function installApiClient() {
   setApiClient(
     new ApiClient(
       apiBaseURL(),
-      () => localStorage.getItem(runtimeStorageKey('token')),
+      () => {
+        const t = localStorage.getItem(runtimeStorageKey('token'));
+        if (!t) return null;
+        if (isTokenExpired(t)) {
+          // 过期 token 主动清理, 让 useAuthStore 同步登出
+          localStorage.removeItem(runtimeStorageKey('token'));
+          useAuthStore.getState().logout();
+          return null;
+        }
+        return t;
+      },
       config.dataMode === 'demo' ? localMockHandler : undefined,
       () => {
         const user = useAuthStore.getState().user;
