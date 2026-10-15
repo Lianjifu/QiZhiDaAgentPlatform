@@ -106,6 +106,8 @@ export interface AgentEntry {
   tone: Tone;
   status: Status;
   version: string;
+  /** 智能体使用的模型名 (e.g. "deepseek-flash"); 通过 ModelPicker 选, 写 admin_agents.model 列。 */
+  model?: string;
   lastUpdate: string;
   createdAt: string;
   calls: number;

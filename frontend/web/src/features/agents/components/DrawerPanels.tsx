@@ -22,6 +22,8 @@ import { MarkdownView } from './MarkdownView';
 import { KnowledgePicker } from './KnowledgePicker';
 import { SkillPicker } from './SkillPicker';
 import { WorkflowPicker } from './WorkflowPicker';
+import { ModelPicker } from './ModelPicker';
+import { useModelsList } from '@/features/models/useModels';
 import {
   DOCUMENT_TARGET_LIMITS, MEMORY_RETENTION_OPTIONS, MEMORY_SCOPE_OPTIONS,
   PROMPT_DOCS, PROMPT_SNIPPETS, statusBadge, toneClass,
@@ -34,6 +36,19 @@ export function DrawerPanelBasic({ draft, onChange }: { draft: AgentEntry; onCha
   const [tagDraft, setTagDraft] = useState('');
   const badge = statusBadge[draft.status];
   const tags = draft.tags ?? [];
+
+  // ModelPicker 按 model.id 选, 但 PATCH 字段是 model.name (string).
+  // 包装一层做 name <-> id 映射, 让 PATCH 拿到的就是 name.
+  const { data: models } = useModelsList();
+  const selectedModelId = models?.find((m) => m.name === draft.model)?.id ?? null;
+  const handleModelChange = (id: string | null) => {
+    if (id === null) {
+      update({ model: '' });
+      return;
+    }
+    const found = models?.find((m) => m.id === id);
+    if (found) update({ model: found.name });
+  };
 
   const handleAddTag = () => {
     const t = tagDraft.trim();
@@ -152,6 +167,27 @@ export function DrawerPanelBasic({ draft, onChange }: { draft: AgentEntry; onCha
           />
         </div>
         <p className="mt-2 text-[10px] text-[var(--text-muted)]">回车或逗号确认 · Backspace 删除上一个</p>
+      </section>
+
+      {/* 模型选择 (§5.10 + §8 Stage 7b) */}
+      <section className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5">
+        <header className="mb-3 flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">模型选择</h3>
+          {draft.model && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--brand-light)] px-2 py-0.5 text-[10px] font-semibold text-[var(--brand)]">
+              当前 · {draft.model}
+            </span>
+          )}
+        </header>
+        <ModelPicker
+          selectedId={selectedModelId}
+          onChange={handleModelChange}
+          allowedStatuses={['active', 'graying', 'draft']}
+          emptyText="暂无可用模型, 先去「模型配置」添加"
+        />
+        <p className="mt-2 text-[10px] text-[var(--text-muted)]">
+          PATCH /api/admin/agents/{'{id}'} 时随 <code>model</code> 字段写入, 每次 turn 隐式使用, 不再写死.
+        </p>
       </section>
 
       {/* 版本与状态 */}

@@ -21,6 +21,7 @@ function makeEmptyDraft(): AgentEntry {
     tone: 'info',
     status: 'draft',
     version: 'v0.1',
+    model: '',
     lastUpdate: '刚刚',
     createdAt: today,
     calls: 0,
