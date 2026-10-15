@@ -1,9 +1,13 @@
 /**
  * MessageExtrasView — 工具/技能/知识/工作流调用块, 嵌入 assistant message 流.
  * 不带业务逻辑, 纯展示. 数据由 CopilotPage 在 SSE 流式阶段累积后传入.
+ *
+ * tool_call 的 arguments/output 走 <CodeBlock> 高亮; 语言从 tool_name 推断
+ * (shell* → bash, *_json → json, *_py → python, *_http → bash, 默认 plain).
  */
 import { Sparkles, Wrench, BookOpen, Workflow, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { useState } from 'react';
+import { CodeBlock } from './CodeBlock';
 
 export type ToolCallState = {
   id: string;
@@ -59,14 +63,45 @@ function Chip({ icon: Icon, label, status }: { icon: typeof Wrench; label: strin
   );
 }
 
+function inferLanguage(toolName: string, content: unknown): string {
+  const name = toolName.toLowerCase();
+  if (name.startsWith('shell') || name.startsWith('run_command') || name.startsWith('terminal') || name === 'bash' || name.endsWith('_shell')) {
+    return 'bash';
+  }
+  if (name.endsWith('_py') || name.startsWith('python') || name === 'py') return 'python';
+  if (name.endsWith('_http') || name.startsWith('curl') || name === 'http' || name === 'fetch') return 'bash';
+  if (name.endsWith('_json') || name === 'json') return 'json';
+  if (name.endsWith('_sql') || name === 'sql') return 'sql';
+  if (name.endsWith('_xml') || name === 'xml') return 'xml';
+  if (name.endsWith('.ts') || name.endsWith('_ts')) return 'typescript';
+  // 看内容: 是 dict/list → json; 字符串以 < 开头 → xml; 否则 plain
+  if (typeof content === 'object' && content !== null) return 'json';
+  if (typeof content === 'string' && content.trimStart().startsWith('<')) return 'xml';
+  return 'plaintext';
+}
+
+function stringifyForCode(content: unknown): string {
+  if (content === undefined || content === null) return '';
+  if (typeof content === 'string') return content;
+  try {
+    return JSON.stringify(content, null, 2);
+  } catch {
+    return String(content);
+  }
+}
+
 function ToolCallRow({ tc }: { tc: ToolCallState }) {
   const [open, setOpen] = useState(false);
+  const argLanguage = inferLanguage(tc.tool_name, tc.arguments);
+  const outLanguage = inferLanguage(tc.tool_name, tc.output);
+  const hasArgs = tc.arguments && Object.keys(tc.arguments).length > 0;
+  const hasOutput = tc.output !== undefined && tc.output !== null && tc.output !== '';
   return (
     <div className="rounded-md border border-[var(--border)] bg-[var(--surface-1)]">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left"
+        className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left hover:bg-[var(--bg-hover)]"
       >
         <span className="inline-flex items-center gap-2 text-[11px]">
           <Wrench className="h-3 w-3 text-[var(--text-muted)]" />
@@ -77,22 +112,24 @@ function ToolCallRow({ tc }: { tc: ToolCallState }) {
         </span>
         <StatusDot status={tc.status} />
       </button>
-      {open ? (
-        <div className="space-y-2 border-t border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-2 text-[10px] leading-5 text-[var(--text-secondary)]">
-          {tc.arguments && Object.keys(tc.arguments).length > 0 ? (
+      {open && (hasArgs || hasOutput) ? (
+        <div className="space-y-2 border-t border-[var(--border)] bg-[var(--bg-elevated)] p-2.5">
+          {hasArgs ? (
             <div>
-              <p className="mb-1 font-semibold text-[var(--text-muted)]">arguments</p>
-              <pre className="overflow-auto rounded bg-[var(--surface-1)] p-1.5 font-mono text-[10px]">
-                {JSON.stringify(tc.arguments, null, 2)}
-              </pre>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">参数</p>
+              <CodeBlock
+                language={argLanguage}
+                code={stringifyForCode(tc.arguments)}
+              />
             </div>
           ) : null}
-          {tc.output ? (
+          {hasOutput ? (
             <div>
-              <p className="mb-1 font-semibold text-[var(--text-muted)]">output</p>
-              <pre className="overflow-auto rounded bg-[var(--surface-1)] p-1.5 font-mono text-[10px]">
-                {tc.output}
-              </pre>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">输出</p>
+              <CodeBlock
+                language={outLanguage}
+                code={stringifyForCode(tc.output)}
+              />
             </div>
           ) : null}
         </div>

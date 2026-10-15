@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './app/App';
 import { I18nProvider } from './i18n';
 import './styles/global.css';
+import './styles/hljs.css';
 import { setApiClient, ApiClient, mockHandlerWithAdapters } from '@qzdap/web-api';
 import { useAuthStore, isTokenExpired } from './features/auth';
 import { apiBaseURL, runtimeConfig } from './lib/api-mode';
