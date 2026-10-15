@@ -24,6 +24,10 @@ export async function loadCopilotSession(id: string): Promise<SessionDetail | nu
   return getApiClient().get<SessionDetail>(`/api/sessions/${id}`);
 }
 
+export async function deleteCopilotSession(id: string): Promise<void> {
+  await getApiClient().delete<void>(`/api/sessions/${id}`);
+}
+
 export async function streamCopilotTurn(
   sessionId: string,
   content: string,
