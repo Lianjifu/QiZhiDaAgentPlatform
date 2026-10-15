@@ -30,7 +30,8 @@ def upgrade() -> None:
     # 1. agent_sessions 字段扩展
     # ------------------------------------------------------------------
     # 扩展 status 枚举（v1: OPEN/RUNNING/WAITING_APPROVAL/CLOSED/CANCELLED）
-    op.drop_constraint("status_enum", "agent_sessions", type_="check")
+    # 原约束在 0002 命名为 ck_agent_sessions_status_enum (alembic 自动加 ck_<table>_<name> 前缀)
+    op.drop_constraint("ck_agent_sessions_status_enum", "agent_sessions", type_="check")
     op.create_check_constraint(
         "status_enum",
         "agent_sessions",
