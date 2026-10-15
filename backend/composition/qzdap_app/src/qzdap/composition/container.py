@@ -343,7 +343,7 @@ class Container:
             PolicyEvaluator,
         )
 
-        sf = self.session_factory().maker()
+        sf = self.session_factory().maker  # async_sessionmaker, NOT () — repos use it as factory
         return PolicyEvaluator(
             policy_repo=SqlPolicyRepository(sf),
             approval_repo=SqlApprovalRepository(sf),
