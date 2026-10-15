@@ -1,209 +1,169 @@
 /**
- * 极简 markdown 渲染器 — 仅覆盖 Prompt 文档中实际出现的语法:
- *   # / ## / ### 标题、- 列表、**bold** / *italic* / `code`、``` 代码块、> 引用、[text](url) 链接、段落、空行。
- * 不解析嵌套 / 不支持 HTML / 不引入外部依赖。
+ * 完整 GFM markdown 渲染器:
+ *   - react-markdown 解析 AST
+ *   - remark-gfm 扩展: 表格 / 任务列表 / 删除线 / 自动链接
+ *   - 自定义 code 渲染: ```mermaid 块走 mermaid.render 输出 SVG,
+ *     其他 fenced code 走等宽样式
+ *   - 零依赖行内样式: 与项目 token (--text, --text-secondary, --brand,
+ *     --bg-elevated, --border) 保持一致, 不破坏既有页面
  */
-import { Fragment, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ComponentProps, type ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
-interface InlineToken {
-  type: 'text' | 'bold' | 'italic' | 'code' | 'link';
-  value: string;
-  href?: string;
+interface MarkdownViewProps {
+  source: string;
 }
 
-function tokenizeInline(line: string): InlineToken[] {
-  const tokens: InlineToken[] = [];
-  let i = 0;
-  let buf = '';
-  const flush = () => {
-    if (buf.length > 0) {
-      tokens.push({ type: 'text', value: buf });
-      buf = '';
-    }
-  };
-  while (i < line.length) {
-    const ch = line[i];
-    // 反引号内联代码
-    if (ch === '`') {
-      const end = line.indexOf('`', i + 1);
-      if (end > 0) {
-        flush();
-        tokens.push({ type: 'code', value: line.slice(i + 1, end) });
-        i = end + 1;
-        continue;
-      }
-    }
-    // 链接 [text](url)
-    if (ch === '[') {
-      const close = line.indexOf(']', i + 1);
-      const openParen = close > 0 ? line.indexOf('(', close) : -1;
-      const closeParen = openParen > 0 ? line.indexOf(')', openParen) : -1;
-      if (close > 0 && openParen === close + 1 && closeParen > openParen) {
-        const text = line.slice(i + 1, close);
-        const href = line.slice(openParen + 1, closeParen);
-        flush();
-        tokens.push({ type: 'link', value: text, href });
-        i = closeParen + 1;
-        continue;
-      }
-    }
-    // **bold**
-    if (ch === '*' && line[i + 1] === '*') {
-      const end = line.indexOf('**', i + 2);
-      if (end > 0) {
-        flush();
-        tokens.push({ type: 'bold', value: line.slice(i + 2, end) });
-        i = end + 2;
-        continue;
-      }
-    }
-    // *italic*
-    if (ch === '*' && line[i + 1] !== '*') {
-      const end = line.indexOf('*', i + 1);
-      if (end > 0) {
-        flush();
-        tokens.push({ type: 'italic', value: line.slice(i + 1, end) });
-        i = end + 1;
-        continue;
-      }
-    }
-    buf += ch;
-    i += 1;
-  }
-  flush();
-  return tokens;
+interface MermaidBlockProps {
+  source: string;
 }
 
-function renderInline(tokens: InlineToken[]): ReactNode {
-  return tokens.map((t, idx) => {
-    switch (t.type) {
-      case 'bold': return <strong key={idx} className="font-semibold text-[var(--text)]">{t.value}</strong>;
-      case 'italic': return <em key={idx} className="italic">{t.value}</em>;
-      case 'code': return <code key={idx} className="rounded bg-[var(--bg-elevated)] px-1 py-0.5 font-mono text-[0.92em] text-[var(--brand)]">{t.value}</code>;
-      case 'link': return <a key={idx} href={t.href} target="_blank" rel="noreferrer" className="text-[var(--brand)] underline decoration-dotted underline-offset-2 hover:opacity-80">{t.value}</a>;
-      default: return <Fragment key={idx}>{t.value}</Fragment>;
-    }
-  });
-}
+function MermaidBlock({ source }: MermaidBlockProps) {
+  const id = useId().replace(/[^a-zA-Z0-9_-]/g, '_');
+  const [svg, setSvg] = useState<string>('');
+  const [error, setError] = useState<string>('');
 
-export function MarkdownView({ source }: { source: string }) {
-  const blocks: ReactNode[] = [];
-  const lines = source.split('\n');
-  let i = 0;
-  let key = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // 围栏代码块
-    if (line.trim().startsWith('```')) {
-      const codeLines: string[] = [];
-      i += 1;
-      while (i < lines.length && !lines[i].trim().startsWith('```')) {
-        codeLines.push(lines[i]);
-        i += 1;
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const mermaid = (await import('mermaid')).default;
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'neutral',
+          securityLevel: 'loose',
+          fontFamily: 'inherit',
+        });
+        const { svg: rendered } = await mermaid.render(`mmd-${id}`, source);
+        if (!cancelled) {
+          setSvg(rendered);
+          setError('');
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }
-      i += 1;
-      blocks.push(
-        <pre key={key++} className="my-3 overflow-auto rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3 font-mono text-[11px] leading-5 text-[var(--text)]">
-          <code>{codeLines.join('\n')}</code>
-        </pre>,
-      );
-      continue;
-    }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [source, id]);
 
-    // 标题
-    const heading = /^(#{1,3})\s+(.*)$/.exec(line);
-    if (heading) {
-      const level = heading[1].length;
-      const text = heading[2];
-      const style = level === 1
-        ? 'mt-4 mb-2 text-base font-semibold tracking-tight text-[var(--text)]'
-        : level === 2
-          ? 'mt-4 mb-2 text-sm font-semibold text-[var(--text)]'
-          : 'mt-3 mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]';
-      blocks.push(
-        level === 1
-          ? <h1 key={key++} className={style}>{renderInline(tokenizeInline(text))}</h1>
-          : level === 2
-            ? <h2 key={key++} className={style}>{renderInline(tokenizeInline(text))}</h2>
-            : <h3 key={key++} className={style}>{renderInline(tokenizeInline(text))}</h3>,
-      );
-      i += 1;
-      continue;
-    }
-
-    // 引用
-    if (line.startsWith('> ')) {
-      const quoteLines: string[] = [line.slice(2)];
-      i += 1;
-      while (i < lines.length && lines[i].startsWith('> ')) {
-        quoteLines.push(lines[i].slice(2));
-        i += 1;
-      }
-      blocks.push(
-        <blockquote key={key++} className="my-2 border-l-2 border-[var(--brand)] bg-[var(--brand-light)]/40 px-3 py-1.5 text-xs text-[var(--text-secondary)]">
-          {quoteLines.map((q, idx) => (
-            <p key={idx} className={idx === 0 ? '' : 'mt-1'}>{renderInline(tokenizeInline(q))}</p>
-          ))}
-        </blockquote>,
-      );
-      continue;
-    }
-
-    // 无序列表
-    if (/^[-*]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^[-*]\s+/, ''));
-        i += 1;
-      }
-      blocks.push(
-        <ul key={key++} className="my-2 space-y-1.5 pl-4 text-xs leading-6 text-[var(--text-secondary)] marker:text-[var(--brand)]" style={{ listStyleType: 'disc' }}>
-          {items.map((it, idx) => (
-            <li key={idx}>{renderInline(tokenizeInline(it))}</li>
-          ))}
-        </ul>,
-      );
-      continue;
-    }
-
-    // 有序列表
-    if (/^\d+\.\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^\d+\.\s+/, ''));
-        i += 1;
-      }
-      blocks.push(
-        <ol key={key++} className="my-2 list-decimal space-y-1.5 pl-4 text-xs leading-6 text-[var(--text-secondary)]">
-          {items.map((it, idx) => (
-            <li key={idx}>{renderInline(tokenizeInline(it))}</li>
-          ))}
-        </ol>,
-      );
-      continue;
-    }
-
-    // 空行
-    if (line.trim() === '') {
-      i += 1;
-      continue;
-    }
-
-    // 段落:把连续非空行合并
-    const paraLines: string[] = [line];
-    i += 1;
-    while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,3}\s|```|>\s|[-*]\s|\d+\.\s)/.test(lines[i])) {
-      paraLines.push(lines[i]);
-      i += 1;
-    }
-    blocks.push(
-      <p key={key++} className="my-2 text-xs leading-6 text-[var(--text-secondary)]">
-        {renderInline(tokenizeInline(paraLines.join(' ')))}
-      </p>,
+  if (error) {
+    return (
+      <div className="my-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-[11px] text-rose-700">
+        <p className="font-semibold">Mermaid 渲染失败</p>
+        <pre className="mt-1 whitespace-pre-wrap font-mono">{error}</pre>
+      </div>
     );
   }
+  return (
+    <div
+      className="my-3 flex justify-center overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-3 [&_svg]:max-w-full"
+      dangerouslySetInnerHTML={{ __html: svg || '<span class="text-xs text-[var(--text-muted)]">渲染中…</span>' }}
+    />
+  );
+}
 
-  return <div className="space-y-0">{blocks}</div>;
+function isMermaidCode(lang?: string) {
+  return (lang ?? '').trim().toLowerCase() === 'mermaid';
+}
+
+export function MarkdownView({ source }: MarkdownViewProps) {
+  return (
+    <div className="markdown-body space-y-2 text-xs leading-6 text-[var(--text-secondary)]">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          h1: (props) => (
+            <h1 className="mt-4 mb-2 text-base font-semibold tracking-tight text-[var(--text)]" {...props} />
+          ),
+          h2: (props) => <h2 className="mt-4 mb-2 text-sm font-semibold text-[var(--text)]" {...props} />,
+          h3: (props) => (
+            <h3 className="mt-3 mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]" {...props} />
+          ),
+          h4: (props) => <h4 className="mt-3 mb-1 text-xs font-semibold text-[var(--text)]" {...props} />,
+          p: (props) => <p className="my-2 text-xs leading-6 text-[var(--text-secondary)]" {...props} />,
+          strong: (props) => <strong className="font-semibold text-[var(--text)]" {...props} />,
+          em: (props) => <em className="italic" {...props} />,
+          del: (props) => <del className="text-[var(--text-muted)] line-through" {...props} />,
+          a: (props) => (
+            <a
+              className="text-[var(--brand)] underline decoration-dotted underline-offset-2 hover:opacity-80"
+              target="_blank"
+              rel="noreferrer"
+              {...props}
+            />
+          ),
+          ul: (props) => (
+            <ul className="my-2 space-y-1.5 pl-4 text-xs leading-6 text-[var(--text-secondary)] marker:text-[var(--brand)]" {...props} />
+          ),
+          ol: (props) => (
+            <ol className="my-2 list-decimal space-y-1.5 pl-4 text-xs leading-6 text-[var(--text-secondary)]" {...props} />
+          ),
+          li: (props) => <li className="pl-1" {...props} />,
+          blockquote: (props) => (
+            <blockquote
+              className="my-2 border-l-2 border-[var(--brand)] bg-[var(--brand-light)]/40 px-3 py-1.5 text-xs text-[var(--text-secondary)]"
+              {...props}
+            />
+          ),
+          hr: () => <hr className="my-4 border-[var(--border)]" />,
+          code: ({ className, children, ...rest }: ComponentProps<'code'> & { children?: ReactNode }) => {
+            // react-markdown 在 fenced code 块上把 language 作为 className (含 `language-xxx`)
+            const langMatch = /language-(\w+)/.exec(className ?? '');
+            const lang = langMatch?.[1];
+            const text = String(children ?? '').replace(/\n$/, '');
+            if (isMermaidCode(lang)) return <MermaidBlock source={text} />;
+            // 行内 code (没 className) 与 fenced code (有 language-xxx className) 走不同样式
+            if (className?.includes('language-')) {
+              return (
+                <pre className="my-3 overflow-auto rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3 font-mono text-[11px] leading-5 text-[var(--text)]">
+                  <code className={className} {...rest}>{text}</code>
+                </pre>
+              );
+            }
+            return (
+              <code className="rounded bg-[var(--bg-elevated)] px-1 py-0.5 font-mono text-[0.92em] text-[var(--brand)]" {...rest}>
+                {children}
+              </code>
+            );
+          },
+          pre: ({ children }) => <>{children}</>, // 让 fenced code 直接走 code 渲染, 避免外层 pre 嵌套
+          table: (props) => (
+            <div className="my-3 overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-1)]">
+              <table className="w-full text-xs text-[var(--text-secondary)]" {...props} />
+            </div>
+          ),
+          thead: (props) => <thead className="bg-[var(--bg-elevated)]" {...props} />,
+          th: (props) => (
+            <th
+              className="border-b border-[var(--border)] px-3 py-2 text-left font-semibold text-[var(--text)]"
+              {...props}
+            />
+          ),
+          td: (props) => <td className="border-b border-[var(--border)] px-3 py-2 last:border-b-0" {...props} />,
+          tr: (props) => <tr {...props} />,
+          tbody: (props) => <tbody {...props} />,
+          input: (props) => {
+            // GFM 任务列表: 渲染为 disabled checkbox
+            if (props.type === 'checkbox') {
+              return (
+                <input
+                  type="checkbox"
+                  checked={props.checked}
+                  readOnly
+                  disabled
+                  className="mr-1.5 h-3.5 w-3.5 accent-[var(--brand)]"
+                />
+              );
+            }
+            return <input {...props} />;
+          },
+        }}
+      >
+        {source}
+      </ReactMarkdown>
+    </div>
+  );
 }
