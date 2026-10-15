@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -214,6 +215,52 @@ def build_session_router() -> APIRouter:
             x_workspace_id,
             x_user_id,
             False,
+        )
+
+    # ------------------------------------------------------------------
+    # Round-7 增量: 计划批准 / 拒绝 + 产物下载
+    # ------------------------------------------------------------------
+
+    @router.post("/api/sessions/{session_id}/plans/{plan_id}/approve")
+    async def approve_plan(
+        session_id: UUID,
+        plan_id: UUID,
+        request: Request,
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
+    ) -> dict[str, Any]:
+        """批准 plan. 真实续传 run_turn 下一轮做, 这里先 ack."""
+        _ = (session_id, plan_id, x_tenant_id, x_workspace_id, x_user_id, request)
+        return {"ok": True, "plan_id": str(plan_id), "decision": "approved"}
+
+    @router.post("/api/sessions/{session_id}/plans/{plan_id}/deny")
+    async def deny_plan(
+        session_id: UUID,
+        plan_id: UUID,
+        request: Request,
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
+    ) -> dict[str, Any]:
+        _ = (session_id, plan_id, x_tenant_id, x_workspace_id, x_user_id, request)
+        return {"ok": True, "plan_id": str(plan_id), "decision": "denied"}
+
+    @router.get("/api/artifacts/{artifact_id}/content")
+    async def download_artifact(
+        artifact_id: UUID,
+    ) -> Response:
+        """下载 mock 模式生成的产物. 真实模式未来走 session_artifacts 表."""
+        # 防 path traversal: artifact_id 是 UUID
+        root = Path("/tmp/qzdap-mock-artifacts").resolve()
+        target = (root / f"{artifact_id}.md").resolve()
+        if not str(target).startswith(str(root)) or not target.exists():
+            raise HTTPException(status_code=404, detail="artifact not found")
+        data = target.read_bytes()
+        return Response(
+            content=data,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{artifact_id}.md"'},
         )
 
     @router.get("/v1/sessions")
