@@ -46,6 +46,7 @@ from qzdap.modules.agent_runtime.adapter.graph.tools import (
     result_text,
 )
 from qzdap.modules.agent_runtime.application.ports import (
+    CatalogModelResolver,
     KnowledgePort,
     LLMPort,
     MemoryPort,
@@ -67,6 +68,9 @@ class SessionGraphRunner:
         memory_port: MemoryPort | None = None,
         knowledge_port: KnowledgePort | None = None,
         approval_factory: Any | None = None,
+        # Phase 1.5: agent.model (str) → ModelId (UUID) 解析器.
+        # 让前端 chat (无 body.model) 也能在 graph 里查 admin_models.
+        catalog_model_resolver: CatalogModelResolver | None = None,
     ) -> None:
         self._llm = llm
         self._skill_port = skill_port
@@ -75,6 +79,7 @@ class SessionGraphRunner:
         self._memory_port = memory_port
         self._knowledge_port = knowledge_port
         self._approval_factory = approval_factory
+        self._catalog_model_resolver = catalog_model_resolver
         self._graph = compile_loop_graph(llm_node=_passthrough_llm, tools_node=_passthrough_tools)
         self.last_loop_state: dict[str, Any] = {}
 
@@ -191,6 +196,14 @@ class SessionGraphRunner:
                     workspace_id=workspace_id,
                     principal_id=owner_id,
                 ),
+                # Phase 1.5: 走 graph 路径时, 让 stream_chat 在 model 是 str 时也 resolve.
+                resolve_model_id=(
+                    self._catalog_model_resolver.resolve
+                    if self._catalog_model_resolver is not None
+                    else None
+                ),
+                resolve_tenant_id=tenant_id,
+                resolve_workspace_id=workspace_id,
             )
             assistant: dict[str, Any] | None = None
             async with aclosing(chat_stream):

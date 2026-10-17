@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import aclosing
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from qzdap_llm.client import ChatMessage, ChatRequest
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
 from qzdap.modules.agent_runtime.application.ports import LLMPort
+
+_log = logging.getLogger(__name__)
 
 DeltaCallback = Callable[[str], Awaitable[None]]
 
@@ -76,8 +79,45 @@ async def stream_chat(
     tools: list[dict[str, Any]] | None = None,
     model_id: ModelId | None = None,
     actor: ActorContext | None = None,
+    # Phase 1.5: 让 stream_chat 也能在 model 是 str 时通过 resolver 找 ModelId.
+    # graph runner 调用本函数时若没传 resolver, model_id 就保持 None (旧行为).
+    resolve_model_id: Callable[..., ModelId | None] | None = None,
+    resolve_workspace_id: UUID | None = None,
+    resolve_tenant_id: UUID | None = None,
 ) -> AsyncIterator[str | dict[str, Any]]:
     """Yield content deltas followed by one completed assistant message."""
+    # Phase 1.5: model 是 str 且不像 UUID 时, 通过 resolver 找 ModelId
+    # (前端 chat 走 graph 路径, body 不带 model, agent_row.model='deepseek-flash').
+    if (
+        model_id is None
+        and resolve_model_id is not None
+        and actor is not None
+        and model
+    ):
+        try:
+            UUID(model)
+            looks_uuid = True
+        except (ValueError, TypeError, AttributeError):
+            looks_uuid = False
+        if not looks_uuid:
+            try:
+                model_id = await resolve_model_id(
+                    tenant_id=resolve_tenant_id or actor.tenant_id,
+                    workspace_id=resolve_workspace_id or actor.workspace_id,
+                    upstream_model=model,
+                )
+            except (RuntimeError, OSError, ValueError) as exc:  # defensive
+                _log.warning(
+                    "stream_chat_resolver_failed; falling back to env LLM",
+                    extra={"model": model, "error": str(exc)},
+                )
+                model_id = None
+            if model_id is not None:
+                _log.info(
+                    "stream_chat_resolved",
+                    extra={"model": model, "model_id": str(model_id)},
+                )
+
     req = ChatRequest(
         model=model,
         messages=[

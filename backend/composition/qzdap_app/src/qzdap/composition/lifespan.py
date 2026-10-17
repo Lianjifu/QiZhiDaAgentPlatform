@@ -283,6 +283,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 memory_port=memory_port,
                 knowledge_port=knowledge_port,
                 approval_factory=approval,
+                # Phase 1.5: 让 graph 走 model 解析 (前端 chat 不带 body.model 时,
+                # agent_row.model='deepseek-flash' 这种 str 也能查 admin_models).
+                catalog_model_resolver=catalog_model_resolver,
             )
             _ = (TenantId, UserId, WorkspaceId)
             return CopilotSessionService(
