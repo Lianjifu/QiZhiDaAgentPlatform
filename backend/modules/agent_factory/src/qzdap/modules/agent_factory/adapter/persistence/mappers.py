@@ -5,6 +5,8 @@ Pure functions; SQL repositories call these from inside the session.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
@@ -30,6 +32,25 @@ from qzdap.modules.agent_factory.domain.value_objects import (
     AgentVersionStatus,
     ReleaseStatus,
 )
+
+
+def _model_uuid(value: str | UUID | None) -> UUID | None:
+    """Phase 2: model_id/default_model_id 接受 str | UUID | None.
+    ORM 列已改为 UUID. mapper:
+    - UUID → 原样
+    - str UUID 形式 → 转 UUID (Phase 2 router 解析后写入的就是这种)
+    - str 非 UUID → 当成 None (历史脏数据, 不阻塞写入)
+    - None → None
+    """
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
 
 # ── AgentTemplate ─────────────────────────────────────────────────────────
 
@@ -58,7 +79,7 @@ def template_to_orm(entity: AgentTemplate) -> AgentTemplateORM:
         workspace_id=entity.workspace_id,
         name=entity.name,
         description=entity.description,
-        default_model_id=entity.default_model_id,
+        default_model_id=_model_uuid(entity.default_model_id),
         default_system_prompt=entity.default_system_prompt,
         status=entity.status.value,
         metadata_=dict(entity.metadata),
@@ -107,7 +128,7 @@ def version_to_orm(entity: AgentVersion) -> AgentVersionORM:
         version_tag=entity.version_tag,
         status=entity.status.value,
         system_prompt=entity.system_prompt,
-        model_id=entity.model_id,
+        model_id=_model_uuid(entity.model_id),
         allowed_tools=list(entity.allowed_tools),
         allowed_skills=list(entity.allowed_skills),
         knowledge_package_ids=list(entity.knowledge_package_ids),

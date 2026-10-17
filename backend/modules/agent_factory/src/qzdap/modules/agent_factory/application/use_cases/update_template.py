@@ -41,7 +41,11 @@ class UpdateAgentTemplateUseCase:
                 f"agent template {template_id} not found in tenant"
             )
         updated = tpl.with_status(status)
-        return await self.repository.update(updated)
+        saved = await self.repository.update(updated)
+        # Phase 2: 显式 commit
+        if hasattr(self.repository, "commit"):
+            await self.repository.commit()  # type: ignore[attr-defined]
+        return saved
 
 
 __all__ = ["UpdateAgentTemplateUseCase"]

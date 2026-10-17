@@ -21,6 +21,7 @@ Endpoints (v1):
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from qzdap_kernel.errors import BusinessRuleError
@@ -79,6 +80,57 @@ async def agent_factory_service_dependency(
     return factory.for_session()
 
 
+# Phase 2: 把请求里的 default_model_id / model_id (上游名字符串) 解析成 UUID
+# (admin_models.id). 走 lifespan 注册在 app.state.catalog_model_resolver 上的
+# 短会话 Port; 不存在时为 None — 此时 allow 原始 str 写入, 由应用层 (chat
+# resolver) 兜底 (向后兼容 Phase 1).
+def _get_catalog_resolver(request: Request):
+    return getattr(request.app.state, "catalog_model_resolver", None)
+
+
+async def _resolve_model_uuid(
+    request: Request,
+    *,
+    tenant_id: UUID,
+    workspace_id: UUID,
+    model: str | None,
+) -> str | None:
+    """Phase 2: 解析 helper. 接受 None / str / 已 UUID 形式, 返回 str (UUID) 或 None.
+
+    - None → None (前端没传)
+    - 已 UUID → 原样
+    - str → 查 admin_models, 命中返回 str(UUID), 未命中 raise 422
+    """
+    if model is None or not str(model).strip():
+        return None
+    raw = str(model).strip()
+    try:
+        UUID(raw)
+        return raw  # already UUID
+    except (ValueError, TypeError, AttributeError):
+        pass
+    resolver = _get_catalog_resolver(request)
+    if resolver is None:
+        # 没注册就回退成 str (Phase 1 兼容, 让旧 agent 还能创建)
+        return raw
+    from qzdap_schema.ids import ModelId
+
+    model_id: ModelId | None = await resolver.resolve(
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        upstream_model=raw,
+    )
+    if model_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"model_id '{raw}' not found in admin_models catalog. "
+                "请先在 管理侧 → 模型管理 中添加该模型, 或选择 catalog 中已配置的模型."
+            ),
+        )
+    return str(model_id)
+
+
 def _domain_error_to_http(exc: Exception) -> HTTPException:
     if isinstance(exc, (AgentTemplateNotFound, AgentVersionNotFound)):
         return HTTPException(status_code=404, detail=str(exc))
@@ -107,6 +159,7 @@ def build_router() -> APIRouter:
     )
     async def create_template(
         body: CreateTemplateRequest,
+        request: Request,
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
         x_user_id: UUID = Header(..., alias="X-User-Id"),  # noqa: B008
@@ -114,13 +167,20 @@ def build_router() -> APIRouter:
     ) -> TemplateResponse:
         from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
+        # Phase 2: 解析 default_model_id str → UUID. 没命中 raise 422.
+        resolved_default_model_id = await _resolve_model_uuid(
+            request,
+            tenant_id=x_tenant_id,
+            workspace_id=x_workspace_id,
+            model=body.default_model_id,
+        )
         try:
             template = await svc.create_template.execute(  # type: ignore[union-attr]
                 tenant_id=TenantId(x_tenant_id),
                 workspace_id=WorkspaceId(x_workspace_id),
                 name=body.name,
                 description=body.description,
-                default_model_id=body.default_model_id,
+                default_model_id=resolved_default_model_id,
                 default_system_prompt=body.default_system_prompt,
                 metadata=body.metadata,
                 created_by=UserId(x_user_id),
@@ -207,6 +267,65 @@ def build_router() -> APIRouter:
 
     # ── versions ────────────────────────────────────────────────────────
 
+    @router.get(
+        "/options/models",
+        response_model=list[dict[str, Any]],
+    )
+    async def list_model_options(
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        request: Request = ...,  # type: ignore[assignment]
+    ) -> list[dict[str, Any]]:
+        """Phase 2: 给 agent 创建/编辑表单提供「模型」下拉数据.
+
+        列 workspace 内所有 status='active' 的 admin_models, 字段:
+        {id, name, upstream_model, provider_name, context_window, status, tier}.
+
+        Resolver 注册在 app.state.catalog_model_resolver; 没注册就回空列表.
+        """
+        from sqlalchemy import select
+
+        from qzdap.modules.model.adapter.persistence.models import (
+            CatalogModelORM,
+        )
+
+        resolver = _get_catalog_resolver(request)
+        if resolver is None:
+            return []
+        try:
+            sf = resolver._sf  # noqa: SLF001 — 同 package 内访问
+            async with sf.session() as session:
+                result = await session.execute(
+                    select(
+                        CatalogModelORM.id,
+                        CatalogModelORM.name,
+                        CatalogModelORM.upstream_model,
+                        CatalogModelORM.provider_name,
+                        CatalogModelORM.context_window,
+                        CatalogModelORM.status,
+                        CatalogModelORM.tier,
+                    ).where(
+                        CatalogModelORM.tenant_id == x_tenant_id,
+                        CatalogModelORM.workspace_id == x_workspace_id,
+                        CatalogModelORM.status == "active",
+                    ).order_by(CatalogModelORM.name.asc())
+                )
+                rows = result.all()
+            return [
+                {
+                    "id": str(r.id),
+                    "name": r.name,
+                    "upstream_model": r.upstream_model,
+                    "provider_name": r.provider_name,
+                    "context_window": int(r.context_window),
+                    "status": r.status,
+                    "tier": r.tier,
+                }
+                for r in rows
+            ]
+        except Exception:  # pragma: no cover - defensive
+            return []
+
     @router.post(
         "/{aid}/versions",
         status_code=201,
@@ -215,6 +334,7 @@ def build_router() -> APIRouter:
     async def create_version(
         aid: UUID,
         body: CreateVersionRequest,
+        request: Request,
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
         x_user_id: UUID = Header(..., alias="X-User-Id"),  # noqa: B008
@@ -222,6 +342,13 @@ def build_router() -> APIRouter:
     ) -> VersionResponse:
         from qzdap_schema.ids import AgentTemplateId, TenantId, UserId, WorkspaceId
 
+        # Phase 2: 解析 model_id str → UUID. 没命中 raise 422.
+        resolved_model_id = await _resolve_model_uuid(
+            request,
+            tenant_id=x_tenant_id,
+            workspace_id=x_workspace_id,
+            model=body.model_id,
+        )
         try:
             version = await svc.create_version.execute(  # type: ignore[union-attr]
                 tenant_id=TenantId(x_tenant_id),
@@ -229,7 +356,7 @@ def build_router() -> APIRouter:
                 template_id=AgentTemplateId(aid),
                 version_tag=body.version_tag,
                 system_prompt=body.system_prompt,
-                model_id=body.model_id,
+                model_id=resolved_model_id,
                 allowed_tools=tuple(body.allowed_tools),
                 allowed_skills=tuple(body.allowed_skills),
                 knowledge_package_ids=tuple(body.knowledge_package_ids),

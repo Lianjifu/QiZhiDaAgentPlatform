@@ -131,6 +131,10 @@ class SqlAgentTemplateRepository(AgentTemplateRepository):
         await self._session.flush()
         return template_to_domain(existing)
 
+    async def commit(self) -> None:
+        """Phase 2 修复: 提交当前 session. 替代外层 middleware 自动 commit."""
+        await self._session.commit()
+
 
 # ── AgentVersionRepository ────────────────────────────────────────────────
 
@@ -227,6 +231,10 @@ class SqlAgentVersionRepository(AgentVersionRepository):
         existing.updated_at = version.updated_at
         await self._session.flush()
         return version_to_domain(existing)
+
+    async def commit(self) -> None:
+        """Phase 2 修复: 提交当前 session. 替代外层 middleware 自动 commit."""
+        await self._session.commit()
 
 
 # ── ReleaseRepository ─────────────────────────────────────────────────────

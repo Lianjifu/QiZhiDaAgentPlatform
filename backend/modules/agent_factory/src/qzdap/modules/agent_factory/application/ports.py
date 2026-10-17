@@ -61,6 +61,12 @@ class AgentTemplateRepository(Protocol):
 
     async def update(self, template: AgentTemplate) -> AgentTemplate: ...
 
+    async def commit(self) -> None:
+        """Phase 2 修复: 提交当前 session. repository 内部 session 没有外部 lifecycle,
+        由 use case 在 add/update 之后显式调用 commit. 这条方法让 protocol 完整支持
+        'flush + commit' 模式 (替代外层 middleware 自动 commit).
+        """
+
 
 @runtime_checkable
 class AgentVersionRepository(Protocol):
@@ -90,6 +96,11 @@ class AgentVersionRepository(Protocol):
     async def add(self, version: AgentVersion) -> AgentVersion: ...
 
     async def update(self, version: AgentVersion) -> AgentVersion: ...
+
+    async def commit(self) -> None:
+        """Phase 2 修复: 提交当前 session. repository 内部 session 没有外部 lifecycle,
+        由 use case 在 add/update 之后显式调用 commit.
+        """
 
 
 @runtime_checkable

@@ -14,6 +14,7 @@ class _StrictModel(BaseModel):
 class CreateTemplateRequest(_StrictModel):
     name: str = Field(min_length=1, max_length=256)
     description: str = Field(default="", max_length=1024)
+    # Phase 2: 接受 str (上游名) 或 UUID. router 端 resolve 成 UUID 再写库.
     default_model_id: str = Field(min_length=1, max_length=128)
     default_system_prompt: str = Field(min_length=1, max_length=32768)
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -29,7 +30,7 @@ class TemplateResponse(_StrictModel):
     workspace_id: str
     name: str
     description: str
-    default_model_id: str
+    default_model_id: str | None
     default_system_prompt: str
     status: str
     metadata: dict[str, Any]
@@ -46,6 +47,7 @@ class TemplateListResponse(_StrictModel):
 class CreateVersionRequest(_StrictModel):
     version_tag: str = Field(min_length=1, max_length=64)
     system_prompt: str | None = Field(default=None, max_length=32768)
+    # Phase 2: 接受 str (上游名) 或 UUID. router 端 resolve.
     model_id: str | None = Field(default=None, max_length=128)
     allowed_tools: list[str] = Field(default_factory=list)
     allowed_skills: list[str] = Field(default_factory=list)
@@ -68,7 +70,8 @@ class VersionResponse(_StrictModel):
     version_tag: str
     status: str
     system_prompt: str
-    model_id: str
+    # Phase 2: 可能是 None (catalog 没建), 序列化为 str (UUID)
+    model_id: str | None
     allowed_tools: list[str]
     allowed_skills: list[str]
     knowledge_package_ids: list[str]

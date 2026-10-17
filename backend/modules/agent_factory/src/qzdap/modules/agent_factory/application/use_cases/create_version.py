@@ -111,6 +111,9 @@ class CreateAgentVersionUseCase:
             version_id=version_id,
         )
         saved = await self.version_repository.add(version)
+        # Phase 2 修复: 显式 commit (见 create_template.py 同位置注释)
+        if hasattr(self.version_repository, "commit"):
+            await self.version_repository.commit()  # type: ignore[attr-defined]
         return saved
 
 

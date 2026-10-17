@@ -32,7 +32,11 @@ class UpdateAgentVersionNotesUseCase:
             )
         # .with_release_notes raises AgentVersionImmutable if not draft.
         updated = version.with_release_notes(release_notes)
-        return await self.repository.update(updated)
+        saved = await self.repository.update(updated)
+        # Phase 2: 显式 commit
+        if hasattr(self.repository, "commit"):
+            await self.repository.commit()  # type: ignore[attr-defined]
+        return saved
 
 
 __all__ = ["UpdateAgentVersionNotesUseCase"]

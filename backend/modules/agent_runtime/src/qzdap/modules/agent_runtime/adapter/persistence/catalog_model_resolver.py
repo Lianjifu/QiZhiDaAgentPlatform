@@ -57,6 +57,14 @@ class SqlCatalogModelResolver(CatalogModelResolver):
                 )
                 row = result.scalar_one_or_none()
                 if row is None:
+                    _log.warning(
+                        "catalog_resolve_no_match",
+                        extra={
+                            "tenant_id": str(tenant_id),
+                            "workspace_id": str(workspace_id),
+                            "upstream_model": upstream,
+                        },
+                    )
                     return None
                 return ModelId(row.id)
         except (SQLAlchemyError, RuntimeError, OSError) as exc:  # defensive

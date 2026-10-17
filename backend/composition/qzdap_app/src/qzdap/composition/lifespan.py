@@ -335,6 +335,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.copilot_factory = _CopilotFactory()
     app.state.model_service = model_service
 
+    # Phase 2: 注册 catalog_model_resolver 到 app.state, 让 agent_factory router
+    # 在 POST /v1/agents (template) 和 /v1/agents/{aid}/versions (version) 时
+    # 能把请求里的 model_id (上游名字符串) 解析成 admin_models.id (UUID).
+    # agent_factory_router 通过 request.app.state.catalog_model_resolver 拿到.
+    app.state.catalog_model_resolver = container.catalog_model_resolver()
+
     from qzdap.modules.model.adapter.llm.client_factory import (
         build_default_client_factory,
     )

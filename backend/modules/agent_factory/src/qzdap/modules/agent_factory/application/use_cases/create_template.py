@@ -77,6 +77,10 @@ class CreateAgentTemplateUseCase:
             created_by=created_by or UserId(uuid4()),
         )
         saved = await self.repository.add(template)
+        # Phase 2 修复: 显式 commit. 之前依赖外层 middleware, 但 agent_factory
+        # factory 用 .maker() 而不是 sf.session() context, session 不会自动 commit.
+        if hasattr(self.repository, "commit"):
+            await self.repository.commit()  # type: ignore[attr-defined]
 
         if self.publisher is not None:
             try:

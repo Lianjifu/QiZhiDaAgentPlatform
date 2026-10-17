@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from qzdap_schema.ids import (
     AgentTemplateId,
@@ -69,7 +69,8 @@ class AgentTemplate:
     workspace_id: WorkspaceId
     name: str
     description: str
-    default_model_id: str
+    # Phase 2: nullable UUID → admin_models.id. 旧接口仍可传 str (会自动 resolve)
+    default_model_id: str | UUID | None
     default_system_prompt: str
     status: AgentTemplateStatus
     metadata: dict[str, Any]
@@ -85,7 +86,7 @@ class AgentTemplate:
         workspace_id: WorkspaceId,
         name: str,
         description: str,
-        default_model_id: str,
+        default_model_id: str | UUID | None,
         default_system_prompt: str,
         metadata: dict[str, Any] | None = None,
         created_by: UserId,
@@ -103,8 +104,10 @@ class AgentTemplate:
                 f"AgentTemplate.description must be <= {MAX_DESCRIPTION_LEN} chars, "
                 f"got {len(description)}"
             )
-        if not default_model_id or not default_model_id.strip():
-            raise ValueError("AgentTemplate.default_model_id must be non-empty")
+        # Phase 2: 允许 None (admin_models 没建) 或 UUID. str 在 create 阶段仍兼容,
+        # 调用方负责在创建前 resolve 成 UUID.
+        if default_model_id is not None and not isinstance(default_model_id, (str, UUID)):
+            raise TypeError("AgentTemplate.default_model_id must be str, UUID, or None")
         if len(default_system_prompt) > MAX_PROMPT_LEN:
             raise ValueError(
                 f"AgentTemplate.default_system_prompt must be <= {MAX_PROMPT_LEN} chars"
@@ -164,7 +167,8 @@ class AgentVersion:
     version_tag: str
     status: AgentVersionStatus
     system_prompt: str
-    model_id: str
+    # Phase 2: nullable UUID → admin_models.id. 旧接口仍可传 str (会自动 resolve)
+    model_id: str | UUID | None
     allowed_tools: tuple[str, ...]
     allowed_skills: tuple[str, ...]
     knowledge_package_ids: tuple[
@@ -189,7 +193,7 @@ class AgentVersion:
         template_id: AgentTemplateId,
         version_tag: str,
         system_prompt: str,
-        model_id: str,
+        model_id: str | UUID | None,
         allowed_tools: tuple[str, ...] = (),
         allowed_skills: tuple[str, ...] = (),
         knowledge_package_ids: tuple[str, ...] = (),
@@ -213,8 +217,9 @@ class AgentVersion:
             raise ValueError(
                 f"AgentVersion.system_prompt must be <= {MAX_PROMPT_LEN} chars"
             )
-        if not model_id or not model_id.strip():
-            raise ValueError("AgentVersion.model_id must be non-empty")
+        # Phase 2: 允许 None (admin_models 没建) 或 UUID. str 兼容旧接口.
+        if model_id is not None and not isinstance(model_id, (str, UUID)):
+            raise TypeError("AgentVersion.model_id must be str, UUID, or None")
         if len(allowed_tools) > MAX_ALLOWED_TOOLS:
             raise ValueError(
                 f"AgentVersion.allowed_tools must be <= {MAX_ALLOWED_TOOLS}"

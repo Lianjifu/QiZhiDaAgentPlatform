@@ -56,12 +56,19 @@ class AgentTemplateORM(TenantScopedMixin, Base):
     description: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=text("''")
     )
-    default_model_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    default_model_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), nullable=True
+    )
     default_system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
         server_default=text("'active'"),
+    )
+    model_migration_status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        server_default=text("'migrated'"),
     )
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
@@ -98,7 +105,12 @@ class AgentVersionORM(TenantScopedMixin, Base):
         server_default=text("'draft'"),
     )
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    model_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    model_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
+    model_migration_status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        server_default=text("'migrated'"),
+    )
     allowed_tools: Mapped[list[str]] = mapped_column(
         ARRAY(String(128)),
         nullable=False,
