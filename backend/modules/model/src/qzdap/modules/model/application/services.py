@@ -65,6 +65,7 @@ class ModelService:
         prober: CatalogProber | None = None,
         connectivity_tester: ConnectivityTester | None = None,
         verification_secret: bytes = _VERIFICATION_SECRET,
+        alert_service: Any = None,  # Phase 20: optional AlertService; default lazy
     ) -> None:
         self._models, self._providers, self._routes, self._health = (
             models,
@@ -84,10 +85,22 @@ class ModelService:
             connectivity_tester,
             verification_secret,
         )
+        # Phase 20: 默认 lazy 创建 (需要 session 时才 new). 显式注入用于测试.
+        self._alert: Any = alert_service
         self._tenant_id: UUID | None = None
         self._workspace_id: UUID | None = None
         self._actor_id: UUID | None = None
         self._actor_name: str | None = None
+
+    def _alert_service(self):  # type: ignore[no-untyped-def]
+        """Lazy 创建 AlertService, 共享 model._health repository. 第一次调用时
+        用当前 session, 后续直接复用.
+        """
+        if self._alert is None and self._quota_session is not None:
+            from qzdap.modules.model.application.alert_service import AlertService
+
+            self._alert = AlertService(self._health)
+        return self._alert
 
     def bind_scope(
         self,
@@ -359,6 +372,18 @@ class ModelService:
             commit_session = getattr(self._health, "_s", None)
         if commit_session is not None:
             await commit_session.commit()
+        # Phase 20: 评估告警 (异步非阻塞, 失败静默, 已经在 evaluate 内部 try/except 防护)
+        alert_svc = self._alert_service()
+        if alert_svc is not None:
+            try:
+                await alert_svc.evaluate(
+                    tenant_id=provider.tenant_id,
+                    workspace_id=provider.workspace_id,
+                    provider_id=provider.id,
+                    provider_name=provider.name,
+                )
+            except Exception:  # noqa: BLE001
+                _log.warning("alert_evaluate_failed: %s", provider.id)
         return {
             "success": bool(result.get("success")),
             "providerId": str(provider.id),
@@ -834,6 +859,18 @@ class ModelService:
                         # health 事件 (和 QuotaService 同样的修复)
                         if self._quota_session is not None:
                             await self._quota_session.commit()
+                        # Phase 20: 评估告警
+                        alert_svc = self._alert_service()
+                        if alert_svc is not None:
+                            try:
+                                await alert_svc.evaluate(
+                                    tenant_id=actor.tenant_id,  # type: ignore[union-attr]
+                                    workspace_id=actor.workspace_id,  # type: ignore[union-attr]
+                                    provider_id=provider_id,
+                                    provider_name=provider_name,
+                                )
+                            except Exception:  # noqa: BLE001
+                                _log.warning("alert_evaluate_failed: %s", provider_id)
                     except (RuntimeError, OSError) as _exc:  # defensive
                         _log.warning("health_event_write_failed: %s", _exc)
                 # Phase 8: audit log (governance 表). 复用同一个 session (跨模块
