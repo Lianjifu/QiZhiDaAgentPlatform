@@ -32,7 +32,8 @@ export default function FactoryTemplateDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: template, isLoading: tplLoading, error: tplError } = useTemplateDetail(id);
-  const { data: versions, isLoading: verLoading } = useTemplateVersions(id);
+  const { data: verWrapped, isLoading: verLoading } = useTemplateVersions(id);
+  const versions = verWrapped?.items;
   const { data: routes } = useRouteOptions();
   const [showCreateVer, setShowCreateVer] = useState(false);
 

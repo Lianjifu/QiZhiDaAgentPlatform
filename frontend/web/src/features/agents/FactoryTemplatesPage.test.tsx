@@ -36,8 +36,8 @@ const mockMutateAsync = vi.fn();
 const mockRefetch = vi.fn();
 const mockCreateMutateAsync = vi.fn();
 
-const mockListReturn: { data: AgentTemplate[] | undefined; isLoading: boolean; error: unknown } = {
-  data: TEMPLATES, isLoading: false, error: undefined,
+const mockListReturn: { data: { items: AgentTemplate[]; count: number } | undefined; isLoading: boolean; error: unknown } = {
+  data: { items: TEMPLATES, count: TEMPLATES.length }, isLoading: false, error: undefined,
 };
 let listReturn = mockListReturn;
 const createReturn: { mutateAsync: typeof mockCreateMutateAsync; isPending: boolean } = {
@@ -65,7 +65,7 @@ import FactoryTemplatesPage from './FactoryTemplatesPage';
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-  listReturn = { data: TEMPLATES, isLoading: false, error: undefined };
+  listReturn = { data: { items: TEMPLATES, count: TEMPLATES.length }, isLoading: false, error: undefined };
   mockCreateMutateAsync.mockReset();
 });
 
@@ -114,7 +114,7 @@ describe('FactoryTemplatesPage', () => {
   });
 
   it('空态: 没数据时显示空提示 + 新建按钮', () => {
-    listReturn = { data: [], isLoading: false, error: undefined };
+    listReturn = { data: { items: [], count: 0 }, isLoading: false, error: undefined };
     renderAt('/admin/agents/factory');
     expect(screen.getByText('还没有策略智能体模板')).toBeTruthy();
     expect(screen.getByText('先建一个, 再加 version + 选策略路由')).toBeTruthy();

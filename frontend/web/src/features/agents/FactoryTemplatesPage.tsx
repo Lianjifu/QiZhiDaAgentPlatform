@@ -24,7 +24,8 @@ function formatTime(iso: string): string {
 
 export default function FactoryTemplatesPage() {
   const navigate = useNavigate();
-  const { data: templates, isLoading, error } = useTemplatesList();
+  const { data: wrapped, isLoading, error } = useTemplatesList();
+  const templates = wrapped?.items;
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
 

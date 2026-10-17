@@ -154,7 +154,7 @@ const VER_LIST = (tid: string) => [...AF_ROOT, 'versions', 'list', tid] as const
 const REL_LIST = (tid: string, vid: string) => [...AF_ROOT, 'releases', 'list', tid, vid] as const;
 
 export function useTemplatesList() {
-  return useApiQuery<AgentTemplate[]>(
+  return useApiQuery<{ items: AgentTemplate[]; count: number }>(
     [...TPL_LIST],
     '/v1/agents',
     {},
@@ -172,7 +172,7 @@ export function useTemplateDetail(id: string) {
 }
 
 export function useTemplateVersions(templateId: string) {
-  return useApiQuery<AgentVersion[]>(
+  return useApiQuery<{ items: AgentVersion[]; count: number }>(
     [...VER_LIST(templateId)],
     `/v1/agents/${templateId}/versions`,
     {},
@@ -181,7 +181,7 @@ export function useTemplateVersions(templateId: string) {
 }
 
 export function useVersionReleases(templateId: string, versionId: string) {
-  return useApiQuery<AgentRelease[]>(
+  return useApiQuery<{ items: AgentRelease[]; count: number }>(
     [...REL_LIST(templateId, versionId)],
     `/v1/agents/${templateId}/versions/${versionId}/releases`,
     {},
