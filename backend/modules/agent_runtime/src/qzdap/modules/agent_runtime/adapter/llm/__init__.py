@@ -33,6 +33,7 @@ class LLMPortAdapter(LLMPort):
         req: ChatRequest,
         *,
         model_id: ModelId | None = None,
+        fallback_model_ids: list[ModelId] | None = None,
         actor: ActorContext | ModelInvocationMeta | None = None,
     ) -> AsyncIterator[LLMChunk]:
         if model_id is None:
@@ -50,7 +51,16 @@ class LLMPortAdapter(LLMPort):
                 )
             if actor.principal_id.int == 0:
                 raise RuntimeError("saved model streaming requires a real caller identity")
-            stream = self._model_service.stream(actor=actor, model_id=model_id, req=req)
+            # Phase 3: 失败转移链 (primary + fallback list)
+            if fallback_model_ids:
+                stream = self._model_service.stream_with_fallback(
+                    actor=actor,
+                    primary_model_id=model_id,
+                    fallback_model_ids=list(fallback_model_ids),
+                    req=req,
+                )
+            else:
+                stream = self._model_service.stream(actor=actor, model_id=model_id, req=req)
         async with aclosing(stream):
             async for chunk in stream:
                 yield chunk

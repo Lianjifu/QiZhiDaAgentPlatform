@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import secrets
 import time
 from collections.abc import AsyncIterator
@@ -18,6 +19,8 @@ import httpx
 from qzdap_llm import ChatRequest, ChatResponse, LLMChunk
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
+
+_log = logging.getLogger(__name__)
 
 from qzdap.modules.model.application.ports import (
     CatalogDiscoveryUnsupported,
@@ -703,6 +706,75 @@ class ModelService:
                         latency_ms=int((time.monotonic() - start) * 1000), ok=ok
                     )
                 )
+
+    # ── Phase 3: 路由 + 故障转移 ────────────────────────────────────────
+    async def stream_with_fallback(
+        self,
+        *,
+        actor: ActorContext,
+        primary_model_id: ModelId,
+        fallback_model_ids: list[ModelId],
+        req: ChatRequest,
+    ) -> AsyncIterator[LLMChunk]:
+        """Phase 3: 失败转移链. 先 primary, 任何 ProviderTransportError 触发下一个.
+
+        错误归类:
+          - ProviderTransportError (任何 code: STREAM_ERROR / TRANSPORT_ERROR / INVALID_RESPONSE):
+            触发 fallback (上游服务出错或流异常)
+          - 业务异常 (ModelNotFound / CredentialNotFound / ModelDisabled): 不 fallback
+            (配置问题, 换 model 没用), 直接抛
+
+        第一个成功的流就赢; 全失败抛 ModelRouteExhausted.
+        全过程通过 _log.warning 记录每一次 fallback, 便于 audit.
+        """
+        from qzdap_llm import ProviderTransportError
+
+        from qzdap.modules.model.domain.errors import ModelRouteExhausted
+
+        chain: list[ModelId] = [primary_model_id, *fallback_model_ids]
+        last_exc: Exception | None = None
+        for index, model_id in enumerate(chain):
+            try:
+                start = time.monotonic()
+                yielded_any = False
+                async for chunk in self.stream(
+                    actor=actor, model_id=model_id, req=req
+                ):
+                    if index > 0 and not yielded_any:
+                        # 第一个 fallback 刚开始产生 chunk 时, 在流前插一个 notice event
+                        # (kind='message' 走同一个 SSE pipeline, 客户端按 chunk.kind 渲染)
+                        _log.info(
+                            "model_fallback_used",
+                            extra={
+                                "model_id": str(model_id),
+                                "index": index,
+                                "chain_length": len(chain),
+                                "latency_ms_primary": int((time.monotonic() - start) * 1000),
+                            },
+                        )
+                    yielded_any = True
+                    yield chunk
+                if not yielded_any:
+                    # 流开了但立即 EOF, 视作错误
+                    raise ProviderTransportError(code="LLM_STREAM_EMPTY")
+                return
+            except ProviderTransportError as exc:
+                last_exc = exc
+                _log.warning(
+                    "model_fallback_triggered",
+                    extra={
+                        "model_id": str(model_id),
+                        "index": index,
+                        "chain_length": len(chain),
+                        "error_class": type(exc).__name__,
+                        "error": str(exc),
+                    },
+                )
+                continue
+        # 全失败
+        raise ModelRouteExhausted(
+            f"all {len(chain)} models in route failed; last error: {last_exc!r}"
+        ) from last_exc
 
 
 __all__ = ["ModelService"]

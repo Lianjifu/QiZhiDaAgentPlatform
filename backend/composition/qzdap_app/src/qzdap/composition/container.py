@@ -14,7 +14,6 @@ from qzdap_auth.api_key import ApiKeyHasher
 from qzdap_auth.jwt import JWTConfig, JWTIssuer, JWTVerifier
 from qzdap_llm.config import LLMConfig
 from qzdap_llm.embeddings import set_default_client
-from qzdap_llm.mock import MockLLMClient
 from qzdap_llm.openai_compatible import OpenAICompatibleClient
 from qzdap_messaging.bus import EventBus
 from qzdap_messaging.in_process import InProcessBus
@@ -451,7 +450,9 @@ class Container:
                 api_key=self.settings.embedding_runtime_api_key,
             )
         if self.settings.env not in {"demo", "test", "ci"}:
-            from qzdap.composition.unavailable_providers import UnavailableEmbeddingAdapter
+            from qzdap.composition.unavailable_providers import (
+                UnavailableEmbeddingAdapter,
+            )
 
             return UnavailableEmbeddingAdapter()
         from qzdap.modules.memory.adapter.embedding.noop_adapter import (
@@ -549,6 +550,46 @@ class Container:
                     except BaseException:
                         # Includes consumer disconnect / cancellation. The service
                         # closes the provider stream before the DB session exits.
+                        await session.rollback()
+                        raise
+
+            async def stream_with_fallback(  # type: ignore[no-untyped-def]
+                self, *, actor, primary_model_id, fallback_model_ids, req
+            ):
+                """Phase 3: 失败转移链.
+
+                顺序: [primary, *fallback]. 任一 ProviderTransportError 触发下一个.
+                全失败抛 ModelRouteExhausted.
+                """
+                from contextlib import aclosing
+
+                from qzdap_schema.ids import ModelId
+
+                chain = [ModelId(primary_model_id)]
+                for fid in (fallback_model_ids or []):
+                    chain.append(ModelId(fid))
+                async with session_factory.session() as session:
+                    svc = ModelService(
+                        SqlModelRepository(session),
+                        SqlProviderRepository(session),
+                        SqlRouteRepository(session),
+                        SqlHealthRepository(session),
+                        cipher=cipher,
+                        client_factory=client_factory,
+                    )
+                    try:
+                        async with aclosing(
+                            svc.stream_with_fallback(
+                                actor=actor,
+                                primary_model_id=chain[0],
+                                fallback_model_ids=chain[1:],
+                                req=req,
+                            )
+                        ) as stream:
+                            async for chunk in stream:
+                                yield chunk
+                        await session.commit()
+                    except BaseException:
                         await session.rollback()
                         raise
 

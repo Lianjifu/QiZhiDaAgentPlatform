@@ -73,6 +73,7 @@ class LLMPort(ABC):
         req: ChatRequest,
         *,
         model_id: ModelId | None = None,
+        fallback_model_ids: list[ModelId] | None = None,
         actor: ActorContext | None = None,
     ) -> AsyncIterator[LLMChunk]: ...
 

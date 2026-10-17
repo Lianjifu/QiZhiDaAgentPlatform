@@ -84,6 +84,8 @@ async def stream_chat(
     resolve_model_id: Callable[..., ModelId | None] | None = None,
     resolve_workspace_id: UUID | None = None,
     resolve_tenant_id: UUID | None = None,
+    # Phase 3: 失败转移链 (可选). 留空走单 model 路径.
+    fallback_model_ids: list[ModelId] | None = None,
 ) -> AsyncIterator[str | dict[str, Any]]:
     """Yield content deltas followed by one completed assistant message."""
     # Phase 1.5: model 是 str 且不像 UUID 时, 通过 resolver 找 ModelId
@@ -136,7 +138,16 @@ async def stream_chat(
     tool_calls = ToolCallAccumulator()
     usage: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
     # Preserve the default-port call shape for legacy implementations.
-    stream = llm.stream(req, model_id=model_id, actor=actor) if model_id is not None else llm.stream(req)
+    stream = (
+        llm.stream(
+            req,
+            model_id=model_id,
+            fallback_model_ids=fallback_model_ids,
+            actor=actor,
+        )
+        if model_id is not None
+        else llm.stream(req)
+    )
     async with aclosing(stream):
         async for chunk in stream:
             if chunk.delta:
