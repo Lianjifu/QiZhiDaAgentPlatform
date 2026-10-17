@@ -967,6 +967,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             ar_factory is not None,
         )
 
+    # ── Phase 19: agent_factory.version.released → agent_runtime catalog ──
+    # factory 发布时, 若 catalog 里有 id == template_id 的行, 把它推到 published.
+    # 条件: catalog 仓储可用 (adapters admin side wired).
+    catalog_factory = getattr(app.state, "agent_catalog_factory", None)
+    if catalog_factory is not None:
+        from qzdap.modules.agent_runtime.adapter.subscribers import (
+            agent_factory_release_subscriber,
+        )
+
+        session_factory_obj = container.session_factory()
+        await agent_factory_release_subscriber.install(
+            bus, session_factory_obj
+        )
+        _log.info("agent_factory release subscriber active")
+    else:
+        _log.info("agent_factory release subscriber skipped (catalog_factory absent)")
+
     # ── seed default resources ───────────────────────────────────────────
     await ensure_default_resources(container)
 
