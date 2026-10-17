@@ -114,10 +114,81 @@ def build_router() -> APIRouter:
     ) -> list[dict[str, Any]]:
         return await svc.list_health(workspace_id=x_workspace_id)
 
+    @router.get("/api/admin/llm/audit")
+    async def list_llm_audit(
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
+        model_id: UUID | None = Query(default=None),
+        event_type: str | None = Query(default=None, description="llm.invoke / llm.invoke.failed"),
+        actor_id: UUID | None = Query(default=None),
+        since: str | None = Query(
+            default=None, description="ISO timestamp, e.g. 2026-10-17T00:00:00Z"
+        ),
+        svc: ModelService = Depends(model_dependency),  # noqa: B008
+    ) -> dict[str, Any]:
+        """Phase 11: LLM 审计日志查询. 直接读 audit_log (governance 表).
+
+        过滤: tenant_id (强制, 防越权), 可选 model_id / actor_id / event_type / since.
+        返回: {items, count, total}. items 含 payload (error_class / latency_ms 等).
+        """
+        from sqlalchemy import text
+
+        params: dict[str, Any] = {
+            "tenant_id": str(x_tenant_id),
+            "limit": limit,
+            "offset": offset,
+        }
+        where = [
+            "tenant_id = :tenant_id",
+            "event_type LIKE 'llm.%'",
+        ]
+        if model_id is not None:
+            where.append("payload->>'model_id' = :model_id")
+            params["model_id"] = str(model_id)
+        if event_type is not None:
+            where.append("event_type = :event_type")
+            params["event_type"] = event_type
+        if actor_id is not None:
+            where.append("actor_id = :actor_id")
+            params["actor_id"] = str(actor_id)
+        if since is not None:
+            where.append("created_at >= :since")
+            params["since"] = since
+
+        where_sql = " AND ".join(where)
+        list_sql = text(
+            f"SELECT id, tenant_id, actor_id, event_type, payload, created_at, updated_at "
+            f"FROM audit_log WHERE {where_sql} "
+            f"ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
+        )
+        count_sql = text(f"SELECT count(*) FROM audit_log WHERE {where_sql}")
+        # 强制使用 model module 自己的 session, 不破坏 audit_log 跨模块责任
+        session = svc._models._s  # type: ignore[attr-defined]
+        list_result = await session.execute(list_sql, params)
+        count_result = await session.execute(count_sql, params)
+        items = [
+            {
+                "id": str(r.id),
+                "tenant_id": str(r.tenant_id),
+                "actor_id": str(r.actor_id) if r.actor_id else None,
+                "event_type": r.event_type,
+                "payload": r.payload,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in list_result.fetchall()
+        ]
+        return {
+            "items": items,
+            "count": len(items),
+            "total": int(count_result.scalar() or 0),
+        }
+
     @router.post("/api/admin/models/providers/{provider_id}/health-check")
     async def provider_health_check(
         provider_id: UUID, svc: ModelService = Depends(model_dependency)
-    ) -> dict[str, Any]:  # noqa: B008
+    ) -> dict[str, Any]:
         return await svc.health_check(provider_id)
 
     @router.post("/api/admin/models/import")
@@ -126,7 +197,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         svc: ModelService = Depends(model_dependency),
-    ) -> dict[str, Any]:  # noqa: B008
+    ) -> dict[str, Any]:
         return await svc.import_models(
             tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
         )
