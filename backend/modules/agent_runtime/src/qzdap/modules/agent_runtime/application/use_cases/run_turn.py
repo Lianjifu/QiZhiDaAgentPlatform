@@ -54,6 +54,7 @@ from qzdap.modules.agent_runtime.adapter.llm.prompts import (
     build_system_prompt_with_memory_and_knowledge,
 )
 from qzdap.modules.agent_runtime.application.ports import (
+    CatalogModelResolver,
     EventPublisher,
     KnowledgePort,
     LLMPort,
@@ -84,6 +85,7 @@ class RunTurnUseCase:
         sandbox_port: SandboxPort | None = None,
         memory_port: MemoryPort | None = None,
         knowledge_port: KnowledgePort | None = None,
+        catalog_model_resolver: CatalogModelResolver | None = None,
     ) -> None:
         self._sessions = sessions
         self._turns = turns
@@ -94,6 +96,9 @@ class RunTurnUseCase:
         self._sandbox_port = sandbox_port
         self._memory_port = memory_port
         self._knowledge_port = knowledge_port
+        # Phase 1: 把 agent 的 upstream model 名称 (str) 解析成 ModelId (UUID).
+        # 为 None 时退化为只走 env 默认 LLM (旧行为, 兼容未配 model 的 agent).
+        self._catalog_model_resolver = catalog_model_resolver
 
     async def execute(
         self,
@@ -211,6 +216,34 @@ class RunTurnUseCase:
             model_id = ModelId(UUID(model))
         except (ValueError, TypeError, AttributeError):
             model_id = None
+        # Phase 1: agent.model 是字符串 (upstream 名称) 时, 通过 resolver 查 admin_models.
+        # 命中 → 喂 ModelId (UUID), 走 ModelService.stream (真供应商, 凭据解密, 配额审计).
+        # 未命中或 resolver 未注入 → 退到 env 默认 LLM (旧行为, 让未配 catalog 的 agent 还能跑).
+        if model_id is None and self._catalog_model_resolver is not None and model:
+            import logging as _logging
+
+            try:
+                model_id = await self._catalog_model_resolver.resolve(
+                    tenant_id=UUID(str(tenant_id)),
+                    workspace_id=UUID(str(workspace_id)),
+                    upstream_model=model,
+                )
+            except (AppError, RuntimeError, OSError) as _exc:
+                _logging.getLogger(__name__).warning(
+                    "catalog_model_resolver_failed; falling back to env LLM",
+                    extra={"model": model, "error": str(_exc)},
+                )
+                model_id = None
+            if model_id is not None:
+                _logging.getLogger(__name__).info(
+                    "resolved_agent_model",
+                    extra={"model": model, "model_id": str(model_id)},
+                )
+            else:
+                _logging.getLogger(__name__).info(
+                    "agent_model_unresolved; using env default LLM",
+                    extra={"model": model},
+                )
         actor = ActorContext(tenant_id=tenant_id, workspace_id=workspace_id, principal_id=owner_id)
         stream = self._llm.stream(req, model_id=model_id, actor=actor) if model_id is not None else self._llm.stream(req)
         tool_calls = ToolCallAccumulator()

@@ -554,6 +554,18 @@ class Container:
 
         return _InvokeFacade()
 
+    def catalog_model_resolver(self):
+        """Phase 1: 把 agent 的 upstream model 名称解析成 admin_models.id (UUID).
+
+        短会话, 每 resolve 一次开一个事务, 不污染 copilot 长 turn.
+        跨模块 ORM 读: 查 model 模块的 admin_models 表.
+        """
+        from qzdap.modules.agent_runtime.adapter.persistence.catalog_model_resolver import (
+            SqlCatalogModelResolver,
+        )
+
+        return SqlCatalogModelResolver(self.session_factory())
+
     # ── P6 channel ──────────────────────────────────────────────────────────
 
     def channel_webhook_cipher(self):

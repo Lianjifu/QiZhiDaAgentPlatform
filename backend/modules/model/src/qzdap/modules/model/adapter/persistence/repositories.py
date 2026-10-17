@@ -181,6 +181,27 @@ class SqlModelRepository(ModelRepository):
             if not _cross_tenant(row)
         ]
 
+    async def get_by_upstream_name(
+        self, *, workspace_id: UUID, upstream_model: str
+    ) -> Model | None:
+        # Phase 1: 把 agent 的 upstream 名称解析成 Model.
+        # 选 status='active' (active 可用); draft/disabled 不接.
+        # 多个匹配时取 created_at 最晚 — 管理员可以重名替换,新行接管.
+        result = await self._s.execute(
+            select(CatalogModelORM)
+            .where(
+                CatalogModelORM.workspace_id == workspace_id,
+                CatalogModelORM.upstream_model == upstream_model,
+                CatalogModelORM.status == "active",
+            )
+            .order_by(CatalogModelORM.created_at.desc())
+            .limit(1)
+        )
+        row = result.scalar_one_or_none()
+        if row is None or _cross_tenant(row):
+            return None
+        return _model_to_domain(row)
+
     async def update(self, model: Model) -> None:
         row = await self._s.get(CatalogModelORM, model.id)
         if row is None or _cross_tenant(row):

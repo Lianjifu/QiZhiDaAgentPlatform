@@ -134,6 +134,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             ) from exc
         _log.warning("model_service disabled: %s", exc)
 
+    # Phase 1: 把 agent.model (upstream 名字符串) 解析成 ModelId (UUID).
+    # 不依赖 master key, 始终可用 — catalog 缺失时返回 None, RunTurnUseCase
+    # 退到 env 默认 LLM. 这样没配 catalog 的旧 agent 仍能跑, 不破坏向后兼容.
+    catalog_model_resolver = container.catalog_model_resolver()
+
     class _AgentRuntimeFactory:
         def __init__(self) -> None:
             self._llm_client = container.llm_client()
@@ -189,6 +194,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 events=AgentRuntimeEventPublisher(self._bus),
                 knowledge_port=knowledge_adapter,
                 memory_port=memory_adapter,
+                # Phase 1: agent.model 名称 → ModelId 解析
+                catalog_model_resolver=catalog_model_resolver,
             )
 
     app.state.agent_runtime_factory = _AgentRuntimeFactory()
@@ -654,12 +661,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 model_service = self._container.model_service()
             except RuntimeError:
                 model_service = None
+            # Phase 1: 把 agent.model (str) 解析成 ModelId (UUID) 喂给 ModelService.
+            # resolver 依赖 session_factory, 不会 raise; 任何 catalog 缺失时返回 None,
+            # RunTurnUseCase 自然退到 env 默认 LLM (旧行为).
+            catalog_model_resolver = self._container.catalog_model_resolver()
             llm = LLMPortAdapter(self._container.llm_client(), model_service=model_service)
             runtime = AgentRuntimeService(
                 sessions=SqlSessionRepository(sf),
                 turns=SqlTurnRepository(sf),
                 llm=llm,
                 events=AgentRuntimeEventPublisher(self._container.bus()),
+                catalog_model_resolver=catalog_model_resolver,
             )
             adapter = RealSubAgentPort(
                 runtime=runtime,

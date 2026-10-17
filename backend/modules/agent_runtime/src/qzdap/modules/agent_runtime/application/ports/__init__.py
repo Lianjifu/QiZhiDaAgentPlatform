@@ -18,6 +18,9 @@ from qzdap_llm.client import ChatRequest, LLMChunk
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
+from qzdap.modules.agent_runtime.application.ports.catalog_model_resolver import (
+    CatalogModelResolver as CatalogModelResolver,
+)
 from qzdap.modules.agent_runtime.domain import Session, Turn
 
 

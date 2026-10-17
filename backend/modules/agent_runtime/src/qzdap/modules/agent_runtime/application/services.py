@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from qzdap.modules.agent_runtime.application.ports import (
+    CatalogModelResolver,
     EventPublisher,
     KnowledgePort,
     LLMPort,
@@ -43,6 +44,7 @@ class AgentRuntimeService:
     turns: TurnRepository
     llm: LLMPort
     events: EventPublisher
+    catalog_model_resolver: CatalogModelResolver | None = None
     tool_port: ToolPort | None = None
     skill_port: SkillPort | None = None
     sandbox_port: SandboxPort | None = None
@@ -69,6 +71,7 @@ class AgentRuntimeService:
             sandbox_port=self.sandbox_port,
             memory_port=self.memory_port,
             knowledge_port=self.knowledge_port,
+            catalog_model_resolver=self.catalog_model_resolver,
         )
 
     def run_turn_to_completion(self) -> RunTurnCompletionUseCase:

@@ -18,6 +18,12 @@ class ModelRepository(ABC):
     async def list_for_workspace(self, workspace_id: UUID) -> list[Model]: ...
 
     @abstractmethod
+    async def get_by_upstream_name(
+        self, *, workspace_id: UUID, upstream_model: str
+    ) -> Model | None:
+        """Phase 1: 把 agent 的 upstream 名称解析成 Model (含 id)."""
+
+    @abstractmethod
     async def update(self, model: Model) -> None: ...
 
     @abstractmethod
