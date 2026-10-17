@@ -704,11 +704,29 @@ class ModelService:
                 period="minute",
                 estimated_tokens_in=0,
             )
+        # Phase 5: look up provider info for audit/health tracking
+        from uuid import uuid4 as _uuid4
+
+        from qzdap.modules.model.domain.entities import HealthEvent
+
+        provider_id = None
+        provider_name = ""
+        try:
+            m = await self._models.get(UUID(str(model_id)))
+            if m is not None:
+                p = await self._providers.get(m.provider_id)
+                if p is not None:
+                    provider_id = p.id
+                    provider_name = p.name
+        except (RuntimeError, OSError, ValueError):  # defensive
+            pass
+
         model, client = await self._execution(actor, model_id)
         start = time.monotonic()
         ok = False
         actual_in = 0
         actual_out = 0
+        err: Exception | None = None
         try:
             async for chunk in client.stream(
                 replace(req, model=model.upstream_model or model.name)
@@ -719,14 +737,16 @@ class ModelService:
                     actual_out = int(chunk.usage.output_tokens or 0)
                 yield chunk
             ok = True
+        except Exception as exc:
+            err = exc
+            raise
         finally:
+            latency_ms = int((time.monotonic() - start) * 1000)
             try:
                 await client.aclose()
             finally:
                 await self._models.update(
-                    model.record_call(
-                        latency_ms=int((time.monotonic() - start) * 1000), ok=ok
-                    )
+                    model.record_call(latency_ms=latency_ms, ok=ok)
                 )
                 # Phase 4: record actual tokens after the call.
                 if (
@@ -749,6 +769,33 @@ class ModelService:
                         )
                     except (RuntimeError, OSError) as _exc:  # defensive
                         _log.warning("quota_record_failed: %s", _exc)
+                # Phase 5: health event + audit row
+                if provider_id is not None:
+                    try:
+                        health_type = "incident" if not ok else "latency"
+                        health_msg = (
+                            f"{type(err).__name__}: {str(err)[:200]}"
+                            if err
+                            else f"latency_ms={latency_ms}"
+                        )
+                        await self._health.add(
+                            HealthEvent(
+                                id=_uuid4(),
+                                tenant_id=actor.tenant_id,
+                                workspace_id=actor.workspace_id,  # type: ignore[arg-type]
+                                type=health_type,
+                                provider_id=provider_id,
+                                provider_name=provider_name,
+                                message=health_msg,
+                                occurred_at=datetime.now(UTC).isoformat(),
+                            )
+                        )
+                        # 关键: 显式 commit, 防止 outer facade rollback 抹掉
+                        # health 事件 (和 QuotaService 同样的修复)
+                        if self._quota_session is not None:
+                            await self._quota_session.commit()
+                    except (RuntimeError, OSError) as _exc:  # defensive
+                        _log.warning("health_event_write_failed: %s", _exc)
 
     # ── Phase 3: 路由 + 故障转移 ────────────────────────────────────────
     async def stream_with_fallback(
