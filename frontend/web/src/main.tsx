@@ -10,7 +10,7 @@ import { setApiClient, ApiClient, mockHandlerWithAdapters } from '@qzdap/web-api
 import { useAuthStore, isTokenExpired } from './features/auth';
 import { apiBaseURL, runtimeConfig } from './lib/api-mode';
 import { runtimeStorageKey } from './lib/environment';
-import { resolveWorkspaceHeader } from './lib/workspace-header';
+import { resolveWorkspaceHeader, ensureWorkspaceFromAuth } from './lib/workspace-header';
 import { wrapMockHandlerWithCatalog } from './features/user/catalog';
 import { wrapMockHandlerWithSkills } from './features/user/skills/mock-handler';
 import { wrapMockHandlerWithAutomations } from './features/user/automations/mock-handler';
@@ -134,6 +134,11 @@ function installApiClient() {
 }
 
 installApiClient();
+
+// 同步 workspaceId: 刷新后 workspaceStore 是空的, 用 user.workspaceId 兜底
+// (api-client getContextHeaders 依赖 workspaceStore.currentWorkspaceId, 没有就会 422)
+ensureWorkspaceFromAuth();
+useAuthStore.persist.onFinishHydration(() => ensureWorkspaceFromAuth());
 
 if (import.meta.hot) {
   import.meta.hot.accept('./lib/api-mode', () => {

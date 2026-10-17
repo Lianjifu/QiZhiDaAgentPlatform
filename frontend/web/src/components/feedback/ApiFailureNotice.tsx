@@ -9,19 +9,26 @@ export function ApiFailureNotice() {
   const { pathname } = useLocation();
   const [errors, setErrors] = useState<string[]>([]);
   useEffect(() => {
+    // 把 setState 推到下一个 task (setTimeout 0), 不能用 queueMicrotask —
+    // 缓存订阅可能在另一个组件 (e.g. LoginPage) 的 render 期间同步触发,
+    // 微任务仍在 React 18 同一批 commit 内, setState 仍会触发 "setState in render"
+    // 警告并让目标组件在严格模式下卡死. setTimeout 跳出当前任务, 不会和 render
+    // 阶段重叠.
     const update = () => {
-      const queries = client.getQueryCache().getAll().filter((q) => q.getObserversCount() > 0 && q.state.status === 'error');
-      const allMutations = client.getMutationCache().getAll();
-      const latest = new Map<string, (typeof allMutations)[number]>();
-      for (const mutation of allMutations) {
-        if (mutation.options.meta?.pathname !== pathname) continue;
-        const action = mutation.state.variables as { path?: string; method?: string } | undefined;
-        const key = JSON.stringify([mutation.options.mutationKey, action?.path, action?.method]);
-        const previous = latest.get(key);
-        if (!previous || previous.state.submittedAt <= mutation.state.submittedAt) latest.set(key, mutation);
-      }
-      const mutations = [...latest.values()].filter((m) => m.state.status === 'error');
-      setErrors([...new Set([...queries.map((q) => normalizeError(q.state.error).message), ...mutations.map((m) => normalizeError(m.state.error).message)])]);
+      setTimeout(() => {
+        const queries = client.getQueryCache().getAll().filter((q) => q.getObserversCount() > 0 && q.state.status === 'error');
+        const allMutations = client.getMutationCache().getAll();
+        const latest = new Map<string, (typeof allMutations)[number]>();
+        for (const mutation of allMutations) {
+          if (mutation.options.meta?.pathname !== pathname) continue;
+          const action = mutation.state.variables as { path?: string; method?: string } | undefined;
+          const key = JSON.stringify([mutation.options.mutationKey, action?.path, action?.method]);
+          const previous = latest.get(key);
+          if (!previous || previous.state.submittedAt <= mutation.state.submittedAt) latest.set(key, mutation);
+        }
+        const mutations = [...latest.values()].filter((m) => m.state.status === 'error');
+        setErrors([...new Set([...queries.map((q) => normalizeError(q.state.error).message), ...mutations.map((m) => normalizeError(m.state.error).message)])]);
+      }, 0);
     };
     update();
     const stopQueries = client.getQueryCache().subscribe(update);

@@ -25,7 +25,7 @@ import {
   TerminalSquare,
   Trash2,
 } from 'lucide-react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import type { CopilotSession } from './schema';
 import { MarkdownView } from '@/features/agents/components/MarkdownView';
@@ -95,6 +95,7 @@ const X = PanelRightClose;
 
 export default function Copilot() {
   const location = useLocation();
+  const navigate = useNavigate();
   const demoMode = runtimeConfig().dataMode === 'demo';
   const entry = location.state as CopilotEntryState | null;
   const agentName = entry?.agentName;
@@ -240,7 +241,11 @@ export default function Copilot() {
         if (sid) setSessionId(sid);
       }
       if (!sid) {
-        throw new Error('创建会话失败：后端未返回会话 ID');
+        // 没有 agent 上下文: 不是后端 bug, 是用户没选智能体。
+        // 回滚刚 push 的 user 消息, 给一个跳转提示, 不污染消息栈。
+        setMessages((current) => current.slice(0, -1));
+        setNotices((current) => pushNotice(current, '需要先选一个智能体才能开始对话 → 去智能体库选一个'));
+        return;
       }
       // 流式输出 + 事件累积
       let assistantIndex = -1;
@@ -695,6 +700,14 @@ export default function Copilot() {
                     ? '用一句话说明目标与约束, 即可开始对话. 支持表格、计划、画布、命令运行与文档下载.'
                     : '说明目标、范围与期望产出, 从常用开场快速开始. 智能体可调用工具/知识/工作流, 并把产物放到右侧工作区.'}
                 </p>
+                {!agentName ? (
+                  <Link
+                    to="/agents"
+                    className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-[var(--brand)] bg-[var(--brand-light)] px-3 py-1.5 text-xs font-semibold text-[var(--brand)] transition hover:bg-[var(--brand)] hover:text-white"
+                  >
+                    去智能体库选一个智能体 →
+                  </Link>
+                ) : null}
               </div>
               <div className="grid w-full max-w-3xl gap-2 sm:grid-cols-3">
                 {(agentName && entry?.agentExample ? [entry.agentExample, ...starters.slice(1)] : starters).map((starter) => (
@@ -754,9 +767,16 @@ export default function Copilot() {
                   </div>
                 ) : null}
                 {notices.length ? (
-                  <p className="mb-3 text-[11px] text-[var(--text-muted)]">
-                    {notices.slice(-3).join(' · ')}
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/agents')}
+                    className="mb-3 inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-900 transition hover:border-amber-500 hover:bg-amber-100"
+                    title="去智能体库选一个智能体"
+                  >
+                    <span aria-hidden="true">⚠</span>
+                    <span>{notices[notices.length - 1]}</span>
+                    <span className="ml-1 underline decoration-dotted underline-offset-2">去智能体库</span>
+                  </button>
                 ) : null}
                 {!agentName && skillName ? (
                   <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] px-4 py-3 text-xs">

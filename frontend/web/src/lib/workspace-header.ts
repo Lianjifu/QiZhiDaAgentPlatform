@@ -12,9 +12,19 @@ function asWorkspaceId(value: string | undefined | null): string {
 export function resolveWorkspaceHeader(): string {
   const user = useAuthStore.getState().user;
   const current = useWorkspaceStore.getState().currentWorkspaceId;
+  // 优先用 currentWorkspaceId (zustand 持久化, 跨刷新保持), 兜底 user.workspaceId
   const candidate = asWorkspaceId(current) || asWorkspaceId(user?.workspaceId);
   const allowed = (user?.workspaceIds ?? []).map((id) => asWorkspaceId(id)).filter(Boolean);
   if (allowed.length === 0) return candidate;
   if (candidate && allowed.includes(candidate)) return candidate;
   return allowed[0]!;
+}
+
+/** 把 useWorkspaceStore.currentWorkspaceId 同步到 useAuthStore.user.workspaceId (首次登录时). */
+export function ensureWorkspaceFromAuth(): void {
+  const user = useAuthStore.getState().user;
+  const current = useWorkspaceStore.getState().currentWorkspaceId;
+  if (!current && user?.workspaceId) {
+    useWorkspaceStore.getState().setCurrentId(user.workspaceId);
+  }
 }

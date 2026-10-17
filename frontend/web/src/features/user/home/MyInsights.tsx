@@ -39,8 +39,8 @@ function TrendChart({ points, showTable }: { points: TrendPoint[]; showTable: bo
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
-              {points.map((point) => (
-                <tr key={point.label}>
+              {points.map((point, index) => (
+                <tr key={`${point.label}-${index}`}>
                   <td className="px-4 py-3 font-medium">{point.label}</td>
                   <td className="px-4 py-3">{point.value}%</td>
                   <td className="px-4 py-3 text-[var(--text-muted)]">{point.tasks} 次</td>
@@ -67,7 +67,7 @@ function TrendChart({ points, showTable }: { points: TrendPoint[]; showTable: bo
             <path d={area} fill="url(#insightTrendFill)" />
             <path d={line} fill="none" stroke="var(--brand)" strokeLinecap="round" strokeWidth="3" />
             {points.map((point, index) => (
-              <g key={point.label}>
+              <g key={`${point.label}-${index}`}>
                 <circle cx={x(index)} cy={y(point.value)} r="8" fill="var(--surface-1)" stroke="var(--brand)" strokeWidth="3" tabIndex={0}>
                   <title>{`${point.label}：${point.value}% · ${point.tasks} 次任务`}</title>
                 </circle>
@@ -190,8 +190,8 @@ export default function MyInsights({ embedded = false }: { embedded?: boolean })
             <BarChart3 className="h-5 w-5 text-[var(--brand)]" />
           </div>
           <div className="mt-6 space-y-5">
-            {scenarios.map((item) => (
-              <div key={item.label}>
+            {scenarios.map((item, index) => (
+              <div key={`${item.label}-${index}`}>
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-semibold">{item.label}</span>
                   <span className="tabular-nums text-[var(--text-muted)]">{item.value}%</span>
@@ -216,8 +216,8 @@ export default function MyInsights({ embedded = false }: { embedded?: boolean })
           </button>
         </div>
         <div className="grid divide-y divide-[var(--border)] md:grid-cols-3 md:divide-x md:divide-y-0">
-          {outcomes.map((item) => (
-            <div key={item.title} className="flex items-center gap-3 px-5 py-4 sm:px-6">
+          {outcomes.map((item, index) => (
+            <div key={`outcome-${index}-${item.type}`} className="flex items-center gap-3 px-5 py-4 sm:px-6">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[var(--bg-elevated)] text-[var(--brand)]">
                 <FileText className="h-4 w-4" />
               </span>

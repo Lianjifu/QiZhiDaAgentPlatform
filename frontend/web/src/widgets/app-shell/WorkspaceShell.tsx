@@ -8,6 +8,7 @@ import { useAuthStore } from '@/features/auth';
 import { defaultRouteForRole, pathAllowedForRole } from '@/features/auth/roleRoutes';
 import { useUiStore } from '@/stores/uiStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { ensureWorkspaceFromAuth } from '@/lib/workspace-header';
 import { adminNavigationSections, adminUtilityNavigation, utilityNavigation, workspaceNavigation, type NavigationItem } from './navigation';
 import { UserFooter } from './UserFooter';
 
@@ -53,10 +54,14 @@ export function WorkspaceShell() {
   const [hydrated, setHydrated] = useState(() => useAuthStore.persist.hasHydrated());
   useEffect(() => {
     if (useAuthStore.persist.hasHydrated()) {
+      ensureWorkspaceFromAuth();
       setHydrated(true);
       return;
     }
-    return useAuthStore.persist.onFinishHydration(() => setHydrated(true));
+    return useAuthStore.persist.onFinishHydration(() => {
+      ensureWorkspaceFromAuth();
+      setHydrated(true);
+    });
   }, []);
   const workspace = useWorkspaceStore((state) => state.current);
   const { sidebarCollapsed, toggleSidebar, mobileDrawerOpen, closeMobileDrawer, openMobileDrawer } = useUiStore();
