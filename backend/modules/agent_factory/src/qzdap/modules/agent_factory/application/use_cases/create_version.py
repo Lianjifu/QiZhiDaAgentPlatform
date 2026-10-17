@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from qzdap_schema.ids import (
     AgentTemplateId,
@@ -41,6 +41,8 @@ class CreateAgentVersionUseCase:
         version_tag: str,
         system_prompt: str | None = None,
         model_id: str | None = None,
+        route_id: UUID | None = None,
+        route_strategy: str | None = None,
         allowed_tools: tuple[str, ...] = (),
         allowed_skills: tuple[str, ...] = (),
         knowledge_package_ids: tuple[str, ...] = (),
@@ -100,6 +102,8 @@ class CreateAgentVersionUseCase:
             version_tag=version_tag,
             system_prompt=system_prompt or template.default_system_prompt,
             model_id=model_id or template.default_model_id,
+            route_id=route_id,
+            route_strategy=route_strategy,
             allowed_tools=allowed_tools,
             allowed_skills=allowed_skills,
             knowledge_package_ids=knowledge_package_ids,

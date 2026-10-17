@@ -52,6 +52,13 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+# Phase 15: 与 Phase 7 model_service.select_chain_for_strategy 的 strategy 保持一致.
+# 来源: modules/model/application/services.py 的 _ALLOWED_STRATEGIES
+_ALLOWED_STRATEGIES: frozenset[str] = frozenset(
+    {"fallback", "quality-first", "cost-first", "latency-first"}
+)
+
+
 # ── AgentTemplate ─────────────────────────────────────────────────────────
 
 
@@ -169,6 +176,10 @@ class AgentVersion:
     system_prompt: str
     # Phase 2: nullable UUID → admin_models.id. 旧接口仍可传 str (会自动 resolve)
     model_id: str | UUID | None
+    # Phase 15: 策略路由持久化. route_id (admin_model_routes.id) + strategy
+    # 至少其一可空; 双空 = 不启用策略路由 (走默认 model_id 单路).
+    route_id: UUID | None
+    route_strategy: str | None
     allowed_tools: tuple[str, ...]
     allowed_skills: tuple[str, ...]
     knowledge_package_ids: tuple[
@@ -194,6 +205,8 @@ class AgentVersion:
         version_tag: str,
         system_prompt: str,
         model_id: str | UUID | None,
+        route_id: UUID | None = None,
+        route_strategy: str | None = None,
         allowed_tools: tuple[str, ...] = (),
         allowed_skills: tuple[str, ...] = (),
         knowledge_package_ids: tuple[str, ...] = (),
@@ -220,6 +233,11 @@ class AgentVersion:
         # Phase 2: 允许 None (admin_models 没建) 或 UUID. str 兼容旧接口.
         if model_id is not None and not isinstance(model_id, (str, UUID)):
             raise TypeError("AgentVersion.model_id must be str, UUID, or None")
+        # Phase 15: 策略路由字段. route_strategy 限制到 Phase 7 已知值.
+        if route_strategy is not None and route_strategy not in _ALLOWED_STRATEGIES:
+            raise ValueError(
+                f"AgentVersion.route_strategy must be one of {sorted(_ALLOWED_STRATEGIES)}"
+            )
         if len(allowed_tools) > MAX_ALLOWED_TOOLS:
             raise ValueError(
                 f"AgentVersion.allowed_tools must be <= {MAX_ALLOWED_TOOLS}"
@@ -246,6 +264,8 @@ class AgentVersion:
             status=AgentVersionStatus.DRAFT,
             system_prompt=system_prompt,
             model_id=model_id,
+            route_id=route_id,
+            route_strategy=route_strategy,
             allowed_tools=tuple(allowed_tools),
             allowed_skills=tuple(allowed_skills),
             knowledge_package_ids=tuple(knowledge_package_ids),
@@ -283,6 +303,8 @@ class AgentVersion:
             status=self.status,
             system_prompt=self.system_prompt,
             model_id=self.model_id,
+            route_id=self.route_id,
+            route_strategy=self.route_strategy,
             allowed_tools=self.allowed_tools,
             allowed_skills=self.allowed_skills,
             knowledge_package_ids=self.knowledge_package_ids,
@@ -316,6 +338,8 @@ class AgentVersion:
             status=AgentVersionStatus.PUBLISHED,
             system_prompt=self.system_prompt,
             model_id=self.model_id,
+            route_id=self.route_id,
+            route_strategy=self.route_strategy,
             allowed_tools=self.allowed_tools,
             allowed_skills=self.allowed_skills,
             knowledge_package_ids=self.knowledge_package_ids,
@@ -349,6 +373,8 @@ class AgentVersion:
             status=AgentVersionStatus.RELEASED,
             system_prompt=self.system_prompt,
             model_id=self.model_id,
+            route_id=self.route_id,
+            route_strategy=self.route_strategy,
             allowed_tools=self.allowed_tools,
             allowed_skills=self.allowed_skills,
             knowledge_package_ids=self.knowledge_package_ids,
@@ -382,6 +408,8 @@ class AgentVersion:
             status=AgentVersionStatus.RETIRED,
             system_prompt=self.system_prompt,
             model_id=self.model_id,
+            route_id=self.route_id,
+            route_strategy=self.route_strategy,
             allowed_tools=self.allowed_tools,
             allowed_skills=self.allowed_skills,
             knowledge_package_ids=self.knowledge_package_ids,

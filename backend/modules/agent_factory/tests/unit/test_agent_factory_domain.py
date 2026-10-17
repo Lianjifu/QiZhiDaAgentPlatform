@@ -213,4 +213,68 @@ def test_release_create_carries_eval_metadata() -> None:
     assert rel.released_at == _now()
 
 
+# ── Phase 15: 策略路由持久化 ─────────────────────────────────────────────
+
+
+def test_version_create_draft_with_route_persists_route() -> None:
+    """Phase 15: route_id + route_strategy 写进 entity, 不丢失."""
+    route_uuid = uuid4()
+    ver = AgentVersion.create_draft(
+        tenant_id=_TENANT,
+        workspace_id=_WORKSPACE,
+        template_id=AgentTemplateId(uuid4()),
+        version_tag="2.0.0",
+        system_prompt="p",
+        model_id="gpt-4",
+        route_id=route_uuid,
+        route_strategy="latency-first",
+        created_by=_USER,
+        now=_now(),
+    )
+    assert ver.route_id == route_uuid
+    assert ver.route_strategy == "latency-first"
+
+
+def test_version_create_draft_invalid_strategy_rejected() -> None:
+    """Phase 15: route_strategy 必须在白名单内 (Phase 7 strategy 集合)."""
+    with pytest.raises(ValueError, match="route_strategy must be one of"):
+        AgentVersion.create_draft(
+            tenant_id=_TENANT,
+            workspace_id=_WORKSPACE,
+            template_id=AgentTemplateId(uuid4()),
+            version_tag="2.0.0",
+            system_prompt="p",
+            model_id="gpt-4",
+            route_strategy="random-strategy",
+            created_by=_USER,
+            now=_now(),
+        )
+
+
+def test_version_publish_preserves_route() -> None:
+    """Phase 15: publish/release/retire 必须保留 route_id + route_strategy."""
+    route_uuid = uuid4()
+    ver = AgentVersion.create_draft(
+        tenant_id=_TENANT,
+        workspace_id=_WORKSPACE,
+        template_id=AgentTemplateId(uuid4()),
+        version_tag="2.0.0",
+        system_prompt="p",
+        model_id="gpt-4",
+        route_id=route_uuid,
+        route_strategy="quality-first",
+        created_by=_USER,
+        now=_now(),
+    )
+    pub = ver.publish(now=_now())
+    assert pub.route_id == route_uuid
+    assert pub.route_strategy == "quality-first"
+    rel = pub.release(now=_now())
+    assert rel.route_id == route_uuid
+    assert rel.route_strategy == "quality-first"
+    ret = rel.retire(now=_now())
+    assert ret.route_id == route_uuid
+    assert ret.route_strategy == "quality-first"
+
+
 __all__ = []

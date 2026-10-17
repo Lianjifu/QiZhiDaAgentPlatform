@@ -111,6 +111,9 @@ class AgentVersionORM(TenantScopedMixin, Base):
         nullable=False,
         server_default=text("'migrated'"),
     )
+    # Phase 15: 持久化策略路由 (Phase 7 串到 chat body 的 route_id 升级成版本字段)
+    route_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
+    route_strategy: Mapped[str | None] = mapped_column(String(16), nullable=True)
     allowed_tools: Mapped[list[str]] = mapped_column(
         ARRAY(String(128)),
         nullable=False,

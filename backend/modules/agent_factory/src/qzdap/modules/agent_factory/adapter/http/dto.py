@@ -49,6 +49,9 @@ class CreateVersionRequest(_StrictModel):
     system_prompt: str | None = Field(default=None, max_length=32768)
     # Phase 2: 接受 str (上游名) 或 UUID. router 端 resolve.
     model_id: str | None = Field(default=None, max_length=128)
+    # Phase 15: 策略路由持久化. 至少其一可空.
+    route_id: str | None = Field(default=None, max_length=36)
+    route_strategy: str | None = Field(default=None, max_length=16)
     allowed_tools: list[str] = Field(default_factory=list)
     allowed_skills: list[str] = Field(default_factory=list)
     knowledge_package_ids: list[str] = Field(default_factory=list)
@@ -72,6 +75,9 @@ class VersionResponse(_StrictModel):
     system_prompt: str
     # Phase 2: 可能是 None (catalog 没建), 序列化为 str (UUID)
     model_id: str | None
+    # Phase 15: 策略路由
+    route_id: str | None
+    route_strategy: str | None
     allowed_tools: list[str]
     allowed_skills: list[str]
     knowledge_package_ids: list[str]

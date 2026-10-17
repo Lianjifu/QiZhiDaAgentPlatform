@@ -56,6 +56,8 @@ def version_to_dto(entity: AgentVersion) -> VersionResponse:
         status=entity.status.value,
         system_prompt=entity.system_prompt,
         model_id=_model_id_str(entity.model_id),
+        route_id=str(entity.route_id) if entity.route_id else None,
+        route_strategy=entity.route_strategy,
         allowed_tools=list(entity.allowed_tools),
         allowed_skills=list(entity.allowed_skills),
         knowledge_package_ids=list(entity.knowledge_package_ids),

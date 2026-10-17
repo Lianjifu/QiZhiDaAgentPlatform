@@ -349,6 +349,16 @@ def build_router() -> APIRouter:
             workspace_id=x_workspace_id,
             model=body.model_id,
         )
+        # Phase 15: 解析 route_id str → UUID. 没命中 422.
+        resolved_route_id: UUID | None = None
+        if body.route_id:
+            try:
+                resolved_route_id = UUID(str(body.route_id))
+            except (ValueError, TypeError) as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"route_id 不是有效 UUID: {body.route_id!r}",
+                ) from exc
         try:
             version = await svc.create_version.execute(  # type: ignore[union-attr]
                 tenant_id=TenantId(x_tenant_id),
@@ -357,6 +367,8 @@ def build_router() -> APIRouter:
                 version_tag=body.version_tag,
                 system_prompt=body.system_prompt,
                 model_id=resolved_model_id,
+                route_id=resolved_route_id,
+                route_strategy=body.route_strategy,
                 allowed_tools=tuple(body.allowed_tools),
                 allowed_skills=tuple(body.allowed_skills),
                 knowledge_package_ids=tuple(body.knowledge_package_ids),
