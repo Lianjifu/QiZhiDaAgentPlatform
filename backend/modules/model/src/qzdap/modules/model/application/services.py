@@ -189,6 +189,40 @@ class ModelService:
             if self._owns(e)
         ]
 
+    # ── Phase 17: quota admin facade (delegates to QuotaService) ──────────
+    def _quota_service(self):  # type: ignore[no-untyped-def]
+        from qzdap.modules.model.application.quota_service import QuotaService
+
+        if self._quota_session is None:
+            raise RuntimeError(
+                "quota service requires a session-backed repository"
+            )
+        return QuotaService(self._quota_session)
+
+    async def list_quotas(
+        self, *, tenant_id: UUID, workspace_id: UUID
+    ) -> list[dict[str, Any]]:
+        return await self._quota_service().list_quotas(
+            tenant_id=tenant_id, workspace_id=workspace_id
+        )
+
+    async def upsert_quota(
+        self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        return await self._quota_service().upsert_quota(
+            tenant_id=tenant_id, workspace_id=workspace_id, body=body
+        )
+
+    async def delete_quota(self, *, quota_id: UUID) -> None:
+        await self._quota_service().delete_quota(quota_id=quota_id)
+
+    async def list_usage(
+        self, *, tenant_id: UUID, workspace_id: UUID
+    ) -> list[dict[str, Any]]:
+        return await self._quota_service().list_usage(
+            tenant_id=tenant_id, workspace_id=workspace_id
+        )
+
     def _decrypt(self, provider: Provider) -> str:
         if not provider.encrypted_payload or self._cipher is None:
             raise CredentialNotFound("凭据不可用，请输入新的 API Key。")

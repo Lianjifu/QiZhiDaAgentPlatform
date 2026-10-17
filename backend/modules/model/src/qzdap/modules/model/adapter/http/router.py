@@ -315,4 +315,50 @@ def build_router() -> APIRouter:
             route_id=route_id,
         )
 
+    # ── Phase 17: quota admin CRUD + usage ────────────────────────────────
+
+    @router.get("/api/admin/models/quotas")
+    async def list_admin_quotas(
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008
+    ) -> list[dict[str, Any]]:
+        return await svc.list_quotas(
+            tenant_id=x_tenant_id, workspace_id=x_workspace_id
+        )
+
+    @router.post("/api/admin/models/quotas", status_code=201)
+    async def upsert_admin_quota(
+        body: dict[str, Any],
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008
+    ) -> dict[str, Any]:
+        try:
+            return await svc.upsert_quota(
+                tenant_id=x_tenant_id,
+                workspace_id=x_workspace_id,
+                body=body,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @router.delete("/api/admin/models/quotas/{quota_id}")
+    async def delete_admin_quota(
+        quota_id: UUID,
+        svc: ModelService = Depends(model_dependency),  # noqa: B008
+    ) -> dict[str, Any]:
+        await svc.delete_quota(quota_id=quota_id)
+        return {"ok": True, "id": str(quota_id)}
+
+    @router.get("/api/admin/models/quotas/usage")
+    async def list_admin_quota_usage(
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008
+    ) -> list[dict[str, Any]]:
+        return await svc.list_usage(
+            tenant_id=x_tenant_id, workspace_id=x_workspace_id
+        )
+
     return router
