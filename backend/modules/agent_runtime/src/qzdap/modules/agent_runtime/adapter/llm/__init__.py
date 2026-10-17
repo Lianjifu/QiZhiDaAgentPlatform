@@ -34,9 +34,10 @@ class LLMPortAdapter(LLMPort):
         *,
         model_id: ModelId | None = None,
         fallback_model_ids: list[ModelId] | None = None,
+        route_id: ModelId | None = None,
         actor: ActorContext | ModelInvocationMeta | None = None,
     ) -> AsyncIterator[LLMChunk]:
-        if model_id is None:
+        if model_id is None and route_id is None:
             stream = self._client.stream(req)
         else:
             if self._model_service is None:
@@ -51,16 +52,23 @@ class LLMPortAdapter(LLMPort):
                 )
             if actor.principal_id.int == 0:
                 raise RuntimeError("saved model streaming requires a real caller identity")
+            # Phase 7: 策略路由 (route_id) 优先于 model_id/fallback_model_ids
+            if route_id is not None:
+                stream = self._model_service.stream_with_route(
+                    actor=actor, route_id=route_id, req=req
+                )
             # Phase 3: 失败转移链 (primary + fallback list)
-            if fallback_model_ids:
+            elif fallback_model_ids:
                 stream = self._model_service.stream_with_fallback(
                     actor=actor,
-                    primary_model_id=model_id,
+                    primary_model_id=model_id,  # type: ignore[arg-type]
                     fallback_model_ids=list(fallback_model_ids),
                     req=req,
                 )
             else:
-                stream = self._model_service.stream(actor=actor, model_id=model_id, req=req)
+                stream = self._model_service.stream(
+                    actor=actor, model_id=model_id, req=req  # type: ignore[arg-type]
+                )
         async with aclosing(stream):
             async for chunk in stream:
                 yield chunk

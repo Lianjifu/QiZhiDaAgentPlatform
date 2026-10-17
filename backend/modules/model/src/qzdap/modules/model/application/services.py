@@ -866,5 +866,107 @@ class ModelService:
             f"all {len(chain)} models in route failed; last error: {last_exc!r}"
         ) from last_exc
 
+    # ── Phase 7: 策略路由 (quality-first / cost-first / latency-first) ────────
+    # 输入: route_id (UUID) + actor. 从 admin_model_routes 读 primary_model_id + strategy,
+    # 再用策略从 workspace 内 active model 里选 N 个候选, primary 不在候选时也走 chain.
+    # 输出: 排序好的 list[ModelId] (第一个试, 失败按顺序 fallback).
+    # 注: RouteRepository.get + workspace 内 list_for_workspace 都在 session 内.
+    async def select_chain_for_strategy(
+        self, *, actor: ActorContext, route_id: ModelId
+    ) -> list[ModelId]:
+        """Phase 7: 策略路由选择.
+
+        strategy 语义:
+          - 'fallback': 用 RouteRule.primary_model_id + fallback_model_ids (Phase 3 旧行为)
+          - 'quality-first': workspace 内 active model, 按 tier 降序 (premium > balanced > economy),
+            success_rate 降序, latency_ms 升序; primary 排第一
+          - 'cost-first': 按 (price_in + price_out) 升序, primary 排第一
+          - 'latency-first': 按 latency_ms 升序, primary 排第一
+
+        返回的链: [primary_or_best, *fallback_candidates]. 全部走 admin_models.
+        """
+        from qzdap.modules.model.domain.errors import ModelNotFound
+
+        rule = await self._routes.get(UUID(str(route_id)))
+        if rule is None:
+            raise ModelNotFound(f"route {route_id} not found")
+        if not rule.enabled:
+            raise ModelNotFound(f"route {route_id} is disabled")
+
+        # workspace 内所有 active model
+        all_models = await self._models.list_for_workspace(actor.workspace_id)  # type: ignore[arg-type]
+        active = [m for m in all_models if m.status == "active"]
+        if not active:
+            raise ModelNotFound("no active models in workspace")
+
+        strategy = rule.strategy
+        primary_id = UUID(str(rule.primary_model_id))
+
+        # 找到 primary 在 active 里的位置
+        primary_in_active = next((m for m in active if m.id == primary_id), None)
+
+        if strategy == "fallback":
+            # 旧行为: primary + explicit fallback list
+            chain: list[ModelId] = [primary_id]
+            for fid in rule.fallback_model_ids:
+                try:
+                    chain.append(ModelId(UUID(str(fid))))
+                except (ValueError, TypeError):
+                    continue
+            return chain
+
+        if strategy == "quality-first":
+            tier_order = {"premium": 0, "balanced": 1, "economy": 2}
+            sorted_models = sorted(
+                active,
+                key=lambda m: (
+                    tier_order.get(m.tier, 99),
+                    -m.success_rate,
+                    m.latency_ms,
+                ),
+            )
+        elif strategy == "cost-first":
+            sorted_models = sorted(
+                active,
+                key=lambda m: (m.price_in + m.price_out, m.latency_ms),
+            )
+        elif strategy == "latency-first":
+            sorted_models = sorted(active, key=lambda m: (m.latency_ms, m.price_in))
+        else:
+            # 未知 strategy 当 fallback 处理
+            _log.warning("unknown_strategy_fallback", extra={"strategy": strategy})
+            sorted_models = active
+
+        # primary 排第一 (如果它在 active 里)
+        if primary_in_active is not None:
+            chain = [primary_in_active.id]
+            for m in sorted_models:
+                if m.id == primary_id:
+                    continue
+                chain.append(m.id)
+        else:
+            chain = [m.id for m in sorted_models]
+        return chain
+
+    # 给 facade 暴露新方法 (Phase 7): 用 route_id 走策略选择 + fallback chain
+    async def stream_with_route(
+        self, *, actor: ActorContext, route_id: ModelId, req: ChatRequest
+    ) -> AsyncIterator[LLMChunk]:
+        """Phase 7: 策略路由 stream. select_chain_for_strategy 选链, 走 stream_with_fallback."""
+        chain = await self.select_chain_for_strategy(
+            actor=actor, route_id=route_id
+        )
+        if not chain:
+            from qzdap.modules.model.domain.errors import ModelNotFound
+
+            raise ModelNotFound(f"route {route_id} resolved to empty chain")
+        async for chunk in self.stream_with_fallback(
+            actor=actor,
+            primary_model_id=chain[0],
+            fallback_model_ids=chain[1:],
+            req=req,
+        ):
+            yield chunk
+
 
 __all__ = ["ModelService"]

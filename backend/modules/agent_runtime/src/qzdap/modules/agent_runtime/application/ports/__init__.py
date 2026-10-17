@@ -74,6 +74,7 @@ class LLMPort(ABC):
         *,
         model_id: ModelId | None = None,
         fallback_model_ids: list[ModelId] | None = None,
+        route_id: ModelId | None = None,
         actor: ActorContext | None = None,
     ) -> AsyncIterator[LLMChunk]: ...
 

@@ -593,6 +593,36 @@ class Container:
                         await session.rollback()
                         raise
 
+            async def stream_with_route(  # type: ignore[no-untyped-def]
+                self, *, actor, route_id, req
+            ):
+                """Phase 7: 策略路由 stream. route_id → select_chain_for_strategy → stream_with_fallback."""
+                from contextlib import aclosing
+
+                from qzdap_schema.ids import ModelId
+
+                async with session_factory.session() as session:
+                    svc = ModelService(
+                        SqlModelRepository(session),
+                        SqlProviderRepository(session),
+                        SqlRouteRepository(session),
+                        SqlHealthRepository(session),
+                        cipher=cipher,
+                        client_factory=client_factory,
+                    )
+                    try:
+                        async with aclosing(
+                            svc.stream_with_route(
+                                actor=actor, route_id=ModelId(route_id), req=req
+                            )
+                        ) as stream:
+                            async for chunk in stream:
+                                yield chunk
+                        await session.commit()
+                    except BaseException:
+                        await session.rollback()
+                        raise
+
         return _InvokeFacade()
 
     def catalog_model_resolver(self):
