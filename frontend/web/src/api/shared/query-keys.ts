@@ -98,6 +98,10 @@ export const qk = {
       health: ['admin', 'models', 'health'] as const,
       detail: (id: string) => ['admin', 'models', 'detail', id] as const,
     },
+    agentFactory: {
+      root: ['admin', 'agent-factory'] as const,
+      routes: ['admin', 'agent-factory', 'routes'] as const,  // Phase 22: 给 agent_version route picker
+    },
     quotas: {
       root: ['admin', 'quotas'] as const,
     },
