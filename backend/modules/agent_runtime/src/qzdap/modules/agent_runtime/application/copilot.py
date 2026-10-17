@@ -173,6 +173,7 @@ class CopilotSessionService:
         session_id: UUID,
         user_input: str,
         model: str | None = None,
+        route_id: "UUID | None" = None,
         resume: dict[str, Any] | None = None,
     ) -> AsyncIterator[TurnChunk]:
         session = await self._require_session(tenant_id, session_id)
@@ -226,6 +227,8 @@ class CopilotSessionService:
             history=hist_msgs,
             agent=agent_row,
             model=model or str(session.metadata.get("model") or agent_row.model or "default"),
+            # Phase 12: 策略路由. 当 route_id 提供时, 优先用它走 Phase 7 select_chain_for_strategy
+            route_id=route_id,
             rolling_summary=str(session.metadata.get("rolling_summary") or ""),
             resume=graph_resume if graph_resume.get("pending_approval") or resume else None,
         )

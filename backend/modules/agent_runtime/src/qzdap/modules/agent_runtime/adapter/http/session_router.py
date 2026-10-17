@@ -194,6 +194,20 @@ def build_session_router() -> APIRouter:
                         body.get("attachmentIds"),
                     )
                     break
+        # Phase 12: optional route_id (UUID) — 走策略路由 (Phase 7)
+        route_id_raw = body.get("route_id")
+        route_id_uuid = None
+        if route_id_raw:
+            import logging
+
+            try:
+                from qzdap_schema.ids import ModelId
+
+                route_id_uuid = ModelId(UUID(str(route_id_raw)))
+            except (ValueError, TypeError, AttributeError) as exc:
+                logging.getLogger(__name__).warning(
+                    "phase12_route_id_parse_failed: %s", exc
+                )
         chunks = svc.stream_turn(
             tenant_id=x_tenant_id,
             workspace_id=x_workspace_id,
@@ -201,6 +215,7 @@ def build_session_router() -> APIRouter:
             session_id=session_id,
             user_input=content,
             model=body.get("model"),
+            route_id=route_id_uuid,
         )
         aiterator = chunks.__aiter__()
         first = await aiterator.__anext__()

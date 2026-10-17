@@ -97,6 +97,8 @@ class SessionGraphRunner:
         context_window: int = DEFAULT_WINDOW,
         rolling_summary: str = "",
         resume: dict[str, Any] | None = None,
+        # Phase 12: 策略路由 ID (UUID). 优先于 model — 走 Phase 7 select_chain_for_strategy.
+        route_id: ModelId | None = None,
     ) -> AsyncIterator[TurnChunk]:
         seq = 0
         max_steps = 8
@@ -191,6 +193,8 @@ class SessionGraphRunner:
                 messages=list(state["messages"]),
                 tools=tools_schema,
                 model_id=ModelId(UUID(model)) if _looks_uuid(model) else None,
+                # Phase 12: 策略路由. 当 route_id 提供时, 优先用它走 Phase 7.
+                route_id=route_id,
                 actor=ActorContext(
                     tenant_id=tenant_id,
                     workspace_id=workspace_id,
