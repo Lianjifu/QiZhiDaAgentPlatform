@@ -72,6 +72,9 @@ class ModelService:
             routes,
             health,
         )
+        # Phase 4: 暴露 internal session 供 QuotaService 复用. 仅在 SqlModelRepository
+        # 是 session-backed 时可用 (in-memory fake 没 _s). 检查 hasattr 防御.
+        self._quota_session = getattr(models, "_s", None)
         self._cipher, self._client_factory, self._prober = (
             cipher,
             client_factory,
@@ -688,13 +691,32 @@ class ModelService:
     async def stream(
         self, *, actor: ActorContext, model_id: ModelId, req: ChatRequest
     ) -> AsyncIterator[LLMChunk]:
+        # Phase 4: quota check BEFORE building the client.
+        # estimated_tokens_in=0 (我们不预扣, 只预增 request 计数 + check).
+        # 实际 token 数在 stream 完成后 record.
+        if self._quota_session is not None:
+            from qzdap.modules.model.application.quota_service import QuotaService
+
+            await QuotaService(self._quota_session).check_and_consume(
+                tenant_id=actor.tenant_id,
+                workspace_id=actor.workspace_id,  # type: ignore[arg-type]
+                model_id=UUID(str(model_id)),
+                period="minute",
+                estimated_tokens_in=0,
+            )
         model, client = await self._execution(actor, model_id)
         start = time.monotonic()
         ok = False
+        actual_in = 0
+        actual_out = 0
         try:
             async for chunk in client.stream(
                 replace(req, model=model.upstream_model or model.name)
             ):
+                # 累加 token usage (last chunk 通常有 usage)
+                if chunk.usage is not None:
+                    actual_in = int(chunk.usage.input_tokens or 0)
+                    actual_out = int(chunk.usage.output_tokens or 0)
                 yield chunk
             ok = True
         finally:
@@ -706,6 +728,27 @@ class ModelService:
                         latency_ms=int((time.monotonic() - start) * 1000), ok=ok
                     )
                 )
+                # Phase 4: record actual tokens after the call.
+                if (
+                    ok
+                    and (actual_in or actual_out)
+                    and self._quota_session is not None
+                ):
+                    try:
+                        from qzdap.modules.model.application.quota_service import (
+                            QuotaService,
+                        )
+
+                        await QuotaService(self._quota_session).record(
+                            tenant_id=actor.tenant_id,
+                            workspace_id=actor.workspace_id,  # type: ignore[arg-type]
+                            model_id=UUID(str(model_id)),
+                            period="minute",
+                            tokens_in=actual_in,
+                            tokens_out=actual_out,
+                        )
+                    except (RuntimeError, OSError) as _exc:  # defensive
+                        _log.warning("quota_record_failed: %s", _exc)
 
     # ── Phase 3: 路由 + 故障转移 ────────────────────────────────────────
     async def stream_with_fallback(

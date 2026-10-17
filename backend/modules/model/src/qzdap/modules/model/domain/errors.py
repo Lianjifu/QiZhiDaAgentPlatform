@@ -37,6 +37,13 @@ class ModelRouteExhausted(ModelError):
     status = 502
 
 
+class QuotaExceeded(ModelError):
+    """Phase 4: tenant/model 配额超额."""
+
+    code = "QUOTA_EXCEEDED"
+    status = 429
+
+
 __all__ = [
     "CredentialNotFound",
     "ModelDisabled",
@@ -44,5 +51,6 @@ __all__ = [
     "ModelNotFound",
     "ModelRouteExhausted",
     "ProviderNotFound",
+    "QuotaExceeded",
     "RouteNotFound",
 ]
