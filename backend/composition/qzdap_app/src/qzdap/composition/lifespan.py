@@ -11,6 +11,8 @@ On boot, the lifespan:
 
 from __future__ import annotations
 
+import asyncio
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -299,6 +301,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     async def catalog_evaluation_runner(*, tenant_id, workspace_id, owner_id, agent_id, user_input, agent_version=None):
         from dataclasses import replace
+
         from qzdap_kernel.errors import AppError
         sf = container.session_factory()
         async with sf.session() as evaluation_session:
@@ -383,6 +386,76 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             return self.for_session(session)
 
     app.state.model_service_factory = _ModelFactory()
+
+    # Phase 14: 后台 health 采样器 — 定期跑 health_check 写 admin_model_health
+    # 不阻塞主流程; 关停时干净 cancel.
+    async def _health_sampler_loop() -> None:
+        # 间隔 (s). 短间隔保证 dev 可观察; 生产可调.
+        interval = int(os.environ.get("QZDAP_HEALTH_SAMPLER_INTERVAL", "60"))
+        # 模块引用在闭包内做 (避免 lifespan 启动前 import)
+        from qzdap.modules.model.adapter.persistence.models import (
+            ProviderORM,
+        )
+        from sqlalchemy import select
+
+        try:
+            while True:
+                try:
+                    async with container.session_factory().session() as session:
+                        # 找所有 healthy 状态的 provider
+                        result = await session.execute(
+                            select(ProviderORM).where(
+                                ProviderORM.status == "healthy"
+                            )
+                        )
+                        providers = result.scalars().all()
+                        for prov in providers:
+                            try:
+                                # 用 _ModelFactory 拿全配置 ModelService
+                                async with container.session_factory().session() as p_session:
+                                    factory = _ModelFactory()
+                                    svc = factory.for_session(p_session)
+                                    await svc.health_check(prov.id)
+                                    # health_check 内部写 health 事件
+                            except Exception as _prov_exc:  # defensive
+                                _log.debug(
+                                    "health_sampler_provider_failed: %s: %s",
+                                    prov.id,
+                                    _prov_exc,
+                                )
+                except Exception as _loop_exc:  # defensive
+                    _log.warning(
+                        "health_sampler_iteration_failed: %s", _loop_exc
+                    )
+                await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            _log.info("health_sampler_cancelled")
+            raise
+
+    sampler_task: asyncio.Task[None] | None = None
+    if os.environ.get("QZDAP_HEALTH_SAMPLER_DISABLED", "").lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        try:
+            sampler_task = asyncio.create_task(_health_sampler_loop())
+            _log.info("health_sampler_started interval=%ds", 60)
+        except RuntimeError as _task_exc:
+            _log.warning("health_sampler_failed_to_start: %s", _task_exc)
+            sampler_task = None
+
+    async def _stop_sampler() -> None:
+        if sampler_task is not None and not sampler_task.done():
+            sampler_task.cancel()
+            try:
+                await sampler_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as _stop_exc:  # defensive
+                _log.debug("health_sampler_stop_failed: %s", _stop_exc)
+
+    app.state.health_sampler_stop = _stop_sampler
 
     # ── per-request channel factory ─────────────────────────────────────────
     channel_service_obj = None
@@ -903,6 +976,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        # Phase 14: 关停 health sampler
+        stop_sampler = getattr(app.state, "health_sampler_stop", None)
+        if stop_sampler is not None:
+            await stop_sampler()
         await bus.stop()
         sandbox = getattr(app.state, "sandbox", None)
         if sandbox is not None:
