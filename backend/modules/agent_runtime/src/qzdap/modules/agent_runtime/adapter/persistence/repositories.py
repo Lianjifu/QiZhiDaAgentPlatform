@@ -89,6 +89,26 @@ class SqlSessionRepository(SessionRepository):
         rows = (await self._s.execute(q)).scalars().all()
         return [session_orm_to_domain(o) for o in rows]
 
+    async def list_for_owner_workspace(
+        self,
+        owner_id: UUID,
+        workspace_id: UUID,
+        *,
+        limit: int = 200,
+    ) -> list[Session]:
+        """/api/tasks 派生用 — owner + workspace 复合过滤, 不返回 closed 状态之外的孤儿 session."""
+        q = (
+            select(SessionORM)
+            .where(
+                SessionORM.owner_id == owner_id,
+                SessionORM.workspace_id == workspace_id,
+            )
+            .order_by(SessionORM.created_at.desc())
+            .limit(limit)
+        )
+        rows = (await self._s.execute(q)).scalars().all()
+        return [session_orm_to_domain(o) for o in rows]
+
 
 class SqlTurnRepository(TurnRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -131,5 +151,18 @@ class SqlTurnRepository(TurnRepository):
     async def get(self, turn_id: UUID) -> Turn | None:
         o = await self._s.get(TurnORM, turn_id)
         if o is None or _cross_tenant(o):
+            return None
+        return turn_orm_to_domain(o)
+
+    async def latest_for_session(self, session_id: UUID) -> Turn | None:
+        """/api/tasks 派生用 — 取最新一轮 turn 用于状态翻译."""
+        q = (
+            select(TurnORM)
+            .where(TurnORM.session_id == session_id)
+            .order_by(TurnORM.started_at.desc())
+            .limit(1)
+        )
+        o = (await self._s.execute(q)).scalars().first()
+        if o is None:
             return None
         return turn_orm_to_domain(o)

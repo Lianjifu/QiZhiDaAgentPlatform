@@ -1099,23 +1099,65 @@ async def ensure_default_resources(container: Container) -> None:
                 ("user@acme.com", "Demo User"),
             )
             seeded_logins: list[str] = []
+            seeded_memberships: list[str] = []
+            # 找到/复用 Demo 主 tenant 下任意 active workspace, 给种子用户加 membership.
+            # 否则 dev 模式下 /api/home/insights 等需要 workspace_access 的端点
+            # 会 403 (UserWorkspaceORM 无行, role=workspace_member 不在 elevated 白名单).
+            from qzdap.modules.identity.adapter.persistence.models import (
+                UserWorkspaceORM,
+                WorkspaceORM,
+            )
+
+            default_ws_id = (
+                await session.execute(
+                    select(WorkspaceORM.id).where(
+                        WorkspaceORM.tenant_id == tenant_id,
+                        WorkspaceORM.status == "active",
+                    ).limit(1)
+                )
+            ).scalars().first()
             for email, display_name in login_accounts:
                 existing_user = await users_repo.get_by_email_global(email)
-                if existing_user is not None:
-                    continue
-                await users_repo.add(
-                    User.create(
+                if existing_user is None:
+                    new_user = User.create(
                         id=__import__("uuid").uuid4(),
                         tenant_id=tenant_id,
                         email=email,
                         display_name=display_name,
                         hashed_password=hashed,
                     )
-                )
-                seeded_logins.append(email)
+                    await users_repo.add(new_user)
+                    seeded_logins.append(email)
+                    user_obj = new_user
+                else:
+                    user_obj = existing_user
+                # 补 workspace membership (idempotent: 已存在就跳过)
+                if default_ws_id is not None:
+                    existing_membership = await session.scalar(
+                        select(UserWorkspaceORM).where(
+                            UserWorkspaceORM.user_id == user_obj.id,
+                            UserWorkspaceORM.workspace_id == default_ws_id,
+                        )
+                    )
+                    if existing_membership is None:
+                        session.add(
+                            UserWorkspaceORM(
+                                tenant_id=tenant_id,
+                                user_id=user_obj.id,
+                                workspace_id=default_ws_id,
+                                role="admin" if email.startswith("admin@") else "member",
+                            )
+                        )
+                        seeded_memberships.append(email)
             if seeded_logins:
                 await session.commit()
                 _log.info("seeded demo login accounts", extra={"emails": seeded_logins})
+            if seeded_memberships:
+                await session.commit()
+                _log.info(
+                    "seeded demo workspace memberships",
+                    extra={"emails": seeded_memberships, "workspace_id": str(default_ws_id)},
+                )
 
             # Seed built-in custom tools (echo / reverse / clock) for the
             # demo tenant whenever the tools table is empty, so the smoke

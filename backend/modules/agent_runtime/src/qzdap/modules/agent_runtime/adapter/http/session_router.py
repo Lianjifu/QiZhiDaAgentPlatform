@@ -123,6 +123,46 @@ def build_session_router() -> APIRouter:
         await svc.close_session(tenant_id=x_tenant_id, session_id=session_id)
         return Response(status_code=204)
 
+    # ── 我的任务 (Round-8 dev-mode) ─────────────────────────────────
+    # 用户侧「我的任务」列表 — 派生自 owner=me 的 agent_sessions, 翻译 session 状态
+    # → 前端 Task 状态 (待处理/执行中/已完成/异常)。不新建表, 仅暴露派生视图。
+
+    @router.get("/api/tasks")
+    async def list_tasks(
+        request: Request,
+        q: str = Query(default=""),
+        status: str = Query(default="all"),
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
+        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+    ) -> list[dict[str, Any]]:
+        return await svc.list_tasks(
+            owner_id=_owner_id(request, x_user_id),
+            workspace_id=x_workspace_id,
+            q=q,
+            status=status,
+        )
+
+    @router.post("/api/tasks/{task_id}")
+    async def update_task(
+        task_id: UUID,
+        body: dict[str, Any],
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+    ) -> dict[str, Any]:
+        action = str(body.get("action") or "")
+        if action == "complete":
+            await svc.close_session(tenant_id=x_tenant_id, session_id=task_id)
+        elif action == "archive":
+            await svc.archive_session(tenant_id=x_tenant_id, session_id=task_id)
+        elif action == "retry":
+            # 不重启已有 turn (那是 copilot 的事), 仅返回最新状态供前端刷新
+            return await svc.get_session(tenant_id=x_tenant_id, session_id=task_id)
+        else:
+            raise HTTPException(status_code=400, detail=f"unknown action: {action!r}")
+        return {"ok": True, "id": str(task_id), "action": action}
+
     @router.post("/api/sessions/{session_id}/turns/stream")
     async def stream_turn(
         session_id: UUID,

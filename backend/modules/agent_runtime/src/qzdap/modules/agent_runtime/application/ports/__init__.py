@@ -32,6 +32,16 @@ class SessionRepository(ABC):
     async def list_for_owner(
         self, owner_id: UUID, *, limit: int = 50, offset: int = 0
     ) -> list[Session]: ...
+    @abstractmethod
+    async def list_for_owner_workspace(
+        self,
+        owner_id: UUID,
+        workspace_id: UUID,
+        *,
+        limit: int = 200,
+    ) -> list[Session]:
+        """派生 /api/tasks: 多一层 workspace 过滤, 默认 limit 更大."""
+        ...
 
 
 class TurnRepository(ABC):
@@ -39,6 +49,10 @@ class TurnRepository(ABC):
     async def add(self, turn: Turn) -> None: ...
     @abstractmethod
     async def get(self, turn_id: UUID) -> Turn | None: ...
+    @abstractmethod
+    async def latest_for_session(self, session_id: UUID) -> Turn | None:
+        """派生 /api/tasks: 取最新一轮 turn 用于状态映射."""
+        ...
 
 
 class LLMPort(ABC):

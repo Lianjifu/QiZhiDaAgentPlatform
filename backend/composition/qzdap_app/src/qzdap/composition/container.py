@@ -196,13 +196,10 @@ class Container:
     def llm_client(self):
         cfg: LLMConfig = self.settings.llm_config()
         if cfg.provider.value == "mock":
-            # Mock LLM 仅在 demo / test / ci 环境允许.
-            # dev / staging / production 必须用真实供应商 (openai-compatible).
-            if self.settings.env not in {"demo", "test", "ci"}:
-                from qzdap.composition.unavailable_providers import UnavailableLLMClient
+            # 任何环境都不允许 mock — dev 也按生产模式走, 必须用真供应商 (openai-compatible).
+            from qzdap.composition.unavailable_providers import UnavailableLLMClient
 
-                return UnavailableLLMClient()
-            return MockLLMClient(cfg)
+            return UnavailableLLMClient()
         return OpenAICompatibleClient(cfg)
 
     def vector_store(self) -> VectorStore | None:

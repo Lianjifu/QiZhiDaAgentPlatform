@@ -114,6 +114,56 @@ class CopilotSessionService:
             workspace_id=session.workspace_id,
         )
 
+    async def archive_session(self, *, tenant_id: UUID, session_id: UUID) -> None:
+        """归档 = close + 标记 archived. 用于 /api/tasks 的归档入口."""
+        session = await self._require_session(tenant_id, session_id)
+        if session.status is SessionStatus.CLOSED:
+            return
+        closed = session.close()
+        meta = dict(closed.metadata)
+        meta["archived"] = True
+        meta["archived_at"] = __import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()
+        closed = closed.with_runtime(metadata=meta)
+        await self._sessions.update(closed)
+        await self._events.publish(
+            closed.raise_closed_event(),
+            tenant_id=tenant_id,
+            workspace_id=closed.workspace_id,
+        )
+
+    async def list_tasks(
+        self,
+        *,
+        owner_id: UUID,
+        workspace_id: UUID,
+        q: str = "",
+        status: str = "all",
+    ) -> list[dict[str, Any]]:
+        """我的任务列表 — 派生自 owner=me 的 agent_sessions, 不新建表.
+
+        状态映射:
+          session.open  + latest_turn.running   → 执行中
+          session.open  + latest_turn.succeeded → 待处理
+          session.open  + latest_turn.failed/denied → 异常
+          session.closed                         → 已完成
+        """
+        sessions = await self._sessions.list_for_owner_workspace(
+            owner_id=owner_id, workspace_id=workspace_id, limit=200
+        )
+        out: list[dict[str, Any]] = []
+        for session in sessions:
+            latest_turn = await self._turns.latest_for_session(session.id)
+            task = _task_card(session, latest_turn)
+            if status != "all" and task["status"] != status:
+                continue
+            needle = q.strip().lower()
+            if needle:
+                hay = f"{task['title']} {task['source']} {task['description']}".lower()
+                if needle not in hay:
+                    continue
+            out.append(task)
+        return out
+
     async def stream_turn(
         self,
         *,
@@ -300,6 +350,70 @@ def _session_detail(
     card["agent"] = agent.to_catalog_dict() if agent is not None else agent_dict
     card["status"] = session.status.value
     return card
+
+
+def _task_card(session: Session, latest_turn: Turn | None) -> dict[str, Any]:
+    """/api/tasks 派生 — 把 Session + 最新 turn 翻译成前端 Task 形状.
+
+    故意用 session.metadata 存的 agentName / title, 不再 join agents,
+    避免跨模块查询失败时整条列表挂掉.
+    """
+    meta = dict(session.metadata or {})
+    title = str(meta.get("title") or "新对话")
+    source = str(meta.get("agentName") or session.agent_version or "智能体")
+    description = (latest_turn.user_input[:120] if latest_turn and latest_turn.user_input else "").strip()
+    if not description:
+        description = str(meta.get("preview") or "无内容")
+
+    # 状态映射
+    if session.status is SessionStatus.CLOSED:
+        if meta.get("archived"):
+            status = "已完成"
+            priority = "低"
+            due = "已归档"
+            time_label = "已归档"
+        else:
+            status = "已完成"
+            priority = "中"
+            due = "已完成"
+            time_label = "已完成"
+    elif latest_turn is None:
+        status = "待处理"
+        priority = "中"
+        due = "未排期"
+        time_label = "—"
+    elif latest_turn.status.value == "running":
+        status = "执行中"
+        priority = "高"
+        due = "进行中"
+        time_label = "运行中"
+    elif latest_turn.status.value == "failed":
+        status = "异常"
+        priority = "高"
+        due = "需要重试"
+        time_label = "异常"
+    elif latest_turn.status.value == "denied":
+        status = "异常"
+        priority = "中"
+        due = "已拒绝"
+        time_label = "已拒绝"
+    else:
+        status = "待处理"
+        priority = "中"
+        due = "等你回复"
+        time_label = "已完成本轮"
+
+    return {
+        "id": str(session.id),
+        "title": title,
+        "source": source,
+        "owner": "我",
+        "status": status,
+        "due": due,
+        "time": time_label,
+        "description": description,
+        "priority": priority,
+    }
 
 
 __all__ = ["CopilotSessionService"]
