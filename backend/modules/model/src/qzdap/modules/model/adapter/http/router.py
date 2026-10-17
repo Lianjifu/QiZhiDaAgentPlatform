@@ -297,4 +297,22 @@ def build_router() -> APIRouter:
     ) -> dict[str, Any]:
         return await svc.delete_route(route_id)
 
+    @router.get("/api/admin/models/routes/{route_id}/preview-chain")
+    async def preview_route_chain(
+        route_id: UUID,
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),  # noqa: B008
+    ) -> dict[str, Any]:
+        """Phase 16: 预览 route 解析后的 model chain (不发请求, 不消耗 quota).
+
+        返回: {routeId, routeName, strategy, primaryModelId, chain: [{id, name,
+        upstreamModel, tier, successRate, latencyMs, isPrimary}, ...]}
+        """
+        return await svc.preview_chain(
+            tenant_id=x_tenant_id,
+            workspace_id=x_workspace_id,
+            route_id=route_id,
+        )
+
     return router

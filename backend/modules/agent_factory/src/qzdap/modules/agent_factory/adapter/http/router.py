@@ -326,6 +326,72 @@ def build_router() -> APIRouter:
         except Exception:  # pragma: no cover - defensive
             return []
 
+    @router.get(
+        "/options/routes",
+        response_model=list[dict[str, Any]],
+    )
+    async def list_route_options(
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        request: Request = ...,  # type: ignore[assignment]
+    ) -> list[dict[str, Any]]:
+        """Phase 15: 给 agent 创建/编辑表单提供「策略路由」下拉数据.
+
+        列 workspace 内所有 enabled=true 的 admin_model_routes, 字段:
+        {id, name, strategy, primary_model_id, fallback_model_ids, task,
+         description, enabled}.
+
+        Resolver 注册在 app.state.catalog_model_resolver; 没注册就回空列表.
+        """
+        from sqlalchemy import select
+
+        from qzdap.modules.model.adapter.persistence.models import (
+            RouteORM,
+        )
+
+        resolver = _get_catalog_resolver(request)
+        if resolver is None:
+            return []
+        try:
+            sf = resolver._sf  # noqa: SLF001 — 同 package 内访问
+            async with sf.session() as session:
+                result = await session.execute(
+                    select(
+                        RouteORM.id,
+                        RouteORM.name,
+                        RouteORM.strategy,
+                        RouteORM.task,
+                        RouteORM.priority,
+                        RouteORM.primary_model_id,
+                        RouteORM.fallback_model_ids,
+                        RouteORM.description,
+                        RouteORM.enabled,
+                    ).where(
+                        RouteORM.tenant_id == x_tenant_id,
+                        RouteORM.workspace_id == x_workspace_id,
+                        RouteORM.enabled.is_(True),
+                    ).order_by(RouteORM.priority.desc(), RouteORM.name.asc())
+                )
+                rows = result.all()
+            return [
+                {
+                    "id": str(r.id),
+                    "name": r.name,
+                    "strategy": r.strategy,
+                    "task": r.task,
+                    "priority": int(r.priority),
+                    "primary_model_id": str(r.primary_model_id),
+                    "fallback_model_ids": [
+                        str(mid) for mid in (r.fallback_model_ids or [])
+                    ],
+                    "description": r.description,
+                    "enabled": bool(r.enabled),
+                }
+                for r in rows
+            ]
+        except Exception:  # pragma: no cover - defensive
+            return []
+
     @router.post(
         "/{aid}/versions",
         status_code=201,

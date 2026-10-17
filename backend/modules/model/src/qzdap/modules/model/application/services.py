@@ -997,5 +997,88 @@ class ModelService:
         ):
             yield chunk
 
+    # Phase 16: 预览策略路由解析结果. 不实际 invoke, 只返回排序好的 chain + 元信息.
+    async def preview_chain(
+        self, *, tenant_id: UUID, workspace_id: UUID, route_id: UUID
+    ) -> dict[str, Any]:
+        """Phase 16: 预览 route_id 解析后的 model chain (含每步的名字/上游/tier).
+
+        给 admin UI 一个「这个策略路由实际会试哪些 model」的预览, 不发请求,
+        也不消耗 quota. 入参校验 + strategy 解释, 帮助调试策略路由.
+
+        返回: {routeId, routeName, strategy, primaryModelId, chain: [{id, name,
+        upstreamModel, tier, successRate, latencyMs, isPrimary}]}
+        """
+        from qzdap.modules.model.domain.errors import ModelNotFound
+
+        actor_id = UUID(int=0)
+        self.bind_scope(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            actor_name="preview_chain",
+        )
+        rule = await self._routes.get(route_id)
+        if rule is None or not self._owns(rule):
+            return {
+                "routeId": str(route_id),
+                "strategy": None,
+                "primaryModelId": None,
+                "chain": [],
+                "error": f"route {route_id} not found",
+            }
+        actor = ActorContext(
+            tenant_id=tenant_id, workspace_id=workspace_id
+        )
+        try:
+            chain = await self.select_chain_for_strategy(
+                actor=actor, route_id=ModelId(route_id)
+            )
+        except ModelNotFound as exc:
+            return {
+                "routeId": str(route_id),
+                "strategy": rule.strategy,
+                "primaryModelId": str(rule.primary_model_id),
+                "chain": [],
+                "error": str(exc),
+            }
+        # 拉 model 元信息
+        all_models = await self._models.list_for_workspace(workspace_id)
+        id_to_model = {m.id: m for m in all_models}
+        chain_meta: list[dict[str, Any]] = []
+        for idx, mid in enumerate(chain):
+            m = id_to_model.get(mid)
+            if m is None:
+                chain_meta.append(
+                    {
+                        "id": str(mid),
+                        "name": None,
+                        "upstreamModel": None,
+                        "tier": None,
+                        "successRate": None,
+                        "latencyMs": None,
+                        "isPrimary": idx == 0,
+                    }
+                )
+                continue
+            chain_meta.append(
+                {
+                    "id": str(m.id),
+                    "name": m.name,
+                    "upstreamModel": m.upstream_model,
+                    "tier": m.tier,
+                    "successRate": m.success_rate,
+                    "latencyMs": m.latency_ms,
+                    "isPrimary": idx == 0,
+                }
+            )
+        return {
+            "routeId": str(route_id),
+            "routeName": rule.name,
+            "strategy": rule.strategy,
+            "primaryModelId": str(rule.primary_model_id),
+            "chain": chain_meta,
+        }
+
 
 __all__ = ["ModelService"]
