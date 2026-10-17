@@ -796,6 +796,29 @@ class ModelService:
                             await self._quota_session.commit()
                     except (RuntimeError, OSError) as _exc:  # defensive
                         _log.warning("health_event_write_failed: %s", _exc)
+                # Phase 8: audit log (governance 表). 复用同一个 session (跨模块
+                # ORM 风险由 raw SQL INSERT 规避 — 见 audit_service.py)
+                if self._quota_session is not None:
+                    try:
+                        from qzdap.modules.model.application.audit_service import (
+                            LLMAuditService,
+                        )
+
+                        await LLMAuditService(self._quota_session).record(
+                            tenant_id=actor.tenant_id,
+                            actor_id=actor.principal_id,  # type: ignore[arg-type]
+                            model_id=UUID(str(model_id)),
+                            provider_id=provider_id,
+                            provider_name=provider_name,
+                            latency_ms=latency_ms,
+                            tokens_in=actual_in,
+                            tokens_out=actual_out,
+                            ok=ok,
+                            error_class=type(err).__name__ if err else None,
+                            error_message=str(err)[:500] if err else None,
+                        )
+                    except (RuntimeError, OSError, ValueError) as _exc:  # defensive
+                        _log.warning("audit_record_failed: %s", _exc)
 
     # ── Phase 3: 路由 + 故障转移 ────────────────────────────────────────
     async def stream_with_fallback(
