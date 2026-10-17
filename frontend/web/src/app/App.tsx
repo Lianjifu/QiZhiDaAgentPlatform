@@ -21,6 +21,9 @@ const AdminOverview = lazy(() => import('@/features/overview'));
 const AdminAgents = lazy(() => import('@/features/agents'));
 const AdminAgentDetail = lazy(() => import('@/features/agents/AgentDetailPage'));
 const AdminAgentCreate = lazy(() => import('@/features/agents/AgentCreatePage'));
+// Phase 23: agent_factory admin (templates + versions + 策略路由)
+const AdminFactoryTemplates = lazy(() => import('@/features/agents/FactoryTemplatesPage'));
+const AdminFactoryTemplateDetail = lazy(() => import('@/features/agents/FactoryTemplateDetailPage'));
 const AdminKnowledge = lazy(() => import('@/features/knowledge'));
 const AdminKnowledgeKbDetail = lazy(() => import('@/features/knowledge/KbDetailPage'));
 const AdminKnowledgeDocDetail = lazy(() => import('@/features/knowledge/DocDetailPage'));
@@ -132,6 +135,9 @@ export default function App() {
             <Route path="/admin/agents/new" element={<AdminAgentCreate />} />
             <Route path="/admin/agents/:id/edit" element={<AdminAgentDetail />} />
             <Route path="/admin/agents/:id" element={<AdminAgentDetail />} />
+            {/* Phase 23: agent_factory 模板 (与 CatalogAgent 并行, 不替代) */}
+            <Route path="/admin/agents/factory" element={<AdminFactoryTemplates />} />
+            <Route path="/admin/agents/factory/:id" element={<AdminFactoryTemplateDetail />} />
             <Route path="/admin/knowledge" element={<AdminKnowledge />} />
             <Route path="/admin/knowledge/kbs/new" element={<AdminKnowledgeKbCreate />} />
             <Route path="/admin/knowledge/kbs/:id" element={<AdminKnowledgeKbDetail />} />
