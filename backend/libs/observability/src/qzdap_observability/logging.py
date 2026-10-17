@@ -48,6 +48,26 @@ def configure_logging(*, level: str = "INFO", json: bool = True) -> None:
         cache_logger_on_first_use=True,
     )
 
+    # Bridge stdlib `logging` → structlog so any `logging.getLogger(__name__).info(...)`
+    # call (e.g. background tasks) renders through the same JSON / console pipeline.
+    class _StructlogHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            try:
+                structlog.get_logger(record.name).log(
+                    record.levelno, record.getMessage()
+                )
+            except (ValueError, TypeError, RuntimeError):
+                # Never raise from a logging handler
+                pass
+
+    root = logging.getLogger()
+    # Replace previous install (test re-runs / hot reload).
+    for h in list(root.handlers):
+        if isinstance(h, _StructlogHandler):
+            root.removeHandler(h)
+    root.addHandler(_StructlogHandler(level=getattr(logging, level)))
+    root.setLevel(getattr(logging, level))
+
     # Quiet noisy third-party loggers
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 

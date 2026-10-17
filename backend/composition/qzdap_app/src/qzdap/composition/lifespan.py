@@ -416,9 +416,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                                     factory = _ModelFactory()
                                     svc = factory.for_session(p_session)
                                     await svc.health_check(prov.id)
-                                    # health_check 内部写 health 事件
+                                    # health_check 内部 commit + 写 health 事件
                             except Exception as _prov_exc:  # defensive
-                                _log.debug(
+                                _log.warning(
                                     "health_sampler_provider_failed: %s: %s",
                                     prov.id,
                                     _prov_exc,
@@ -440,7 +440,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ):
         try:
             sampler_task = asyncio.create_task(_health_sampler_loop())
-            _log.info("health_sampler_started interval=%ds", 60)
+            _log.info(
+                "health_sampler_started interval=%ds",
+                int(os.environ.get("QZDAP_HEALTH_SAMPLER_INTERVAL", "60")),
+            )
         except RuntimeError as _task_exc:
             _log.warning("health_sampler_failed_to_start: %s", _task_exc)
             sampler_task = None

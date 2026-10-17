@@ -319,6 +319,12 @@ class ModelService:
                 occurred_at=datetime.now(UTC).isoformat(),
             )
         )
+        # 显式 commit: 防止 outer rollback (e.g. background sampler session) 抹掉.
+        commit_session = self._quota_session
+        if commit_session is None:
+            commit_session = getattr(self._health, "_s", None)
+        if commit_session is not None:
+            await commit_session.commit()
         return {
             "success": bool(result.get("success")),
             "providerId": str(provider.id),
