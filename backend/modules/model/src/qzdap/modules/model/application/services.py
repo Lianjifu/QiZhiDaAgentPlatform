@@ -12,7 +12,7 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
 import httpx
@@ -971,6 +971,12 @@ class ModelService:
     # 再用策略从 workspace 内 active model 里选 N 个候选, primary 不在候选时也走 chain.
     # 输出: 排序好的 list[ModelId] (第一个试, 失败按顺序 fallback).
     # 注: RouteRepository.get + workspace 内 list_for_workspace 都在 session 内.
+
+    # Phase 21: round-robin 状态. 进程内 dict, key=(workspace_id, route_id),
+    # value=下一个要尝试的 fallback 索引. 重启后从 0 开始 (acceptable for now;
+    # 多实例需替换为 DB/redis INCR, 留作 Phase 22+).
+    _rr_counters: ClassVar[dict[tuple[UUID, UUID], int]] = {}
+
     async def select_chain_for_strategy(
         self, *, actor: ActorContext, route_id: ModelId
     ) -> list[ModelId]:
@@ -982,6 +988,11 @@ class ModelService:
             success_rate 降序, latency_ms 升序; primary 排第一
           - 'cost-first': 按 (price_in + price_out) 升序, primary 排第一
           - 'latency-first': 按 latency_ms 升序, primary 排第一
+          - 'round-robin' (Phase 21): primary 排第一, fallback 链按上次位置
+            轮转 (跨请求). 适合同质 model 池, 让每个分摊流量
+          - 'weighted' (Phase 21): fallback_model_ids 可为
+            [{'id': 'uuid', 'weight': 2.0}, ...] — 按 weight 比例采样第一个;
+            旧 string-list 当 weight=1.0 处理
 
         返回的链: [primary_or_best, *fallback_candidates]. 全部走 admin_models.
         """
@@ -1046,7 +1057,117 @@ class ModelService:
                 chain.append(m.id)
         else:
             chain = [m.id for m in sorted_models]
+
+        # Phase 21: round-robin / weighted — 替换 fallback 段
+        if strategy == "round-robin":
+            return self._apply_round_robin(
+                workspace_id=actor.workspace_id,  # type: ignore[arg-type]
+                route_id=UUID(str(route_id)),
+                chain=chain,
+                primary_id=primary_id,
+            )
+        if strategy == "weighted":
+            return self._apply_weighted(
+                chain=chain,
+                primary_id=primary_id,
+                fallback_model_ids=rule.fallback_model_ids,
+            )
         return chain
+
+    def _apply_round_robin(
+        self,
+        *,
+        workspace_id: UUID,
+        route_id: UUID,
+        chain: list[ModelId],
+        primary_id: UUID,
+    ) -> list[ModelId]:
+        """Phase 21: round-robin. primary 固定第一, fallback 段旋转.
+
+        counter 按 (workspace, route) 维度, 每次调用 +1, 取模 fallback 段长度.
+        跨 process 重启 counter 归零 (acceptable).
+        """
+        fallbacks = [m for m in chain if UUID(str(m)) != primary_id]
+        if not fallbacks:
+            return chain
+        key = (workspace_id, route_id)
+        idx = self._rr_counters.get(key, 0) % len(fallbacks)
+        self._rr_counters[key] = idx + 1
+        rotated = fallbacks[idx:] + fallbacks[:idx]
+        return [ModelId(primary_id), *rotated]
+
+    def _apply_weighted(
+        self,
+        *,
+        chain: list[ModelId],
+        primary_id: UUID,
+        fallback_model_ids: list[str],
+    ) -> list[ModelId]:
+        """Phase 21: weighted 采样. primary 固定第一, fallback 按 weight 比例采样.
+
+        输入两种格式:
+          - 旧 string-list ['uuid1', 'uuid2']: 当 weight=1.0 全等
+          - 新 dict-list [{'id': 'uuid', 'weight': 2.0}, ...]: 按 weight 比例采样
+
+        采样: 用 hash(route 状态 + monotonic nano) 选 weighted 第一个, 其他按
+        weight 降序排. 这样同一秒内多次调用会得到不同采样 (best-effort,
+        不保证严格 RR).
+        """
+        import random
+        from dataclasses import asdict, is_dataclass
+
+        # 解析 fallback 为 [(id, weight), ...]
+        parsed: list[tuple[UUID, float]] = []
+        for item in fallback_model_ids:
+            if isinstance(item, str):
+                try:
+                    parsed.append((UUID(item), 1.0))
+                except (ValueError, TypeError):
+                    continue
+            elif isinstance(item, dict):
+                try:
+                    fid = UUID(str(item.get("id")))
+                    raw_w = item.get("weight")
+                    # 显式 None 检查 — 0.0 or 1.0 = 1.0 (Python or 把 0 当 falsy)
+                    weight = 1.0 if raw_w is None else float(raw_w)
+                except (ValueError, TypeError):
+                    continue
+                if weight <= 0:
+                    continue
+                parsed.append((fid, weight))
+            elif is_dataclass(item):
+                # 兼容 RouteRule-like dataclass (rare)
+                d = asdict(item)
+                try:
+                    fid = UUID(str(d.get("id")))
+                    weight = float(d.get("weight") or 1.0)
+                except (ValueError, TypeError):
+                    continue
+                parsed.append((fid, weight))
+        if not parsed:
+            return chain
+        # 链中已知 id
+        chain_set = {UUID(str(m)) for m in chain}
+        # filter 掉不在 chain 的 (config 漂移)
+        parsed = [(fid, w) for fid, w in parsed if fid in chain_set]
+        if not parsed:
+            return chain
+        # 按 weight 选首
+        rng = random.Random()
+        ids = [fid for fid, _ in parsed]
+        weights = [w for _, w in parsed]
+        chosen = rng.choices(ids, weights=weights, k=1)[0]
+        # 排序: chosen 第一, 其他按 weight 降序
+        others = sorted(
+            [(fid, w) for fid, w in parsed if fid != chosen],
+            key=lambda x: -x[1],
+        )
+        # primary 排第一, 再 chosen, 再 others (转成 ModelId)
+        return [
+            ModelId(primary_id),
+            ModelId(chosen),
+            *(ModelId(fid) for fid, _ in others),
+        ]
 
     # 给 facade 暴露新方法 (Phase 7): 用 route_id 走策略选择 + fallback chain
     async def stream_with_route(

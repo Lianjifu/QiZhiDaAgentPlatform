@@ -55,7 +55,10 @@ def _utcnow() -> datetime:
 # Phase 15: 与 Phase 7 model_service.select_chain_for_strategy 的 strategy 保持一致.
 # 来源: modules/model/application/services.py 的 _ALLOWED_STRATEGIES
 _ALLOWED_STRATEGIES: frozenset[str] = frozenset(
-    {"fallback", "quality-first", "cost-first", "latency-first"}
+    {
+        "fallback", "quality-first", "cost-first", "latency-first",
+        "round-robin", "weighted",  # Phase 21
+    }
 )
 
 

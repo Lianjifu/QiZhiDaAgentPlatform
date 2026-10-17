@@ -9,7 +9,10 @@ from uuid import UUID
 
 ModelStatus = Literal["active", "graying", "draft", "retired"]
 ProviderStatus = Literal["healthy", "degraded", "down"]
-RouteStrategy = Literal["quality-first", "cost-first", "latency-first", "fallback"]
+RouteStrategy = Literal[
+    "quality-first", "cost-first", "latency-first", "fallback",
+    "round-robin", "weighted",
+]
 TaskType = Literal[
     "reasoning", "generation", "classification", "embedding", "summarization"
 ]
@@ -32,7 +35,7 @@ ModelProtocol = Literal[
 MODEL_STATUSES = frozenset({"active", "graying", "draft", "retired"})
 PROVIDER_STATUSES = frozenset({"healthy", "degraded", "down"})
 ROUTE_STRATEGIES = frozenset(
-    {"quality-first", "cost-first", "latency-first", "fallback"}
+    {"quality-first", "cost-first", "latency-first", "fallback", "round-robin", "weighted"}
 )
 TASK_TYPES = frozenset(
     {"reasoning", "generation", "classification", "embedding", "summarization"}
@@ -302,7 +305,7 @@ class RouteRule:
     strategy: RouteStrategy
     priority: int
     primary_model_id: UUID
-    fallback_model_ids: list[str]
+    fallback_model_ids: list[str | dict[str, Any]]
     enabled: bool
     description: str
     created_at: datetime

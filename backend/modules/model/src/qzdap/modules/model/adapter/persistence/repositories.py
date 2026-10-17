@@ -242,6 +242,14 @@ class SqlRouteRepository(RouteRepository):
         row = await self._s.get(RouteORM, route_id)
         if row is None or _cross_tenant(row):
             return None
+        # Phase 21: weighted 策略可能用 [{id, weight}]; 旧 string-list 仍支持.
+        # 保留 dict 原样, 不强制 str() (否则 dict 变 repr 字符串, 配漂移).
+        fb: list = []
+        for item in row.fallback_model_ids or []:
+            if isinstance(item, dict):
+                fb.append(item)
+            else:
+                fb.append(str(item))
         return RouteRule(
             id=row.id,
             tenant_id=row.tenant_id,
@@ -251,7 +259,7 @@ class SqlRouteRepository(RouteRepository):
             strategy=row.strategy,  # type: ignore[arg-type]
             priority=row.priority,
             primary_model_id=row.primary_model_id,
-            fallback_model_ids=[str(item) for item in (row.fallback_model_ids or [])],
+            fallback_model_ids=fb,
             enabled=row.enabled,
             description=row.description,
             created_at=row.created_at,
@@ -277,7 +285,8 @@ class SqlRouteRepository(RouteRepository):
                     priority=row.priority,
                     primary_model_id=row.primary_model_id,
                     fallback_model_ids=[
-                        str(item) for item in (row.fallback_model_ids or [])
+                        item if isinstance(item, dict) else str(item)
+                        for item in (row.fallback_model_ids or [])
                     ],
                     enabled=row.enabled,
                     description=row.description,
