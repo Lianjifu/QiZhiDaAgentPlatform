@@ -16,7 +16,7 @@
 [![CI](https://img.shields.io/badge/CI_Passing-10b981?style=flat-square)](#-验证与常见问题)
 [![Release](https://img.shields.io/badge/v0.1.0-eab308?style=flat-square)](#-验证与常见问题)
 
-[项目介绍](#-项目介绍) · [产品价值](#-产品价值) · [重点产品](#-重点产品讲解) · [快速开始](#-快速开始) · [控制台](#-控制台一览) · [功能模块](#-功能模块) · [技术架构](#-技术架构) · [本地部署](#-本地部署) · [文档索引](#-文档索引) · [贡献](#-贡献与社区)
+[项目介绍](#-项目介绍) · [产品价值](#-产品价值) · [重点产品](#-重点产品讲解) · [快速开始](#-快速开始) · [控制台](#-控制台一览) · [功能模块](#-功能模块) · [技术架构](#-技术架构) · [本地部署](#-本地部署) · [文档索引](#-文档索引) · [贡献](#-贡献)
 
 </div>
 
@@ -489,7 +489,7 @@ curl http://127.0.0.1:9150/healthz     # 网关健康
 
 ---
 
-## <img src="docs/images/icons/handshake.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 贡献与社区
+## <img src="docs/images/icons/handshake.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 贡献
 
 我们欢迎所有形式的贡献 — 代码、文档、Issue、Discussion、PR。
 
@@ -527,11 +527,6 @@ chore(scope): 杂项
 - 前端 pre-commit: eslint · prettier · tsc
 - 多租户请求携带 `X-Tenant-Id` 与 `X-Workspace-Id`
 - 命名空间: Python `qzdap.*` · 前端 `@qzdap/web-*` · 环境变量 `QZDAP_*`
-
-### 社区
-
-- <img src="docs/images/icons/mail.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 邮件: <dev@qizhida.local>
-- <img src="docs/images/icons/message-circle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 微信群: 扫描 [logo 旁二维码](./docs/images/brand/) (内部)
 
 ---
 
