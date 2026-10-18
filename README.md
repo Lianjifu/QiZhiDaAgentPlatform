@@ -181,23 +181,69 @@ open http://127.0.0.1:9152
 
 ### 信息架构
 
+QIZHIDA 平台按 **展示层 / 能力层 / 基础设施层** 三层架构组织:
+
+- **展示层** — 3 个用户入口 (成员 / 管理员 / 集成方)
+- **能力层** — 15 个能力域,按业务核心 / 能力增强 / 模型层 / 横切治理 4 组分类
+- **基础设施层** — 存储 (Postgres + Redis + MinIO) + 沙箱 (gVisor) + LLM 供应商
+
 ```mermaid
-graph TD
-    Q[QIZHIDA Platform]
+graph TB
+    L1["展示层 (3 个用户入口)"]
+    L2["能力层 (15 个能力域, 按职能分 4 组)"]
+    L3["基础设施层 (存储 / 沙箱 / 模型)"]
 
     subgraph Sides [" "]
-        U["用户侧 (成员)<br/>• 首页 / 对话<br/>• 智能体 / 知识<br/>• 技能 / 工作流<br/>• 任务 / 协作 / 设置"]
-        A["管理侧 (管理员)<br/>• 运营总览<br/>• 智能体管理<br/>• 知识 / 技能 / 工作流<br/>• 记忆 / 模型 / 额度<br/>• 渠道 / 评测 / 审计<br/>• 反馈 / 平台设置"]
-        P["平台侧 (集成方)<br/>• OpenAPI<br/>• SSE 流式<br/>• 渠道 Webhook<br/>• SDK (计划)"]
+        direction LR
+        U["<b>用户侧 (成员)</b><br/>首页 · 对话<br/>智能体 · 知识<br/>技能 · 工作流<br/>任务 · 协作"]
+        A["<b>管理侧 (管理员)</b><br/>运营总览 · 智能体管理<br/>知识 / 技能 / 工作流<br/>记忆 / 模型 / 额度<br/>渠道 / 评测 / 审计<br/>反馈 / 平台设置"]
+        P["<b>平台侧 (集成方)</b><br/>OpenAPI · SSE<br/>渠道 Webhook<br/>SDK (计划)"]
     end
 
-    subgraph Modules ["15 个能力域"]
-        M["identity · agent_runtime · agent_factory<br/>skill · tool · knowledge · memory<br/>model · channel · orchestration<br/>governance · evaluation · self_evolution<br/>observability · platform"]
+    subgraph Capability [" "]
+        direction LR
+        subgraph BIZ ["业务核心"]
+            direction TB
+            M1[identity]
+            M2[agent_runtime]
+            M3[agent_factory]
+            M4[channel]
+        end
+        subgraph CAP ["能力增强"]
+            direction TB
+            M5[knowledge]
+            M6[memory]
+            M7[skill]
+            M8[tool]
+            M9[orchestration]
+        end
+        subgraph MDL ["模型层"]
+            M10[model]
+        end
+        subgraph GOV ["横切治理"]
+            direction TB
+            M11[governance]
+            M12[evaluation]
+            M13[self_evolution]
+            M14[observability]
+            M15[platform]
+        end
     end
 
-    Q --> Sides
-    Q --> Modules
-    Sides --- Modules
+    subgraph Infra [" "]
+        direction LR
+        I1[Postgres + pgvector]
+        I2[Redis]
+        I3[MinIO]
+        I4[Sandbox<br/>gVisor]
+        I5[LLM Providers]
+    end
+
+    L1 --- Sides
+    L2 --- Capability
+    L3 --- Infra
+    Sides --> Capability
+    Capability --> Infra
 ```
 
 ### 15 个能力域总表
