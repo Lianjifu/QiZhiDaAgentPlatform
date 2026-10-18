@@ -220,7 +220,12 @@ def build_router() -> APIRouter:
         )
 
         settings = _settings(request)
-        model = body.model or settings.llm_default_model
+        # 历史: 之前这里是 `body.model or settings.llm_default_model`
+        # (env 兜底). QZDAP_LLM_API_KEY 路径下线后, model 完全由
+        # ``RunTurnUseCase`` + ``CatalogModelResolver`` 决定 (从
+        # ``agent.default_model_id`` 解析, 缺失时抛清晰错误).
+        # ``settings`` 仅用于租户相关读取.
+        model = body.model
         owner = _current_owner_id(request)
 
         # If a tool_service is bound on this request (P2), wrap it as a

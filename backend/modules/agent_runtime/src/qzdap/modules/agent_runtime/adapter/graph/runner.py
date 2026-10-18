@@ -13,6 +13,7 @@ from qzdap_schema.dtos.turn import (
     AttachmentReadyChunk,
     ContextCompactedChunk,
     DoneChunk,
+    InteractiveActionChunk,
     KnowledgeSearchChunk,
     MemoryWriteChunk,
     MessageChunk,
@@ -99,6 +100,9 @@ class SessionGraphRunner:
         resume: dict[str, Any] | None = None,
         # Phase 12: 策略路由 ID (UUID). 优先于 model — 走 Phase 7 select_chain_for_strategy.
         route_id: ModelId | None = None,
+        # Phase 14: 父 session id. delegate_to_agent 工具需要用它 spawn sub-session.
+        # 默认 None — 测试 / 评估场景没有父 session.
+        session_id: UUID | None = None,
     ) -> AsyncIterator[TurnChunk]:
         seq = 0
         max_steps = 8
@@ -145,7 +149,8 @@ class SessionGraphRunner:
             pending = state.get("pending_approval")
             if pending and pending.get("decision") == "approved":
                 extra, state = await self._finish_pending(
-                    state, pending, turn_id, seq, whitelist
+                    state, pending, turn_id, seq, whitelist,
+                    session_id=session_id,
                 )
                 for chunk in extra:
                     seq = chunk.seq
@@ -281,9 +286,14 @@ class SessionGraphRunner:
                         reason="高风险操作需要确认后才会执行",
                     )
                     break
+                # Phase 14: 把 parent session_id 注入 delegate_to_agent 的 arguments,
+                # 让 stub tool 知道在哪个 session 上 spawn sub-session.
+                tool_arguments = dict(arguments)
+                if name == "delegate_to_agent" and session_id is not None:
+                    tool_arguments.setdefault("parent_session_id", str(session_id))
                 result = await execute_tool(
                     name=name,
-                    arguments=arguments,
+                    arguments=tool_arguments,
                     skill_port=self._skill_port,
                     sandbox_port=self._sandbox_port,
                     tool_port=self._tool_port,
@@ -491,11 +501,18 @@ class SessionGraphRunner:
         turn_id: UUID,
         seq: int,
         whitelist: dict[str, dict[str, Any]],
+        *,
+        session_id: UUID | None = None,
     ) -> tuple[list[Any], LoopState]:
         _ = whitelist
+        pending_tool = str(pending.get("tool_name"))
+        pending_args = dict(pending.get("arguments") or {})
+        # Phase 14: 同上, 把 parent session_id 注入 delegate_to_agent.
+        if pending_tool == "delegate_to_agent" and session_id is not None:
+            pending_args.setdefault("parent_session_id", str(session_id))
         result = await execute_tool(
-            name=str(pending.get("tool_name")),
-            arguments=dict(pending.get("arguments") or {}),
+            name=pending_tool,
+            arguments=pending_args,
             skill_port=self._skill_port,
             sandbox_port=self._sandbox_port,
             tool_port=self._tool_port,
@@ -520,7 +537,26 @@ class SessionGraphRunner:
             is_error=result.get("ok") is False,
             latency_ms=0,
         )
-        return [chunk], state
+        out: list[TurnChunk] = [chunk]
+        # Stub tools (frontend-coupled) carry `_pending_frontend_action` in
+        # their result. Emit a sibling `interactive_action` chunk so the
+        # client knows to render the matching UI (modal/toast/drawer).
+        if result.get("ok") and isinstance(result.get("result"), dict):
+            inner = result["result"]
+            action = inner.get("_pending_frontend_action")
+            if action in {
+                "show_question_card", "toast", "render_plan",
+                "render_todo_list", "delegate_agent",
+            }:
+                out.append(InteractiveActionChunk(
+                    turn_id=turn_id,
+                    seq=seq + 2,
+                    call_id=str(pending.get("call_id") or ""),
+                    action=action,
+                    payload={k: v for k, v in inner.items()
+                              if k != "_pending_frontend_action"},
+                ))
+        return out, state
 
 
 async def _passthrough_llm(state: LoopState) -> LoopState:

@@ -22,6 +22,7 @@ from uuid import UUID
 from fastapi import FastAPI
 
 from qzdap.composition.container import Container
+from qzdap.modules.memory.domain.entities import EMBEDDING_DIM
 
 _log = getLogger(__name__)
 
@@ -201,6 +202,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
 
     app.state.agent_runtime_factory = _AgentRuntimeFactory()
+
+    # Phase 14: 注入 DelegateSubagentUseCase 到 app.state, 让 builtin
+    # delegate_to_agent 工具通过 _get_delegate_subagent_usecase() 拿.
+    from qzdap.modules.agent_runtime.application.use_cases.delegate_subagent import (
+        DelegateSubagentUseCase,
+    )
+    app.state.delegate_subagent_usecase = DelegateSubagentUseCase(
+        agent_runtime_factory=app.state.agent_runtime_factory,
+        session_factory=container.session_factory(),
+    )
+    # 把 use case 句柄推到 builtin_extra_tools 那边.
+    from qzdap.modules.tool.adapter.adapters.builtin_extra_tools import (
+        bind_delegate_subagent_usecase,
+    )
+    bind_delegate_subagent_usecase(app.state.delegate_subagent_usecase)
 
     from qzdap.modules.agent_runtime.adapter.graph import SessionGraphRunner
     from qzdap.modules.agent_runtime.adapter.persistence.catalog_repositories import (
@@ -483,9 +499,39 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         CustomInvokerRegistry,
         MCPRuntimeAdapter,
         OpenAPIRuntimeAdapter,
+        ToolAuditRecorder,
+        bind_audit_recorder,
+        bind_settings_for_tools,
+        built_in_invoke_apply_patch,
+        built_in_invoke_ask_user_question,
+        built_in_invoke_bash,
+        built_in_invoke_calculator,
         built_in_invoke_clock,
+        built_in_invoke_code_search,
+        built_in_invoke_convert_format,
+        built_in_invoke_csv_query,
+        built_in_invoke_delegate_to_agent,
+        built_in_invoke_diff,
+        built_in_invoke_edit_file,
         built_in_invoke_echo,
+        built_in_invoke_fetch_url_with_auth,
+        built_in_invoke_glob,
+        built_in_invoke_grep,
+        built_in_invoke_git_diff,
+        built_in_invoke_git_log,
+        built_in_invoke_git_status,
+        built_in_invoke_http_fetch,
+        built_in_invoke_image_view,
+        built_in_invoke_json_query,
+        built_in_invoke_ls,
+        built_in_invoke_notify_user,
+        built_in_invoke_pdf_read,
+        built_in_invoke_plan_submit,
+        built_in_invoke_read_file,
         built_in_invoke_reverse,
+        built_in_invoke_todo_write,
+        built_in_invoke_web_search,
+        built_in_invoke_write_file,
     )
     from qzdap.modules.tool.adapter.events import ToolEventPublisher
     from qzdap.modules.tool.adapter.persistence.repositories import (
@@ -501,10 +547,47 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     mcp_rt = MCPRuntimeAdapter(http=http_client, secrets_resolver=secrets_resolver)
 
-    custom_invoker = CustomInvokerRegistry()
+    custom_invoker = CustomInvokerRegistry(workspace_root=container.settings.workspace_root)
+    bind_settings_for_tools(container.settings)
+    bind_audit_recorder(ToolAuditRecorder(session_factory=container.session_factory()))
     custom_invoker.register("echo", built_in_invoke_echo)
     custom_invoker.register("reverse", built_in_invoke_reverse)
     custom_invoker.register("clock", built_in_invoke_clock)
+    # 内置联网工具 — 主进程 httpx 出网, 不走 sandbox. 见
+    # custom_invoker.built_in_invoke_web_search / built_in_invoke_http_fetch.
+    custom_invoker.register("web_search", built_in_invoke_web_search)
+    custom_invoker.register("http_fetch", built_in_invoke_http_fetch)
+    # 文件系统 + shell built-ins (对标 Claude Code 的 Bash / Read / Write /
+    # Edit / LS / Glob / Grep). 全部走 CUSTOM 协议 in-process, 工作区路径
+    # 限制在 settings.workspace_root / <workspace_id>/ 下, _safe_resolve()
+    # 拦截路径穿越与 protected prefix (.git/ / node_modules/ / .venv/ 等)。
+    custom_invoker.register("bash", built_in_invoke_bash)
+    custom_invoker.register("read_file", built_in_invoke_read_file)
+    custom_invoker.register("write_file", built_in_invoke_write_file)
+    custom_invoker.register("edit_file", built_in_invoke_edit_file)
+    custom_invoker.register("ls", built_in_invoke_ls)
+    custom_invoker.register("glob", built_in_invoke_glob)
+    custom_invoker.register("grep", built_in_invoke_grep)
+    # ── Extended built-ins (ticket: agent-builtin-tools-v2.md) ──────
+    custom_invoker.register("apply_patch", built_in_invoke_apply_patch)
+    custom_invoker.register("diff", built_in_invoke_diff)
+    custom_invoker.register("image_view", built_in_invoke_image_view)
+    custom_invoker.register("pdf_read", built_in_invoke_pdf_read)
+    custom_invoker.register("json_query", built_in_invoke_json_query)
+    custom_invoker.register("csv_query", built_in_invoke_csv_query)
+    custom_invoker.register("git_status", built_in_invoke_git_status)
+    custom_invoker.register("git_diff", built_in_invoke_git_diff)
+    custom_invoker.register("git_log", built_in_invoke_git_log)
+    custom_invoker.register("code_search", built_in_invoke_code_search)
+    custom_invoker.register("convert_format", built_in_invoke_convert_format)
+    custom_invoker.register("fetch_url_with_auth", built_in_invoke_fetch_url_with_auth)
+    custom_invoker.register("calculator", built_in_invoke_calculator)
+    # ── Frontend-coupled stubs ──────────────────────────────────────
+    custom_invoker.register("ask_user_question", built_in_invoke_ask_user_question)
+    custom_invoker.register("notify_user", built_in_invoke_notify_user)
+    custom_invoker.register("plan_submit", built_in_invoke_plan_submit)
+    custom_invoker.register("todo_write", built_in_invoke_todo_write)
+    custom_invoker.register("delegate_to_agent", built_in_invoke_delegate_to_agent)
 
     class _ToolFactory:
         def __init__(self) -> None:
@@ -562,7 +645,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         PgVectorStore(
             container.engine(),
             table="admin_memory_vec",
-            dim=container.settings.llm_embedding_dim,
+            dim=EMBEDDING_DIM,
         )
     )
     memory_embedding = container.memory_embedding_adapter()
@@ -594,7 +677,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         PgVectorStore(
             container.engine(),
             table="admin_knowledge_chunks_vec",
-            dim=container.settings.llm_embedding_dim,
+            dim=EMBEDDING_DIM,
         )
     )
     knowledge_embedding = container.memory_embedding_adapter()
@@ -1304,7 +1387,22 @@ async def ensure_default_resources(container: Container) -> None:
 
                     from qzdap.modules.tool.adapter.persistence.models import ToolORM
 
-                    for name in ("echo", "reverse", "clock"):
+                    for name in (
+                        "echo", "reverse", "clock",
+                        "web_search", "http_fetch",
+                        "bash", "read_file", "write_file", "edit_file",
+                        "ls", "glob", "grep",
+                        # Phase 2 extended (agent-builtin-tools-v2.md)
+                        "apply_patch", "diff", "image_view", "pdf_read",
+                        "json_query", "csv_query",
+                        "git_status", "git_diff", "git_log",
+                        "code_search", "convert_format",
+                        "fetch_url_with_auth", "calculator",
+                        # Frontend-coupled stubs
+                        "ask_user_question", "notify_user",
+                        "plan_submit", "todo_write",
+                        "delegate_to_agent",
+                    ):
                         session.add(
                             ToolORM(
                                 id=uuid4(),

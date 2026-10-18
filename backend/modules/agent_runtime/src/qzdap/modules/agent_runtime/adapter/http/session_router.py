@@ -10,6 +10,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 
+from qzdap.modules.agent_runtime.adapter.http.dto import (
+    CreateSessionRequest,
+    InteractiveAnswerRequest,
+    RunTurnRequest,
+    SessionResponse,
+    TurnResponse,
+)
 from qzdap.modules.agent_runtime.adapter.http.sse import sse_stream
 from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
 
@@ -271,6 +278,61 @@ def build_session_router() -> APIRouter:
             x_user_id,
             False,
         )
+
+    @router.post(
+        "/api/sessions/{session_id}/interactive/answer",
+        status_code=202,
+    )
+    async def submit_interactive_answer(
+        session_id: UUID,
+        body: InteractiveAnswerRequest,
+        request: Request,
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
+        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+    ) -> dict[str, Any]:
+        """Record user's answer to a frontend-coupled stub tool.
+
+        The stub tool already returned a synthetic answer to the LLM
+        (so the LLM stream continues without pause). The frontend posts
+        the user's *real* answer here for:
+          1. audit log row (tool.interactive_answer)
+          2. session transcript record (for replay / debugging)
+
+        The frontend then drives a follow-up user turn via
+        POST /api/sessions/{id}/turns/stream so the LLM is told the
+        user's actual pick in the next turn.
+        """
+        actor = _owner_id(request, x_user_id)
+        # Audit log (best-effort; never raises).
+        try:
+            from qzdap.modules.governance.adapter.persistence.models import (
+                AuditLogORM,
+            )
+            container = getattr(request.app.state, "container", None)
+            if container is not None:
+                sf = container.session_factory()
+                async with sf.session() as session:
+                    session.add(AuditLogORM(
+                        id=__import__("uuid").uuid4(),
+                        tenant_id=x_tenant_id,
+                        actor_id=actor,
+                        event_type="tool.interactive_answer",
+                        payload={
+                            "session_id": str(session_id),
+                            "call_id": body.call_id,
+                            "action": body.action,
+                            "payload": body.payload,
+                        },
+                    ))
+                    await session.commit()
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning(
+                "interactive_answer audit_log write failed", exc_info=True,
+            )
+        return {"accepted": True, "call_id": body.call_id, "action": body.action}
 
     # ------------------------------------------------------------------
     # Round-7 增量: 计划批准 / 拒绝 + 产物下载

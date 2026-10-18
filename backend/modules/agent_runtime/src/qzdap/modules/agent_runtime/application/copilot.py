@@ -231,6 +231,9 @@ class CopilotSessionService:
             route_id=route_id,
             rolling_summary=str(session.metadata.get("rolling_summary") or ""),
             resume=graph_resume if graph_resume.get("pending_approval") or resume else None,
+            # Phase 14: 把 session_id 透给 graph, 让 delegate_to_agent 工具 stub
+            # 知道在哪个 session 上 spawn sub-session.
+            session_id=session_id,
         )
         async with aclosing(graph_stream):
             async for chunk in graph_stream:
