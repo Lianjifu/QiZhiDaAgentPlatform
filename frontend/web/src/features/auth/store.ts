@@ -76,6 +76,23 @@ export const useAuthStore = create<AuthState>()(
             localStorage.removeItem(TOKEN_STORAGE_KEY);
             // 触发 logout 同步 state (会清掉 persisted user)
             useAuthStore.setState({ user: null, token: null, isAuthed: false });
+            // 关键: 也要清掉 zustand 自己的 persist storage, 否则下次 hydrate 又会
+            // 读回 isAuthed=true 然后 useLogin 立即重定向到 /admin/overview → 全页 401.
+            // 直接清 storage entry 而不是整个 clearStorage() (后者会清其它无关 key)
+            try {
+              const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed?.state) {
+                  parsed.state.user = null;
+                  parsed.state.token = null;
+                  parsed.state.isAuthed = false;
+                  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(parsed));
+                }
+              }
+            } catch {
+              // ignore — fallback: 下次 hydrate 仍会重复一次, 但不影响正确性
+            }
             return;
           }
           localStorage.setItem(TOKEN_STORAGE_KEY, state.token);
