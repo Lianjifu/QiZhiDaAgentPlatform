@@ -111,14 +111,19 @@ def _hdrs(tenant: UUID = TENANT, workspace: UUID = WORKSPACE) -> dict[str, str]:
 
 
 async def _seed_session(ctx: dict, *, closed: bool = False) -> UUID:
-    """Seed a session via the service so the HTTP layer only sees an id."""
+    """Seed a session via the service so the HTTP layer only sees an id.
+
+    Note: the router's ``_current_owner_id`` returns ``UUID(int=0)`` in
+    test mode (no auth middleware), so the seeded session must use the
+    same zero owner for the HTTP layer to find it.
+    """
     s = (
         await ctx["svc"]
         .create_session()
         .execute(
             tenant_id=TENANT,
             workspace_id=WORKSPACE,
-            owner_id=USER,
+            owner_id=UUID(int=0),  # matches _current_owner_id fallback
             agent_id=AGENT,
             agent_version="1.0.0",
         )

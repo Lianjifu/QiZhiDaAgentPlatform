@@ -13,7 +13,7 @@ from qzdap_vault.actor import ActorContext
 from qzdap.modules.model.adapter.http.router import build_router
 from qzdap.modules.model.domain.errors import CredentialNotFound, ModelNotFound
 
-from .test_model_catalog import TENANT, WORKSPACE, _svc
+from test_model_catalog import TENANT, WORKSPACE, _svc
 
 
 class AADCipher:

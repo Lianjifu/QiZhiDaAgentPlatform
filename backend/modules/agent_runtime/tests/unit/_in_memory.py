@@ -41,6 +41,23 @@ class InMemorySessionRepository(SessionRepository):
         )
         return items[offset : offset + limit]
 
+    async def list_for_owner_workspace(
+        self,
+        owner_id: UUID,
+        workspace_id: UUID,
+        *,
+        limit: int = 200,
+    ) -> list[Session]:
+        items = sorted(
+            (
+                s for s in self._by_id.values()
+                if s.owner_id == owner_id and s.workspace_id == workspace_id
+            ),
+            key=lambda s: s.created_at,
+            reverse=True,
+        )
+        return items[:limit]
+
 
 class InMemoryTurnRepository(TurnRepository):
     def __init__(self) -> None:
@@ -51,6 +68,12 @@ class InMemoryTurnRepository(TurnRepository):
 
     async def get(self, turn_id: UUID) -> Turn | None:
         return self._by_id.get(turn_id)
+
+    async def latest_for_session(self, session_id: UUID) -> Turn | None:
+        turns = [t for t in self._by_id.values() if t.session_id == session_id]
+        if not turns:
+            return None
+        return max(turns, key=lambda t: t.created_at)
 
 
 class FakeLLM(LLMPort):

@@ -122,8 +122,8 @@ async def test_install_dedupes_within_one_call(recorder) -> None:
     bus = InProcessBus()
     # Manually subscribe twice for the same topic (bypassing dedupe)
     # to verify install() keeps only one entry per topic per call.
-    bus.subscribe("ModelInvoked", recorder.handle)
-    bus.subscribe("ModelInvoked", recorder.handle)
+    await bus.subscribe("ModelInvoked", recorder.handle)
+    await bus.subscribe("ModelInvoked", recorder.handle)
     await install(bus, recorder)
     # install() added 9 unique topics; the pre-existing 2 on ModelInvoked stay.
     assert bus._subs["ModelInvoked"][:2] == [recorder.handle, recorder.handle]  # type: ignore[attr-defined]

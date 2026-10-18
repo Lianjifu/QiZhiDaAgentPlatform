@@ -26,7 +26,7 @@ async def test_in_process_publish_invokes_handlers() -> None:
     async def handler(env: EventEnvelope) -> None:
         received.append(env)
 
-    bus.subscribe("FakeEvent", handler)
+    await bus.subscribe("FakeEvent", handler)
     env = EventEnvelope.wrap(
         FakeEvent(value=42),
         tenant_id=_uuid(),
@@ -50,8 +50,8 @@ async def test_failed_handler_does_not_break_others() -> None:
     async def good(env: EventEnvelope) -> None:
         received.append(1)
 
-    bus.subscribe("FakeEvent", bad)
-    bus.subscribe("FakeEvent", good)
+    await bus.subscribe("FakeEvent", bad)
+    await bus.subscribe("FakeEvent", good)
     env = EventEnvelope.wrap(
         FakeEvent(),
         tenant_id=_uuid(),

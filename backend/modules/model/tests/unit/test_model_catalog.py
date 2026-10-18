@@ -46,6 +46,17 @@ class _MemModels(ModelRepository):
     async def delete(self, model_id: UUID) -> None:
         self.rows.pop(model_id, None)
 
+    async def get_by_upstream_name(
+        self, *, workspace_id: UUID, upstream_model: str
+    ) -> Model | None:
+        for item in self.rows.values():
+            if (
+                item.workspace_id == workspace_id
+                and item.upstream_model == upstream_model
+            ):
+                return item
+        return None
+
 
 class _MemProviders(ProviderRepository):
     def __init__(self) -> None:

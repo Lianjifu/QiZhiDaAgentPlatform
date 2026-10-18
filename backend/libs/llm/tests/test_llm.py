@@ -12,6 +12,9 @@ from qzdap_llm.router import LLMRouter
 
 @pytest.mark.asyncio
 async def test_mock_chat_echo() -> None:
+    # 历史: 早期 MockLLMClient 在响应里加 "echo:" 前缀. c5e03a0 把 mock
+    # 改成 "能力问询触发 + 智能默认响应" — 现在 mock 返回的是友好的询问
+    # 而不是 echo. 这里只断言"返回了非空内容 + 终结 stop + usage", 不再锁具体文案.
     c = MockLLMClient(LLMConfig(mock_latency_ms=1))
     resp = await c.chat(
         ChatRequest(
@@ -19,7 +22,8 @@ async def test_mock_chat_echo() -> None:
             messages=[ChatMessage(role="user", content="hi")],
         )
     )
-    assert resp.message.content.startswith("echo:")
+    assert resp.message.content  # 非空
+    assert resp.finish_reason == "stop"
     assert resp.usage.input_tokens >= 0
 
 

@@ -54,6 +54,13 @@ class ScriptedLLM(LLMPort):
             usage=Usage(input_tokens=4, output_tokens=2),
         )
 
+    async def synthetic_chunks(
+        self, user_input: str, *, turn_id: UUID | None = None
+    ) -> list[dict[str, Any]]:
+        # 测试桩默认空 — 触发词驱动的事件在专门的 fixture 里覆盖.
+        _ = (user_input, turn_id)
+        return []
+
 
 class RecordingMemory:
     def __init__(self) -> None:

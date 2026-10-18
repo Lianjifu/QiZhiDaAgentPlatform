@@ -1,6 +1,6 @@
 from uuid import UUID
-from .test_model_admin import seeded
-from .test_model_catalog import WORKSPACE
+from test_model_admin import seeded
+from test_model_catalog import WORKSPACE
 
 
 async def test_health_check_executes_saved_provider_and_persists_event():
