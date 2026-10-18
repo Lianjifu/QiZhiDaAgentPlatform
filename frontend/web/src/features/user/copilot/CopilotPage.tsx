@@ -235,14 +235,28 @@ export default function Copilot() {
     setComposerMenu(null);
     try {
       let sid = sessionId;
-      if (!sid && entry?.agentId) {
-        const created = await createCopilotSession(entry.agentId, agentName ? `与${agentName}对话` : content.slice(0, 24));
+      let effectiveAgentId = entry?.agentId;
+      // Phase 24 fallback: 入口没传 agentId (例如直接 /copilot 进, 或 state 过期),
+      // 但有 agentName 时, 从 admin agents 列表里按名字找 id. 都找不到则用第一个 published.
+      if (!effectiveAgentId) {
+        try {
+          const rows = await getApiClient().get<{ items?: Array<{ id: string; name: string; status?: string }> } | Array<{ id: string; name: string; status?: string }>>('/api/admin/agents', { query: { tab: 'all' } });
+          const list: Array<{ id: string; name: string; status?: string }> = Array.isArray(rows) ? rows : (rows?.items ?? []);
+          const target = agentName
+            ? list.find((row) => row.name === agentName || row.name?.includes(agentName))
+            : list.find((row) => row.status === 'published') ?? list[0];
+          if (target?.id) effectiveAgentId = target.id;
+        } catch (error) {
+          console.debug('copilot agent lookup failed:', error);
+        }
+      }
+      if (!sid && effectiveAgentId) {
+        const created = await createCopilotSession(effectiveAgentId, agentName ? `与${agentName}对话` : content.slice(0, 24));
         sid = created?.id;
         if (sid) setSessionId(sid);
       }
       if (!sid) {
-        // 没有 agent 上下文: 不是后端 bug, 是用户没选智能体。
-        // 回滚刚 push 的 user 消息, 给一个跳转提示, 不污染消息栈。
+        // 没有 agent 上下文: 回滚刚 push 的 user 消息, 给一个跳转提示, 不污染消息栈.
         setMessages((current) => current.slice(0, -1));
         setNotices((current) => pushNotice(current, '需要先选一个智能体才能开始对话 → 去智能体库选一个'));
         return;
