@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap_kernel.errors import BusinessRuleError
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import ValidationError
@@ -156,6 +157,7 @@ def build_router() -> APIRouter:
         "",
         status_code=201,
         response_model=TemplateResponse,
+        dependencies=[Depends(_require_active_workspace)],
     )
     async def create_template(
         body: CreateTemplateRequest,
@@ -396,6 +398,7 @@ def build_router() -> APIRouter:
         "/{aid}/versions",
         status_code=201,
         response_model=VersionResponse,
+        dependencies=[Depends(_require_active_workspace)],
     )
     async def create_version(
         aid: UUID,
@@ -544,6 +547,7 @@ def build_router() -> APIRouter:
     @router.post(
         "/{aid}/versions/{vid}/release",
         response_model=ReleaseResponse,
+        dependencies=[Depends(_require_active_workspace)],
     )
     async def release_version(
         aid: UUID,

@@ -19,6 +19,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap.modules.knowledge.application.services import KnowledgeService
 
 
@@ -56,7 +57,11 @@ def build_router() -> APIRouter:
     ) -> list[dict[str, Any]]:
         return await svc.list_kbs(workspace_id=x_workspace_id)
 
-    @router.post("/api/admin/knowledge/kbs", status_code=201)
+    @router.post(
+        "/api/admin/knowledge/kbs",
+        status_code=201,
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def create_kb(
         body: dict[str, Any],
         request: Request,
@@ -71,7 +76,10 @@ def build_router() -> APIRouter:
             owner=_owner_label(request),
         )
 
-    @router.post("/api/admin/knowledge/kbs/__batch__")
+    @router.post(
+        "/api/admin/knowledge/kbs/__batch__",
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def batch_kbs(
         body: dict[str, Any],
         svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
@@ -88,7 +96,10 @@ def build_router() -> APIRouter:
     ) -> dict[str, Any]:
         return await svc.get_kb(kb_id)
 
-    @router.post("/api/admin/knowledge/kbs/{kb_id}/toggle-status")
+    @router.post(
+        "/api/admin/knowledge/kbs/{kb_id}/toggle-status",
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def toggle_kb(
         kb_id: UUID,
         svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
@@ -102,7 +113,11 @@ def build_router() -> APIRouter:
     ) -> list[dict[str, Any]]:
         return await svc.list_docs(workspace_id=x_workspace_id)
 
-    @router.post("/api/admin/knowledge/docs", status_code=201)
+    @router.post(
+        "/api/admin/knowledge/docs",
+        status_code=201,
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def ingest_doc(
         body: dict[str, Any],
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
@@ -120,7 +135,11 @@ def build_router() -> APIRouter:
     ) -> list[dict[str, Any]]:
         return await svc.list_sources(workspace_id=x_workspace_id)
 
-    @router.post("/api/admin/knowledge/sources", status_code=201)
+    @router.post(
+        "/api/admin/knowledge/sources",
+        status_code=201,
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def create_source(
         body: dict[str, Any],
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
@@ -152,7 +171,7 @@ def build_router() -> APIRouter:
     ) -> list[dict[str, Any]]:
         return await svc.list_catalog(workspace_id=x_workspace_id)
 
-    @router.post("/api/catalog/knowledge/ask")
+    @router.post("/api/catalog/knowledge/ask", dependencies=[Depends(_require_active_workspace)])
     @router.post("/api/catalog/knowledge/__noop__/ask", include_in_schema=False)
     async def ask_catalog(
         body: dict[str, Any],

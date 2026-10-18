@@ -20,6 +20,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap.modules.skill.application.services import SkillService
 
 
@@ -104,7 +105,11 @@ def build_router() -> APIRouter:
             sort=sort,
         )
 
-    @router.post("/api/admin/skills", status_code=201)
+    @router.post(
+        "/api/admin/skills",
+        status_code=201,
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def create_admin_skill(
         body: dict[str, Any],
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
@@ -198,7 +203,7 @@ def build_router() -> APIRouter:
         return await svc.record_use(skill_id=skill_id, user_id=user_id)
 
     # ── dev-only: 直接触发一个 skill,跳过 LLM 决策,验证 E2E 沙箱路径 ──
-    @router.post("/api/dev/skills/{name}/invoke")
+    @router.post("/api/dev/skills/{name}/invoke", dependencies=[Depends(_require_active_workspace)])
     async def dev_invoke_skill(
         name: str,
         body: dict[str, Any],

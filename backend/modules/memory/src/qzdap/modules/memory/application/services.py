@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap.composition.unavailable_providers import ProviderUnavailable
 from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
     MemoryCatalogRepository,
@@ -19,6 +21,8 @@ from qzdap.modules.memory.domain.entities import (
     RetentionPolicy,
 )
 from qzdap.modules.memory.domain.errors import MemoryNotFound
+
+_log = getLogger(__name__)
 
 
 class MemoryService:
@@ -239,7 +243,19 @@ class MemoryService:
     ) -> None:
         if self._embedding is None or self._vectors is None or not content.strip():
             return
-        [vector] = await self._embedding.embed([content])
+        # 优雅降级: embedding 不可用(例如 dev 没配真实供应商)时,
+        # 跳过向量写入, 不阻塞上层 turn (否则 chat 已经回完用户, 但
+        # 因为记忆落库失败, 整个 turn 会抛 500). L2/L3 目录行仍保留,
+        # 等管理侧配上 embedding 供应商后再补回.
+        try:
+            [vector] = await self._embedding.embed([content])
+        except ProviderUnavailable:
+            _log.warning(
+                "memory embed skipped (provider unavailable) item_id=%s layer=%s",
+                item_id,
+                layer,
+            )
+            return
         await self._vectors.upsert(
             tenant_id=tenant_id,
             workspace_id=workspace_id,

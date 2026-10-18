@@ -19,6 +19,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap.modules.evaluation.adapter.http.dto import (
     CaseListResponse,
     DatasetListResponse,
@@ -143,6 +144,7 @@ def build_router() -> APIRouter:
         "/runs",
         status_code=202,
         response_model=RunResponse,
+        dependencies=[Depends(_require_active_workspace)],
     )
     async def start_run(
         body: StartRunRequest,

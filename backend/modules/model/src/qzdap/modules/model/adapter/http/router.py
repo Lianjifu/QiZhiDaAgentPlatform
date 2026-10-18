@@ -21,6 +21,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap.modules.model.application.services import ModelService
 
 
@@ -191,7 +192,10 @@ def build_router() -> APIRouter:
     ) -> dict[str, Any]:
         return await svc.health_check(provider_id)
 
-    @router.post("/api/admin/models/import")
+    @router.post(
+        "/api/admin/models/import",
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def import_models(
         body: dict[str, Any],
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
@@ -216,7 +220,11 @@ def build_router() -> APIRouter:
     ) -> dict[str, Any]:
         return await svc.test_connectivity(body)
 
-    @router.post("/api/admin/models", status_code=201)
+    @router.post(
+        "/api/admin/models",
+        status_code=201,
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def create_admin_models(
         body: dict[str, Any],
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
@@ -230,7 +238,11 @@ def build_router() -> APIRouter:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    @router.post("/api/admin/models/routes", status_code=201)
+    @router.post(
+        "/api/admin/models/routes",
+        status_code=201,
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def create_admin_route(
         body: dict[str, Any],
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
@@ -327,7 +339,11 @@ def build_router() -> APIRouter:
             tenant_id=x_tenant_id, workspace_id=x_workspace_id
         )
 
-    @router.post("/api/admin/models/quotas", status_code=201)
+    @router.post(
+        "/api/admin/models/quotas",
+        status_code=201,
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def upsert_admin_quota(
         body: dict[str, Any],
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008

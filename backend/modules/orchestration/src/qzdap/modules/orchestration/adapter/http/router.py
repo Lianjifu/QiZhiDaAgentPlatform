@@ -18,6 +18,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap.modules.orchestration.application.services import OrchestrationService
 
 
@@ -57,7 +58,11 @@ def build_router() -> APIRouter:
     ) -> list[dict[str, Any]]:
         return await svc.list_admin(workspace_id=x_workspace_id, status_filter=status, q=q)
 
-    @router.post("/api/admin/workflows", status_code=201)
+    @router.post(
+        "/api/admin/workflows",
+        status_code=201,
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def create_admin_workflow(
         body: dict[str, Any],
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
@@ -75,7 +80,10 @@ def build_router() -> APIRouter:
     ) -> dict[str, Any]:
         return await svc.get_admin(workflow_id)
 
-    @router.patch("/api/admin/workflows/{workflow_id}")
+    @router.patch(
+        "/api/admin/workflows/{workflow_id}",
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def patch_admin_workflow(
         workflow_id: UUID,
         body: dict[str, Any],
@@ -86,7 +94,10 @@ def build_router() -> APIRouter:
         actor = str(_owner_id(request, x_user_id))
         return await svc.update(workflow_id=workflow_id, body=body, actor=actor)
 
-    @router.delete("/api/admin/workflows/{workflow_id}")
+    @router.delete(
+        "/api/admin/workflows/{workflow_id}",
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def delete_admin_workflow(
         workflow_id: UUID,
         svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
@@ -110,7 +121,10 @@ def build_router() -> APIRouter:
         user_id = _owner_id(request, x_user_id)
         return await svc.list_runs(workspace_id=x_workspace_id, user_id=user_id)
 
-    @router.post("/api/catalog/workflows/{workflow_id}/favorite")
+    @router.post(
+        "/api/catalog/workflows/{workflow_id}/favorite",
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def favorite_catalog_workflow(
         workflow_id: UUID,
         body: dict[str, Any],
@@ -123,7 +137,10 @@ def build_router() -> APIRouter:
             workflow_id=workflow_id, user_id=user_id, on=bool(body.get("on"))
         )
 
-    @router.post("/api/catalog/workflows/{workflow_id}/run")
+    @router.post(
+        "/api/catalog/workflows/{workflow_id}/run",
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def run_catalog_workflow(
         workflow_id: UUID,
         body: dict[str, Any],
@@ -156,7 +173,10 @@ def build_router() -> APIRouter:
         user_id = _owner_id(request, x_user_id)
         return await svc.list_runs(workspace_id=x_workspace_id, user_id=user_id)
 
-    @router.post("/api/user/automations/{workflow_id}/favorite")
+    @router.post(
+        "/api/user/automations/{workflow_id}/favorite",
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def favorite_user_automation_alias(
         workflow_id: UUID,
         body: dict[str, Any],
@@ -169,7 +189,10 @@ def build_router() -> APIRouter:
             workflow_id=workflow_id, user_id=user_id, on=bool(body.get("on"))
         )
 
-    @router.post("/api/user/automations/{workflow_id}/run")
+    @router.post(
+        "/api/user/automations/{workflow_id}/run",
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def run_user_automation_alias(
         workflow_id: UUID,
         body: dict[str, Any],
