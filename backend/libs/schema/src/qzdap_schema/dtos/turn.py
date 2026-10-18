@@ -29,6 +29,11 @@ ChunkKind = Literal[
     "artifact_ready",
     "attachment_ready",
     "workflow_invocation",
+    # 前端交互动作 (对应 5 个 stub tool: ask_user_question / notify_user /
+    # plan_submit / todo_write / delegate_to_agent). backend 在 tool_result
+    # emit 时若 output 含 _pending_frontend_action, 同时发一个
+    # interactive_action chunk, payload 透传 result.
+    "interactive_action",
 ]
 
 
@@ -168,6 +173,19 @@ class WorkflowInvocationChunk(ChunkEnvelope):
     status: Literal["started", "succeeded", "failed", "cancelled"]
 
 
+class InteractiveActionChunk(ChunkEnvelope):
+    """Stub tool (ask_user_question / notify_user / plan_submit /
+    todo_write / delegate_to_agent) 完成后, backend 在 tool_result
+    chunk 之后再发一个这个 chunk. 前端用它分派 UI (modal/toast/drawer/router).
+    """
+
+    kind: Literal["interactive_action"] = "interactive_action"
+    call_id: str
+    action: Literal["show_question_card", "toast", "render_plan",
+                   "render_todo_list", "delegate_agent"]
+    payload: dict = Field(default_factory=dict)
+
+
 class KnowledgeSearchChunk(ChunkEnvelope):
     """知识检索结果 (hit 摘要 + 引用 + 降级标记)."""
 
@@ -198,4 +216,5 @@ TurnChunk = (
     | ArtifactReadyChunk
     | AttachmentReadyChunk
     | WorkflowInvocationChunk
+    | InteractiveActionChunk
 )

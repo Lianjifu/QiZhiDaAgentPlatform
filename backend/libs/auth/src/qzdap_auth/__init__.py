@@ -10,6 +10,7 @@ from qzdap_auth.dependencies import (
 )
 from qzdap_auth.jwt import JWTConfig, JWTIssuer, JWTVerifier, issue_access_token
 from qzdap_auth.middleware import AuthMiddleware
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 
 __all__ = [
     "ApiKeyHasher",
@@ -18,6 +19,7 @@ __all__ = [
     "JWTConfig",
     "JWTIssuer",
     "JWTVerifier",
+    "_require_active_workspace",
     "get_principal",
     "hash_api_key",
     "issue_access_token",

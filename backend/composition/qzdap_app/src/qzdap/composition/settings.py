@@ -5,7 +5,6 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from qzdap_llm.config import LLMConfig, LLMProvider
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,18 +55,16 @@ class Settings(BaseSettings):
     dev_admin_email: str = "admin@example.com"
     dev_admin_password: str = "dev-admin-password-change-me"
 
-    # llm
-    llm_provider: str = "mock"
-    llm_base_url: str = "https://api.openai.com/v1"
-    llm_api_key: str = ""
-    llm_default_model: str = "gpt-4o-mini"
-    llm_timeout_seconds: int = 30
-    llm_mock_latency_ms: int = 50
-    llm_failover_providers: str = ""
-    llm_embedding_model: str = "text-embedding-3-small"
-    llm_embedding_dim: int = 1536
+    # ── LLM ──────────────────────────────────────────────────────────────
+    # 历史: 之前这里有 llm_provider / llm_api_key / llm_base_url /
+    # llm_default_model / llm_embedding_model / llm_embedding_dim 等字段
+    # 用于构造 LLMConfig 作为全局默认 client. 这条路径已下线:
+    # LLM 凭据统一在 管理侧 → 模型管理 配 (admin_model_providers.encrypted_payload),
+    # 调用时由 ModelService._decrypt() 解密. 任何"未配置"场景由
+    # unavailable_providers.UnavailableLLMClient 抛 ProviderUnavailable (503).
+    # 这里只保留 test env 的 mock 逃生通道所需的字段(已无环境变量对应).
 
-    # event bus
+    # P6 model
     event_bus: Literal["inprocess", "redis-stream"] = "inprocess"
     event_redis_stream_prefix: str = "qzdap:events:"
     event_dlq_stream: str = "qzdap:events:dlq"
@@ -89,6 +86,12 @@ class Settings(BaseSettings):
     sandbox_runtime_secret: str = "dev-sandbox-runtime-secret-change-me"
     sandbox_default_image: str = "qzdap/sandbox-python:latest"
     skill_artifact_root: str = "/tmp/qzdap-skill-artifacts"
+
+    # Agent 内置文件工具 (bash / read_file / write_file / edit_file / ls /
+    # glob / grep) 看到的工作区根目录。每个 workspace 一个子目录:
+    # `<workspace_root>/<workspace_id>/`。
+    # dev 环境通常设到 /tmp/qzdap-workspaces 方便随时 reset。
+    workspace_root: str = "/var/qzdap/workspaces"
     skill_invocation_default_timeout_seconds: int = 30
     skill_artifact_tail_max_bytes: int = 4096
 
@@ -213,18 +216,6 @@ class Settings(BaseSettings):
     # WeChat Work (企业微信) JSON v2 callback — base64-decoded
     # EncodingAESKey (43 chars). Empty in dev keeps the placeholder.
     wechatwork_encoding_aes_key: str = ""
-
-    def llm_config(self) -> LLMConfig:
-        return LLMConfig(
-            provider=LLMProvider(self.llm_provider),
-            base_url=self.llm_base_url,
-            api_key=self.llm_api_key,
-            default_model=self.llm_default_model,
-            embedding_model=self.llm_embedding_model,
-            embedding_dim=self.llm_embedding_dim,
-            timeout_seconds=self.llm_timeout_seconds,
-            mock_latency_ms=self.llm_mock_latency_ms,
-        )
 
 
 @lru_cache(maxsize=1)

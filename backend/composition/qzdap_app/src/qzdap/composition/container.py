@@ -12,9 +12,7 @@ from typing import Any
 
 from qzdap_auth.api_key import ApiKeyHasher
 from qzdap_auth.jwt import JWTConfig, JWTIssuer, JWTVerifier
-from qzdap_llm.config import LLMConfig
 from qzdap_llm.embeddings import set_default_client
-from qzdap_llm.openai_compatible import OpenAICompatibleClient
 from qzdap_messaging.bus import EventBus
 from qzdap_messaging.in_process import InProcessBus
 from qzdap_persistence.session_factory import SessionFactory, create_engine
@@ -23,6 +21,12 @@ from qzdap_vault.resolver import VaultSecretsResolver
 from qzdap_vector.store import VectorStore
 
 from qzdap.composition.settings import Settings
+
+# 历史: QZDAP_LLM_API_KEY / llm_embedding_model / llm_embedding_dim 已下线.
+# 嵌入维度统一用 OpenAI text-embedding-3-small 的 1536, 这个值在 P7 之后
+# 长期稳定. 后续如果要支持多维模型再扩展为按 provider 查找.
+from qzdap.modules.memory.domain.entities import EMBEDDING_DIM as _DEFAULT_EMBEDDING_DIM
+_DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
 
 class Container:
@@ -193,20 +197,32 @@ class Container:
         return JWTVerifier(self.jwt_config())
 
     def llm_client(self):
-        cfg: LLMConfig = self.settings.llm_config()
-        if cfg.provider.value == "mock":
-            # 任何环境都不允许 mock — dev 也按生产模式走, 必须用真供应商 (openai-compatible).
-            from qzdap.composition.unavailable_providers import UnavailableLLMClient
+        """Compose-level default LLM client.
 
-            return UnavailableLLMClient()
-        return OpenAICompatibleClient(cfg)
+        历史: 这里以前从 ``Settings.llm_config()`` (即 ``QZDAP_LLM_*`` 环境变量)
+        构造 ``OpenAICompatibleClient``. 这条路径已下线 — 真实对话的所有 LLM 调用
+        都走 ``ModelService`` (管理侧 ``admin_model_providers.encrypted_payload``
+        解密), 本函数只剩两个返回值:
+
+        * ``test`` env: ``MockLLMClient`` 逃生通道, 仅供单元测试.
+        * 其他 env: ``UnavailableLLMClient``, 任何 chat/stream/embed 调用
+          立即抛 ``ProviderUnavailable`` (HTTP 503, code=PROVIDER_UNAVAILABLE),
+          前端按全局 banner / 友好提示引导用户去 ``/admin/models`` 配置.
+        """
+        if self.settings.env == "test":
+            from qzdap_llm.mock import MockLLMClient
+
+            return MockLLMClient()
+        from qzdap.composition.unavailable_providers import UnavailableLLMClient
+
+        return UnavailableLLMClient()
 
     def vector_store(self) -> VectorStore | None:
         """Hook up the pgvector store once we have an engine. Kept lazy to
         avoid forcing a connection at boot."""
         from qzdap_vector.pg_vector import PgVectorStore
 
-        return PgVectorStore(self.engine(), dim=self.settings.llm_embedding_dim)
+        return PgVectorStore(self.engine(), dim=_DEFAULT_EMBEDDING_DIM)
 
     def configure_llm_default(self) -> None:
         set_default_client(self.llm_client())
@@ -427,27 +443,60 @@ class Container:
         )
 
     def memory_embedding_adapter(self):
-        """Pick the embedding adapter per ``settings.embedding_provider``."""
+        """Pick the embedding adapter per ``settings.embedding_provider``.
+
+        历史: 之前这里从 ``Settings.llm_embedding_model`` / ``llm_embedding_dim``
+        读 embedding 配置, 同样属于 "env 兜底" 路径, 已下线. 现在:
+
+        * ``openai`` / ``http`` 必须显式配 api_key (不再从 ``QZDAP_LLM_*`` 读).
+          key 为空时抛 ``ProviderUnavailable`` 让上层暴露给前端.
+        * ``test`` / ``ci`` / ``demo`` 仍允许 ``noop`` (用 NoOpEmbeddingAdapter).
+        * 嵌入模型与维度使用与 OpenAI text-embedding-3-small 对齐的默认值
+          (后续如果需要多 provider 维度, 再按 provider 查找).
+
+        长期目标: 完全从 ``admin_model_providers`` 拉 (P7+ 工单).
+        """
         provider = self.settings.embedding_provider
         if provider == "openai":
+            from qzdap.composition.unavailable_providers import (
+                ProviderUnavailable,
+            )
             from qzdap.modules.memory.adapter.embedding.openai_adapter import (
                 OpenAIEmbeddingAdapter,
             )
 
+            api_key = self.settings.openai_api_key.strip()
+            if not api_key:
+                raise ProviderUnavailable(
+                    "未配置 OpenAI 嵌入供应商: 请在管理侧 → 模型管理 中先配置 "
+                    "embedding 供应商(后续工单会让容器自动从 admin_model_providers 拉, "
+                    "目前 dev 临时走 settings.openai_api_key, 该字段为空)."
+                )
             return OpenAIEmbeddingAdapter(
-                api_key=self.settings.openai_api_key,
+                api_key=api_key,
                 base_url=self.settings.openai_base_url,
-                model=self.settings.llm_embedding_model,
-                dim=self.settings.llm_embedding_dim,
+                model=_DEFAULT_EMBEDDING_MODEL,
+                dim=_DEFAULT_EMBEDDING_DIM,
             )
         if provider == "http":
             from qzdap.modules.memory.adapter.embedding.http_adapter import (
                 HttpEmbeddingAdapter,
             )
 
+            api_key = self.settings.embedding_runtime_api_key.strip()
+            base_url = self.settings.embedding_runtime_url.strip()
+            if not base_url:
+                from qzdap.composition.unavailable_providers import (
+                    ProviderUnavailable,
+                )
+
+                raise ProviderUnavailable(
+                    "未配置 HTTP 嵌入供应商: embedding_provider=http 但 "
+                    "QZDAP_EMBEDDING_RUNTIME_URL 为空."
+                )
             return HttpEmbeddingAdapter(
-                base_url=self.settings.embedding_runtime_url,
-                api_key=self.settings.embedding_runtime_api_key,
+                base_url=base_url,
+                api_key=api_key,
             )
         if self.settings.env not in {"demo", "test", "ci"}:
             from qzdap.composition.unavailable_providers import (
@@ -459,13 +508,13 @@ class Container:
             NoOpEmbeddingAdapter,
         )
 
-        return NoOpEmbeddingAdapter(dim=self.settings.llm_embedding_dim)
+        return NoOpEmbeddingAdapter(dim=_DEFAULT_EMBEDDING_DIM)
 
     def memory_vector_store(self):
         """The pgvector store used by the memory repository."""
         from qzdap_vector.pg_vector import PgVectorStore
 
-        return PgVectorStore(self.engine(), dim=self.settings.llm_embedding_dim)
+        return PgVectorStore(self.engine(), dim=_DEFAULT_EMBEDDING_DIM)
 
     # ── P6 model ────────────────────────────────────────────────────────────
 
