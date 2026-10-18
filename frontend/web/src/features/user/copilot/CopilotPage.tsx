@@ -597,7 +597,21 @@ export default function Copilot() {
       >
         <div className="flex items-center justify-between border-b border-[var(--border)] p-4">
           <h2 className="text-sm font-semibold">对话</h2>
-          <button type="button" className="rounded-md p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)]" aria-label="新建对话">
+          <button
+            type="button"
+            onClick={() => {
+              // 新建 (清空当前会话 + 消息栈, 不导航)
+              setSessionId(undefined);
+              setMessages([]);
+              setPendingApproval(null);
+              setNotices([]);
+              setInput('');
+              setSessionListOpen(false);
+            }}
+            className="rounded-md p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
+            aria-label="新建对话"
+            title="新建对话"
+          >
             <Plus className="h-4 w-4" />
           </button>
         </div>
@@ -618,7 +632,12 @@ export default function Copilot() {
               className={`group relative flex w-full cursor-pointer flex-col gap-1 rounded-md px-2.5 py-2.5 text-left ${sessionId === item.id ? 'bg-[var(--brand-light)] text-[var(--brand)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
               onClick={() => {
                 setSessionListOpen(false);
-                if (item.id) setSessionId(item.id);
+                if (item.id) {
+                  // 先清当前消息栈, 避免切换 session 时新旧消息混在一起闪
+                  setMessages([]);
+                  setPendingApproval(null);
+                  setSessionId(item.id);
+                }
               }}
             >
               <span className="truncate text-xs font-semibold">{item.title}</span>
@@ -688,6 +707,13 @@ export default function Copilot() {
           // 空态: welcome + composer 一起垂直居中
           <div className="flex flex-1 flex-col items-center justify-center overflow-auto px-5 py-8 sm:px-10">
             <div className="flex w-full max-w-4xl flex-col items-center gap-8">
+              {!entry?.agentId ? (
+                // 没选智能体: 顶部显眼提示 (不是右下 notice, notice 只在非空态显示)
+                <div className="w-full max-w-2xl rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                  <p className="font-semibold">要先选一个智能体才能开始对话</p>
+                  <p className="mt-1 text-amber-800">从智能体库选一个, 然后刷新这个页面 (或点"更换智能体").</p>
+                </div>
+              ) : null}
               <div className="flex flex-col items-center text-center">
                 <span className="grid h-14 w-14 place-items-center rounded-2xl bg-[var(--brand-light)] text-[var(--brand)]">
                   <Sparkles className="h-7 w-7" />
