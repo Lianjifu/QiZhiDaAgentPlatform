@@ -22,30 +22,30 @@
 
 ---
 
-## <img src="docs/images/icons/book-open.svg" width="20" align="absmiddle" /> 项目介绍
+## <img src="docs/images/icons/book-open.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 项目介绍
 
 **企智搭 (QIZHIDA)** 是一套面向企业的智能体中台。把智能体、知识、技能、工具、记忆、工作流、模型、额度、审计这些碎片能力统一成可治理的"目录 + 工作台",让管理员专注于能力建设与质量把控,让业务成员专注于用对话与流程把事情做完。
 
 | 我们不是 | 我们是 |
 | --- | --- |
-| <img src="docs/images/icons/x-circle.svg" width="14" align="absmiddle" /> 一个聊天机器人 | <img src="docs/images/icons/check.svg" width="14" align="absmiddle" /> 一个**企业级智能体中台** |
-| <img src="docs/images/icons/x-circle.svg" width="14" align="absmiddle" /> 一个 prompt playground | <img src="docs/images/icons/check.svg" width="14" align="absmiddle" /> 一个**可治理的能力目录 + 工作台** |
-| <img src="docs/images/icons/x-circle.svg" width="14" align="absmiddle" /> 一个孤立的 Agent 框架 | <img src="docs/images/icons/check.svg" width="14" align="absmiddle" /> 一个**多智能体协同 + 工具编排 + 知识检索 + 记忆**的完整平台 |
-| <img src="docs/images/icons/x-circle.svg" width="14" align="absmiddle" /> 一个 demo-only 项目 | <img src="docs/images/icons/check.svg" width="14" align="absmiddle" /> 一个**支持多租户 / 多工作区 / 审计 / 额度**的生产系统 |
+| <img src="docs/images/icons/x-circle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个聊天机器人 | <img src="docs/images/icons/check.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个**企业级智能体中台** |
+| <img src="docs/images/icons/x-circle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个 prompt playground | <img src="docs/images/icons/check.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个**可治理的能力目录 + 工作台** |
+| <img src="docs/images/icons/x-circle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个孤立的 Agent 框架 | <img src="docs/images/icons/check.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个**多智能体协同 + 工具编排 + 知识检索 + 记忆**的完整平台 |
+| <img src="docs/images/icons/x-circle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个 demo-only 项目 | <img src="docs/images/icons/check.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个**支持多租户 / 多工作区 / 审计 / 额度**的生产系统 |
 
-> <img src="docs/images/icons/sparkles.svg" width="14" align="absmiddle" /> **冷启动办公开箱** — 部署当天就能给全员用。预置数字伙伴 (Copilot)、办公技能 (Skill)、企业知识 (Knowledge)、审批流 (Workflow),管理员只需按企业情况微调即可,不必从 0 搭建。
+> <img src="docs/images/icons/sparkles.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> **冷启动办公开箱** — 部署当天就能给全员用。预置数字伙伴 (Copilot)、办公技能 (Skill)、企业知识 (Knowledge)、审批流 (Workflow),管理员只需按企业情况微调即可,不必从 0 搭建。
 
 后端 **Python 3.12 + FastAPI 模块化单体** (15 个能力域 + 10 个共享内核,六边形分层 + import-linter 守护边界),前端 **React 18 + Vite** 双侧工作台 (用户侧 + 管理侧)。
 
 ---
 
-## <img src="docs/images/icons/gem.svg" width="20" align="absmiddle" /> 产品价值
+## <img src="docs/images/icons/gem.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 产品价值
 
 | 支柱 | 价值 | 落地方式 |
 | --- | --- | --- |
-| <img src="docs/images/icons/shield.svg" width="16" align="absmiddle" /> **安全零信任** | 默认所有调用都可疑,全程审计 | JWT + 多租户隔离 · gVisor 沙箱 · 网络出站白名单 · Vault 密钥 · 工具调用 100% 审计 |
-| <img src="docs/images/icons/zap.svg" width="16" align="absmiddle" /> **先进生产力** | 每个员工配一个数字伙伴 | 8 种 SSE chunk 流式可见 · 多智能体协同 (嵌套深度 3) · 知识+记忆双引擎 · 渠道即插即用 |
-| <img src="docs/images/icons/dollar-sign.svg" width="16" align="absmiddle" /> **成本新范式** | 按需购买,按量计费 | 工作区粒度额度 · 部门用量看板 · 告警阈值 · 成本可追溯到具体 turn |
+| <img src="docs/images/icons/shield.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> **安全零信任** | 默认所有调用都可疑,全程审计 | JWT + 多租户隔离 · gVisor 沙箱 · 网络出站白名单 · Vault 密钥 · 工具调用 100% 审计 |
+| <img src="docs/images/icons/zap.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> **先进生产力** | 每个员工配一个数字伙伴 | 8 种 SSE chunk 流式可见 · 多智能体协同 (嵌套深度 3) · 知识+记忆双引擎 · 渠道即插即用 |
+| <img src="docs/images/icons/dollar-sign.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> **成本新范式** | 按需购买,按量计费 | 工作区粒度额度 · 部门用量看板 · 告警阈值 · 成本可追溯到具体 turn |
 
 ### 价值流转
 
@@ -63,9 +63,9 @@
 
 ---
 
-## <img src="docs/images/icons/sparkles.svg" width="20" align="absmiddle" /> 重点产品讲解
+## <img src="docs/images/icons/sparkles.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 重点产品讲解
 
-### 1. <img src="docs/images/icons/bot.svg" width="16" align="absmiddle" /> 数字伙伴 (Copilot)
+### 1. <img src="docs/images/icons/bot.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> 数字伙伴 (Copilot)
 
 每个员工都有,登录即用。
 
@@ -74,7 +74,7 @@
 - 可调工具 / 查知识 / 走工作流 / 派给子智能体
 - 多智能体协同:父 agent 调 `delegate_to_agent` → 后端同步派给目标 agent → final_response 喂回父 LLM
 
-### 2. <img src="docs/images/icons/box.svg" width="16" align="absmiddle" /> 办公开箱 (Out-of-the-Box)
+### 2. <img src="docs/images/icons/box.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> 办公开箱 (Out-of-the-Box)
 
 部署当天就能给全员用。
 
@@ -84,7 +84,7 @@
 - 预置工作流 (请假 / 报销 / 用印)
 - 管理员只需按企业情况微调,不必从 0 搭建
 
-### 3. <img src="docs/images/icons/users.svg" width="16" align="absmiddle" /> 专家协作 (Multi-Agent)
+### 3. <img src="docs/images/icons/users.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> 专家协作 (Multi-Agent)
 
 复杂任务自动拆分,多个 agent 协同完成。
 
@@ -93,13 +93,13 @@
 - 子 agent 结果作为工具结果喂回父 LLM,父 turn 继续生成
 - 可视化调用链路,每一步都能追溯
 
-### 4. <img src="docs/images/icons/shield.svg" width="16" align="absmiddle" /> 信任治理三件套
+### 4. <img src="docs/images/icons/shield.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> 信任治理三件套
 
 - **额度管理** — 预算 · 部门用量 · 告警阈值
 - **审计中心** — 工具调用 100% 留痕,越权 / 风险规则实时告警
 - **合规开关** — 数据驻留 · 脱敏 · 撤回 · 一键关停
 
-### 5. <img src="docs/images/icons/columns.svg" width="16" align="absmiddle" /> 五中心 (运营总览)
+### 5. <img src="docs/images/icons/columns.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> 五中心 (运营总览)
 
 一个屏幕看清整个平台的健康度。
 
@@ -109,7 +109,7 @@
 - **模型中心** — 供应商接入 / 模型拉取 / 路由策略 / 用量
 - **组织中心** — 租户 / 工作区 / 成员 / 角色 / 邀请
 
-### 6. <img src="docs/images/icons/bar-chart.svg" width="16" align="absmiddle" /> 运营总览
+### 6. <img src="docs/images/icons/bar-chart.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> 运营总览
 
 - 平台健康监控 + 告警
 - 热门智能体 / 热门工具 / 热门知识
@@ -119,7 +119,7 @@
 
 ---
 
-## <img src="docs/images/icons/rocket.svg" width="20" align="absmiddle" /> 快速开始
+## <img src="docs/images/icons/rocket.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 快速开始
 
 ### 2 分钟跑通
 
@@ -141,17 +141,17 @@ open http://127.0.0.1:9152
 
 | 步骤 | 期望结果 | 状态 |
 | --- | --- | --- |
-| ① 用 `admin@acme.com` 登录 | 跳到 `/admin/*` 管理侧 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| ② 用 `user@acme.com` 登录 | 跳到 `/copilot/*` 用户侧 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| ③ 在用户侧发起一次对话 | 流式 SSE 输出,8 种事件可见 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| ④ 调一个工具 (如 `web_search`) | 工具调用走审计 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| ⑤ 派给子智能体 (`delegate_to_agent`) | 子 agent 同步跑完,父 turn 继续 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| ⑥ 回到管理侧看调用链路 | 完整还原会话全过程 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| ⑦ 切到演示模式 `VITE_USE_DEMO=true` | 不连后端,全界面可浏览 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
+| ① 用 `admin@acme.com` 登录 | 跳到 `/admin/*` 管理侧 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| ② 用 `user@acme.com` 登录 | 跳到 `/copilot/*` 用户侧 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| ③ 在用户侧发起一次对话 | 流式 SSE 输出,8 种事件可见 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| ④ 调一个工具 (如 `web_search`) | 工具调用走审计 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| ⑤ 派给子智能体 (`delegate_to_agent`) | 子 agent 同步跑完,父 turn 继续 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| ⑥ 回到管理侧看调用链路 | 完整还原会话全过程 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| ⑦ 切到演示模式 `VITE_USE_DEMO=true` | 不连后端,全界面可浏览 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
 
 ---
 
-## <img src="docs/images/icons/monitor.svg" width="20" align="absmiddle" /> 控制台一览
+## <img src="docs/images/icons/monitor.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 控制台一览
 
 > 以下截图来自 `pnpm --filter web dev:demo` (前端内存演示数据,无需后端)。
 
@@ -170,7 +170,7 @@ open http://127.0.0.1:9152
 
 ---
 
-## <img src="docs/images/icons/puzzle.svg" width="20" align="absmiddle" /> 功能模块
+## <img src="docs/images/icons/puzzle.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 功能模块
 
 ### 信息架构
 
@@ -199,21 +199,21 @@ open http://127.0.0.1:9152
 
 | # | 域 | 职责 | 状态 |
 | --- | --- | --- | --- |
-| 1 | `identity` | 租户 / 用户 / 工作区 / 成员 / JWT 鉴权 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 2 | `agent_runtime` | 流式对话引擎 · 工具调用 · 多智能体协同 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 3 | `agent_factory` | 智能体创建 / 版本化 / 模板 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 4 | `skill` | Skill 注册 / 编排 / 沙箱执行 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 5 | `tool` | Tool 注册 / 调用 / 审计 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 6 | `knowledge` | 知识库 · RAG · pgvector | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 7 | `memory` | 短期 / 长期 / 知识层记忆 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 8 | `model` | 模型供应商 / 路由 / 用量 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 9 | `channel` | 飞书 / 企微 / 钉钉 / Web 渠道 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 10 | `orchestration` | 工作流编排 / 发布 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 11 | `governance` | 额度 / 灰度 / 合规开关 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 12 | `evaluation` | 评测套件 / 回归追踪 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 13 | `self_evolution` | 反馈池 / 规则分诊 / 知识回流 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 14 | `observability` | 调用链路 / 指标 / 告警 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
-| 15 | `platform` | 平台设置 / 品牌 / 成员管理 | <img src="docs/images/icons/check.svg" width="16" align="absmiddle" /> |
+| 1 | `identity` | 租户 / 用户 / 工作区 / 成员 / JWT 鉴权 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 2 | `agent_runtime` | 流式对话引擎 · 工具调用 · 多智能体协同 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 3 | `agent_factory` | 智能体创建 / 版本化 / 模板 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 4 | `skill` | Skill 注册 / 编排 / 沙箱执行 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 5 | `tool` | Tool 注册 / 调用 / 审计 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 6 | `knowledge` | 知识库 · RAG · pgvector | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 7 | `memory` | 短期 / 长期 / 知识层记忆 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 8 | `model` | 模型供应商 / 路由 / 用量 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 9 | `channel` | 飞书 / 企微 / 钉钉 / Web 渠道 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 10 | `orchestration` | 工作流编排 / 发布 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 11 | `governance` | 额度 / 灰度 / 合规开关 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 12 | `evaluation` | 评测套件 / 回归追踪 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 13 | `self_evolution` | 反馈池 / 规则分诊 / 知识回流 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 14 | `observability` | 调用链路 / 指标 / 告警 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| 15 | `platform` | 平台设置 / 品牌 / 成员管理 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
 
 ### 5 个重点模块详解
 
@@ -254,7 +254,7 @@ open http://127.0.0.1:9152
 
 ---
 
-## <img src="docs/images/icons/building.svg" width="20" align="absmiddle" /> 技术架构
+## <img src="docs/images/icons/building.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 技术架构
 
 ### 设计原则
 
@@ -339,7 +339,7 @@ open http://127.0.0.1:9152
 
 ---
 
-## <img src="docs/images/icons/wrench.svg" width="20" align="absmiddle" /> 本地部署
+## <img src="docs/images/icons/wrench.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 本地部署
 
 ### 环境
 
@@ -392,11 +392,11 @@ launchctl stop  com.qzdap.devstack
 | 管理员 | `admin@acme.com` | `dev-admin-password-change-me` |
 | 成员 | `user@acme.com` | `dev-admin-password-change-me` |
 
-> <img src="docs/images/icons/alert-triangle.svg" width="14" align="absmiddle" /> **生产环境务必修改默认密码** — `.env` 里改 `QZDAP_ADMIN_PASSWORD`,然后跑 `make reset-admin-password`。
+> <img src="docs/images/icons/alert-triangle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> **生产环境务必修改默认密码** — `.env` 里改 `QZDAP_ADMIN_PASSWORD`,然后跑 `make reset-admin-password`。
 
 ---
 
-## <img src="docs/images/icons/check-circle.svg" width="20" align="absmiddle" /> 验证与常见问题
+## <img src="docs/images/icons/check-circle.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 验证与常见问题
 
 ### 健康检查
 
@@ -452,7 +452,7 @@ curl http://127.0.0.1:9150/healthz     # 网关健康
 
 ---
 
-## <img src="docs/images/icons/books.svg" width="20" align="absmiddle" /> 文档索引
+## <img src="docs/images/icons/books.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 文档索引
 
 | 文档 | 路径 | 用途 |
 | --- | --- | --- |
@@ -466,16 +466,16 @@ curl http://127.0.0.1:9150/healthz     # 网关健康
 
 ---
 
-## <img src="docs/images/icons/handshake.svg" width="20" align="absmiddle" /> 贡献与社区
+## <img src="docs/images/icons/handshake.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 贡献与社区
 
 我们欢迎所有形式的贡献 — 代码、文档、Issue、Discussion、PR。
 
 ### 贡献方式
 
-- <img src="docs/images/icons/bug.svg" width="14" align="absmiddle" /> **报告 Bug** — [Issues](../../issues) 选 `bug` 模板
-- <img src="docs/images/icons/sparkles.svg" width="14" align="absmiddle" /> **提需求** — [Issues](../../issues) 选 `feature` 模板
-- <img src="docs/images/icons/book-open.svg" width="14" align="absmiddle" /> **改进文档** — 直接提 PR 到 `docs/`
-- <img src="docs/images/icons/message-circle.svg" width="14" align="absmiddle" /> **讨论** — [Discussions](../../discussions)
+- <img src="docs/images/icons/bug.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> **报告 Bug** — [Issues](../../issues) 选 `bug` 模板
+- <img src="docs/images/icons/sparkles.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> **提需求** — [Issues](../../issues) 选 `feature` 模板
+- <img src="docs/images/icons/book-open.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> **改进文档** — 直接提 PR 到 `docs/`
+- <img src="docs/images/icons/message-circle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> **讨论** — [Discussions](../../discussions)
 
 ### 开发流程
 
@@ -507,12 +507,12 @@ chore(scope): 杂项
 
 ### 社区
 
-- <img src="docs/images/icons/mail.svg" width="14" align="absmiddle" /> 邮件: <dev@qizhida.local>
-- <img src="docs/images/icons/message-circle.svg" width="14" align="absmiddle" /> 微信群: 扫描 [logo 旁二维码](./docs/images/brand/) (内部)
+- <img src="docs/images/icons/mail.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 邮件: <dev@qizhida.local>
+- <img src="docs/images/icons/message-circle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 微信群: 扫描 [logo 旁二维码](./docs/images/brand/) (内部)
 
 ---
 
-## <img src="docs/images/icons/file-text.svg" width="20" align="absmiddle" /> 许可证
+## <img src="docs/images/icons/file-text.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 许可证
 
 本项目基于 **Apache License 2.0** 开源 — 详见 [LICENSE](./LICENSE) 文件。
 
@@ -530,8 +530,8 @@ You may obtain a copy of the License at
 
 <div align="center">
 
-**[<img src="docs/images/icons/arrow-up.svg" width="12" align="absmiddle" /> 回到顶部](#企智搭--智能体平台)**
+**[<img src="docs/images/icons/arrow-up.svg" width="12" style="vertical-align: middle; margin-right: 0.3em;" /> 回到顶部](#企智搭--智能体平台)**
 
-Made with <img src="docs/images/icons/sparkles.svg" width="14" align="absmiddle" /> by the QIZHIDA team · [English →](./docs/en/README.md)
+Made with <img src="docs/images/icons/sparkles.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> by the QIZHIDA team · [English →](./docs/en/README.md)
 
 </div>
