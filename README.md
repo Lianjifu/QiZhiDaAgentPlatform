@@ -181,69 +181,81 @@ open http://127.0.0.1:9152
 
 ### 信息架构
 
-QIZHIDA 平台按 **展示层 / 能力层 / 基础设施层** 三层架构组织:
+QIZHIDA 平台按 **3 层 + 1 个横切关注点** 组织:
 
 - **展示层** — 3 个用户入口 (成员 / 管理员 / 集成方)
 - **能力层** — 15 个能力域,按业务核心 / 能力增强 / 模型层 / 横切治理 4 组分类
 - **基础设施层** — 存储 (Postgres + Redis + MinIO) + 沙箱 (gVisor) + LLM 供应商
+- **横切关注点** — 审计 / 鉴权 / 观测,贯穿 3 层每条请求
 
 ```mermaid
 graph TB
-    L1["展示层 (3 个用户入口)"]
-    L2["能力层 (15 个能力域, 按职能分 4 组)"]
-    L3["基础设施层 (存储 / 沙箱 / 模型)"]
+    classDef sideBox fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a
+    classDef bizBox fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
+    classDef capBox fill:#fae8ff,stroke:#a855f7,stroke-width:2px,color:#581c87
+    classDef mdlBox fill:#fed7aa,stroke:#ea580c,stroke-width:2px,color:#7c2d12
+    classDef govBox fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d
+    classDef infraBox fill:#f3f4f6,stroke:#6b7280,stroke-width:2px,color:#1f2937
+    classDef crossBox fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#713f12,stroke-dasharray: 5 5
 
-    subgraph Sides [" "]
+    subgraph L1["展示层 · 3 个用户入口"]
         direction LR
-        U["<b>用户侧 (成员)</b><br/>首页 · 对话<br/>智能体 · 知识<br/>技能 · 工作流<br/>任务 · 协作"]
-        A["<b>管理侧 (管理员)</b><br/>运营总览 · 智能体管理<br/>知识 / 技能 / 工作流<br/>记忆 / 模型 / 额度<br/>渠道 / 评测 / 审计<br/>反馈 / 平台设置"]
-        P["<b>平台侧 (集成方)</b><br/>OpenAPI · SSE<br/>渠道 Webhook<br/>SDK (计划)"]
+        U["<b>用户侧 (成员)</b><br/>首页 / 对话 / 智能体<br/>知识 / 技能 / 工作流<br/>任务 / 协作<br/><sub>路径: /copilot</sub>"]:::sideBox
+        A["<b>管理侧 (管理员)</b><br/>运营总览 / 智能体管理<br/>知识/技能/工作流/记忆<br/>模型/额度/渠道/评测<br/>审计/反馈/平台设置<br/><sub>路径: /admin</sub>"]:::sideBox
+        P["<b>平台侧 (集成方)</b><br/>OpenAPI · SSE<br/>渠道 Webhook<br/>SDK (计划)<br/><sub>路径: /api · /v1</sub>"]:::sideBox
     end
 
-    subgraph Capability [" "]
-        direction LR
-        subgraph BIZ ["业务核心"]
-            direction TB
-            M1[identity]
-            M2[agent_runtime]
-            M3[agent_factory]
-            M4[channel]
+    subgraph L2["能力层 · 15 个能力域 (按职能分 4 组)"]
+        direction TB
+        subgraph BIZ["业务核心 · 处理用户/数据/渠道"]
+            direction LR
+            M1["<b>identity</b><br/><sub>租户 / 用户 / 工作区 / JWT</sub>"]:::bizBox
+            M2["<b>agent_runtime</b><br/><sub>流式对话 / 工具 / 多智能体</sub>"]:::bizBox
+            M3["<b>agent_factory</b><br/><sub>智能体创建 / 版本化 / 模板</sub>"]:::bizBox
+            M4["<b>channel</b><br/><sub>飞书 / 企微 / 钉钉 / Web</sub>"]:::bizBox
         end
-        subgraph CAP ["能力增强"]
-            direction TB
-            M5[knowledge]
-            M6[memory]
-            M7[skill]
-            M8[tool]
-            M9[orchestration]
+        subgraph CAP["能力增强 · 业务核心的可调用能力"]
+            direction LR
+            M5["<b>knowledge</b><br/><sub>知识库 / RAG / pgvector</sub>"]:::capBox
+            M6["<b>memory</b><br/><sub>短期 / 长期 / 知识层</sub>"]:::capBox
+            M7["<b>skill</b><br/><sub>Skill 注册 / 编排 / 沙箱执行</sub>"]:::capBox
+            M8["<b>tool</b><br/><sub>30+ 工具 / 审计</sub>"]:::capBox
+            M9["<b>orchestration</b><br/><sub>工作流编排 / 发布</sub>"]:::capBox
         end
-        subgraph MDL ["模型层"]
-            M10[model]
+        subgraph MDL["模型层 · LLM 供应商接入与路由"]
+            M10["<b>model</b><br/><sub>供应商 / 路由 / 用量 / 健康</sub>"]:::mdlBox
         end
-        subgraph GOV ["横切治理"]
-            direction TB
-            M11[governance]
-            M12[evaluation]
-            M13[self_evolution]
-            M14[observability]
-            M15[platform]
+        subgraph GOV["横切治理 · 跨业务通用的治理能力"]
+            direction LR
+            M11["<b>governance</b><br/><sub>额度 / 灰度 / 合规</sub>"]:::govBox
+            M12["<b>evaluation</b><br/><sub>评测套件 / 回归追踪</sub>"]:::govBox
+            M13["<b>self_evolution</b><br/><sub>反馈池 / 规则分诊 / 知识回流</sub>"]:::govBox
+            M14["<b>observability</b><br/><sub>调用链路 / 指标 / 告警</sub>"]:::govBox
+            M15["<b>platform</b><br/><sub>设置 / 品牌 / 成员</sub>"]:::govBox
         end
     end
 
-    subgraph Infra [" "]
+    subgraph L3["基础设施层"]
         direction LR
-        I1[Postgres + pgvector]
-        I2[Redis]
-        I3[MinIO]
-        I4[Sandbox<br/>gVisor]
-        I5[LLM Providers]
+        I1["<b>Postgres</b> :9153<br/><sub>+ pgvector 扩展</sub>"]:::infraBox
+        I2["<b>Redis</b> :6379<br/><sub>缓存 / 限流 / 会话</sub>"]:::infraBox
+        I3["<b>MinIO</b> :9000<br/><sub>对象存储 (知识 / 附件)</sub>"]:::infraBox
+        I4["<b>Sandbox</b><br/><sub>gVisor (runsc) + 白名单</sub>"]:::infraBox
+        I5["<b>LLM Providers</b><br/><sub>OpenAI / DeepSeek / Qwen</sub>"]:::infraBox
     end
 
-    L1 --- Sides
-    L2 --- Capability
-    L3 --- Infra
-    Sides --> Capability
-    Capability --> Infra
+    subgraph CROSS["横切关注点 · 贯穿 3 层每条请求"]
+        direction LR
+        AUDIT["<b>audit_log</b><br/><sub>所有写操作</sub>"]:::crossBox
+        AUTH["<b>JWT + X-Tenant-Id<br/>+ X-Workspace-Id</b><br/><sub>每请求鉴权 + 工作区校验</sub>"]:::crossBox
+        OBS["<b>OpenTelemetry</b><br/><sub>每请求追踪 / 指标 / 日志</sub>"]:::crossBox
+    end
+
+    L1 --> L2
+    L2 --> L3
+    CROSS -.-> L1
+    CROSS -.-> L2
+    CROSS -.-> L3
 ```
 
 ### 15 个能力域总表
