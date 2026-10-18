@@ -99,8 +99,8 @@ export const qk = {
       detail: (id: string) => ['admin', 'models', 'detail', id] as const,
     },
     agentFactory: {
-      root: ['admin', 'agent-factory'] as const,
-      routes: ['admin', 'agent-factory', 'routes'] as const,  // Phase 22: 给 agent_version route picker
+      // Phase 22 留: useRouteOptions 用的 query key
+      routes: ['admin', 'agent-factory', 'routes'] as const,
     },
     quotas: {
       root: ['admin', 'quotas'] as const,

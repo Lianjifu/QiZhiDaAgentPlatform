@@ -7,7 +7,7 @@ import { runtimeConfig } from '@/lib/api-mode';
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ChevronLeft, ChevronRight, Plus, Search, Sparkles, Star, Upload } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Plus, Search, Star, Upload } from 'lucide-react';
 import type {
   AgentEntry, AgentFilters, ImportExtension, ImportRow, ExportField, ExportFormat, ExportScope, SortKey, TabId,
 } from './schema';
@@ -189,16 +189,6 @@ export default function AgentsPage() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--brand)]">ADMIN / 智能体管理</p>
           <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">配置、审核并发布智能体。</h1>
           <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{list.length} 个智能体 · {list.filter((a) => a.status === 'published').length} 已发布。</p>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigate('/admin/agents/factory')}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--brand)] bg-[var(--brand-light)] px-3 py-1.5 text-xs font-semibold text-[var(--brand)] hover:bg-[var(--brand)] hover:text-white"
-            >
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              策略智能体 (agent_factory · Phase 23)
-            </button>
-          </div>
         </div>
       </section>
 
