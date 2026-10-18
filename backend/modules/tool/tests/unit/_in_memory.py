@@ -92,32 +92,56 @@ class CollectingEventPublisher(EventPublisher):
 class FakeCustomInvoker(CustomInvokerPort):
     def __init__(
         self,
-        registry: dict[str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]]
+        registry: dict[str, Callable[..., Awaitable[dict[str, Any]]]]
         | None = None,
     ) -> None:
         self._registry: dict[
-            str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+            str, Callable[..., Awaitable[dict[str, Any]]]
         ] = dict(registry or {})
         # Last call arguments received by invoke(); lets tests assert that
         # internal routing keys (`__operation_id`, `__foo`) are stripped.
         self.last_args: dict[str, Any] | None = None
         self.last_name: str | None = None
+        self.last_ctx: dict[str, Any] | None = None
 
     def register(
         self,
         name: str,
-        fn: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
+        fn: Callable[..., Awaitable[dict[str, Any]]],
     ) -> None:
         self._registry[name] = fn
 
-    async def invoke(self, *, name: str, arguments: dict) -> dict:
+    async def invoke(
+        self,
+        *,
+        name: str,
+        arguments: dict,
+        tenant_id: UUID,
+        workspace_id: UUID | None,
+        call_id: UUID,
+        actor_id: UUID,
+    ) -> dict:
         self.last_name = name
         self.last_args = dict(arguments)
+        self.last_ctx = {
+            "tenant_id": tenant_id,
+            "workspace_id": workspace_id,
+            "call_id": call_id,
+            "actor_id": actor_id,
+        }
         if name not in self._registry:
             from qzdap.modules.tool.domain.errors import ToolNotFound
 
             raise ToolNotFound(f"custom tool {name!r} not registered")
-        return dict(await self._registry[name](arguments))
+        return dict(
+            await self._registry[name](
+                arguments,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                call_id=call_id,
+                actor_id=actor_id,
+            )
+        )
 
 
 class FakeOpenAPIRuntime(OpenAPIRuntime):

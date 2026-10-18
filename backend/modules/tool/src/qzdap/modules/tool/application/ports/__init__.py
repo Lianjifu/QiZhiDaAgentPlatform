@@ -72,9 +72,24 @@ class EventPublisher(ABC):
 
 
 class CustomInvokerPort(Protocol):
-    """In-process tool registry: name → async callable(arguments: dict) -> dict."""
+    """In-process tool registry: name → async callable.
 
-    async def invoke(self, *, name: str, arguments: dict) -> dict: ...
+    Built-in tools (web_search / http_fetch / echo / reverse / clock) receive
+    `tenant_id` / `workspace_id` / `call_id` / `actor_id` so they can audit-log
+    egress and scope behaviour per workspace. Tenant-scope arguments are
+    passed via kwargs so the public `arguments` dict stays user-controlled.
+    """
+
+    async def invoke(
+        self,
+        *,
+        name: str,
+        arguments: dict,
+        tenant_id: UUID,
+        workspace_id: UUID | None,
+        call_id: UUID,
+        actor_id: UUID,
+    ) -> dict: ...
 
 
 class OpenAPIRuntime(Protocol):

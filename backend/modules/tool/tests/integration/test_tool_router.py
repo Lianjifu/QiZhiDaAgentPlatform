@@ -37,7 +37,7 @@ def _build_test_app() -> tuple[FastAPI, dict]:
     tools = InMemoryToolRepository()
     calls = InMemoryToolCallRepository()
 
-    async def _echo(args: dict) -> dict:
+    async def _echo(args: dict, **_kwargs: object) -> dict:
         return {"echo": args}
 
     custom = FakeCustomInvoker()

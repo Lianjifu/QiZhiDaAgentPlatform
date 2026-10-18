@@ -24,6 +24,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap.modules.tool.adapter.http.dto import (
     BatchInvokeRequest,
     BatchInvokeResponse,
@@ -81,7 +82,7 @@ def build_router() -> APIRouter:
     router = APIRouter(prefix="/v1/tools", tags=["tool"])
 
 
-    @router.post("", status_code=201)
+    @router.post("", status_code=201, dependencies=[Depends(_require_active_workspace)])
     async def register_tool(
         body: RegisterToolRequest,
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
@@ -173,7 +174,11 @@ def build_router() -> APIRouter:
         await svc.delete_tool().execute(tenant_id=x_tenant_id, tool_id=tid)
         return Response(status_code=204)
 
-    @router.post("/{name}/invoke", response_model=ToolCallResponse)
+    @router.post(
+        "/{name}/invoke",
+        response_model=ToolCallResponse,
+        dependencies=[Depends(_require_active_workspace)],
+    )
     async def invoke_tool(
         name: str,
         body: InvokeToolRequest,
@@ -205,6 +210,7 @@ def build_router() -> APIRouter:
         "/batch_invoke",
         response_model=BatchInvokeResponse,
         status_code=207,
+        dependencies=[Depends(_require_active_workspace)],
     )
     async def batch_invoke_tools(
         body: BatchInvokeRequest,

@@ -47,7 +47,7 @@ OWNER = UUID("00000000-0000-0000-0000-000000000020")
 
 
 def _custom_invoker_with_echo():
-    async def _echo(args):
+    async def _echo(args, **_kwargs: object):
         return {"echo": dict(args)}
 
     inv = FakeCustomInvoker()

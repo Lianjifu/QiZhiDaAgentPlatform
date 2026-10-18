@@ -120,6 +120,15 @@ class InvokeToolUseCase:
             tool_name=tool_name,
             arguments=arguments,
         )
+        # Per-call tenant context: built-in tools (web_search / http_fetch)
+        # need it for audit logging. Stored only for the duration of this
+        # invocation; the use case is otherwise stateless.
+        self._last_call_ctx = {
+            "tenant_id": tenant_id,
+            "workspace_id": workspace_id,
+            "call_id": call_id,
+            "actor_id": owner_id,
+        }
         await self._calls.add(call)
         await self._events.publish(
             call.raise_invoked_event(),
@@ -185,7 +194,15 @@ class InvokeToolUseCase:
         if protocol is ToolProtocol.CUSTOM:
             # Strip internal routing keys before handing to the callable.
             clean = {k: v for k, v in arguments.items() if not k.startswith("__")}
-            return await self._custom.invoke(name=tool.name, arguments=clean)
+            ctx = getattr(self, "_last_call_ctx", None) or {}
+            return await self._custom.invoke(
+                name=tool.name,
+                arguments=clean,
+                tenant_id=ctx.get("tenant_id"),
+                workspace_id=ctx.get("workspace_id"),
+                call_id=ctx.get("call_id"),
+                actor_id=ctx.get("actor_id"),
+            )
 
         if protocol is ToolProtocol.OPENAPI:
             operation = _pick_operation(tool.spec_operations, arguments)

@@ -95,20 +95,37 @@ class CollectingEventPublisher(EventPublisher):
 class FakeCustomInvoker(CustomInvokerPort):
     def __init__(self) -> None:
         self._registry: dict[
-            str, Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+            str, Callable[..., Awaitable[dict[str, Any]]]
         ] = {}
 
     def register(
-        self, name: str, fn: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+        self, name: str, fn: Callable[..., Awaitable[dict[str, Any]]]
     ) -> None:
         self._registry[name] = fn
 
-    async def invoke(self, *, name: str, arguments: dict) -> dict:
+    async def invoke(
+        self,
+        *,
+        name: str,
+        arguments: dict,
+        tenant_id: UUID,
+        workspace_id: UUID | None,
+        call_id: UUID,
+        actor_id: UUID,
+    ) -> dict:
         if name not in self._registry:
             from qzdap.modules.tool.domain.errors import ToolNotFound
 
             raise ToolNotFound(f"custom tool {name!r} not registered")
-        return dict(await self._registry[name](arguments))
+        return dict(
+            await self._registry[name](
+                arguments,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                call_id=call_id,
+                actor_id=actor_id,
+            )
+        )
 
 
 class FakeOpenAPIRuntime(OpenAPIRuntime):
