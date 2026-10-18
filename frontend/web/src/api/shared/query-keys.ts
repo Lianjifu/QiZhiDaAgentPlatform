@@ -98,10 +98,6 @@ export const qk = {
       health: ['admin', 'models', 'health'] as const,
       detail: (id: string) => ['admin', 'models', 'detail', id] as const,
     },
-    agentFactory: {
-      // Phase 22 留: useRouteOptions 用的 query key
-      routes: ['admin', 'agent-factory', 'routes'] as const,
-    },
     quotas: {
       root: ['admin', 'quotas'] as const,
     },
