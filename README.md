@@ -49,16 +49,23 @@
 
 ### 价值流转
 
-```
-管理员 ──建设能力──→ 能力目录 ──发布开放──→ 业务成员
-   │                     │                       │
-   │                     │                       ↓
-   │                  治理规则              对话/工作流
-   │                (审核/灰度/额度)            │
-   │                     │                       ↓
-   │                     └─── 审计/评测 ───── 反馈池
-   │                                              │
-   └────────────── 知识回流 / 版本迭代 ────────────┘
+```mermaid
+graph LR
+    Admin["管理员"]
+    Catalog["能力目录"]
+    Member["业务成员"]
+    Workflow["对话 / 工作流"]
+    Feedback["反馈池"]
+    Audit["审计 / 评测"]
+
+    Admin -- 建设能力 --> Catalog
+    Admin -- 治理规则<br/>审核/灰度/额度 --> Catalog
+    Catalog -- 发布开放 --> Member
+    Member --> Workflow
+    Workflow -- 反馈 --> Feedback
+    Audit --> Feedback
+    Catalog -- 审计/评测 --> Audit
+    Feedback -- 知识回流 / 版本迭代 --> Catalog
 ```
 
 ---
@@ -174,25 +181,23 @@ open http://127.0.0.1:9152
 
 ### 信息架构
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     QIZHIDA Platform                         │
-├──────────────────┬──────────────────┬──────────────────────┤
-│   用户侧 (成员)    │   管理侧 (管理员)   │   平台侧 (集成方)     │
-│                  │                  │                      │
-│  • 首页/对话      │  • 运营总览       │  • OpenAPI            │
-│  • 智能体/知识    │  • 智能体管理     │  • SSE 流式           │
-│  • 技能/工作流    │  • 知识/技能/工作流│  • 渠道 Webhook       │
-│  • 任务/协作/设置  │  • 记忆/模型/额度  │  • SDK (计划)         │
-│                  │  • 渠道/评测/审计  │                      │
-│                  │  • 反馈/平台设置  │                      │
-├──────────────────┴──────────────────┴──────────────────────┤
-│                      15 个能力域                            │
-│  identity · agent_runtime · agent_factory · skill · tool   │
-│  knowledge · memory · model · channel · orchestration      │
-│  governance · evaluation · self_evolution · observability  │
-│  platform                                                  │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    Q[QIZHIDA Platform]
+
+    subgraph Sides [" "]
+        U["用户侧 (成员)<br/>• 首页 / 对话<br/>• 智能体 / 知识<br/>• 技能 / 工作流<br/>• 任务 / 协作 / 设置"]
+        A["管理侧 (管理员)<br/>• 运营总览<br/>• 智能体管理<br/>• 知识 / 技能 / 工作流<br/>• 记忆 / 模型 / 额度<br/>• 渠道 / 评测 / 审计<br/>• 反馈 / 平台设置"]
+        P["平台侧 (集成方)<br/>• OpenAPI<br/>• SSE 流式<br/>• 渠道 Webhook<br/>• SDK (计划)"]
+    end
+
+    subgraph Modules ["15 个能力域"]
+        M["identity · agent_runtime · agent_factory<br/>skill · tool · knowledge · memory<br/>model · channel · orchestration<br/>governance · evaluation · self_evolution<br/>observability · platform"]
+    end
+
+    Q --> Sides
+    Q --> Modules
+    Sides --- Modules
 ```
 
 ### 15 个能力域总表
@@ -266,40 +271,58 @@ open http://127.0.0.1:9152
 
 ### 部署拓扑
 
-```
-浏览器 ──→ Vite (9152) ──→ 网关 (9150) ──→ qzdap-app (9151) ──→ Postgres (9153)
-                                  │                                    │
-                                  │                                    ├── pgvector
-                                  │                                    ├── Redis (6379)
-                                  │                                    └── MinIO (9000)
-                                  │
-                                  └──→ Sandbox (gVisor runsc)
+```mermaid
+graph LR
+    Browser["浏览器"]
+    Vite["Vite<br/>:9152"]
+    Gateway["网关<br/>:9150"]
+    App["qzdap-app<br/>:9151"]
+    PG["Postgres<br/>:9153"]
+    pgvec["pgvector"]
+    Redis["Redis<br/>:6379"]
+    MinIO["MinIO<br/>:9000"]
+    Sandbox["Sandbox<br/>gVisor runsc"]
+
+    Browser --> Vite
+    Vite --> Gateway
+    Gateway --> App
+    App --> PG
+    App --> Sandbox
+    PG --- pgvec
+    PG --- Redis
+    PG --- MinIO
 ```
 
 ### SSE 时序图 (一次 turn)
 
-```
-客户端           网关           qzdap-app         LLM          Tool/Knowledge
-  │                │                │              │                 │
-  │─ POST /turn ──→│                │              │                 │
-  │                │─ POST /turn ──→│              │                 │
-  │                │                │─ stream ────→│                 │
-  │                │                │←─ chunk1 ────│                 │
-  │                │                │   MessageChunk                │
-  │                │←─ chunk1 ──────│              │                 │
-  │←─ event: msg ──│                │              │                 │
-  │                │                │─ chunk2 ────→│                 │
-  │                │                │←─ tool_call ──│                 │
-  │                │←─ tool_call ───│              │                 │
-  │←─ tool_call ───│                │─ invoke ─────────────────────→│
-  │                │                │←─ result ──────────────────────│
-  │                │                │─ stream ────→│                 │
-  │                │                │←─ chunk3 ────│                 │
-  │                │←─ tool_result ─│              │                 │
-  │←─ tool_result ─│                │              │                 │
-  │                │                │─ done ──────→│                 │
-  │                │←─ done ────────│              │                 │
-  │←─ event: done ─│                │              │                 │
+```mermaid
+sequenceDiagram
+    participant C as 客户端
+    participant G as 网关
+    participant A as qzdap-app
+    participant L as LLM
+    participant T as Tool/Knowledge
+
+    C->>G: POST /turn
+    G->>A: POST /turn
+    A->>L: stream
+    L-->>A: chunk1 (MessageChunk)
+    A-->>G: chunk1
+    G-->>C: event: message
+    A->>L: chunk2
+    L-->>A: tool_call
+    A-->>G: tool_call
+    G-->>C: tool_call
+    A->>T: invoke
+    T-->>A: result
+    A->>L: stream
+    L-->>A: chunk3
+    A-->>G: tool_result
+    G-->>C: tool_result
+    A->>L: done
+    L-->>A: done
+    A-->>G: done
+    G-->>C: event: done
 ```
 
 ### 技术栈
