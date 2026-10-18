@@ -18,7 +18,6 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
-  ExternalLink,
   Eye,
   FileCode2,
   FileJson,
@@ -167,10 +166,8 @@ const PREVIEWABLE: ReadonlySet<ArtifactKind> = new Set([
 
 export function ArtifactCard({
   artifact,
-  onOpenInWorkspace,
 }: {
   artifact: ArtifactReady;
-  onOpenInWorkspace?: (a: ArtifactReady) => void;
 }) {
   const kind = inferKind(artifact);
   const [expanded, setExpanded] = useState(false);
@@ -275,17 +272,6 @@ export function ArtifactCard({
               仅下载
             </span>
           )}
-          {onOpenInWorkspace ? (
-            <button
-              type="button"
-              onClick={() => onOpenInWorkspace(artifact)}
-              className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[10px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              title="在右侧工作区打开"
-            >
-              <ExternalLink className="h-3 w-3" />
-              右侧打开
-            </button>
-          ) : null}
           <button
             type="button"
             onClick={() => void download()}

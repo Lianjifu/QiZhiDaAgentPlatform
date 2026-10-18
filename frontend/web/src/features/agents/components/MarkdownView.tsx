@@ -132,18 +132,23 @@ export function MarkdownView({ source }: MarkdownViewProps) {
           pre: ({ children }) => <>{children}</>, // 让 fenced code 直接走 code 渲染, 避免外层 pre 嵌套
           table: (props) => (
             <div className="my-3 overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface-1)]">
-              <table className="w-full text-xs text-[var(--text-secondary)]" {...props} />
+              <table className="w-full border-collapse text-xs text-[var(--text-secondary)]" {...props} />
             </div>
           ),
-          thead: (props) => <thead className="bg-[var(--bg-elevated)]" {...props} />,
-          th: (props) => (
-            <th
-              className="border-b border-[var(--border)] px-3 py-2 text-left font-semibold text-[var(--text)]"
+          thead: (props) => (
+            <thead
+              className="sticky top-0 z-10 bg-[var(--bg-elevated)] text-[var(--text)] shadow-[0_1px_0_0_var(--border)]"
               {...props}
             />
           ),
-          td: (props) => <td className="border-b border-[var(--border)] px-3 py-2 last:border-b-0" {...props} />,
-          tr: (props) => <tr {...props} />,
+          th: (props) => (
+            <th
+              className="border-b border-[var(--border)] px-3 py-2 text-left align-bottom font-semibold"
+              {...props}
+            />
+          ),
+          td: (props) => <td className="border-b border-[var(--border)] px-3 py-2 align-top last:border-b-0" {...props} />,
+          tr: (props) => <tr className="even:bg-[var(--bg-elevated)]/40 hover:bg-[var(--brand-light)]/30" {...props} />,
           tbody: (props) => <tbody {...props} />,
           input: (props) => {
             // GFM 任务列表: 渲染为 disabled checkbox

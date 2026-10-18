@@ -3,39 +3,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import Copilot from './CopilotPage';
 
-describe('Copilot workspace preview', () => {
+describe('Copilot page', () => {
   afterEach(() => cleanup());
-
-  it('only mounts the Files directory in the files workspace', () => {
-    render(
-      <MemoryRouter>
-        <Copilot />
-      </MemoryRouter>,
-    );
-
-    expect(screen.queryByPlaceholderText('筛选文件…')).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: '文件' }));
-    expect(screen.getByPlaceholderText('筛选文件…')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /README\.md/ })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: '浏览器' }));
-    expect(screen.queryByPlaceholderText('筛选文件…')).toBeNull();
-  });
-
-  it('keeps file filtering available after opening the Files workspace', () => {
-    render(
-      <MemoryRouter>
-        <Copilot />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: '文件' }));
-    fireEvent.change(screen.getByPlaceholderText('筛选文件…'), { target: { value: 'README' } });
-
-    expect(screen.getByRole('button', { name: /README\.md/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Copilot\.tsx/ })).toBeNull();
-  });
 
   it('writes the selected attachment filename into the composer', () => {
     render(
@@ -78,20 +47,5 @@ describe('Copilot workspace preview', () => {
     );
 
     expect((screen.getByPlaceholderText('描述你想完成的工作...') as HTMLTextAreaElement).value).toContain('差旅与报销指南');
-  });
-
-  it('exposes the model and workspace control semantics', () => {
-    render(
-      <MemoryRouter>
-        <Copilot />
-      </MemoryRouter>,
-    );
-
-    const workspaceButton = screen.getByRole('button', { name: '关闭大模型配置与工作区' });
-    expect(workspaceButton.getAttribute('aria-expanded')).toBe('true');
-    expect(workspaceButton.getAttribute('aria-controls')).toBe('copilot-workspace-preview');
-
-    fireEvent.click(workspaceButton);
-    expect(screen.getByRole('button', { name: '打开大模型配置与工作区' })).toBeTruthy();
   });
 });

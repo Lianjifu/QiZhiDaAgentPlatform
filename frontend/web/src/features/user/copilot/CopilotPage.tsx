@@ -1,33 +1,25 @@
 import { runtimeConfig } from '@/lib/api-mode';
 import { getApiClient } from '@qzdap/web-api';
 import {
-  ArrowLeft,
-  ArrowRight,
   ArrowUp,
   Bot,
-  ChevronDown,
-  ChevronRight,
-  ClipboardCheck,
-  Copy,
-  FileText,
-  Folder,
-  FolderTree,
-  Globe2,
   Menu,
-  MoreHorizontal,
-  PanelRightClose,
   Paperclip,
   Plus,
-  RefreshCw,
   Search,
   Settings2,
   Sparkles,
-  TerminalSquare,
   Trash2,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { flushSync } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import type { CopilotSession } from './schema';
+import {
+  InteractiveProvider,
+  useInteractive,
+} from './interactiveStore';
+import { InteractionHost } from './InteractionHost';
 import { MarkdownView } from '@/features/agents/components/MarkdownView';
 import {
   createCopilotSession,
@@ -63,9 +55,80 @@ type Message = ChatMessage & {
   attachments?: AttachmentReady[];
 };
 type CopilotEntryState = { knowledgeTitle?: string; agentId?: string; agentName?: string; agentExample?: string; skillName?: string; sessionId?: string };
-type PreviewTab = 'review' | 'browser' | 'files' | 'terminal';
 
-const starters = ['帮我整理今天的工作重点', '分析这份资料并提炼结论', '生成一份客户跟进计划'];
+/**
+ * getStarters — 按时间 + 周末动态产出问候语, 拟人/亲切型.
+ * 4 条循环, 同一会话多次进 empty 态会有不同开场.
+ */
+function getStarters(now: Date = new Date()): string[] {
+  const h = now.getHours();
+  const dow = now.getDay();
+  const weekday = dow >= 1 && dow <= 5;
+  if (h < 5) {
+    return ['这么晚还没睡呀~', '我陪你熬会儿', '要不来杯热茶?'];
+  }
+  if (h < 11) {
+    return weekday
+      ? ['早安,今天精神不错嘛', '新的一天,想问点啥?', '先吃早饭再说?']
+      : ['周末好~睡饱了没?', '难得清闲,聊点啥?', '要不要出门转转?'];
+  }
+  if (h < 14) {
+    return ['中午好~困不困?', '别忘了午饭', '有什么我能搭把手的?'];
+  }
+  if (h < 18) {
+    return weekday
+      ? ['下午好,冲劲十足啊', '今天进展怎么样?', '遇到啥难题了?']
+      : ['周日下午好~', '今天过得咋样?', '需要理一理啥?'];
+  }
+  if (h < 22) {
+    return ['晚上好~今天辛苦啦', '终于到收工时间啦', '想聊点轻松的?'];
+  }
+  return ['夜深啦,要不明天再说?', '需要陪你说说话吗?', '我在,你说'];
+}
+
+/**
+ * CopilotTypingIndicator: 流式生成中占位.
+ * 三个点交错闪 + 文字 1.2s 周期轮换, 模拟"在写"的活跃感.
+ * deepseek first-token 1.5-7s, 没有这个用户会以为卡死.
+ */
+const TYPING_PHRASES = ['我在想呢…', '打字中…', '马上就好~', '让我看看…', '嗯,再琢磨一下', '等我一下'];
+const CopilotTypingIndicator = () => {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => setIdx((i) => (i + 1) % TYPING_PHRASES.length), 1200);
+    return () => window.clearInterval(t);
+  }, []);
+  return (
+    <div
+      data-testid="copilot-generating"
+      className="flex items-center gap-2 text-[var(--text-muted)]"
+      role="status"
+      aria-live="polite"
+    >
+      <span className="inline-flex items-end gap-0.5" aria-hidden="true">
+        <span
+          className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--brand)]"
+          style={{ animationDelay: '0ms', animationDuration: '900ms' }}
+        />
+        <span
+          className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--brand)]"
+          style={{ animationDelay: '150ms', animationDuration: '900ms' }}
+        />
+        <span
+          className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--brand)]"
+          style={{ animationDelay: '300ms', animationDuration: '900ms' }}
+        />
+      </span>
+      <span
+        key={idx}
+        className="text-sm tabular-nums animate-[fadein_300ms_ease-out]"
+      >
+        {TYPING_PHRASES[idx]}
+        <span className="ml-0.5 inline-block w-3 animate-pulse">▍</span>
+      </span>
+    </div>
+  );
+};
 
 /**
  * pushNotice: 加一条提示, 同样的内容在最近 N 条里已存在则跳过 (避免
@@ -91,9 +154,20 @@ const composerOptions = {
     { label: '@知识库', value: '@知识库 ' },
   ],
 } as const;
-const X = PanelRightClose;
 
 export default function Copilot() {
+  return (
+    <InteractiveProvider>
+      <CopilotInner />
+    </InteractiveProvider>
+  );
+}
+
+function CopilotInner() {
+  const interactive = useInteractive();
+  const handleInteractiveAction = interactive.handleAction;
+  const dismissQuestion = interactive.dismissQuestion;
+  const dismissPlan = interactive.dismissPlan;
   const location = useLocation();
   const navigate = useNavigate();
   const demoMode = runtimeConfig().dataMode === 'demo';
@@ -112,7 +186,11 @@ export default function Copilot() {
     void listCopilotSessions().then(setSessions).catch((error) => setNotices((current) => pushNotice(current, `查询失败：${String(error)}`)));
   }, []);
   useEffect(() => {
-    if (!sessionId) return;
+    // 发送中时不要触发重载, 避免 race:
+    // sendMessage 已经把 user message push 进 messages, 紧跟着 setSessionId
+    // 会触发本 effect, loadCopilotSession 返回空 / 旧数据 → setMessages([])
+    // 把刚加的 user message 覆盖掉, 页面就只剩空态.
+    if (!sessionId || isSending) return;
     void loadCopilotSession(sessionId).then((detail) => {
       if (!detail) { setMessages([]); setPendingApproval(null); return; }
       const loaded = (detail.messages || [])
@@ -129,27 +207,8 @@ export default function Copilot() {
         });
       }
     }).catch((error) => { setMessages([]); setNotices((current) => pushNotice(current, `详情加载失败：${String(error)}`)); });
-  }, [sessionId]);
-  const [terminalCommand, setTerminalCommand] = useState('');
-  const [terminalOutput, setTerminalOutput] = useState<string[]>(['$ workspace status', 'Workspace ready · qizhida-agent-platform', '$']);
-  const runTerminalCommand = () => {
-    const command = terminalCommand.trim();
-    if (!command) return;
-    if (!demoMode) { void getApiClient().post<{ output: string }>('/api/workspace/terminal', { command }).then((result) => setTerminalOutput((current) => [...current, result.output])).catch((error) => setNotices((current) => pushNotice(current, `执行失败：${String(error)}`))); return; }
-    setTerminalOutput((current) => [...current.filter((line) => line !== '$').slice(-8), `$ ${command}`, command === 'pwd' ? '/workspace/qizhida-agent-platform' : command === 'ls' ? 'frontend  backend  docs  README.md' : `Command accepted: ${command}`, '$']);
-    setTerminalCommand('');
-  };
+  }, [sessionId, isSending]);
   const [composerMenu, setComposerMenu] = useState<'slash' | 'mention' | null>(null);
-  useEffect(() => {
-    const handleShortcut = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === '\\') {
-        event.preventDefault();
-        setShowContext((visible) => !visible);
-      }
-    };
-    window.addEventListener('keydown', handleShortcut);
-    return () => window.removeEventListener('keydown', handleShortcut);
-  }, []);
   useEffect(() => {
     if (!knowledgeTitle) return;
     setInput((current) => current || `请基于《${knowledgeTitle}》帮我整理一份可执行的摘要。`);
@@ -161,70 +220,7 @@ export default function Copilot() {
       : `请使用「${skillName}」帮我完成这项工作。`));
   }, [skillName, agentName, knowledgeTitle]);
   const [sessionListOpen, setSessionListOpen] = useState(false);
-  const [showContext, setShowContext] = useState(true);
-  const [previewTab, setPreviewTab] = useState<PreviewTab>('browser');
-  const [fileFilter, setFileFilter] = useState('');
-  const [expandedFolders, setExpandedFolders] = useState<string[]>(['.claude', 'worktrees', 'qizhida-agent-platform']);
-  const [selectedFile, setSelectedFile] = useState('README.md');
-  const [previewRunning, setPreviewRunning] = useState(false);
-  const [previewContent, setPreviewContent] = useState<string>('');
-  const files = demoMode ? [
-    { name: '.claude', type: 'folder', depth: 0 },
-    { name: 'worktrees', type: 'folder', depth: 1, parent: '.claude' },
-    { name: 'qizhida-agent-platform', type: 'folder', depth: 2, parent: 'worktrees' },
-    { name: 'frontend', type: 'folder', depth: 3, parent: 'qizhida-agent-platform' },
-    { name: 'Copilot.tsx', type: 'file', depth: 4, parent: 'frontend' },
-    { name: 'App.tsx', type: 'file', depth: 4, parent: 'frontend' },
-    { name: 'backend', type: 'folder', depth: 3, parent: 'qizhida-agent-platform' },
-    { name: 'docs', type: 'folder', depth: 3, parent: 'qizhida-agent-platform' },
-    { name: 'README.md', type: 'file', depth: 3, parent: 'qizhida-agent-platform' },
-    { name: 'frontend-agent-platform-reconstruction.md', type: 'file', depth: 3, parent: 'qizhida-agent-platform' },
-  ] : [];
-  const visibleFiles = files.filter((file) => !fileFilter || file.name.toLowerCase().includes(fileFilter.toLowerCase()));
-  const toggleFolder = (name: string) => setExpandedFolders((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name]);
-  const previewTabs: { id: PreviewTab; label: string; icon: typeof Globe2 }[] = [
-    { id: 'review', label: '审查', icon: ClipboardCheck },
-    { id: 'browser', label: '浏览器', icon: Globe2 },
-    { id: 'files', label: '文件', icon: FileText },
-    { id: 'terminal', label: '终端', icon: TerminalSquare },
-  ];
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // 右侧工作区事件路由: tool_name 命中规则 → 切 tab + 必要副作用
-  const routeToolToTab = (toolName: string, kind: 'tool_call' | 'tool_result' | 'workflow_invocation', payload?: Record<string, unknown>) => {
-    const name = toolName.toLowerCase();
-    const matches = (prefix: string) => name === prefix || name.startsWith(prefix + '_');
-    if (matches('browser') || matches('navigate') || matches('web_search') || matches('http')) {
-      setPreviewTab('browser');
-      setShowContext(true);
-      return;
-    }
-    if (matches('shell') || matches('run_command') || matches('terminal')) {
-      setPreviewTab('terminal');
-      setShowContext(true);
-      if (kind === 'tool_result' && typeof payload?.output === 'string') {
-        setTerminalOutput((current) => [...current, payload.output as string, '$']);
-      } else if (kind === 'tool_call' && payload?.arguments && typeof (payload.arguments as { command?: string }).command === 'string') {
-        setTerminalOutput((current) => [...current, `$ ${(payload.arguments as { command: string }).command}`]);
-      }
-      return;
-    }
-    if (matches('write') || matches('generate') || matches('artifact')) {
-      setPreviewTab('files');
-      setShowContext(true);
-      if (kind === 'tool_result' && typeof payload?.output === 'object' && payload.output && 'name' in (payload.output as object)) {
-        setSelectedFile(String((payload.output as { name: string }).name));
-      }
-      return;
-    }
-    if (matches('read') || matches('list_files')) {
-      setPreviewTab('files');
-      setShowContext(true);
-      return;
-    }
-    // 兜底: 不切 tab, 留个 notice
-    setNotices((current) => pushNotice(current, `工具 ${toolName} 已调用`));
-  };
 
   const sendMessage = async (value = input) => {
     const content = value.trim();
@@ -278,13 +274,18 @@ export default function Copilot() {
         if (event === 'message') {
           const chunk = String(data.content || '');
           if (chunk) {
-            setMessages((current) => {
-              const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
-              const next = current.slice();
-              const existing = next[idx];
-              if (!existing || existing.role !== 'assistant') return current;
-              next[idx] = { ...existing, content: existing.content + chunk };
-              return next;
+            // flushSync: 强制同步重渲染, 避免 React 18 把多个 chunk 的
+            // setMessages 批处理成一次渲染 (用户会看到"一下子全出来").
+            // 流式 chat 的关键路径 — 切勿合并到 startTransition.
+            flushSync(() => {
+              setMessages((current) => {
+                const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
+                const next = current.slice();
+                const existing = next[idx];
+                if (!existing || existing.role !== 'assistant') return current;
+                next[idx] = { ...existing, content: existing.content + chunk };
+                return next;
+              });
             });
           }
         }
@@ -298,7 +299,6 @@ export default function Copilot() {
           };
           toolIndexById.set(tcId, toolCalls.length);
           toolCalls.push(tc);
-          routeToolToTab(tc.tool_name, 'tool_call', { arguments: tc.arguments });
           setMessages((current) => {
             const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
             const next = current.slice();
@@ -315,7 +315,35 @@ export default function Copilot() {
             tc.status = data.is_error ? 'failed' : 'succeeded';
             tc.output = typeof data.output === 'string' ? data.output : JSON.stringify(data.output);
             tc.latency_ms = Number(data.latency_ms || 0);
-            routeToolToTab(tc.tool_name, 'tool_result', { output: tc.output });
+          }
+          // Phase 14: delegate_to_agent 是真派发 (sub-agent 同步跑完),
+          // 工具结果里带 _meta.subagent_dispatched. 这里把结果摘要 push 成
+          // 一条提示 — 父 turn 继续生成, 用户只是被通知 "X 帮我处理完了, 用时 Ns".
+          if (
+            toolCalls[outIdx]?.name === 'delegate_to_agent' &&
+            data.is_error === false
+          ) {
+            try {
+              const parsed = typeof data.output === 'string'
+                ? JSON.parse(data.output) as { _meta?: { subagent_dispatched?: boolean; sub_session_id?: string; duration_ms?: number; status?: string }; error_code?: string }
+                : null;
+              const meta = parsed?._meta;
+              if (meta?.subagent_dispatched) {
+                const dur = Math.round((meta.duration_ms || 0) / 100) / 10;
+                const status = meta.status === 'succeeded' ? '✓' : '✗';
+                setNotices((current) => pushNotice(
+                  current,
+                  `${status} 已派给子智能体, 用时 ${dur}s (${meta.sub_session_id?.slice(0, 8) ?? '?'})`,
+                ));
+              } else if (parsed?.error_code) {
+                setNotices((current) => pushNotice(
+                  current,
+                  `派发失败: ${parsed.error_code} — ${parsed.error ?? ''}`,
+                ));
+              }
+            } catch {
+              // 解析失败就静默 — 不阻塞主流程
+            }
           }
         }
         if (event === 'knowledge_search') {
@@ -345,7 +373,6 @@ export default function Copilot() {
             steps: Array.isArray(data.steps) ? (data.steps as PlanProposal['steps']) : [],
             reason: String(data.reason || ''),
           };
-          setShowContext(false); // plan 占主区, 收起右侧避免抢焦点
         }
         if (event === 'artifact_ready') {
           const a: ArtifactReady = {
@@ -361,9 +388,6 @@ export default function Copilot() {
             snippet: String(data.snippet || ''),
           };
           artifacts.push(a);
-          setSelectedFile(a.name);
-          setPreviewTab('files');
-          setShowContext(true);
         }
         if (event === 'attachment_ready') {
           attachments.push({
@@ -386,14 +410,70 @@ export default function Copilot() {
         if (event === 'done') {
           const final = String(data.final_message || '');
           if (final) {
-            setMessages((current) => {
-              const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
-              const next = current.slice();
-              const existing = next[idx];
-              if (!existing || existing.role !== 'assistant') return current;
-              next[idx] = { ...existing, content: final };
-              return next;
+            flushSync(() => {
+              setMessages((current) => {
+                const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
+                const next = current.slice();
+                const existing = next[idx];
+                if (!existing || existing.role !== 'assistant') return current;
+                next[idx] = { ...existing, content: final };
+                return next;
+              });
             });
+          }
+        }
+        if (event === 'interactive_action') {
+          // 5 个 stub tool (ask_user_question / notify_user / plan_submit /
+          // todo_write / delegate_to_agent) 完成后, backend 在 tool_result
+          // chunk 之后再发一个 interactive_action chunk. 这里接到后分派到
+          // store, 让 <InteractionHost> 渲染对应 UI.
+          const callId = String(data.call_id || '')
+          const action = String(data.action || '') as
+            | 'show_question_card'
+            | 'toast'
+            | 'render_plan'
+            | 'render_todo_list'
+            | 'delegate_agent'
+          const payload = (data.payload && typeof data.payload === 'object'
+            ? (data.payload as Record<string, unknown>)
+            : {}) as Record<string, unknown>
+          if (action === 'delegate_agent') {
+            // Phase 14: delegate_to_agent 现在走真派发, 不再 emit
+            // interactive_action chunk. 这里保留分支是兜底 (旧 backend /
+            // 测试桩可能仍 emit), 但只 push 提示, 不再 router.push —
+            // LLM 拿到 sub-agent 结果会继续生成, 父 turn 不需要换页.
+            void (async () => {
+              const targetAgentId = String(payload.agent_id || '');
+              const taskPreview = typeof payload.task === 'string'
+                ? payload.task.slice(0, 24)
+                : '?';
+              setNotices((current) => pushNotice(
+                current,
+                `已派给子智能体 ${targetAgentId.slice(0, 8)} (任务: ${taskPreview})`,
+              ));
+            })()
+          } else {
+            handleInteractiveAction(
+              callId,
+              action,
+              payload,
+              async (resolvedPayload) => {
+                // 把用户答案 POST 给后端, 留 audit log + transcript
+                if (!sessionId) return
+                await getApiClient()
+                  .post(
+                    `/api/sessions/${sessionId}/interactive/answer`,
+                    { call_id: callId, action, payload: resolvedPayload },
+                  )
+                  .catch(() => {
+                    // audit 失败不阻塞 UI
+                  })
+                // 通知 store 关闭 (render_plan / show_question_card 自己也会
+                // 通过 onResolve 关闭, 这里双保险)
+                if (action === 'render_plan') dismissPlan()
+                if (action === 'show_question_card') dismissQuestion()
+              },
+            )
           }
         }
         if (event === 'error') {
@@ -425,11 +505,12 @@ export default function Copilot() {
       void listCopilotSessions().then(setSessions).catch((error) => setNotices((current) => pushNotice(current, `查询失败：${String(error)}`)));
     } catch (error) {
       const raw = error instanceof Error ? error.message : String(error);
-      // dev 模式 503 + PROVIDER_UNAVAILABLE: 把生硬的 "流式请求失败 (HTTP 503)"
-      // 替换成可操作提示
+      // 把 503 / PROVIDER_UNAVAILABLE 翻译成"未配置 LLM 供应商"提示,
+      // 引导用户去 /admin/models/new. 历史文案里 "QZDAP_LLM_PROVIDER /
+      // QZDAP_LLM_API_KEY" 的 .env 提示已下线, 统一走管理侧.
       const friendly =
-        /PROVIDER_UNAVAILABLE|Mock\s*LLM/.test(raw) || /\(HTTP\s*503\)/.test(raw)
-          ? '当前后端没接真实模型: dev 模式不允许 mock LLM. 演示用 `QZDAP_ENV=demo` 重启后端, 或在 backend/.env.local 配 QZDAP_LLM_PROVIDER=openai-compatible + QZDAP_LLM_API_KEY=...'
+        /PROVIDER_UNAVAILABLE/.test(raw) || /\(HTTP\s*503\)/.test(raw)
+          ? '当前后端未配置 LLM 供应商, 无法对话. 请到 管理 → 模型管理 → 新建供应商 配置 API key 后再试.'
           : raw;
       setNotices((current) => pushNotice(current, `请求失败：${friendly}`));
     } finally {
@@ -489,22 +570,6 @@ export default function Copilot() {
     setInput((current) => `${current.slice(0, -1)}${value}`);
     setComposerMenu(null);
   };
-
-  // 加载选中的 artifact 内容到右侧预览
-  useEffect(() => {
-    if (previewTab !== 'files' || !selectedFile) return;
-    if (selectedFile.startsWith('Copilot') || selectedFile.endsWith('.md') || selectedFile.endsWith('.tsx') || selectedFile.endsWith('.ts')) {
-      // 走 artifact download
-      const artifact = messages.flatMap((m) => m.artifacts ?? []).find((a) => a.name === selectedFile);
-      if (artifact) {
-        void fetch(artifact.download_path, { credentials: 'include' })
-          .then((r) => (r.ok ? r.text() : ''))
-          .then((text) => setPreviewContent(text));
-        return;
-      }
-    }
-    setPreviewContent('');
-  }, [previewTab, selectedFile, messages]);
 
   // ------------------------------------------------------------------
   // Composer 子组件, 让 empty / non-empty 状态都能复用
@@ -704,17 +769,6 @@ export default function Copilot() {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowContext((visible) => !visible)}
-            title={showContext ? '关闭大模型配置与工作区' : '打开大模型配置与工作区'}
-            aria-label={showContext ? '关闭大模型配置与工作区' : '打开大模型配置与工作区'}
-            aria-expanded={showContext}
-            aria-controls="copilot-workspace-preview"
-            className="hidden rounded-md p-2 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] xl:inline-flex"
-          >
-            <FileText className="h-4 w-4" />
-          </button>
         </div>
 
         {isEmpty ? (
@@ -750,7 +804,12 @@ export default function Copilot() {
                 ) : null}
               </div>
               <div className="grid w-full max-w-3xl gap-2 sm:grid-cols-3">
-                {(agentName && entry?.agentExample ? [entry.agentExample, ...starters.slice(1)] : starters).map((starter) => (
+                {(() => {
+                  const pool = getStarters();
+                  return (agentName && entry?.agentExample
+                    ? [entry.agentExample, ...pool.slice(1)]
+                    : pool
+                  ).map((starter) => (
                   <button
                     type="button"
                     key={starter}
@@ -761,7 +820,8 @@ export default function Copilot() {
                   >
                     {starter}
                   </button>
-                ))}
+                  ));
+                })()}
               </div>
               <div className="w-full max-w-3xl">{Composer}</div>
             </div>
@@ -842,19 +902,17 @@ export default function Copilot() {
                         {message.plan && sessionId ? (
                           <PlanProposalCard proposal={message.plan} sessionId={sessionId} />
                         ) : null}
-                        {message.content ? <MarkdownView source={message.content} /> : null}
+                        {message.content ? (
+                          <MarkdownView source={message.content} />
+                        ) : isSending && index === messages.length - 1 ? (
+                          // 首字到达前的占位 — deepseek first-token latency 1.5-7s,
+                          // 没有这个提示用户会以为卡死. 看到 ▍ 闪 + 文字轮换就知道在跑.
+                          <CopilotTypingIndicator />
+                        ) : null}
                         {message.artifacts && message.artifacts.length > 0 ? (
                           <div className="space-y-2">
                             {message.artifacts.map((a) => (
-                              <ArtifactCard
-                                key={a.artifact_id}
-                                artifact={a}
-                                onOpenInWorkspace={(art) => {
-                                  setSelectedFile(art.name);
-                                  setPreviewTab('files');
-                                  setShowContext(true);
-                                }}
-                              />
+                              <ArtifactCard key={a.artifact_id} artifact={a} />
                             ))}
                           </div>
                         ) : null}
@@ -879,234 +937,7 @@ export default function Copilot() {
           </>
         )}
       </main>
-
-      {showContext ? (
-        <aside
-          id="copilot-workspace-preview"
-          className="hidden min-h-0 w-[min(100%,22rem)] shrink-0 border-l border-[var(--border)] bg-[var(--surface-1)] xl:flex xl:flex-col 2xl:w-[26rem]"
-        >
-          <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-            <div>
-              <h2 className="text-sm font-semibold">工作区预览</h2>
-              <p className="mt-1 text-[10px] text-[var(--text-muted)]">审查 · 浏览器 · 文件 · 终端</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowContext(false)}
-              className="rounded-md p-1.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
-              aria-label="关闭预览面板"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="grid grid-cols-4 gap-1 border-b border-[var(--border)] px-3 py-2">
-            {previewTabs.map(({ id, label, icon: Icon }) => (
-              <button
-                type="button"
-                key={id}
-                onClick={() => setPreviewTab(id)}
-                className={`flex flex-col items-center gap-1 rounded-md px-1 py-2 text-[10px] ${
-                  previewTab === id
-                    ? 'bg-[var(--brand-light)] font-semibold text-[var(--brand)]'
-                    : 'text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="flex min-h-0 flex-1">
-            {previewTab === 'files' ? (
-              <div className="flex w-[210px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-elevated)] p-2">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold">文件</span>
-                  <FolderTree className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-                </div>
-                <div className="relative mb-2">
-                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-[var(--text-muted)]" />
-                  <input
-                    value={fileFilter}
-                    onChange={(event) => setFileFilter(event.target.value)}
-                    placeholder="筛选文件…"
-                    className="h-7 w-full rounded border border-[var(--border)] bg-[var(--surface-1)] pl-6 pr-2 text-[10px] outline-none focus:border-[var(--brand)]"
-                  />
-                </div>
-                <div className="flex-1 space-y-0.5 overflow-auto text-[10px]">
-                  {visibleFiles.map((file) => {
-                    const isFolder = file.type === 'folder';
-                    const parentOpen = !file.parent || expandedFolders.includes(file.parent);
-                    if (!parentOpen) return null;
-                    return (
-                      <button
-                        type="button"
-                        key={`${file.parent ?? 'root'}-${file.name}`}
-                        onClick={() => (isFolder ? toggleFolder(file.name) : setSelectedFile(file.name))}
-                        className={`flex w-full items-center gap-1 rounded px-1 py-1 text-left hover:bg-[var(--bg-hover)] ${
-                          selectedFile === file.name ? 'bg-[var(--brand-light)] text-[var(--brand)]' : 'text-[var(--text-secondary)]'
-                        }`}
-                        style={{ paddingLeft: `${file.depth * 10 + 4}px` }}
-                      >
-                        {isFolder ? (
-                          expandedFolders.includes(file.name) ? (
-                            <ChevronDown className="h-3 w-3" />
-                          ) : (
-                            <ChevronRight className="h-3 w-3" />
-                          )
-                        ) : (
-                          <FileText className="h-3 w-3" />
-                        )}
-                        <span className="truncate">{file.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-2 border-t border-[var(--border)] pt-2 text-[9px] text-[var(--text-muted)]">
-                  <p className="truncate">Workspace: qizhida-agent-platform</p>
-                  <p className="mt-1">本地工作区 · 已同步</p>
-                </div>
-              </div>
-            ) : null}
-            <div className="min-w-0 flex-1 overflow-auto bg-[var(--surface-1)] p-3">
-              {previewTab === 'browser' ? (
-                <div className="flex h-full min-h-[360px] flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-white dark:bg-slate-950">
-                  <div className="flex items-center gap-1 border-b border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-900">
-                    <button type="button" className="p-1 text-slate-400" aria-label="后退">
-                      <ArrowLeft className="h-3.5 w-3.5" />
-                    </button>
-                    <button type="button" className="p-1 text-slate-400" aria-label="前进">
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </button>
-                    <button type="button" onClick={() => setPreviewRunning(false)} className="p-1 text-slate-400" aria-label="刷新">
-                      <RefreshCw className="h-3.5 w-3.5" />
-                    </button>
-                    <div className="flex-1 truncate rounded bg-white px-2 py-1 text-[10px] text-slate-400 dark:bg-slate-800">
-                      http://localhost:5300/preview
-                    </div>
-                    <button type="button" className="p-1 text-slate-400" aria-label="复制地址">
-                      <Copy className="h-3.5 w-3.5" />
-                    </button>
-                    <button type="button" className="p-1 text-slate-400" aria-label="更多">
-                      <MoreHorizontal className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <div className="flex flex-1 items-center justify-center p-6">
-                    <div className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-6 text-center">
-                      <span
-                        className={`mx-auto grid h-11 w-11 place-items-center rounded-full ${
-                          previewRunning ? 'bg-emerald-100 text-emerald-600' : 'bg-[var(--brand-light)] text-[var(--brand)]'
-                        }`}
-                      >
-                        <Globe2 className="h-5 w-5" />
-                      </span>
-                      <p className="mt-4 text-sm font-semibold text-[var(--text)]">
-                        {previewRunning ? '预览服务运行中' : '开发服务未启动'}
-                      </p>
-                      <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">
-                        {previewRunning ? '预览地址已就绪，可在工作区查看页面结果。' : '启动预览后，智能体生成的页面会显示在这里。'}
-                      </p>
-                      <div className="mt-5 flex justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (demoMode) setPreviewRunning(true);
-                            else setNotices((current) => [...current, '预览服务接口暂未提供']);
-                          }}
-                          className="rounded-md bg-[var(--brand)] px-3 py-2 text-xs font-medium text-white hover:opacity-90"
-                        >
-                          {previewRunning ? '重新运行' : '启动预览'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPreviewTab('terminal');
-                            setSelectedFile('App.tsx');
-                          }}
-                          className="rounded-md border border-[var(--border)] px-3 py-2 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                        >
-                          查看入口文件
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-              {previewTab === 'files' ? (
-                previewContent ? (
-                  <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
-                    <div className="mb-3 flex items-center gap-2 border-b border-[var(--border)] pb-3">
-                      <FileText className="h-5 w-5 text-[var(--brand)]" />
-                      <div>
-                        <p className="text-sm font-semibold">{selectedFile}</p>
-                        <p className="text-[10px] text-[var(--text-muted)]">从 artifact 流式加载的预览</p>
-                      </div>
-                    </div>
-                    <MarkdownView source={previewContent.slice(0, 4000)} />
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-4">
-                    <div className="flex items-center gap-2 border-b border-[var(--border)] pb-3 text-xs font-semibold">
-                      <Folder className="h-4 w-4 text-[var(--brand)]" />
-                      {selectedFile}
-                    </div>
-                    <p className="pt-4 text-xs leading-6 text-[var(--text-muted)]">
-                      项目目录已加载，可从左侧 Files 面板选择目录或文件查看详情。
-                    </p>
-                  </div>
-                )
-              ) : null}
-              {previewTab === 'terminal' ? (
-                <div className="flex h-full min-h-[420px] flex-col overflow-hidden rounded-xl border border-slate-700 bg-[#0d1117]">
-                  <div className="flex items-center justify-between border-b border-slate-700 bg-[#161b22] px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                      <span className="text-xs text-slate-300">终端 · qizhida-agent-platform</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setTerminalOutput(['$'])}
-                      className="text-[10px] text-slate-400 hover:text-white"
-                    >
-                      清空
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-auto p-4 font-mono text-xs leading-6">
-                    {terminalOutput.map((line, index) => (
-                      <div
-                        key={`${line}-${index}`}
-                        className={line.startsWith('$') ? 'text-emerald-400' : 'text-slate-300'}
-                      >
-                        {line}
-                      </div>
-                    ))}
-                  </div>
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      runTerminalCommand();
-                    }}
-                    className="flex items-center gap-2 border-t border-slate-700 bg-[#161b22] px-4 py-3"
-                  >
-                    <span className="font-mono text-xs text-emerald-400">$</span>
-                    <input
-                      value={terminalCommand}
-                      onChange={(event) => setTerminalCommand(event.target.value)}
-                      placeholder="输入 shell 命令，例如 pwd、ls"
-                      className="min-w-0 flex-1 bg-transparent font-mono text-xs text-white outline-none placeholder:text-slate-500"
-                    />
-                    <button
-                      type="submit"
-                      className="rounded-md bg-emerald-600 px-3 py-1.5 text-[10px] font-medium text-white hover:bg-emerald-500"
-                    >
-                      执行
-                    </button>
-                  </form>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </aside>
-      ) : null}
+      <InteractionHost />
     </div>
   );
 }
