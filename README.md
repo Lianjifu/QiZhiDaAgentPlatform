@@ -317,26 +317,75 @@ graph TB
 
 ### 部署拓扑
 
+QIZHIDA 生产部署按 **7 层** 组织,覆盖前端入口、应用服务、数据存储、沙箱执行、模型调用、密钥/观测、外部集成:
+
 ```mermaid
-graph LR
-    Browser["浏览器"]
-    Vite["Vite<br/>:9152"]
-    Gateway["网关<br/>:9150"]
-    App["qzdap-app<br/>:9151"]
-    PG["Postgres<br/>:9153"]
-    pgvec["pgvector"]
-    Redis["Redis<br/>:6379"]
-    MinIO["MinIO<br/>:9000"]
-    Sandbox["Sandbox<br/>gVisor runsc"]
+graph TB
+    L1["入口层 (前端 + 网关)"]
+    L2["应用层 (qzdap-app)"]
+    L3["数据层 (Postgres + Redis + MinIO)"]
+    L4["沙箱层 (gVisor)"]
+    L5["模型层 (LLM Providers)"]
+    L6["密钥 + 观测 (Vault + OTel)"]
+    L7["外部集成 (渠道 Webhook)"]
+
+    subgraph Entry [" "]
+        direction LR
+        Browser["浏览器<br/>(用户 / 管理员 / 集成方)"]
+        Vite["Vite 前端<br/>:9152<br/>React 18 SPA"]
+        Gateway["Envoy 网关<br/>:9150<br/>TLS / 限流 / 路由 / JWT 验签"]
+    end
+
+    subgraph App [" "]
+        App["qzdap-app<br/>FastAPI :9151<br/>15 个能力域"]
+    end
+
+    subgraph Data [" "]
+        direction TB
+        PG["Postgres :9153<br/>pgvector 扩展"]
+        Redis["Redis :6379<br/>缓存 / 限流 / 会话状态"]
+        MinIO["MinIO :9000<br/>对象存储 (知识文件 / 附件)"]
+    end
+
+    subgraph Sandbox [" "]
+        Sandbox["gVisor (runsc)<br/>代码执行沙箱<br/>NetworkDisabled + 白名单"]
+    end
+
+    subgraph Model [" "]
+        LLM["LLM Providers<br/>OpenAI / DeepSeek / Qwen / Anthropic<br/>(凭据经 Vault 解密)"]
+    end
+
+    subgraph Obs [" "]
+        direction TB
+        Vault["Vault<br/>env / file / csi / hashicorp"]
+        OTel["OTel Collector<br/>链路 / 指标 / 日志"]
+        PromG["Prometheus + Grafana<br/>可用率 / 延迟 / Token / 成本"]
+    end
+
+    subgraph Channel [" "]
+        Webhook["渠道 Webhook<br/>飞书 / 企微 / 钉钉<br/>(inbound + outbound)"]
+    end
+
+    L1 --- Entry
+    L2 --- App
+    L3 --- Data
+    L4 --- Sandbox
+    L5 --- Model
+    L6 --- Obs
+    L7 --- Channel
 
     Browser --> Vite
     Vite --> Gateway
     Gateway --> App
     App --> PG
+    App --> Redis
+    App --> MinIO
     App --> Sandbox
-    PG --- pgvec
-    PG --- Redis
-    PG --- MinIO
+    App --> LLM
+    App --> Vault
+    App --> OTel
+    PromG -. 拉取 .-> OTel
+    Channel <--> App
 ```
 
 ### SSE 时序图 (一次 turn)
