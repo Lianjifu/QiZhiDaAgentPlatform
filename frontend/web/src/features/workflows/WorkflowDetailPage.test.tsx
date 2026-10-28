@@ -7,6 +7,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 vi.mock('./useWorkflows', () => ({
   useWorkflow: vi.fn(),
+  // 详情页还有「发布/保存」写操作,需要 update hook 存在
+  useUpdateWorkflow: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 beforeAll(() => {

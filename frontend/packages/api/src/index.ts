@@ -189,9 +189,34 @@ export class ApiClient {
     return this.request<T>(path, { ...opts, method: 'DELETE' });
   }
 
-  /** multipart 上传；Mock 模式下自动转为 contentBase64 JSON。 */
-  async upload<T>(path: string, form: FormData, opts: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<T> {
+  /**
+   * 下载二进制内容 (产物 / 附件).
+   *
+   * 必须走这里而不是裸 `fetch` —— 裸 fetch 不带 Authorization,
+   * 后端现在要求除公开端点外都必须有 token (见 AuthRequiredMiddleware).
+   */
+  async download(path: string, opts: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<Blob> {
     const token = this.getAuthToken();
+    const requestHeaders: Record<string, string> = {
+      ...opts.headers,
+      ...this.getContextHeaders(),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    const translated = translateApiPath(path, 'GET');
+    const url = resolveRequestURL(this.baseURL, translated.backendPath, opts.query);
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: sanitizeHeaders(requestHeaders),
+      signal: opts.signal,
+    });
+    if (!res.ok) {
+      throw new ApiError('E_DOWNLOAD_FAILED', `下载失败: HTTP ${res.status}`, res.status);
+    }
+    return res.blob();
+  }
+
+  /** multipart 上传；Mock 模式下自动转为 contentBase64 JSON。 */
+  async upload<T>(path: string, form: FormData, opts: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<T> {    const token = this.getAuthToken();
     const requestHeaders: Record<string, string> = {
       ...opts.headers,
       ...this.getContextHeaders(),
@@ -338,10 +363,9 @@ export function getApiClient(): ApiClient {
   return _client;
 }
 
-export * from './mock';
-import * as mockModule from './mock';
-export const mock = mockModule;
-
-export { mockHandlerWithAdapters } from './mockAdapter';
+// mock 不再从主入口导出 —— 它是**单测夹具**, 不是运行时数据源.
+// 以前这里 `export * from './mock'` 把 6198 行 mock 静态拉进了每个
+// 打包产物 (演示/开发都不再注入 mock handler, 那份代码纯属白带).
+// 需要它的地方从 '@qzdap/web-api/mock' 显式 import.
 export { translateApiPath } from './pathMap';
 export { applyResponseAdapter, adaptErrorCode } from './responseAdapters';

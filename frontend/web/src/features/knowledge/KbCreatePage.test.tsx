@@ -8,7 +8,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import KbCreatePage from './KbCreatePage';
 import { mockSources } from './fixtures';
 
@@ -20,7 +20,7 @@ function renderAt() {
     {
       initialEntries: ['/admin/knowledge/kbs/new'],
       seeds: [
-        { key: [...qk.admin.knowledge.root, 'sources', 'w1'], data: mockSources },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'sources']), data: mockSources },
       ],
     },
   );

@@ -1,12 +1,14 @@
 /**
  * WorkflowCreatePage 测试 — 返回 link / 3 步 / 提交跳转。
  */
-import { describe, expect, it, afterEach, vi } from 'vitest';
+import { describe, expect, it, afterEach, beforeAll, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { ApiClient, setApiClient } from '@qzdap/web-api';
 import WorkflowCreatePage from './WorkflowCreatePage';
 import WorkflowsPage from './index';
+import { wrapMockHandlerWithAdminWorkflows } from './mock-handler';
 
 const navigateMock = vi.fn();
 
@@ -16,6 +18,13 @@ vi.mock('react-router-dom', async () => {
     ...actual,
     useNavigate: () => navigateMock,
   };
+});
+
+// 「创建并进入编辑器」是真的调后端建工作流 —— 用 workflows 模块的 mock handler 当 ApiClient。
+const workflowsMock = wrapMockHandlerWithAdminWorkflows(async () => undefined);
+
+beforeAll(() => {
+  setApiClient(new ApiClient('', () => null, workflowsMock));
 });
 
 afterEach(() => {

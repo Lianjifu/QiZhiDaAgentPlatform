@@ -5,7 +5,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import FeedbackDetailPage from './FeedbackDetailPage';
 import { mockFeedbackList } from './fixtures';
 
@@ -17,7 +17,7 @@ function renderAt(id: string) {
     {
       initialEntries: [`/admin/feedback/${id}`],
       seeds: [
-        { key: [...qk.admin.feedback.list, 'w1'], data: mockFeedbackList },
+        { key: pageQueryKey(qk.admin.feedback.list), data: mockFeedbackList },
       ],
     },
   );

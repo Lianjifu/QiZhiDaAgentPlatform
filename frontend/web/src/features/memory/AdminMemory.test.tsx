@@ -5,7 +5,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import {
   mockL1Sessions, mockL2Facts, mockL3Entries, mockPromotions, mockRetentionPolicies,
 } from './fixtures';
@@ -15,11 +15,11 @@ import PolicyDetailPage from './PolicyDetailPage';
 afterEach(() => cleanup());
 
 const seeds = [
-  { key: [...qk.admin.memory.l1, 'w1'], data: mockL1Sessions },
-  { key: [...qk.admin.memory.l2, 'w1'], data: mockL2Facts },
-  { key: [...qk.admin.memory.l3, 'w1'], data: mockL3Entries },
-  { key: [...qk.admin.memory.promotions, 'w1'], data: mockPromotions },
-  { key: [...qk.admin.memory.policies, 'w1'], data: mockRetentionPolicies },
+  { key: pageQueryKey(qk.admin.memory.l1), data: mockL1Sessions },
+  { key: pageQueryKey(qk.admin.memory.l2), data: mockL2Facts },
+  { key: pageQueryKey(qk.admin.memory.l3), data: mockL3Entries },
+  { key: pageQueryKey(qk.admin.memory.promotions), data: mockPromotions },
+  { key: pageQueryKey(qk.admin.memory.policies), data: mockRetentionPolicies },
 ];
 
 function renderPage() {
@@ -39,8 +39,8 @@ function renderApp() {
       initialEntries: ['/admin/memory'],
       seeds: [
         ...seeds,
-        { key: [...qk.admin.memory.policies, '短期记忆', 'w1'], data: mockRetentionPolicies[0] },
-        { key: [...qk.admin.memory.policies, '长期记忆', 'w1'], data: mockRetentionPolicies[1] },
+        { key: pageQueryKey([...qk.admin.memory.policies, '短期记忆']), data: mockRetentionPolicies[0] },
+        { key: pageQueryKey([...qk.admin.memory.policies, '长期记忆']), data: mockRetentionPolicies[1] },
       ],
     },
   );

@@ -97,7 +97,8 @@ describe('SkillDetailPage editing', () => {
   });
 
   it('renders not-found when skill is missing', () => {
-    (useAdminSkill as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ data: null, isLoading: false, isError: true });
+    // 技能不存在(接口正常返回空)→ 走 not-found;接口本身报错时页面显示「加载失败」
+    (useAdminSkill as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ data: null, isLoading: false, isError: false });
     renderAt('/admin/tools/missing?edit=1');
     expect(screen.getByText(/技能不存在或已被删除/)).toBeTruthy();
   });

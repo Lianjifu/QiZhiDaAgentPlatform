@@ -1,17 +1,46 @@
 /**
  * AdminToolAudit 页面测试 — 对齐模型/技能：视图 combobox + 卡片操作 + 抽屉。
  */
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it, afterEach, beforeAll } from 'vitest';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
+import { ApiClient, setApiClient, type RequestOptions } from '@qzdap/web-api';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import AuditPage from './AuditPage';
 import AuditDetailPage from './AuditDetailPage';
 import AuditRuleCreatePage from './AuditRuleCreatePage';
 import {
   mockAuditEntries, mockAuditRisks, mockAuditRules, mockPermissionScopes,
 } from './fixtures';
+
+/**
+ * 规则的启停是真的写后端 —— 用一个内存版 mock handler 当 ApiClient,
+ * PATCH /api/admin/audit/rules/:id 落到这份 store 上,列表重新拉取后状态才变。
+ */
+const auditRuleStore = mockAuditRules.map((rule) => ({ ...rule }));
+
+const auditMockHandler = async (path: string, opts: RequestOptions = {}) => {
+  const method = (opts.method ?? 'GET').toUpperCase();
+  if (path === '/api/admin/audit/entries') return mockAuditEntries;
+  if (path === '/api/admin/audit/risks') return mockAuditRisks;
+  if (path === '/api/admin/audit/scopes') return mockPermissionScopes;
+  if (path === '/api/admin/audit/rules') {
+    if (method === 'GET') return auditRuleStore.map((rule) => ({ ...rule }));
+    return undefined;
+  }
+  const ruleMatch = /^\/api\/admin\/audit\/rules\/([^/]+)$/.exec(path);
+  if (ruleMatch && method === 'PATCH') {
+    const target = auditRuleStore.find((rule) => rule.id === ruleMatch[1]);
+    if (target) Object.assign(target, (opts.body ?? {}) as Record<string, unknown>);
+    return target ? { ...target } : undefined;
+  }
+  return undefined;
+};
+
+beforeAll(() => {
+  setApiClient(new ApiClient('', () => null, auditMockHandler));
+});
 
 function renderPage() {
   return renderWithProviders(
@@ -23,10 +52,10 @@ function renderPage() {
     {
     initialEntries: ['/admin/tool-audit'],
     seeds: [
-      { key: [...qk.admin.audit.entries, 'w1'], data: mockAuditEntries },
-      { key: [...qk.admin.audit.risks, 'w1'], data: mockAuditRisks },
-      { key: [...qk.admin.audit.rules, 'w1'], data: mockAuditRules },
-      { key: [...qk.admin.audit.scopes, 'w1'], data: mockPermissionScopes },
+      { key: pageQueryKey(qk.admin.audit.entries), data: mockAuditEntries },
+      { key: pageQueryKey(qk.admin.audit.risks), data: mockAuditRisks },
+      { key: pageQueryKey(qk.admin.audit.rules), data: mockAuditRules },
+      { key: pageQueryKey(qk.admin.audit.scopes), data: mockPermissionScopes },
     ],
     },
   );
@@ -90,13 +119,14 @@ describe('AdminToolAudit', () => {
     expect(screen.getByLabelText('批量操作')).toBeTruthy();
   });
 
-  it('toggles rule enable/disable on rule view', () => {
+  it('toggles rule enable/disable on rule view', async () => {
     renderPage();
     fireEvent.change(screen.getByRole('combobox', { name: '视图' }), { target: { value: 'rule' } });
     expect(screen.getByText(/Token 过期阻断/)).toBeTruthy();
     const toggleBtn = screen.getAllByRole('button', { name: /^停用$/ })[0];
     fireEvent.click(toggleBtn);
-    expect(screen.getAllByRole('button', { name: /^启用$/ }).length).toBeGreaterThan(0);
+    // 停用写回后端 → 列表重新拉取 → 该规则的按钮变成「启用」
+    expect((await screen.findAllByRole('button', { name: /^启用$/ })).length).toBeGreaterThan(0);
   });
 
   it('新建规则进入独立页面', () => {

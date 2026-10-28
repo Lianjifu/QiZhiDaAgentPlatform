@@ -4,7 +4,7 @@
 import { describe, expect, it, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import { mockFeedbackList, mockFeedbackRules, mockFeedbackTickets, mockFeedbackTopics } from './fixtures';
 import FeedbackPage from './index';
 
@@ -18,10 +18,10 @@ vi.mock('react-router-dom', async () => {
 function renderPage() {
   return renderWithProviders(<FeedbackPage />, {
     seeds: [
-      { key: [...qk.admin.feedback.list, 'w1'], data: mockFeedbackList },
-      { key: [...qk.admin.feedback.tickets, 'w1'], data: mockFeedbackTickets },
-      { key: [...qk.admin.feedback.topics, 'w1'], data: mockFeedbackTopics },
-      { key: [...qk.admin.feedback.rules, 'w1'], data: mockFeedbackRules },
+      { key: pageQueryKey(qk.admin.feedback.list), data: mockFeedbackList },
+      { key: pageQueryKey(qk.admin.feedback.tickets), data: mockFeedbackTickets },
+      { key: pageQueryKey(qk.admin.feedback.topics), data: mockFeedbackTopics },
+      { key: pageQueryKey(qk.admin.feedback.rules), data: mockFeedbackRules },
     ],
   });
 }

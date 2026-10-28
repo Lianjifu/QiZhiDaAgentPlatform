@@ -109,7 +109,9 @@ const ROUTE_TABLE: Array<{ key: string; rule: RouteRule }> = [
   { key: '/api/tenant/profile', rule: { method: 'GET', backendPath: '/v1/identity/tenants/current', note: '当前租户 profile + plan' } },
   // uid-注入型:backend 用 /users/{uid}/api-keys,前端不知道 uid —— ApiClient
   // 通过 getUserId 回调在 fetch 前替换 <<USER_ID>>
-  { key: '/api/api-keys', rule: { method: 'GET', backendPath: '/v1/identity/users/<<USER_ID>>/api-keys', note: '需要当前用户 uid' } },
+  // method 记的是**后端真实的方法**: 后端这个路径只有 POST(签发 api key),
+  // 没有 GET(列表) —— 见 backend/.../identity/adapter/http/router.py.
+  { key: '/api/api-keys', rule: { method: 'POST', backendPath: '/v1/identity/users/<<USER_ID>>/api-keys', note: '需要当前用户 uid' } },
 
   // ── skill catalog: frontend already calls /api/admin/skills + /api/catalog/skills
   // (passthrough to qzdap-app). Old /api/skills → /v1/skills sandbox routes are gone.

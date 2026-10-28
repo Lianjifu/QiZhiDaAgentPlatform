@@ -8,7 +8,7 @@ import { EXPORT_FIELDS, IMPORT_FORMATS } from './constants';
 import { StepIndicator } from './Primitives';
 
 export function ImportDialog({
-  open, onClose, step, setStep, fileName, preview, extension, onLoadSample, onImportFile, onConfirm,
+  open, onClose, step, setStep, fileName, preview, extension, onImportFile, onConfirm,
 }: {
   open: boolean;
   onClose: () => void;
@@ -17,7 +17,6 @@ export function ImportDialog({
   fileName: string;
   preview: ImportRow[];
   extension: ImportExtension;
-  onLoadSample: (ext: ImportExtension) => void;
   onImportFile: (file: File) => void;
   onConfirm: (force: boolean) => void;
 }) {
@@ -91,25 +90,6 @@ export function ImportDialog({
                 <span className="rounded bg-[var(--brand-light)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--brand)]">{extension.toUpperCase()}</span>
               </p>
             )}
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">或选择示例数据</p>
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {IMPORT_FORMATS.map((fmt) => {
-                const active = extension === fmt.ext && fileName.startsWith('agents-sample');
-                return (
-                  <button
-                    key={fmt.ext}
-                    type="button"
-                    onClick={() => onLoadSample(fmt.ext)}
-                    className={`flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2 text-left transition ${active ? 'border-[var(--brand)] bg-[var(--brand-light)]' : 'border-[var(--border)] hover:border-[var(--brand)]'}`}
-                  >
-                    <span className="text-xs font-semibold">{fmt.label}</span>
-                    <span className="text-[10px] text-[var(--text-muted)]">{fmt.description}</span>
-                  </button>
-                );
-              })}
-            </div>
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] p-3 text-[11px] text-[var(--text-muted)]">
             <p className="font-semibold text-[var(--text)]">支持的字段</p>

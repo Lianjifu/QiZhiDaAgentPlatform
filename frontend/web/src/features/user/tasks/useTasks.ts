@@ -11,7 +11,7 @@ const PATH = '/api/tasks';
 export function useTasks(params: TaskListParams = {}) {
   const query = withDefaults(params);
   return useApiQuery<Task[]>(
-    [...qk.user.tasks.list, query],
+    [...qk.user.tasks.list],
     PATH,
     { query },
     { staleTime: 30_000, placeholderData: (prev) => prev },

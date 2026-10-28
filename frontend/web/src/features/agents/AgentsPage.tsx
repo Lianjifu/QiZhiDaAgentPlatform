@@ -1,4 +1,3 @@
-import { runtimeConfig } from '@/lib/api-mode';
 /**
  * 管理侧「智能体工作台」主面板 — Hero + Tab + 筛选 + 卡片网格(分页)+ 批量工具栏 + 向导/导入/导出/删除。
  *
@@ -15,9 +14,6 @@ import type { DeletePayload } from './components/DeleteConfirmModal';
 import {
   useAgentsList, useBatchSetStatus, useDeleteAgents, useExportAgents, useImportAgents, useToggleStar,
 } from './useAgents';
-import {
-  SAMPLE_IMPORT, SAMPLE_IMPORT_ZIP,
-} from './fixtures';
 import { AgentCard } from './components/AgentCard';
 import { BatchToolbar } from './components/DrawerSidebar';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
@@ -146,13 +142,6 @@ export default function AgentsPage() {
       });
       setImportPreview(rows);
     } catch (error) { setImportPreview([]); window.alert(`导入失败：${String(error)}`); return; }
-    setImportStep(2);
-  };
-  const handleLoadSample = (ext: ImportExtension) => {
-    if (runtimeConfig().dataMode !== 'demo') { window.alert('开发模式请上传真实文件，不能载入演示数据。'); return; }
-    setImportExtension(ext);
-    setImportFileName(`agents-sample.${ext}`);
-    setImportPreview(ext === 'zip' ? SAMPLE_IMPORT_ZIP : SAMPLE_IMPORT);
     setImportStep(2);
   };
   const handleConfirmImport = (force: boolean) => {
@@ -319,7 +308,6 @@ export default function AgentsPage() {
         fileName={importFileName}
         preview={importPreview}
         extension={importExtension}
-        onLoadSample={handleLoadSample}
         onImportFile={handleImportFile}
         onConfirm={handleConfirmImport}
       />

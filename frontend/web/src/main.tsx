@@ -6,78 +6,20 @@ import App from './app/App';
 import { I18nProvider } from './i18n';
 import './styles/global.css';
 import './styles/hljs.css';
-import { setApiClient, ApiClient, mockHandlerWithAdapters } from '@qzdap/web-api';
+import { setApiClient, ApiClient } from '@qzdap/web-api';
 import { useAuthStore, isTokenExpired } from './features/auth';
-import { apiBaseURL, runtimeConfig } from './lib/api-mode';
+import { apiBaseURL } from './lib/api-mode';
 import { runtimeStorageKey } from './lib/environment';
 import { resolveWorkspaceHeader, ensureWorkspaceFromAuth } from './lib/workspace-header';
-import { wrapMockHandlerWithCatalog } from './features/user/catalog';
-import { wrapMockHandlerWithSkills } from './features/user/skills/mock-handler';
-import { wrapMockHandlerWithAutomations } from './features/user/automations/mock-handler';
-import { wrapMockHandlerWithTeam } from './features/user/team/mock-handler';
-import { wrapMockHandlerWithUserKnowledge } from './features/user/knowledge/mock-handler';
-import { wrapMockHandlerWithAdminNotifications } from './features/notifications/mock-handler';
-import { wrapMockHandlerWithAdminKnowledge } from './features/knowledge/mock-handler';
-import { wrapMockHandlerWithAdminQuotas } from './features/quotas/mock-handler';
-import { wrapMockHandlerWithAdminModels } from './features/models/mock-handler';
-import { wrapMockHandlerWithAdminAgents } from './features/agents/mock-handler';
-import { wrapMockHandlerWithAdminSkills } from './features/skills/mock-handler';
-import { wrapMockHandlerWithAdminOverview } from './features/overview/mock-handler';
-import { wrapMockHandlerWithAdminOperations } from './features/operations/mock-handler';
-import { wrapMockHandlerWithAdminAudit } from './features/audit/mock-handler';
-import { wrapMockHandlerWithAdminMetrics } from './features/metrics/mock-handler';
-import { wrapMockHandlerWithAdminMemory } from './features/memory/mock-handler';
-import { wrapMockHandlerWithAdminWorkflows } from './features/workflows/mock-handler';
-import { wrapMockHandlerWithAdminEvaluations } from './features/evaluations/mock-handler';
-import { wrapMockHandlerWithAdminRegressions } from './features/regressions/mock-handler';
-import { wrapMockHandlerWithAdminFeedback } from './features/feedback/mock-handler';
 
 function installApiClient() {
-  // 只有演示环境注入本地 Handler；开发环境完全走后端 API。
-  // Catalog 投影需在最外层，优先于旧用户 mock，读取内层 admin store。
-  const config = runtimeConfig();
-  const mockMode = config.dataMode === 'demo';
-  const localMockHandler = mockMode
-    ? wrapMockHandlerWithCatalog(
-        wrapMockHandlerWithSkills(
-          wrapMockHandlerWithAutomations(
-            wrapMockHandlerWithTeam(
-              wrapMockHandlerWithUserKnowledge(
-                wrapMockHandlerWithAdminKnowledge(
-                  wrapMockHandlerWithAdminNotifications(
-                    wrapMockHandlerWithAdminQuotas(
-                      wrapMockHandlerWithAdminModels(
-                        wrapMockHandlerWithAdminAgents(
-                          wrapMockHandlerWithAdminSkills(
-                            wrapMockHandlerWithAdminOverview(
-                              wrapMockHandlerWithAdminOperations(
-                                wrapMockHandlerWithAdminAudit(
-                                  wrapMockHandlerWithAdminMetrics(
-                                    wrapMockHandlerWithAdminMemory(
-                                      wrapMockHandlerWithAdminWorkflows(
-                                        wrapMockHandlerWithAdminEvaluations(
-                                          wrapMockHandlerWithAdminRegressions(
-                                            wrapMockHandlerWithAdminFeedback(mockHandlerWithAdapters),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      )
-    : undefined;
+  // 演示环境和开发环境**走同一套 API** —— 演示环境连的是 QZDAP_ENV=demo 的
+  // 那个后端实例 (独立的演示库), 前端代码不因此分叉.
+  //
+  // 以前这里给演示环境注入了一份内存 mock, 于是演示数据和真实 API 是两份
+  // 手写的数据, 必然越走越远 (实测: 后端 309 个端点, 演示数据只覆盖 4 个).
+  // 现在演示数据由后端 demo 库提供 —— 契约天然对齐.
+  // mock 只剩单测夹具的用途, 运行时不再注入.
   setApiClient(
     new ApiClient(
       apiBaseURL(),
@@ -92,7 +34,7 @@ function installApiClient() {
         }
         return t;
       },
-      config.dataMode === 'demo' ? localMockHandler : undefined,
+      undefined, // 运行时不再注入 mock —— 见上面的说明
       () => {
         const user = useAuthStore.getState().user;
         const base: Record<string, string> = {
@@ -103,12 +45,6 @@ function installApiClient() {
           ...base,
           'x-tenant-id': user.tenantId,
           'x-user-id': user.id,
-          ...(!config.apiEnabled ? {
-            'x-mock-role': user.role,
-            'x-mock-actor': user.name,
-            'x-mock-user-id': user.id,
-            'x-mock-permissions': user.permissions.join(','),
-          } : {}),
         };
       },
       // 仅当 401 来自身份相关端点时,才视为会话失效并退出登录;

@@ -11,7 +11,7 @@ const PATH = '/api/catalog/workflows';
 export function useFlows(params: FlowListParams = {}) {
   const query = withDefaults(params);
   return useApiQuery<Flow[]>(
-    [...qk.user.automations.list, query],
+    [...qk.user.automations.list],
     PATH,
     { query },
     { staleTime: 15_000, placeholderData: (prev) => prev },

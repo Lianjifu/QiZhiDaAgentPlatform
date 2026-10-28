@@ -5,7 +5,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import MetricDetailPage from './MetricDetailPage';
 import {
   mockCostBreakdown, mockLatencyPoints, mockModelMetrics, mockThresholdRules,
@@ -19,10 +19,10 @@ function renderAt(id: string) {
     {
       initialEntries: [`/admin/metrics/${id}`],
       seeds: [
-        { key: [...qk.admin.metrics.models, 'w1'], data: mockModelMetrics },
-        { key: [...qk.admin.metrics.latency, 'w1'], data: mockLatencyPoints },
-        { key: [...qk.admin.metrics.costBreakdown, 'w1'], data: mockCostBreakdown },
-        { key: [...qk.admin.metrics.thresholds, 'w1'], data: mockThresholdRules },
+        { key: pageQueryKey(qk.admin.metrics.models), data: mockModelMetrics },
+        { key: pageQueryKey(qk.admin.metrics.latency), data: mockLatencyPoints },
+        { key: pageQueryKey(qk.admin.metrics.costBreakdown), data: mockCostBreakdown },
+        { key: pageQueryKey(qk.admin.metrics.thresholds), data: mockThresholdRules },
       ],
     },
   );

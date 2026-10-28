@@ -4,7 +4,7 @@
 import { describe, expect, it, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import { mockFlows } from './fixtures';
 import WorkflowsPage from './index';
 
@@ -26,7 +26,7 @@ afterEach(() => {
 function renderPage() {
   return renderWithProviders(<WorkflowsPage />, {
     seeds: [
-      { key: [...qk.admin.workflows.list, 'w1'], data: mockFlows },
+      { key: pageQueryKey(qk.admin.workflows.list), data: mockFlows },
     ],
   });
 }

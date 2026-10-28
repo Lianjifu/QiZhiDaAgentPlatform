@@ -207,6 +207,18 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
         )
         return [_l3(row) for row in result.scalars().all() if not _cross_tenant(row)]
 
+    async def update_l3(self, item: L3Entry) -> None:
+        row = await self._s.get(MemoryL3ORM, item.id)
+        if row is None or _cross_tenant(row):
+            return
+        row.team = item.team
+        row.title = item.title
+        row.summary = item.summary
+        row.category = item.category
+        row.status = item.status
+        row.hits = item.hits
+        row.updated_at = item.updated_at
+
     async def add_promotion(self, item: PromotionEvent) -> None:
         self._s.add(
             MemoryPromotionORM(

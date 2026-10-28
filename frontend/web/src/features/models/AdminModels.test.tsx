@@ -4,7 +4,7 @@
 import { describe, expect, it, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import ModelsPage from './ModelsPage';
 import { mockModels, mockProviders, mockRoutes, mockHealth } from './fixtures';
 
@@ -19,10 +19,10 @@ function renderPage() {
   return renderWithProviders(<ModelsPage />, {
     initialEntries: ['/admin/models'],
     seeds: [
-      { key: [...qk.admin.models.list, 'w1'], data: mockModels },
-      { key: [...qk.admin.models.providers, 'w1'], data: mockProviders },
-      { key: [...qk.admin.models.routes, 'w1'], data: mockRoutes },
-      { key: [...qk.admin.models.health, 'w1'], data: mockHealth },
+      { key: pageQueryKey(qk.admin.models.list), data: mockModels },
+      { key: pageQueryKey(qk.admin.models.providers), data: mockProviders },
+      { key: pageQueryKey(qk.admin.models.routes), data: mockRoutes },
+      { key: pageQueryKey(qk.admin.models.health), data: mockHealth },
     ],
   });
 }

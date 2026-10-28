@@ -35,7 +35,11 @@ export function TrendChart({ series }: { series: TrendSeries }) {
     setHover(Math.min(Math.max(index, 0), xCount - 1));
   };
   const onLeave = () => setHover(null);
-  const hoverX = hover == null ? null : xAt(hover);
+  // hover 是上一次悬停写下的下标, 但 points 可能为空 (新租户还没有调用数据),
+  // 也可能在重新取数 / 切 range 后变短 — 直接 data[hover] 会读到 undefined.
+  // 这里统一收敛成合法下标, 没数据时当作没有悬停.
+  const hoverIndex = hover != null && hover >= 0 && hover < data.length ? hover : null;
+  const hoverX = hoverIndex == null ? null : xAt(hoverIndex);
 
   return (
     <div className="overflow-x-auto">
@@ -65,20 +69,20 @@ export function TrendChart({ series }: { series: TrendSeries }) {
         {hoverX != null && (
           <line x1={hoverX} x2={hoverX} y1={padding.top} y2={height - padding.bottom} stroke="var(--border-strong)" strokeDasharray="2 3" />
         )}
-        {hover != null && (
+        {hoverIndex != null && (
           <g>
-            <circle cx={xAt(hover)} cy={yCalls(calls[hover])} r="5" fill="var(--surface-1)" stroke="var(--brand)" strokeWidth="2.5" />
-            <circle cx={xAt(hover)} cy={yPct(success[hover])} r="4" fill="var(--surface-1)" stroke="var(--chart-success)" strokeWidth="2" />
-            <circle cx={xAt(hover)} cy={yPct(errors[hover])} r="4" fill="var(--surface-1)" stroke="var(--danger)" strokeWidth="2" />
+            <circle cx={xAt(hoverIndex)} cy={yCalls(calls[hoverIndex])} r="5" fill="var(--surface-1)" stroke="var(--brand)" strokeWidth="2.5" />
+            <circle cx={xAt(hoverIndex)} cy={yPct(success[hoverIndex])} r="4" fill="var(--surface-1)" stroke="var(--chart-success)" strokeWidth="2" />
+            <circle cx={xAt(hoverIndex)} cy={yPct(errors[hoverIndex])} r="4" fill="var(--surface-1)" stroke="var(--danger)" strokeWidth="2" />
           </g>
         )}
       </svg>
-      {hover != null && (
+      {hoverIndex != null && (
         <div className="mt-3 flex flex-wrap items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 text-xs">
-          <span className="font-semibold tabular-nums">{data[hover].label}</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[var(--brand)]" />调用量 {calls[hover].toLocaleString()}</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[var(--chart-success)]" />可用率 {success[hover].toFixed(2)}%</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[var(--danger)]" />错误率 {errors[hover].toFixed(2)}%</span>
+          <span className="font-semibold tabular-nums">{data[hoverIndex].label}</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[var(--brand)]" />调用量 {calls[hoverIndex].toLocaleString()}</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[var(--chart-success)]" />可用率 {success[hoverIndex].toFixed(2)}%</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[var(--danger)]" />错误率 {errors[hoverIndex].toFixed(2)}%</span>
         </div>
       )}
     </div>

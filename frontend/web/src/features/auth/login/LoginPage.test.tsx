@@ -70,14 +70,13 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Login', () => {
-  it('renders email, password, MFA fields, submit, three demo chips and trust strip', () => {
+  it('renders email, password, MFA fields, submit, the quick-login chip and trust strip', () => {
     renderLogin(['/login']);
     expect(screen.getByPlaceholderText('name@company.com')).toBeTruthy();
     expect(screen.getByPlaceholderText('••••••••')).toBeTruthy();
     expect(screen.getByPlaceholderText('请输入 6 位验证码')).toBeTruthy();
     expect(screen.getByRole('button', { name: '登录工作台' })).toBeTruthy();
-    // 2 demo chips
-    expect(screen.getByRole('button', { name: /普通用户登录/ })).toBeTruthy();
+    // 开发模式只给一个开发账号的快捷入口
     expect(screen.getByRole('button', { name: /管理员登录/ })).toBeTruthy();
     // 4 trust badges
     expect(screen.getByText('等保三级')).toBeTruthy();
@@ -98,25 +97,24 @@ describe('Login', () => {
     expect(screen.getByText('智能体能力')).toBeTruthy();
   });
 
-  it('clicking 管理员登录 demo chip auto-fills and submits admin credentials', () => {
+  it('clicking the admin quick-login chip submits the dev admin credentials', () => {
     const mutate = vi.fn();
     mutation.mockReturnValue({ mutate, isPending: false, data: undefined, error: null });
     renderLogin(['/login']);
     fireEvent.click(screen.getByRole('button', { name: /管理员登录/ }));
     const emailInput = screen.getByPlaceholderText('name@company.com') as HTMLInputElement;
     const pwInput = screen.getByPlaceholderText('••••••••') as HTMLInputElement;
-    expect(emailInput.value).toBe('admin@acme.com');
+    // 开发环境摆的是开发账号 —— 演示账号不该出现在这里
+    expect(emailInput.value).toBe('admin@dev.qzdap.dev');
     expect(pwInput.value).toBe('dev-admin-password-change-me');
-    expect(mutate).toHaveBeenCalledWith({ email: 'admin@acme.com', password: 'dev-admin-password-change-me' });
+    expect(mutate).toHaveBeenCalledWith({ email: 'admin@dev.qzdap.dev', password: 'dev-admin-password-change-me' });
   });
 
-  it('clicking 普通用户登录 demo chip uses the user account', () => {
-    const mutate = vi.fn();
-    mutation.mockReturnValue({ mutate, isPending: false, data: undefined, error: null });
+  it('does not offer demo accounts in development mode', () => {
     renderLogin(['/login']);
-    fireEvent.click(screen.getByRole('button', { name: /普通用户登录/ }));
-    expect((screen.getByPlaceholderText('name@company.com') as HTMLInputElement).value).toBe('user@acme.com');
-    expect(mutate).toHaveBeenCalledWith({ email: 'user@acme.com', password: 'dev-admin-password-change-me' });
+    expect(screen.queryByRole('button', { name: /普通用户登录/ })).toBeNull();
+    expect(screen.queryByText('admin@acme.com')).toBeNull();
+    expect(screen.queryByText('user@acme.com')).toBeNull();
   });
 
   it('form submit calls mutate with email + password', () => {

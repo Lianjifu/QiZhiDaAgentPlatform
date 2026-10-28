@@ -5,7 +5,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import RegressionDetailPage from './RegressionDetailPage';
 import { mockRegressionTracks } from './fixtures';
 
@@ -17,7 +17,7 @@ function renderAt(id: string) {
     {
       initialEntries: [`/admin/regressions/${id}`],
       seeds: [
-        { key: [...qk.admin.regressions.list, 'w1'], data: mockRegressionTracks },
+        { key: pageQueryKey(qk.admin.regressions.list), data: mockRegressionTracks },
       ],
     },
   );

@@ -1,13 +1,25 @@
 /**
  * SourceDetailPage 测试 — 路由 /admin/knowledge/sources/:id
  */
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import SourceDetailPage from './SourceDetailPage';
 import { mockKbs, mockDocs, mockSources, mockTasks } from './fixtures';
+
+/**
+ * 「立即同步」走 useServerAction —— 真实现会去请求后端,
+ * 单测里把 mutation 桩成「立刻成功」,只验证页面侧的 notice。
+ */
+vi.mock('@/services/useServerAction', () => ({
+  useServerAction: vi.fn((notify: (text: string) => void) => ({
+    mutate: (action: { success?: string }) => {
+      if (action.success) notify(action.success);
+    },
+  })),
+}));
 
 function renderAt(id: string) {
   return renderWithProviders(
@@ -17,10 +29,10 @@ function renderAt(id: string) {
     {
       initialEntries: [`/admin/knowledge/sources/${id}`],
       seeds: [
-        { key: [...qk.admin.knowledge.root, 'kbs', 'w1'], data: mockKbs },
-        { key: [...qk.admin.knowledge.root, 'docs', 'w1'], data: mockDocs },
-        { key: [...qk.admin.knowledge.root, 'sources', 'w1'], data: mockSources },
-        { key: [...qk.admin.knowledge.root, 'tasks', 'w1'], data: mockTasks },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'kbs']), data: mockKbs },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'docs']), data: mockDocs },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'sources']), data: mockSources },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'tasks']), data: mockTasks },
       ],
     },
   );
@@ -44,7 +56,8 @@ describe('AdminKnowledgeSourceDetail', () => {
   it('flashes notice when sync is clicked', () => {
     renderAt('src-1');
     fireEvent.click(screen.getByRole('button', { name: /立即同步/ }));
-    expect(screen.getByText(/已触发 产品 Wiki 同步/)).toBeTruthy();
+    // 同步改为走服务端 action 后,成功提示由服务端返回路径给出
+    expect(screen.getByText(/同步请求已提交/)).toBeTruthy();
   });
 
   it('shows not-found when id is unknown', () => {

@@ -1,8 +1,4 @@
-import { resolveRuntimeConfig, type RuntimeConfig } from './environment';
-
-export function isDemoApiMode(): boolean {
-  return resolveRuntimeConfig().environment === 'demo';
-}
+import { type RuntimeConfig, resolveRuntimeConfig } from './environment';
 
 export function runtimeConfig(): RuntimeConfig {
   return resolveRuntimeConfig();
@@ -23,7 +19,6 @@ function isLoopbackBase(url: string): boolean {
  * 需要直连时设置 `VITE_API_DIRECT=true` 并填写非空 `VITE_API_BASE`。
  */
 export function apiBaseURL(): string {
-  if (!resolveRuntimeConfig().apiEnabled) return '';
   const raw = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
   const forceDirect = import.meta.env.VITE_API_DIRECT === 'true';
 

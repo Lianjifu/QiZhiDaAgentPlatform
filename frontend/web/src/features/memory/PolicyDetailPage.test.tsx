@@ -2,8 +2,8 @@
  * PolicyDetailPage 测试 — happy-path + 404 + loading + 策略状态/数据量/被引用 Agent。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { screen, waitFor } from '@testing-library/react';
+import { Route, Routes } from 'react-router-dom';
 
 vi.mock('./useMemory', () => ({
   useRetentionPolicy: vi.fn(),
@@ -20,17 +20,44 @@ vi.mock('@/features/agents/fixtures', () => ({
   ],
 }));
 
+/**
+ * 「被以下 Agent 引用」走真实 HTTP 通道 —— 桩掉 api client,让请求成功返回,
+ * 否则 query 报错后 useApiQuery 会把 data 抹成 undefined(组件拿不到列表)。
+ */
+vi.mock('@qzdap/web-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@qzdap/web-api')>();
+  const { mockAgents } = await import('@/features/agents/fixtures');
+  return {
+    ...actual,
+    getApiClient: () => ({
+      request: async () => mockAgents,
+    }),
+  };
+});
+
 import { useRetentionPolicy, useL1Sessions, useL2Facts, useL3Entries } from './useMemory';
 import PolicyDetailPage from './PolicyDetailPage';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
+import { mockAgents } from '@/features/agents/fixtures';
+
+/**
+ * PolicyDetailPage 自己用 useApiQuery 拉「被引用 Agent」——
+ * key 形如 ['memory','policies',<label>,'agents'],走 apiQueryKey 的完整形状。
+ */
+const AGENTS_KEY = ['memory', 'policies', '长期记忆', 'agents'] as const;
 
 function renderAt(id: string | null) {
-  return render(
-    <MemoryRouter initialEntries={[id ? `/admin/memory/policies/${id}` : '/admin/memory']}>
-      <Routes>
-        <Route path="/admin/memory" element={<div>MemoryPage</div>} />
-        <Route path="/admin/memory/policies/:id" element={<PolicyDetailPage />} />
-      </Routes>
-    </MemoryRouter>,
+  return renderWithProviders(
+    <Routes>
+      <Route path="/admin/memory" element={<div>MemoryPage</div>} />
+      <Route path="/admin/memory/policies/:id" element={<PolicyDetailPage />} />
+    </Routes>,
+    {
+      initialEntries: [id ? `/admin/memory/policies/${id}` : '/admin/memory'],
+      seeds: [
+        { key: pageQueryKey(AGENTS_KEY), data: mockAgents },
+      ],
+    },
   );
 }
 

@@ -172,7 +172,7 @@ disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["libs", "modules", "runtimes"]
+testpaths = ["libs", "modules", "runtimes", "composition", "tests"]
 pythonpath = [
     "libs/kernel/src",
     "libs/auth/src",

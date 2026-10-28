@@ -9,15 +9,16 @@ WorkspaceGuard runs last so it can use the bound tenant id).
 
 from __future__ import annotations
 
+import fnmatch
 from collections.abc import Awaitable, Callable
 from uuid import UUID
 
-from qzdap_auth.jwt import JWTVerifier
-from qzdap_auth.middleware import AuthMiddleware
-from qzdap_kernel.errors import ForbiddenError
-from qzdap_observability.middleware import ObservabilityMiddleware
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware as FastAPICORSMiddleware
+from qzdap_auth.jwt import JWTVerifier
+from qzdap_auth.middleware import AuthMiddleware
+from qzdap_kernel.errors import AuthenticationError, ForbiddenError
+from qzdap_observability.middleware import ObservabilityMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from qzdap_http.cors import CORSMiddlewareConfig
@@ -118,12 +119,70 @@ class WorkspaceGuardMiddleware:
         await self.app(scope, receive, send)
 
 
+class AuthRequiredMiddleware:
+    """Reject requests that carry no authenticated principal.
+
+    Runs AFTER Auth (which stamps ``state["principal"]``) and BEFORE the
+    tenant/workspace guards.
+
+    Why this exists: the tenant isolation in this platform comes from the
+    ORM auto-filter, which is bound to the **JWT's** tenant id. A request
+    without a valid token therefore has *no* bound tenant — the auto-filter
+    degrades to a no-op and the route reads whatever tenant the caller
+    named in ``X-Tenant-Id`` / ``X-Workspace-Id``. In other words: without
+    this middleware, ``X-Tenant-Id`` was a *hint*, not a boundary, and an
+    anonymous caller could read (and write) another tenant's data.
+
+    Routes that are genuinely public must be listed in ``public_paths``.
+    Everything else requires a token.
+    """
+
+    def __init__(self, app: ASGIApp, *, public_paths: tuple[str, ...] = ()) -> None:
+        self.app = app
+        # 结尾带 "*" 的是前缀规则, 其余按**精确路径**匹配.
+        # 精确匹配很重要: "/v1/channels" 这种前缀会把该前缀下的所有
+        # CRUD 路由一起放开, 而我们只想放开其中的 webhook.
+        self.public_paths = public_paths
+
+    def _is_public(self, path: str) -> bool:
+        for entry in self.public_paths:
+            if "*" in entry:
+                # glob 规则: "/v1/channels/*/webhook" 只盖住 webhook 本身,
+                # 不会把 "/v1/channels" 的 CRUD 一起放开.
+                if fnmatch.fnmatchcase(path, entry):
+                    return True
+            elif path == entry:
+                return True
+        return False
+
+    async def __call__(
+        self,
+        scope: dict,
+        receive: Callable[[], Awaitable[dict]],
+        send: Callable[[dict], Awaitable[None]],
+    ) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = str(scope.get("path") or "")
+        if not self._is_public(path):
+            state = scope.get("state") or {}
+            if state.get("principal") is None:
+                raise AuthenticationError(
+                    "missing bearer token", code="MISSING_TOKEN"
+                )
+
+        await self.app(scope, receive, send)
+
+
 def build_default_middleware_chain(
     app: FastAPI,
     *,
     cors: CORSMiddlewareConfig | None = None,
     rate_limit: RateLimitPolicy | None = None,
     auth_verifier: JWTVerifier | None = None,
+    public_paths: tuple[str, ...] = (),
 ) -> None:
     """Mount the canonical chain on `app`. The order is fixed; callers only
     decide which optional layers to enable (cors / rate_limit / auth).
@@ -135,6 +194,11 @@ def build_default_middleware_chain(
     # ── innermost: closest to the application handlers ────────────────────
     app.add_middleware(WorkspaceGuardMiddleware)
     app.add_middleware(TenantGuardMiddleware)
+
+    # No principal ⇒ no bound tenant ⇒ the ORM auto-filter is a no-op.
+    # Reject before the request reaches a handler that would otherwise
+    # trust the caller's X-Tenant-Id header.
+    app.add_middleware(AuthRequiredMiddleware, public_paths=public_paths)
 
     if auth_verifier is not None:
         app.add_middleware(AuthMiddleware, verifier=auth_verifier)

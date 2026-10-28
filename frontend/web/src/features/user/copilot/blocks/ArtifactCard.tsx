@@ -31,6 +31,7 @@ import {
 import { useState, type ReactNode } from 'react';
 import { MarkdownView } from '@/features/agents/components/MarkdownView';
 import { CodeBlock } from './CodeBlock';
+import { getApiClient } from '@qzdap/web-api';
 
 export type ArtifactKind =
   | 'markdown'
@@ -182,9 +183,7 @@ export function ArtifactCard({
     setDownloading(true);
     setError('');
     try {
-      const r = await fetch(artifact.download_path, { credentials: 'include' });
-      if (!r.ok) throw new Error(`下载失败: HTTP ${r.status}`);
-      const blob = await r.blob();
+      const blob = await getApiClient().download(artifact.download_path);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -204,9 +203,7 @@ export function ArtifactCard({
     if (kind === 'image' && imageUrl) return imageUrl;
     if (kind === 'pdf' && pdfUrl) return pdfUrl;
     try {
-      const r = await fetch(artifact.download_path, { credentials: 'include' });
-      if (!r.ok) return null;
-      const blob = await r.blob();
+      const blob = await getApiClient().download(artifact.download_path);
       const url = URL.createObjectURL(blob);
       if (kind === 'image') setImageUrl(url);
       if (kind === 'pdf') setPdfUrl(url);

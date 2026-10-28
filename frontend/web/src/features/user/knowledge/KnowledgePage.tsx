@@ -8,6 +8,7 @@ import { CardActionButton, CardActions, CatalogToolbar, EmptyFilterState, PageIn
 import { BrowseKnowledgeDrawer } from './components/BrowseKnowledgeDrawer';
 import { useKnowledgeResources, useAskQuestion, useToggleKnowledgeFavorite } from './useKnowledge';
 import type { KnowledgeResource, KnowledgeFilter, KnowledgeSort } from './schema';
+import { applyFavorite } from '../favoriteState';
 
 const CHOSEN_STORAGE_KEY = runtimeStorageKey('user.knowledge.chosen');
 
@@ -115,7 +116,13 @@ export default function KnowledgePage() {
     browseTriggerRef.current?.focus();
   };
 
-  const toggleFavorite = (resource: KnowledgeResource) => favoriteMutation.mutate({ id: resource.id, on: !favorites.includes(resource.id) }, { onSuccess: () => setFavorites((current) => current.includes(resource.id) ? current.filter((id) => id !== resource.id) : [...current, resource.id]), onError: (cause) => setNotice(`收藏失败：${String(cause)}`) });
+  const toggleFavorite = (resource: KnowledgeResource) => {
+    const on = !favorites.includes(resource.id);
+    favoriteMutation
+      .mutateAsync({ id: resource.id, on })
+      .then(() => setFavorites((current) => applyFavorite(current, resource.id, on)))
+      .catch((cause) => setNotice(`收藏失败：${String(cause)}`));
+  };
 
   const copyCitation = (resource: KnowledgeResource) => {
     void navigator.clipboard.writeText(`${resource.title}\n${resource.excerpt}`).then(() => setNotice(`"${resource.title}"的引用摘要已复制。`)).catch((error) => setNotice(`复制失败：${String(error)}`));

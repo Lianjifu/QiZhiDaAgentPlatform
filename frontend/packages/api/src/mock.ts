@@ -1243,6 +1243,7 @@ export const mockWorkflow: Workflow = {
     { id: 'n8', kind: 'execute', label: '通知 HRBP', position: { x: 1180, y: 160 }, status: 'success', durationMs: 18000 },
     { id: 'n9', kind: 'audit', label: '审计留痕', position: { x: 1420, y: 100 }, status: 'success', durationMs: 60 },
     { id: 'n10', kind: 'notify', label: '飞书 / 企微通知', position: { x: 1660, y: 100 }, status: 'success', durationMs: 180 },
+    { id: 'n11', kind: 'compensate', label: '撤销已开通的账号权限', position: { x: 1420, y: 260 }, status: 'success', durationMs: 900 },
   ],
   edges: [
     { id: 'e1-2', source: 'n1', target: 'n2' },
@@ -1254,6 +1255,8 @@ export const mockWorkflow: Workflow = {
     { id: 'e6-8', source: 'n6', target: 'n8' },
     { id: 'e7-9', source: 'n7', target: 'n9' },
     { id: 'e8-9', source: 'n8', target: 'n9' },
+    { id: 'e7-11', source: 'n7', target: 'n11' },
+    { id: 'e11-9', source: 'n11', target: 'n9' },
     { id: 'e9-10', source: 'n9', target: 'n10' },
   ],
 };
@@ -2046,6 +2049,7 @@ export const mockSkillPerms = [
 export const mockSkills: Skill[] = [
   { id: 's1', name: 'redis-cli', kind: 'skill', description: 'Redis 命令执行', version: '1.0', status: 'installed', rating: 4.9, installCount: 1200, riskLevel: 'mid', cacheable: true },
   { id: 's2', name: 'kubectl', kind: 'skill', description: 'K8s 操作', version: '1.0', status: 'installed', rating: 4.8, installCount: 1100, riskLevel: 'high', cacheable: true },
+  { id: 's3', name: 'log-query', kind: 'skill', description: '日志检索（只读）', version: '1.0', status: 'installed', rating: 4.5, installCount: 640, riskLevel: 'low', cacheable: true },
   { id: 's4', name: 'es-query', kind: 'skill', description: 'OpenSearch 查询', version: '1.0', status: 'installed', rating: 4.6, installCount: 820, riskLevel: 'low', cacheable: true },
   { id: 's5', name: 'prometheus', kind: 'mcp', description: 'Prometheus MCP', version: '1.0', status: 'installed', rating: 4.7, installCount: 940, riskLevel: 'low', cacheable: false },
   { id: 's6', name: 'kafka-mcp', kind: 'mcp', description: 'Kafka 消息 MCP', version: '1.0', status: 'installed', rating: 4.5, installCount: 480, riskLevel: 'low', cacheable: false },
@@ -6185,5 +6189,14 @@ export async function mockHandler(path: string, opts: { method?: string; body?: 
     throw new Error('缺少凭据');
   }
 
-  return null;
+  // 走到这里 = 这个端点在演示模式里还没实现.
+  //
+  // 以前这里返回 null, 于是页面显示"空数据" —— 看不出是"真的没数据"还是
+  // "演示模式没实现这个端点". 那正是演示数据跟真实 API 越走越远、又没人
+  // 发现的原因. 现在显式抛错: 缺哪个端点, 一眼就知道.
+  const missing = new Error(
+    `演示模式未实现该端点: ${opts.method ?? 'GET'} ${path}`,
+  ) as Error & { code?: string };
+  missing.code = 'E_MOCK_NOT_IMPLEMENTED';
+  throw missing;
 }

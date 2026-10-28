@@ -4,7 +4,7 @@
 import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import OverviewPage from './OverviewPage';
 import {
   mockAlerts,
@@ -16,12 +16,12 @@ function renderPage() {
   return renderWithProviders(<OverviewPage />, {
     initialEntries: ['/admin/overview'],
     seeds: [
-      { key: [...qk.admin.overview.summary, 'w1'], data: mockOverviewSummary },
-      { key: [...qk.admin.overview.alerts, 'w1'], data: mockAlerts },
-      { key: [...qk.admin.overview.trend('24h'), 'w1'], data: mockTrendByRange['24h'] },
-      { key: [...qk.admin.overview.trend('1h'), 'w1'], data: mockTrendByRange['1h'] },
-      { key: [...qk.admin.overview.trend('6h'), 'w1'], data: mockTrendByRange['6h'] },
-      { key: [...qk.admin.overview.trend('7d'), 'w1'], data: mockTrendByRange['7d'] },
+      { key: pageQueryKey(qk.admin.overview.summary), data: mockOverviewSummary },
+      { key: pageQueryKey(qk.admin.overview.alerts), data: mockAlerts },
+      { key: pageQueryKey(qk.admin.overview.trend('24h')), data: mockTrendByRange['24h'] },
+      { key: pageQueryKey(qk.admin.overview.trend('1h')), data: mockTrendByRange['1h'] },
+      { key: pageQueryKey(qk.admin.overview.trend('6h')), data: mockTrendByRange['6h'] },
+      { key: pageQueryKey(qk.admin.overview.trend('7d')), data: mockTrendByRange['7d'] },
     ],
   });
 }

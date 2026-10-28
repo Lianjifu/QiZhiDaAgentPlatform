@@ -4,7 +4,7 @@
 import { describe, expect, it, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import QuotasPage from './QuotasPage';
 import { mockBudgets, mockDepartments, mockUsage, mockAlerts } from './fixtures';
 
@@ -19,10 +19,10 @@ function renderPage() {
   return renderWithProviders(<QuotasPage />, {
     initialEntries: ['/admin/quotas'],
     seeds: [
-      { key: [...qk.admin.quotas.root, 'budgets', 'w1'], data: mockBudgets },
-      { key: [...qk.admin.quotas.root, 'departments', 'w1'], data: mockDepartments },
-      { key: [...qk.admin.quotas.root, 'usage', 'w1'], data: mockUsage },
-      { key: [...qk.admin.quotas.root, 'alerts', 'w1'], data: mockAlerts },
+      { key: pageQueryKey([...qk.admin.quotas.root, 'budgets']), data: mockBudgets },
+      { key: pageQueryKey([...qk.admin.quotas.root, 'departments']), data: mockDepartments },
+      { key: pageQueryKey([...qk.admin.quotas.root, 'usage']), data: mockUsage },
+      { key: pageQueryKey([...qk.admin.quotas.root, 'alerts']), data: mockAlerts },
     ],
   });
 }

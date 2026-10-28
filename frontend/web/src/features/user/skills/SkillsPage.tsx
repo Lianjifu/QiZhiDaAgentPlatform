@@ -10,6 +10,7 @@ import type { Capability, CapabilityType, SkillListParams } from './schema';
 import { BrowseCapabilitiesDrawer } from './components/BrowseCapabilitiesDrawer';
 import { CapabilityDrawer } from './components/CapabilityDrawer';
 import { UseModal } from './components/UseModal';
+import { applyFavorite } from '../favoriteState';
 
 interface RecentUseItem { id: string; name: string; type: CapabilityType; time: string }
 
@@ -82,7 +83,11 @@ export default function SkillsPage() {
   const availableCount = list.filter((item) => item.status === 'available').length;
 
   const toggleFavorite = (item: Capability) => {
-    toggleFav.mutate({ id: item.id, on: !favorites.includes(item.id) }, { onSuccess: () => setFavorites((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id]), onError: (cause) => setNotice(`收藏失败：${String(cause)}`) });
+    const on = !favorites.includes(item.id);
+    toggleFav
+      .mutateAsync({ id: item.id, on })
+      .then(() => setFavorites((current) => applyFavorite(current, item.id, on)))
+      .catch((cause) => setNotice(`收藏失败：${String(cause)}`));
   };
 
   const toggleChosen = (id: string) => {

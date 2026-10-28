@@ -15,7 +15,7 @@ const ROOT = '/api/admin/skills';
 export function useAdminSkills(params: AdminSkillListParams = {}) {
   const query = withDefaults(params);
   return useApiQuery<Skill[]>(
-    [...qk.admin.skills.list, query],
+    [...qk.admin.skills.list],
     ROOT,
     { query },
     { staleTime: 15_000, placeholderData: (prev) => prev },

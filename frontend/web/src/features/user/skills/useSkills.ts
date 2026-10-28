@@ -8,7 +8,7 @@ const PATH = '/api/catalog/skills';
 export function useCapabilities(params: SkillListParams = {}) {
   const query = withDefaults(params);
   return useApiQuery<Capability[]>(
-    [...qk.user.skills.list, query],
+    [...qk.user.skills.list],
     PATH,
     { query },
     { staleTime: 15_000, placeholderData: (prev) => prev },

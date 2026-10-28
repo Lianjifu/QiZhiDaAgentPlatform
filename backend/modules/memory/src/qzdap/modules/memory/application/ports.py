@@ -85,6 +85,9 @@ class MemoryCatalogRepository(ABC):
     async def list_l3(self, workspace_id: UUID) -> list[L3Entry]: ...
 
     @abstractmethod
+    async def update_l3(self, item: L3Entry) -> None: ...
+
+    @abstractmethod
     async def add_promotion(self, item: PromotionEvent) -> None: ...
 
     @abstractmethod

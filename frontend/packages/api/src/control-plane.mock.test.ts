@@ -256,7 +256,9 @@ describe('control plane mock mutations', () => {
     expect(packaged.hasScripts).toBe(true);
 
     const catalog = await mockHandler('/api/skills/catalog', { method: 'GET' }) as any;
-    expect(catalog.meta.demoNotice).toContain('演示');
+    // 目录说明讲的是"平台内置条目只是冷启动, 生产来源靠 Registry 同步与工作区晋升" ——
+    // 早期版本这里说的是"演示", 演示数据退役后文案换掉了。
+    expect(catalog.meta.demoNotice).toContain('Registry');
     expect(Array.isArray(catalog.items)).toBe(true);
     const promoted = await mockHandler('/api/skills/catalog/publish', {
       method: 'POST',

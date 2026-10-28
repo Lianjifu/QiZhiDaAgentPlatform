@@ -5,7 +5,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { Route, Routes, Outlet, useLocation } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import AgentsPage from './AgentsPage';
 import AgentDetailPage from './AgentDetailPage';
 import AgentCreatePage from './AgentCreatePage';
@@ -26,7 +26,7 @@ function renderPage() {
   return renderWithProviders(<AgentsPage />, {
     initialEntries: ['/admin/agents'],
     seeds: [
-      { key: [...qk.admin.agents.list, {}, 'w1'], data: mockAgents },
+      { key: pageQueryKey(qk.admin.agents.list), data: mockAgents },
     ],
   });
 }
@@ -44,10 +44,10 @@ function renderApp(initialPath: string) {
     {
       initialEntries: [initialPath],
       seeds: [
-        { key: [...qk.admin.agents.list, {}, 'w1'], data: mockAgents },
+        { key: pageQueryKey(qk.admin.agents.list), data: mockAgents },
         // AgentDetailPage 走 useAgentDetail(id) → 真实缓存 key = [...qk.admin.agents.detail(id), workspaceId='w1']
         ...mockAgents.map((a) => ({
-          key: [...qk.admin.agents.detail(a.id), 'w1'],
+          key: pageQueryKey(qk.admin.agents.detail(a.id)),
           data: a,
         })),
       ],
@@ -146,14 +146,15 @@ describe('AdminAgents', () => {
     expect(screen.getByText(/配置、审核并发布智能体/)).toBeTruthy();
   });
 
-  it('opens import dialog and previews sample', () => {
+  it('opens import dialog without any demo sample shortcut', () => {
     renderPage();
     fireEvent.click(within(screen.getByRole('group', { name: '列表操作' })).getByRole('button', { name: '导入' }));
     const dialog = screen.getByRole('dialog', { name: '导入智能体' });
     expect(dialog).toBeTruthy();
-    // Step 1: 验证支持 JSON / CSV / YAML / ZIP 标签 + StepIndicator
-    expect(within(dialog).getByText('JSON')).toBeTruthy();
-    expect(within(dialog).getByText('CSV')).toBeTruthy();
+    // 只剩"上传真实文件"这一条路 —— 示例数据那套是前端硬编码的演示数据,
+    // 演示环境改由种子脚本提供, 导入框里不该再留这个口子.
+    expect(within(dialog).getByText(/拖放 JSON \/ CSV \/ YAML \/ ZIP 文件到此/)).toBeTruthy();
+    expect(within(dialog).queryByText(/或选择示例数据/)).toBeNull();
     // 关闭
     fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
     expect(screen.queryByRole('dialog', { name: '导入智能体' })).toBeNull();
@@ -165,7 +166,7 @@ describe('AdminAgents', () => {
     fireEvent.click(within(card).getByRole('button', { name: '导出' }));
     const dialog = screen.getByRole('dialog', { name: '导出智能体' });
     expect(dialog).toBeTruthy();
-    expect(within(dialog).getByText(/选择导出范围、格式与字段/)).toBeTruthy();
+    expect(within(dialog).getByText(/选择导出范围/)).toBeTruthy();
   });
 
   it('switches detail page panel to versions and eval', () => {

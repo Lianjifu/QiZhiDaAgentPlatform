@@ -5,7 +5,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import AuditDetailPage from './AuditDetailPage';
 import { mockAuditEntries, mockAuditRules } from './fixtures';
 
@@ -17,8 +17,8 @@ function renderAt(id: string) {
     {
       initialEntries: [`/admin/tool-audit/${id}`],
       seeds: [
-        { key: [...qk.admin.audit.entries, 'w1'], data: mockAuditEntries },
-        { key: [...qk.admin.audit.rules, 'w1'], data: mockAuditRules },
+        { key: pageQueryKey(qk.admin.audit.entries), data: mockAuditEntries },
+        { key: pageQueryKey(qk.admin.audit.rules), data: mockAuditRules },
       ],
     },
   );

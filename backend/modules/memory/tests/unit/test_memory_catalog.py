@@ -7,6 +7,7 @@ import math
 from uuid import UUID
 
 import pytest
+from qzdap_kernel.errors import ValidationError
 
 from qzdap.modules.memory.application.ports import (
     MemoryCatalogRepository,
@@ -138,6 +139,9 @@ class InMemoryCatalog(MemoryCatalogRepository):
     async def list_l3(self, workspace_id: UUID) -> list[L3Entry]:
         return [item for item in self.l3.values() if item.workspace_id == workspace_id]
 
+    async def update_l3(self, item: L3Entry) -> None:
+        self.l3[item.id] = item
+
     async def add_promotion(self, item: PromotionEvent) -> None:
         self.promotions[item.id] = item
 
@@ -217,3 +221,192 @@ async def test_missing_l3_raises() -> None:
     svc = _svc()
     with pytest.raises(MemoryNotFound):
         await svc.get_l3(UUID("00000000-0000-0000-0000-000000000099"))
+
+
+@pytest.mark.asyncio
+async def test_flush_l1_expires_session() -> None:
+    svc = _svc()
+    await svc.write(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        owner_id=TENANT,
+        content="会议纪要要点",
+        metadata={"key": "纪要"},
+    )
+    sessions = await svc.list_l1(workspace_id=WORKSPACE)
+    assert len(sessions) == 1
+    flushed = await svc.flush_l1(UUID(sessions[0]["id"]), workspace_id=WORKSPACE)
+    assert flushed["status"] == "expired"
+    assert flushed["bufferSize"] == 0
+    again = await svc.list_l1(workspace_id=WORKSPACE)
+    assert again[0]["status"] == "expired"
+
+
+@pytest.mark.asyncio
+async def test_flush_all_l1_only_counts_active() -> None:
+    svc = _svc()
+    await svc.write(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        owner_id=TENANT,
+        content="第一条",
+        metadata={"key": "a"},
+    )
+    await svc.write(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        owner_id=TENANT,
+        content="第二条",
+        metadata={"key": "b"},
+    )
+    first = await svc.flush_all_l1(workspace_id=WORKSPACE)
+    assert first["flushed"] == 2
+    second = await svc.flush_all_l1(workspace_id=WORKSPACE)
+    assert second["flushed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_flush_rejects_other_workspace() -> None:
+    svc = _svc()
+    await svc.write(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        owner_id=TENANT,
+        content="内容",
+        metadata={"key": "a"},
+    )
+    sessions = await svc.list_l1(workspace_id=WORKSPACE)
+    with pytest.raises(MemoryNotFound):
+        await svc.flush_l1(
+            UUID(sessions[0]["id"]),
+            workspace_id=UUID("00000000-0000-0000-0000-0000000000ff"),
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_l2_confirms_and_validates_status() -> None:
+    svc = _svc()
+    await svc.write(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        owner_id=TENANT,
+        content="偏好中文回复",
+        metadata={"key": "语言"},
+    )
+    facts = await svc.list_l2(workspace_id=WORKSPACE)
+    fact_id = UUID(facts[0]["id"])
+    updated = await svc.update_l2(
+        fact_id, workspace_id=WORKSPACE, patch={"status": "confirmed"}
+    )
+    assert updated["status"] == "confirmed"
+    with pytest.raises(ValidationError):
+        await svc.update_l2(
+            fact_id, workspace_id=WORKSPACE, patch={"status": "nonsense"}
+        )
+
+
+@pytest.mark.asyncio
+async def test_promote_l2_creates_l3_and_marks_facts() -> None:
+    svc = _svc()
+    await svc.write(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        owner_id=TENANT,
+        content="退款 7 天内申请",
+        metadata={"key": "退款规则"},
+    )
+    facts = await svc.list_l2(workspace_id=WORKSPACE)
+    fact_id = UUID(facts[0]["id"])
+    entry = await svc.promote_l2(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        ids=[fact_id],
+        team="售后组",
+        title="退款规则",
+        summary="退款需在 7 天内申请",
+        operator="张文佳",
+    )
+    assert entry["status"] == "draft"
+    assert entry["team"] == "售后组"
+    assert entry["contributor"] == "张文佳"
+    assert entry["promotedFromL2Ids"] == [str(fact_id)]
+    assert (await svc.get_l2(fact_id))["promotedToL3"] is True
+    events = await svc.list_promotions(workspace_id=WORKSPACE)
+    assert any(event["layer"] == "l2→l3" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_promote_l2_rejects_empty_selection() -> None:
+    svc = _svc()
+    with pytest.raises(ValidationError):
+        await svc.promote_l2(
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            ids=[],
+            team="售后组",
+            title="空",
+            summary="空",
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_l3_publishes_entry() -> None:
+    svc = _svc()
+    entry = await svc.create_l3(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        team="增长组",
+        title="定价口径",
+        summary="新客首单 8 折",
+        contributor="李明",
+    )
+    assert entry["status"] == "published"
+    assert entry["hits"] == 0
+    listed = await svc.list_l3(workspace_id=WORKSPACE)
+    assert [item["id"] for item in listed] == [entry["id"]]
+
+
+@pytest.mark.asyncio
+async def test_create_l3_rejects_unknown_status() -> None:
+    svc = _svc()
+    with pytest.raises(ValidationError):
+        await svc.create_l3(
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            team="增长组",
+            title="定价口径",
+            summary="",
+            status="archived",
+        )
+
+
+@pytest.mark.asyncio
+async def test_update_l3_publishes_and_retires() -> None:
+    svc = _svc()
+    entry = await svc.create_l3(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        team="增长组",
+        title="定价口径",
+        summary="新客首单 8 折",
+    )
+    item_id = UUID(entry["id"])
+    published = await svc.update_l3(
+        item_id, workspace_id=WORKSPACE, patch={"status": "published"}
+    )
+    assert published["status"] == "published"
+    retired = await svc.update_l3(
+        item_id, workspace_id=WORKSPACE, patch={"status": "retired"}
+    )
+    assert retired["status"] == "retired"
+    with pytest.raises(ValidationError):
+        await svc.update_l3(
+            item_id, workspace_id=WORKSPACE, patch={"status": "unknown"}
+        )
+    with pytest.raises(MemoryNotFound):
+        await svc.update_l3(
+            item_id,
+            workspace_id=UUID("00000000-0000-0000-0000-0000000000ff"),
+            patch={"status": "published"},
+        )
+

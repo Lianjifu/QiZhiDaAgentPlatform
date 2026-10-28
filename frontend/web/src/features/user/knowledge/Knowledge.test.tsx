@@ -1,3 +1,4 @@
+import { pageQueryKey } from '@/test-utils/seed';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -16,7 +17,7 @@ beforeEach(() => sessionStorage.removeItem(CHOSEN_STORAGE_KEY));
 function renderKnowledge(chosen: string[] = []) {
   if (chosen.length) sessionStorage.setItem(CHOSEN_STORAGE_KEY, JSON.stringify(chosen));
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData([...qk.user.knowledge.list, {}, 'w1'], projectKnowledgeDocs(mockKbs, mockDocs));
+  qc.setQueryData(pageQueryKey(qk.user.knowledge.list), projectKnowledgeDocs(mockKbs, mockDocs));
   render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/knowledge']}>

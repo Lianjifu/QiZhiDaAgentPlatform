@@ -23,7 +23,7 @@ export interface SessionDetail extends CopilotSession {
 export function useSessions(params: SessionsListParams = {}) {
   const query = withDefaults(params);
   return useApiQuery<CopilotSession[]>(
-    [...qk.user.copilot.sessions, query],
+    [...qk.user.copilot.sessions],
     PATH,
     { query },
     { staleTime: 15_000, placeholderData: (prev) => prev },

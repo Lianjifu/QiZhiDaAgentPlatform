@@ -8,6 +8,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qzdap.composition.unavailable_providers import ProviderUnavailable
+from qzdap_kernel.errors import ValidationError
+
 from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
     MemoryCatalogRepository,
@@ -15,8 +17,11 @@ from qzdap.modules.memory.application.ports import (
 )
 from qzdap.modules.memory.domain.entities import (
     L2_CATEGORIES,
+    L2_STATUSES,
+    L3_STATUSES,
     L1Session,
     L2Fact,
+    L3Entry,
     PromotionEvent,
     RetentionPolicy,
 )
@@ -68,6 +73,163 @@ class MemoryService:
         item = await self._catalog.get_l3(item_id)
         if item is None:
             raise MemoryNotFound(f"l3 entry {item_id} not found")
+        return item.to_admin_dict()
+
+    async def flush_l1(self, item_id: UUID, *, workspace_id: UUID) -> dict[str, Any]:
+        """冲掉一条 L1 会话缓冲 —— 内容落盘后丢弃上下文窗口。"""
+        item = await self._catalog.get_l1(item_id)
+        if item is None or item.workspace_id != workspace_id:
+            raise MemoryNotFound(f"l1 session {item_id} not found")
+        now = datetime.now(UTC)
+        item.status = "expired"
+        item.buffer_text = ""
+        item.buffer_size = 0
+        item.ttl_remain_min = 0
+        item.updated_at = now
+        await self._catalog.update_l1(item)
+        return item.to_admin_dict()
+
+    async def flush_all_l1(self, *, workspace_id: UUID) -> dict[str, int]:
+        """冲掉工作区下所有未过期的 L1 会话。"""
+        now = datetime.now(UTC)
+        flushed = 0
+        for item in await self._catalog.list_l1(workspace_id):
+            if item.status == "expired":
+                continue
+            item.status = "expired"
+            item.buffer_text = ""
+            item.buffer_size = 0
+            item.ttl_remain_min = 0
+            item.updated_at = now
+            await self._catalog.update_l1(item)
+            flushed += 1
+        return {"flushed": flushed}
+
+    async def update_l2(
+        self, item_id: UUID, *, workspace_id: UUID, patch: dict[str, Any]
+    ) -> dict[str, Any]:
+        """确认 / 退休一条 L2 事实。"""
+        item = await self._catalog.get_l2(item_id)
+        if item is None or item.workspace_id != workspace_id:
+            raise MemoryNotFound(f"l2 fact {item_id} not found")
+        status = patch.get("status")
+        if status is not None:
+            value = str(status)
+            if value not in L2_STATUSES:
+                raise ValidationError(f"unknown l2 status {value}")
+            item.status = value  # type: ignore[assignment]
+        if "value" in patch and patch["value"] is not None:
+            item.value = str(patch["value"])
+        if patch.get("confidence") is not None:
+            item.confidence = float(patch["confidence"])
+        item.updated_at = datetime.now(UTC)
+        await self._catalog.update_l2(item)
+        return item.to_admin_dict()
+
+    async def promote_l2(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        ids: list[UUID],
+        team: str,
+        title: str,
+        summary: str,
+        operator: str = "管理员",
+        category: str = "knowledge",
+    ) -> dict[str, Any]:
+        """把选中的 L2 事实晋升为一条 L3 团队知识。"""
+        facts: list[L2Fact] = []
+        for item_id in ids:
+            fact = await self._catalog.get_l2(item_id)
+            if fact is None or fact.workspace_id != workspace_id:
+                raise MemoryNotFound(f"l2 fact {item_id} not found")
+            facts.append(fact)
+        if not facts:
+            raise ValidationError("没有可晋升的长期记忆")
+        now = datetime.now(UTC)
+        for fact in facts:
+            fact.promoted_to_l3 = True
+            fact.updated_at = now
+            await self._catalog.update_l2(fact)
+        entry = L3Entry.create(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            team=team,
+            title=title,
+            summary=summary,
+            category=category,
+            contributor=operator,
+            status="draft",
+            promoted_from_l2_ids=[str(fact.id) for fact in facts],
+        )
+        await self._catalog.add_l3(entry)
+        await self._catalog.add_promotion(
+            PromotionEvent(
+                id=uuid4(),
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                layer="l2→l3",
+                label=f"{team} · {title}: {summary[:24]}",
+                operator=operator,
+                target_id=str(entry.id),
+                created_at=now,
+            )
+        )
+        await self._embed_item(
+            entry.id, "l3", entry.recall_text(), tenant_id, workspace_id
+        )
+        return entry.to_admin_dict()
+
+    async def create_l3(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        team: str,
+        title: str,
+        summary: str,
+        category: str = "knowledge",
+        contributor: str = "管理员",
+        status: str = "published",
+    ) -> dict[str, Any]:
+        """手工新建一条 L3 团队知识。"""
+        if status not in L3_STATUSES:
+            raise ValidationError(f"unknown l3 status {status}")
+        entry = L3Entry.create(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            team=team,
+            title=title,
+            summary=summary,
+            category=category,
+            contributor=contributor,
+            status=status,  # type: ignore[arg-type]
+        )
+        await self._catalog.add_l3(entry)
+        await self._embed_item(
+            entry.id, "l3", entry.recall_text(), tenant_id, workspace_id
+        )
+        return entry.to_admin_dict()
+
+    async def update_l3(
+        self, item_id: UUID, *, workspace_id: UUID, patch: dict[str, Any]
+    ) -> dict[str, Any]:
+        """发布 / 下线一条 L3 知识。"""
+        item = await self._catalog.get_l3(item_id)
+        if item is None or item.workspace_id != workspace_id:
+            raise MemoryNotFound(f"l3 entry {item_id} not found")
+        status = patch.get("status")
+        if status is not None:
+            value = str(status)
+            if value not in L3_STATUSES:
+                raise ValidationError(f"unknown l3 status {value}")
+            item.status = value  # type: ignore[assignment]
+        for field in ("title", "summary", "team", "category"):
+            if patch.get(field) is not None:
+                setattr(item, field, str(patch[field]))
+        item.updated_at = datetime.now(UTC)
+        await self._catalog.update_l3(item)
         return item.to_admin_dict()
 
     async def list_promotions(self, *, workspace_id: UUID) -> list[dict[str, Any]]:

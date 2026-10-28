@@ -4,7 +4,7 @@
 import { describe, expect, it, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import { mockRegressionAlerts, mockRegressionTimeline, mockRegressionTracks } from './fixtures';
 import RegressionsPage from './index';
 
@@ -20,9 +20,9 @@ afterEach(() => cleanup());
 function renderPage() {
   return renderWithProviders(<RegressionsPage />, {
     seeds: [
-      { key: [...qk.admin.regressions.list, 'w1'], data: mockRegressionTracks },
-      { key: [...qk.admin.regressions.alerts, 'w1'], data: mockRegressionAlerts },
-      { key: [...qk.admin.regressions.timeline, 'w1'], data: mockRegressionTimeline },
+      { key: pageQueryKey(qk.admin.regressions.list), data: mockRegressionTracks },
+      { key: pageQueryKey(qk.admin.regressions.alerts), data: mockRegressionAlerts },
+      { key: pageQueryKey(qk.admin.regressions.timeline), data: mockRegressionTimeline },
     ],
   });
 }

@@ -266,6 +266,11 @@ def create_app() -> FastAPI:
         # Pass the verifier directly; the chain mounts AuthMiddleware via
         # `app.add_middleware(AuthMiddleware, verifier=...)` itself.
         auth_verifier=container.jwt_verifier(),
+        # 没有 token 就没有绑定的租户 —— ORM 的租户过滤会退化成空操作,
+        # 路由就会去信调用方自己填的 X-Tenant-Id. 除公开端点外一律要 token.
+        public_paths=tuple(
+            p.strip() for p in settings.public_paths.split(",") if p.strip()
+        ),
     )
 
     # ── boot-time sanity check ────────────────────────────────────────

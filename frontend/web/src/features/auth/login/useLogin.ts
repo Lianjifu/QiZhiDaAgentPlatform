@@ -16,6 +16,7 @@ import { applyResponseAdapter } from '@qzdap/web-api';
 import { useApiMutation, useApiQuery } from '@/services/query';
 import { useAuthStore } from '@/features/auth';
 import { resolvePostLoginRoute } from '@/features/auth/roleRoutes';
+import { quickLoginAccounts } from './quickLoginAccounts';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import type { User, Workspace } from '@qzdap/web-types';
 
@@ -229,7 +230,10 @@ export function useLogin(opts: UseLoginOpts = {}) {
   );
 
   const chooseRole = useCallback((nextEmail: string) => {
-    const nextPassword = 'dev-admin-password-change-me';
+    // 密码跟着当前模式的账号走 —— 演示环境是演示账号的密码, 开发环境是
+    // 开发账号的. 两套账号不共用密码, 所以不能写死.
+    const account = quickLoginAccounts().find((item) => item.email === nextEmail);
+    const nextPassword = account?.password ?? '';
     setEmail(nextEmail);
     setPassword(nextPassword);
     setMfa('');

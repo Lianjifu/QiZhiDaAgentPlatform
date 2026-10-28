@@ -5,7 +5,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import DocDetailPage from './DocDetailPage';
 import { mockKbs, mockDocs, mockSources, mockEvalCases } from './fixtures';
 
@@ -17,10 +17,10 @@ function renderAt(id: string) {
     {
       initialEntries: [`/admin/knowledge/docs/${id}`],
       seeds: [
-        { key: [...qk.admin.knowledge.root, 'kbs', 'w1'], data: mockKbs },
-        { key: [...qk.admin.knowledge.root, 'docs', 'w1'], data: mockDocs },
-        { key: [...qk.admin.knowledge.root, 'sources', 'w1'], data: mockSources },
-        { key: [...qk.admin.knowledge.root, 'eval', 'w1'], data: mockEvalCases },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'kbs']), data: mockKbs },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'docs']), data: mockDocs },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'sources']), data: mockSources },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'eval']), data: mockEvalCases },
       ],
     },
   );

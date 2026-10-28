@@ -6,12 +6,10 @@ describe('runtime environment', () => {
     expect(resolveRuntimeConfig({ VITE_QZDAP_ENV: 'demo' })).toMatchObject({
       environment: 'demo',
       dataMode: 'demo',
-      apiEnabled: false,
     });
     expect(resolveRuntimeConfig({ VITE_QZDAP_ENV: 'development' })).toMatchObject({
       environment: 'development',
       dataMode: 'development-api',
-      apiEnabled: true,
     });
   });
 
@@ -31,10 +29,21 @@ describe('runtime environment', () => {
     expect(development).toMatchObject({
       environment: 'development',
       dataMode: 'development-api',
-      apiEnabled: true,
     });
     expect(runtimeStorageKey('auth', { VITE_QZDAP_ENV: 'demo' })).not.toBe(
       runtimeStorageKey('auth', { VITE_QZDAP_ENV: 'development' }),
     );
+  });
+
+  it('opens demo mode only through VITE_QZDAP_ENV', () => {
+    // 演示数据必须显式打开 —— VITE_USE_DEMO 这类旁路开关不再生效.
+    expect(resolveRuntimeConfig({ VITE_USE_DEMO: 'true' })).toMatchObject({
+      environment: 'development',
+      dataMode: 'development-api',
+    });
+    expect(resolveRuntimeConfig({ VITE_QZDAP_ENV: 'demo' })).toMatchObject({
+      environment: 'demo',
+      dataMode: 'demo',
+    });
   });
 });

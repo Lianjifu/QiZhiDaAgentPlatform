@@ -48,11 +48,22 @@ class Settings(BaseSettings):
     jwt_access_ttl_seconds: int = 3600
     api_key_hash_rounds: int = 12
 
-    # multi-tenancy
-    ban_mock_token: int = 0
-    allow_demo_token: int = 1
+    # ── multi-tenancy / 种子数据 ─────────────────────────────────────────
+    # 演示数据与开发测试数据**严格分开** —— 不共用租户、账号、密码、库:
+    #   demo_* : 演示环境 (QZDAP_ENV=demo), 跑在独立的 demo 库上
+    #   dev_*  : 开发环境 (QZDAP_ENV=development), 跑在 dev 库上
+    # 两边各自有独立的种子脚本 (backend/scripts/seed_demo_data.py /
+    # seed_dev_data.py), 后端启动时按 QZDAP_ENV 自动跑对应那一个。
     demo_tenant_id: str = "00000000-0000-0000-0000-000000000001"
-    dev_admin_email: str = "admin@example.com"
+    demo_tenant_slug: str = "demo"
+    demo_tenant_display_name: str = "Demo Tenant"
+    demo_admin_email: str = "admin@acme.com"
+    demo_user_email: str = "user@acme.com"
+    demo_password: str = "demo-password-change-me"
+
+    dev_tenant_slug: str = "dev"
+    dev_tenant_display_name: str = "Dev Tenant"
+    dev_admin_email: str = "admin@dev.qzdap.dev"
     dev_admin_password: str = "dev-admin-password-change-me"
 
     # ── LLM ──────────────────────────────────────────────────────────────
@@ -143,6 +154,16 @@ class Settings(BaseSettings):
     otlp_endpoint: str = ""
     metrics_path: str = "/metrics"
     traces_sample_rate: float = 1.0
+
+    # 公开端点（不需要 token）—— 逗号分隔.
+    # 结尾带 "*" 的是前缀规则, 其余按精确路径匹配.
+    # 除这些以外的请求一律要求带 JWT: 没有 principal 就没有绑定的租户,
+    # ORM 的租户自动过滤会退化成空操作, 路由就会去信调用方自己填的
+    # X-Tenant-Id —— 那不是边界, 只是提示.
+    public_paths: str = (
+        "/healthz,/livez,/readyz,/metrics,/docs,/openapi.json,"
+        "/v1/identity/login,/v1/identity/tenants,/v1/channels/*/webhook"
+    )
 
     # P5 governance
     policy_enabled: bool = True

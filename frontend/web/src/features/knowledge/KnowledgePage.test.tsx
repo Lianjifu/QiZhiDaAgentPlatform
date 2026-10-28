@@ -7,7 +7,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import KnowledgePage from './KnowledgePage';
 import KbDetailPage from './KbDetailPage';
 import SourceDetailPage from './SourceDetailPage';
@@ -19,8 +19,8 @@ function renderPage() {
   return renderWithProviders(<KnowledgePage />, {
     initialEntries: ['/admin/knowledge'],
     seeds: [
-      { key: [...qk.admin.knowledge.root, 'kbs', 'w1'], data: mockKbs },
-      { key: [...qk.admin.knowledge.root, 'sources', 'w1'], data: mockSources },
+      { key: pageQueryKey([...qk.admin.knowledge.root, 'kbs']), data: mockKbs },
+      { key: pageQueryKey([...qk.admin.knowledge.root, 'sources']), data: mockSources },
     ],
   });
 }
@@ -37,13 +37,13 @@ function renderApp(initialPath: string) {
     {
       initialEntries: [initialPath],
       seeds: [
-        { key: [...qk.admin.knowledge.root, 'kbs', 'w1'], data: mockKbs },
-        { key: [...qk.admin.knowledge.root, 'docs', 'w1'], data: mockDocs },
-        { key: [...qk.admin.knowledge.root, 'sources', 'w1'], data: mockSources },
-        { key: [...qk.admin.knowledge.root, 'tasks', 'w1'], data: mockTasks },
-        { key: [...qk.admin.knowledge.root, 'eval', 'w1'], data: mockEvalCases },
-        { key: [...qk.admin.knowledge.root, 'kb', 'kb-prod', 'w1'], data: mockKbs[0] },
-        { key: [...qk.admin.knowledge.root, 'kb', 'kb-hr', 'w1'], data: mockKbs[1] },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'kbs']), data: mockKbs },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'docs']), data: mockDocs },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'sources']), data: mockSources },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'tasks']), data: mockTasks },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'eval']), data: mockEvalCases },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'kb', 'kb-prod']), data: mockKbs[0] },
+        { key: pageQueryKey([...qk.admin.knowledge.root, 'kb', 'kb-hr']), data: mockKbs[1] },
       ],
     },
   );

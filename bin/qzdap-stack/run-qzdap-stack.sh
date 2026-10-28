@@ -44,6 +44,18 @@ with open(pidfile, "w", encoding="utf-8") as handle:
 PY
 }
 
+log "waiting for postgres on :$QZDAP_PG_PORT to accept connections"
+pg_ready=0
+for _ in $(seq 1 30); do
+  if nc -z 127.0.0.1 "$QZDAP_PG_PORT" 2>/dev/null; then pg_ready=1; break; fi
+  sleep 1
+done
+if [ "$pg_ready" = 1 ]; then
+  log "postgres is accepting connections"
+else
+  log "WARN: postgres not reachable after 30s — qzdap-app will likely fail to start"
+fi
+
 log "starting qzdap-app on :$QZDAP_APP_PORT — log: $QZDAP_LOG_DIR/qzdap-app.log"
 QZDAP_SPAWN_LOG="$QZDAP_LOG_DIR/qzdap-app.log" QZDAP_SPAWN_CWD="$REPO/backend" \
   spawn "$QZDAP_LOG_DIR/qzdap-app.pid" \

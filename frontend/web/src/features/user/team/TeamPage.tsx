@@ -6,6 +6,7 @@ import { SideDrawer } from '@/components/feedback/SideDrawer';
 import { CardActionButton, CardActions, CatalogToolbar, EmptyFilterState, PageIntro, WorkspacePage } from '../components';
 import { useMembers, useSharedItems, useTeams, useInviteMember, useToggleTeamFavorite } from './useTeam';
 import type { Member, SharedItem, SharedKind, Team } from './schema';
+import { applyFavorite } from '../favoriteState';
 
 type TabLabel = '成员' | '智能体' | '知识' | '产出物';
 type TabValue = 'members' | SharedKind;
@@ -43,6 +44,13 @@ export default function TeamPage() {
   const inviteMutation = useInviteMember();
   const favoriteMutation = useToggleTeamFavorite();
   const [favorites, setFavorites] = useState<string[]>([]);
+  const toggleFavorite = (item: SharedItem) => {
+    const on = !favorites.includes(item.id);
+    favoriteMutation
+      .mutateAsync({ id: item.id, kind: item.kind, on })
+      .then(() => setFavorites((current) => applyFavorite(current, item.id, on)))
+      .catch((cause) => setNotice(`收藏失败：${String(cause)}`));
+  };
   const [tab, setTab] = useState<TabValue>('members');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<SharedItem | Member | null>(null);
@@ -184,7 +192,7 @@ export default function TeamPage() {
                         type="button"
                         aria-label={`${favorites.includes(item.id) ? '取消收藏' : '收藏'}${item.title}`}
                         aria-pressed={favorites.includes(item.id)}
-                        onClick={() => favoriteMutation.mutate({ id: item.id, kind: item.kind, on: !favorites.includes(item.id) }, { onSuccess: () => setFavorites((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id]), onError: (cause) => setNotice(`收藏失败：${String(cause)}`) })}
+                        onClick={() => toggleFavorite(item)}
                         className={`rounded-lg p-2 ${favorites.includes(item.id) ? 'text-rose-500' : 'text-[var(--text-muted)] hover:text-rose-500'}`}
                       >
                         <Heart className="h-4 w-4" fill={favorites.includes(item.id) ? 'currentColor' : 'none'} />

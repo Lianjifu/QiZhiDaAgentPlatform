@@ -103,3 +103,15 @@ export function usePromoteMemoryFacts() {
 export function useUpdateMemoryEntry() {
   return useApiMutation<unknown, { id: string; patch: Record<string, unknown> }>((vars) => `/api/admin/memory/l3/${encodeURIComponent(vars.id)}`, { invalidateKeys: [qk.admin.memory.root] }, 'PATCH');
 }
+
+export interface CreateL3EntryInput {
+  team: string;
+  title: string;
+  summary: string;
+  category?: string;
+  status?: 'draft' | 'published';
+}
+
+export function useCreateL3Entry() {
+  return useApiMutation<unknown, CreateL3EntryInput>('/api/admin/memory/l3', { invalidateKeys: [qk.admin.memory.root] }, 'POST');
+}

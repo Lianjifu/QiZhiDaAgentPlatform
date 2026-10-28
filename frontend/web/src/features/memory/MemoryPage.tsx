@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { Settings } from 'lucide-react';
 import {
   useL1Sessions, useL2Facts, useL3Entries, useMemoryStats, usePromotions,
-  useFlushMemorySession, useFlushAllMemorySessions, useUpdateMemoryFact, usePromoteMemoryFacts, useUpdateMemoryEntry,
+  useFlushMemorySession, useFlushAllMemorySessions, useUpdateMemoryFact, usePromoteMemoryFacts, useUpdateMemoryEntry, useCreateL3Entry,
 } from './useMemory';
 import { normalizeError } from '@/api/shared/http-error';
 import type {
@@ -18,6 +18,7 @@ import type {
 import { LAYER_META, TABS } from './components/constants';
 import { TimeRangeDropdown } from './components/TimeRangeDropdown';
 import { PromoteMemoryModal } from './components/PromoteMemoryModal';
+import { CreateMemoryEntryModal } from './components/CreateMemoryEntryModal';
 import { L1Tab } from './components/tabs/L1Tab';
 import { L2Tab } from './components/tabs/L2Tab';
 import { L3Tab } from './components/tabs/L3Tab';
@@ -50,6 +51,7 @@ export default function MemoryPage() {
   useEffect(() => setL3Page(1), [l3Query, l3TeamFilter, l3StatusFilter]);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [promoteIds, setPromoteIds] = useState<string[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const l1QueryRemote = useL1Sessions();
   const l2QueryRemote = useL2Facts();
@@ -70,6 +72,7 @@ export default function MemoryPage() {
   const updateFact = useUpdateMemoryFact();
   const promote = usePromoteMemoryFacts();
   const updateEntry = useUpdateMemoryEntry();
+  const createEntry = useCreateL3Entry();
   const [notice, setNotice] = useState('');
 
   const stats = useMemoryStats(l1, l2, l3, remotePromotions);
@@ -125,6 +128,12 @@ export default function MemoryPage() {
   const submitPromote = (team: string, title: string, summary: string) => {
     promote.mutate({ ids: promoteIds, team, title, summary }, {
       onSuccess: () => { setSelectedL2Ids([]); setPromoteOpen(false); setNotice('已提交晋升'); },
+      onError: failure,
+    });
+  };
+  const submitCreate = (input: { team: string; title: string; summary: string; category: string; status: 'draft' | 'published' }) => {
+    createEntry.mutate(input, {
+      onSuccess: () => { setCreateOpen(false); setNotice('已创建团队知识'); },
       onError: failure,
     });
   };
@@ -226,12 +235,19 @@ export default function MemoryPage() {
           onOpen={openL3}
           onRetire={retireEntry}
           onPublish={publishEntry}
-          onCreate={() => window.alert('长期记忆新建入口尚未实现，未创建数据。')}
+          onCreate={() => setCreateOpen(true)}
           pagination={{ page: pagedL3.safePage, totalPages: pagedL3.totalPages, total: pagedL3.total, pageStart: pagedL3.pageStart, pageEnd: pagedL3.pageEnd, onPageChange: setL3Page }}
         />
       )}
 
       <PromoteMemoryModal open={promoteOpen} factIds={promoteIds} onClose={() => setPromoteOpen(false)} onConfirm={submitPromote} />
+      <CreateMemoryEntryModal
+        open={createOpen}
+        teams={allTeams}
+        submitting={createEntry.isPending}
+        onClose={() => setCreateOpen(false)}
+        onConfirm={submitCreate}
+      />
     </div>
   );
 }

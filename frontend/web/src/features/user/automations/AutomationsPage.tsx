@@ -8,6 +8,7 @@ import { CardActionButton, CardActions, CatalogToolbar, EmptyFilterState, PageIn
 import { BrowseWorkflowsDrawer } from './components/BrowseWorkflowsDrawer';
 import { useFlows, useFlowRuns, useRecordFlowRun, useToggleFlowFavorite } from './useAutomations';
 import type { Flow, FlowRun, FlowAvailability } from './schema';
+import { applyFavorite } from '../favoriteState';
 
 const CHOSEN_STORAGE_KEY = runtimeStorageKey('user.automations.chosen');
 
@@ -109,7 +110,13 @@ export default function AutomationsPage() {
     recordRun.mutate({ flowId: runTarget.id, note: runNote }, { onSuccess: (next) => { setNotice(`"${runTarget.name}"使用记录已保存。`); setRunNote(''); setRunTarget(null); setBrowseOpen(false); }, onError: (cause) => setNotice(`执行失败：${String(cause)}`) });
   };
 
-  const toggleFavorite = (flow: Flow) => toggleFlowFavorite.mutate({ id: flow.id, on: !favorites.includes(flow.id) }, { onSuccess: () => setFavorites((current) => current.includes(flow.id) ? current.filter((id) => id !== flow.id) : [...current, flow.id]), onError: (cause) => setNotice(`收藏失败：${String(cause)}`) });
+  const toggleFavorite = (flow: Flow) => {
+    const on = !favorites.includes(flow.id);
+    toggleFlowFavorite
+      .mutateAsync({ id: flow.id, on })
+      .then(() => setFavorites((current) => applyFavorite(current, flow.id, on)))
+      .catch((cause) => setNotice(`收藏失败：${String(cause)}`));
+  };
 
   const resetFilters = () => {
     setSearch('');

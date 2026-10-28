@@ -9,10 +9,26 @@ vi.mock('./useKnowledge', () => ({
   useKnowledgeBase: vi.fn(),
   useKnowledgeDocs: vi.fn(),
   useKnowledgeTasks: vi.fn(),
+  useToggleKbStatus: vi.fn(),
+  useBatchKb: vi.fn(),
 }));
 
-import { useKnowledgeBase, useKnowledgeDocs, useKnowledgeTasks } from './useKnowledge';
+import { useKnowledgeBase, useKnowledgeDocs, useKnowledgeTasks, useToggleKbStatus, useBatchKb } from './useKnowledge';
 import KbDetailPage from './KbDetailPage';
+
+/**
+ * mutation 桩 —— 组件把「成功/失败」回调交给 mutate 的第二参数,
+ * 桩里直接回调 onSuccess,等价于服务端返回 200。
+ */
+function mockMutations() {
+  (useToggleKbStatus as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    mutate: (_vars: unknown, opts?: { onSuccess?: (v: unknown) => void }) =>
+      opts?.onSuccess?.({ id: 'kb-prod', status: 'paused' }),
+  });
+  (useBatchKb as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+    mutate: (_vars: unknown, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.(),
+  });
+}
 
 function renderAt(id: string | null) {
   return render(
@@ -28,6 +44,7 @@ function renderAt(id: string | null) {
 describe('KbDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockMutations();
   });
   afterEach(() => cleanup());
 

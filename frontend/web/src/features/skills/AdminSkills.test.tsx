@@ -1,31 +1,63 @@
-import { describe, expect, it, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+/**
+ * AdminSkills 测试 — 概览页 + 新建向导 + 卡片操作。
+ *
+ * 写操作(新建 / 发布 / 删除)一律走后端, 所以这里注入 skills 模块的 mock handler
+ * 作为 ApiClient, 页面跑的是真实的 useApiQuery / useApiMutation 链路 ——
+ * 列表数据、乐观刷新都来自那个内存 store, 而不是测试里手搓的假状态。
+ */
+import { describe, expect, it, afterEach, beforeAll } from 'vitest';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { Route, Routes, useNavigate } from 'react-router-dom';
+import { ApiClient, setApiClient } from '@qzdap/web-api';
+import { renderWithProviders } from '@/test-utils/seed';
 import AdminSkills from './SkillsPage';
 import SkillCreatePage from './SkillCreatePage';
+import { wrapMockHandlerWithAdminSkills } from './mock-handler';
 
+const skillsMock = wrapMockHandlerWithAdminSkills(async () => undefined);
+
+beforeAll(() => {
+  setApiClient(new ApiClient('', () => null, skillsMock));
+});
+
+/**
+ * 技能详情页占位。新建成功后页面会跳到 /admin/tools/:id,
+ * 这里给一个「返回列表」的出口, 让测试能回到概览页看到新卡片。
+ */
+function SkillDetailStub() {
+  const navigate = useNavigate();
+  return (
+    <div>
+      <span>技能详情页</span>
+      <button type="button" onClick={() => navigate('/admin/tools')}>返回技能管理</button>
+    </div>
+  );
+}
+
+/** 新建技能:类型选择器 → 3 步 wizard → 创建 → 回到列表看到新卡片。 */
 async function createSkill(name: string) {
   fireEvent.click(screen.getByRole('button', { name: '新建技能' }));
+  // /admin/tools/new 不带 type 参数时先选能力类型
+  fireEvent.click(screen.getByRole('heading', { level: 3, name: 'Skill' }).closest('button') as HTMLElement);
   fireEvent.change(screen.getByPlaceholderText('例如:客户跟进建议'), { target: { value: name } });
   fireEvent.click(screen.getByRole('button', { name: /下一步/ }));
   fireEvent.click(screen.getByRole('button', { name: /下一步/ }));
-  fireEvent.click(screen.getByRole('button', { name: /创建技能/ }));
+  fireEvent.click(screen.getByRole('button', { name: '创建技能' }));
+  // 创建成功 → 跳到新技能详情页
+  await screen.findByText('技能详情页');
+  // 回到概览页, 列表重新拉取后新技能以卡片出现
+  fireEvent.click(screen.getByRole('button', { name: '返回技能管理' }));
   expect(await screen.findByRole('heading', { name })).toBeTruthy();
 }
 
 function renderPage() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/admin/tools']}>
-        <Routes>
-          <Route path="/admin/tools" element={<AdminSkills />} />
-          <Route path="/admin/tools/new" element={<SkillCreatePage />} />
-          <Route path="/admin/tools/:id" element={<div>技能详情页</div>} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
+  return renderWithProviders(
+    <Routes>
+      <Route path="/admin/tools" element={<AdminSkills />} />
+      <Route path="/admin/tools/new" element={<SkillCreatePage />} />
+      <Route path="/admin/tools/:id" element={<SkillDetailStub />} />
+    </Routes>,
+    { initialEntries: ['/admin/tools'] },
   );
 }
 
@@ -51,8 +83,12 @@ describe('AdminSkills', () => {
     await createSkill('待发布技能');
     const card = screen.getByRole('heading', { name: '待发布技能' }).closest('article') as HTMLElement;
     fireEvent.click(within(card).getByRole('button', { name: '发布' }));
-    expect(within(card).getByRole('button', { name: '已发布' })).toBeTruthy();
-    expect(screen.getByText(/已发布「待发布技能」/)).toBeTruthy();
+    expect(await screen.findByText(/已发布「待发布技能」/)).toBeTruthy();
+    // 列表重新拉取后卡片状态变成已发布
+    await waitFor(() => {
+      const published = screen.getByRole('heading', { name: '待发布技能' }).closest('article') as HTMLElement;
+      expect(within(published).getByRole('button', { name: '已发布' })).toBeTruthy();
+    });
   });
 
   it('opens delete confirm modal and cancels', async () => {

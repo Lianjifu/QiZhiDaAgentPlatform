@@ -2,7 +2,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import ChannelDetailPage from './ChannelDetailPage';
 import { mockChannels, mockEvents } from './fixtures';
 
@@ -14,8 +14,8 @@ function renderAt(id: string) {
     {
       initialEntries: [`/admin/notifications/${id}`],
       seeds: [
-        { key: [...qk.admin.notifications.root, 'channels', 'w1'], data: mockChannels },
-        { key: [...qk.admin.notifications.root, 'events', 'w1'], data: mockEvents },
+        { key: pageQueryKey([...qk.admin.notifications.root, 'channels']), data: mockChannels },
+        { key: pageQueryKey([...qk.admin.notifications.root, 'events']), data: mockEvents },
       ],
     },
   );

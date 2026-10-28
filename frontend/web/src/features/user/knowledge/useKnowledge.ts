@@ -15,7 +15,7 @@ const PATH = '/api/catalog/knowledge';
 export function useKnowledgeResources(params: KnowledgeListParams = {}) {
   const query = withDefaults(params);
   return useApiQuery<KnowledgeResource[]>(
-    [...qk.user.knowledge.list, query],
+    [...qk.user.knowledge.list],
     PATH,
     { query },
     { staleTime: 15_000, placeholderData: (prev) => prev },

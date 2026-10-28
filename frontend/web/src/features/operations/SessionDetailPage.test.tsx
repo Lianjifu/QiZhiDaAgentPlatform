@@ -5,7 +5,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import SessionDetailPage from './SessionDetailPage';
 import { mockIncidents, mockKindStats, mockSessions, mockSpans } from './fixtures';
 
@@ -17,10 +17,10 @@ function renderAt(id: string) {
     {
       initialEntries: [`/admin/operations/${id}`],
       seeds: [
-        { key: [...qk.admin.operations.sessions, 'w1'], data: mockSessions },
-        { key: [...qk.admin.operations.spans, 'w1'], data: mockSpans },
-        { key: [...qk.admin.operations.incidents, 'w1'], data: mockIncidents },
-        { key: [...qk.admin.operations.kindStats, 'w1'], data: mockKindStats },
+        { key: pageQueryKey(qk.admin.operations.sessions), data: mockSessions },
+        { key: pageQueryKey(qk.admin.operations.spans), data: mockSpans },
+        { key: pageQueryKey(qk.admin.operations.incidents), data: mockIncidents },
+        { key: pageQueryKey(qk.admin.operations.kindStats), data: mockKindStats },
       ],
     },
   );

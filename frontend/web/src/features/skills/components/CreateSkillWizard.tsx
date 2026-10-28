@@ -9,7 +9,6 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Layers, ShieldCheck, Plus, Sparkles, Wrench, Network } from 'lucide-react';
-import { runtimeConfig } from '@/lib/api-mode';
 import { useApiMutation } from '@/services/query';
 import { normalizeError } from '@/api/shared/http-error';
 import { CenterModal } from '@/components/feedback/CenterModal';
@@ -138,51 +137,23 @@ print(json.dumps({
 
   const probe = useApiMutation<{ tools: MCPToolInfo[] }, MCPConfig>('/api/admin/skills/mcp/probe');
 
-  // 演示环境可模拟发现；开发环境必须请求后端。
+  // 演示环境和开发环境一样请求后端 —— 演示环境连的是 demo 后端实例,
+  // 它有真的 /api/admin/skills/mcp/probe. 以前这里在演示模式下**本地模拟**
+  // 一份假的 MCP 工具列表, 那正是"演示数据与真实 API 各写各的"的又一处.
   const probeMcp = async () => {
     setProbing(true);
     setProbeError(null);
     setMcpTools([]);
-    if (runtimeConfig().dataMode !== 'demo') {
-      try {
-        const result = await probe.mutateAsync(mcpConfig);
-        const tools = result.tools ?? [];
-        setMcpTools(tools);
-        setMcpConfig((c) => ({ ...c, selectedTools: c.selectedTools.filter((n) => tools.some((t) => t.name === n)) }));
-      } catch (error) {
-        setProbeError(normalizeError(error).message);
-      } finally {
-        setProbing(false);
-      }
-      return;
+    try {
+      const result = await probe.mutateAsync(mcpConfig);
+      const tools = result.tools ?? [];
+      setMcpTools(tools);
+      setMcpConfig((c) => ({ ...c, selectedTools: c.selectedTools.filter((n) => tools.some((t) => t.name === n)) }));
+    } catch (error) {
+      setProbeError(normalizeError(error).message);
+    } finally {
+      setProbing(false);
     }
-    const url = mcpConfig.serverUrl.toLowerCase();
-    let tools: MCPToolInfo[] = [];
-    if (url.includes('github')) {
-      tools = [
-        { name: 'list_repos', description: '列出当前用户可访问的仓库', inputSchema: [{ name: 'visibility', type: 'string', required: false, description: 'public / private / all' }] },
-        { name: 'search_issues', description: '在指定仓库中搜索 Issue / PR', inputSchema: [{ name: 'repo', type: 'string', required: true, description: '仓库 owner/name' }, { name: 'query', type: 'string', required: true, description: '搜索关键词' }] },
-        { name: 'create_issue', description: '在指定仓库创建新 Issue', inputSchema: [{ name: 'repo', type: 'string', required: true, description: '仓库' }, { name: 'title', type: 'string', required: true, description: '标题' }, { name: 'body', type: 'string', required: false, description: '正文' }] },
-      ];
-    } else if (url.includes('drive') || url.includes('file')) {
-      tools = [
-        { name: 'search_files', description: '按关键词搜索授权范围内的文件', inputSchema: [{ name: 'keyword', type: 'string', required: true, description: '搜索词' }] },
-        { name: 'read_file', description: '读取文件内容(只读)', inputSchema: [{ name: 'fileId', type: 'string', required: true, description: '文件 ID' }] },
-      ];
-    } else if (url.includes('crm') || url.includes('customer')) {
-      tools = [
-        { name: 'get_customer', description: '按客户编号查询客户档案', inputSchema: [{ name: 'query', type: 'string', required: true, description: '客户编号或名称' }] },
-        { name: 'list_records', description: '查询客户的服务记录(只读)', inputSchema: [{ name: 'customerId', type: 'string', required: true, description: '客户 ID' }] },
-      ];
-    } else {
-      tools = [
-        { name: 'ping', description: '健康探活,返回 pong', inputSchema: [] },
-        { name: 'get_status', description: '获取 server 状态', inputSchema: [] },
-      ];
-    }
-    setMcpTools(tools);
-    setMcpConfig((c) => ({ ...c, selectedTools: c.selectedTools.filter((n) => tools.some((t) => t.name === n)) }));
-    setProbing(false);
   };
 
   const handleSubmit = () => {

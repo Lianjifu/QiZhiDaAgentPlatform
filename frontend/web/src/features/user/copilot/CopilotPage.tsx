@@ -1,4 +1,3 @@
-import { runtimeConfig } from '@/lib/api-mode';
 import { getApiClient } from '@qzdap/web-api';
 import {
   ArrowUp,
@@ -47,6 +46,7 @@ import {
   PlanProposalCard,
   type PlanProposal,
 } from './blocks/PlanProposalCard';
+import { normalizeError } from '@/api/shared/http-error';
 
 type Message = ChatMessage & {
   extras?: MessageExtras;
@@ -170,7 +170,6 @@ function CopilotInner() {
   const dismissPlan = interactive.dismissPlan;
   const location = useLocation();
   const navigate = useNavigate();
-  const demoMode = runtimeConfig().dataMode === 'demo';
   const entry = location.state as CopilotEntryState | null;
   const agentName = entry?.agentName;
   const knowledgeTitle = entry?.knowledgeTitle;
@@ -504,12 +503,19 @@ function CopilotInner() {
       });
       void listCopilotSessions().then(setSessions).catch((error) => setNotices((current) => pushNotice(current, `查询失败：${String(error)}`)));
     } catch (error) {
-      const raw = error instanceof Error ? error.message : String(error);
+      const norm = normalizeError(error);
+      const raw = norm.message;
       // 把 503 / PROVIDER_UNAVAILABLE 翻译成"未配置 LLM 供应商"提示,
       // 引导用户去 /admin/models/new. 历史文案里 "QZDAP_LLM_PROVIDER /
       // QZDAP_LLM_API_KEY" 的 .env 提示已下线, 统一走管理侧.
+      //
+      // 判据用**结构化的 status/code**, 不要去正则匹配错误文案 ——
+      // 流式请求失败的消息是 "流式请求失败（HTTP 503）", 括号是全角的,
+      // 匹配 ASCII 括号的正则从来没生效过, 提示语一直退化成原始报错.
       const friendly =
-        /PROVIDER_UNAVAILABLE/.test(raw) || /\(HTTP\s*503\)/.test(raw)
+        norm.code === 'PROVIDER_UNAVAILABLE' ||
+        norm.status === 503 ||
+        /PROVIDER_UNAVAILABLE/.test(raw)
           ? '当前后端未配置 LLM 供应商, 无法对话. 请到 管理 → 模型管理 → 新建供应商 配置 API key 后再试.'
           : raw;
       setNotices((current) => pushNotice(current, `请求失败：${friendly}`));
@@ -553,10 +559,8 @@ function CopilotInner() {
     }
   };
   const handleAttachment = async (file: File) => {
-    if (demoMode) {
-      setInput((current) => `${current}\n[附件: ${file.name}]`);
-      return;
-    }
+    // 演示环境同样真上传 —— 演示后端有真的附件端点. 以前演示模式下只把
+    // 文件名写进输入框, 附件根本不存在.
     if (!sessionId) { setNotices((current) => pushNotice(current, '请先打开会话，再上传附件。')); return; }
     try {
       const form = new FormData();

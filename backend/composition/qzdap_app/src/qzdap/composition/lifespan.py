@@ -17,12 +17,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from logging import getLogger
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI
+from qzdap.modules.memory.domain.entities import EMBEDDING_DIM
 
 from qzdap.composition.container import Container
-from qzdap.modules.memory.domain.entities import EMBEDDING_DIM
 
 _log = getLogger(__name__)
 
@@ -512,14 +512,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         built_in_invoke_csv_query,
         built_in_invoke_delegate_to_agent,
         built_in_invoke_diff,
-        built_in_invoke_edit_file,
         built_in_invoke_echo,
+        built_in_invoke_edit_file,
         built_in_invoke_fetch_url_with_auth,
-        built_in_invoke_glob,
-        built_in_invoke_grep,
         built_in_invoke_git_diff,
         built_in_invoke_git_log,
         built_in_invoke_git_status,
+        built_in_invoke_glob,
+        built_in_invoke_grep,
         built_in_invoke_http_fetch,
         built_in_invoke_image_view,
         built_in_invoke_json_query,
@@ -1225,201 +1225,54 @@ async def _seed_builtin_eval_datasets(app: FastAPI, container: Container) -> Non
 
 
 async def ensure_default_resources(container: Container) -> None:
-    """Seed a demo tenant + workspace + admin user when the DB is empty.
+    """按 ``QZDAP_ENV`` 种对应那一套种子数据.
 
-    Runs only in dev/test by default (other environments require explicit
-    ``QZDAP_DEV_SEED_DEFAULT_RESOURCES=1``). Idempotent: a no-op
-    once any tenant row exists.
+    * ``demo``        → demo 租户 + demo 账号（演示库）
+    * ``development`` → dev 租户 + dev 账号（开发库）
+    * ``test``        → 同 development, 但不种给 CI 用
+    * 其它 env        → 不种（staging / production 需要时显式跑
+      ``backend/scripts/seed_dev_data.py``）
 
-    Also seeds built-in custom tools (echo/reverse/clock) for the demo
-    tenant whenever the tools table is empty, so the smoke flow
-    GET /v1/tools → POST .../invoke works without manual registration.
+    关键约束: **开发环境不种 demo 数据**. 之前这里对 development 和 test
+    都种 ``Demo Tenant`` + ``admin@acme.com``, 而真正的 ``demo`` env 反而
+    什么都不种 —— 正好与需求相反. 现在两套数据各有各的租户和账号.
+
+    ``QZDAP_DEV_SEED_DEFAULT_RESOURCES=1`` 只影响 dev 那套, 不会把 demo
+    账号种进非演示环境.
     """
     import os
 
-    from qzdap.modules.identity.adapter.persistence.models import TenantORM
-    from qzdap.modules.identity.adapter.persistence.repositories import (
-        SqlTenantRepository,
-        SqlUserRepository,
-        SqlWorkspaceRepository,
+    from qzdap.composition.seeds import (
+        profile_for_env,
+        seed_builtin_tools,
+        seed_demo_content,
+        seed_identity,
     )
-    from qzdap.modules.identity.domain import Tenant, User, Workspace
-    from sqlalchemy import func, select
 
     settings = container.settings
-    if (
-        settings.env not in {"development", "test"}
-        and os.environ.get("QZDAP_DEV_SEED_DEFAULT_RESOURCES", "0") != "1"
-    ):
-        return
+    profile = profile_for_env(settings)
+    if profile is None:
+        if os.environ.get("QZDAP_DEV_SEED_DEFAULT_RESOURCES", "0") != "1":
+            return
+        # 显式要求种 —— 但仍然只种 dev 那套, 演示数据不进非演示环境.
+        from qzdap.composition.seeds import dev_profile
+
+        profile = dev_profile(settings)
 
     sf = container.session_factory()
     try:
         async with sf.session() as session:
-            # Bail early if anything already exists.
-            existing = (
-                await session.execute(select(func.count()).select_from(TenantORM))
-            ).scalar_one()
-            if existing and existing > 0:
-                # Tenant already exists — skip the identity seed but still
-                # try to seed built-in tools below.
-                row = (
-                    await session.execute(select(TenantORM).limit(1))
-                ).scalar_one_or_none()
-                tenant_id = row.id if row is not None else UUID(settings.demo_tenant_id)
-            else:
-                tenant_id = UUID(settings.demo_tenant_id)
-                tenant = Tenant.create(
-                    id=tenant_id,
-                    slug="demo",
-                    display_name="Demo Tenant",
-                    metadata={"seeded": True},
-                )
-                ws = Workspace.create(
-                    id=__import__("uuid").uuid4(),
-                    tenant_id=tenant_id,
-                    slug="default",
-                    display_name="Default Workspace",
-                )
-                await SqlTenantRepository(session).add(tenant)
-                await SqlWorkspaceRepository(session).add(ws)
-                await session.commit()
-                _log.info(
-                    "seeded default tenant/workspace",
-                    extra={
-                        "tenant_id": str(tenant_id),
-                        "workspace_id": str(ws.id),
-                    },
-                )
-
-            users_repo = SqlUserRepository(session)
-            hashed = container.hasher().hash(settings.dev_admin_password)
-            login_accounts = (
-                (settings.dev_admin_email, "Demo Admin"),
-                ("admin@acme.com", "Demo Admin"),
-                ("user@acme.com", "Demo User"),
+            result = await seed_identity(session, container.hasher(), profile)
+            await seed_builtin_tools(
+                session, result["tenant_id"], result["workspace_id"]
             )
-            seeded_logins: list[str] = []
-            seeded_memberships: list[str] = []
-            # 找到/复用 Demo 主 tenant 下任意 active workspace, 给种子用户加 membership.
-            # 否则 dev 模式下 /api/home/insights 等需要 workspace_access 的端点
-            # 会 403 (UserWorkspaceORM 无行, role=workspace_member 不在 elevated 白名单).
-            from qzdap.modules.identity.adapter.persistence.models import (
-                UserWorkspaceORM,
-                WorkspaceORM,
+            # 演示内容 (智能体/技能/工作流/知识库) —— 内部按 profile.label
+            # 判断, dev 那套直接跳过.
+            await seed_demo_content(
+                session,
+                profile,
+                tenant_id=result["tenant_id"],
+                workspace_id=result["workspace_id"],
             )
-
-            default_ws_id = (
-                await session.execute(
-                    select(WorkspaceORM.id).where(
-                        WorkspaceORM.tenant_id == tenant_id,
-                        WorkspaceORM.status == "active",
-                    ).limit(1)
-                )
-            ).scalars().first()
-            for email, display_name in login_accounts:
-                existing_user = await users_repo.get_by_email_global(email)
-                if existing_user is None:
-                    new_user = User.create(
-                        id=__import__("uuid").uuid4(),
-                        tenant_id=tenant_id,
-                        email=email,
-                        display_name=display_name,
-                        hashed_password=hashed,
-                    )
-                    await users_repo.add(new_user)
-                    seeded_logins.append(email)
-                    user_obj = new_user
-                else:
-                    user_obj = existing_user
-                # 补 workspace membership (idempotent: 已存在就跳过)
-                if default_ws_id is not None:
-                    existing_membership = await session.scalar(
-                        select(UserWorkspaceORM).where(
-                            UserWorkspaceORM.user_id == user_obj.id,
-                            UserWorkspaceORM.workspace_id == default_ws_id,
-                        )
-                    )
-                    if existing_membership is None:
-                        session.add(
-                            UserWorkspaceORM(
-                                tenant_id=tenant_id,
-                                user_id=user_obj.id,
-                                workspace_id=default_ws_id,
-                                role="admin" if email.startswith("admin@") else "member",
-                            )
-                        )
-                        seeded_memberships.append(email)
-            if seeded_logins:
-                await session.commit()
-                _log.info("seeded demo login accounts", extra={"emails": seeded_logins})
-            if seeded_memberships:
-                await session.commit()
-                _log.info(
-                    "seeded demo workspace memberships",
-                    extra={"emails": seeded_memberships, "workspace_id": str(default_ws_id)},
-                )
-
-            # Seed built-in custom tools (echo / reverse / clock) for the
-            # demo tenant whenever the tools table is empty, so the smoke
-            # flow GET /v1/tools → POST .../invoke works without manual
-            # registration. Idempotent: skips rows that already exist.
-            from qzdap.modules.tool.adapter.persistence.models import ToolORM
-
-            tool_count = (
-                await session.execute(select(func.count()).select_from(ToolORM))
-            ).scalar_one()
-            if tool_count == 0:
-                # Find ANY existing workspace (whichever tenant it belongs
-                # to) — built-in tools will be tied to that tenant for
-                # smoke purposes. Production seed is per-tenant and is
-                # out of scope for this fixture.
-                from qzdap.modules.identity.adapter.persistence.models import (
-                    WorkspaceORM,
-                )
-
-                ws_row = (
-                    await session.execute(select(WorkspaceORM).limit(1))
-                ).scalar_one_or_none()
-                seed_tenant_id = ws_row.tenant_id if ws_row is not None else tenant_id
-                if ws_row is not None:
-                    from uuid import uuid4
-
-                    from qzdap.modules.tool.adapter.persistence.models import ToolORM
-
-                    for name in (
-                        "echo", "reverse", "clock",
-                        "web_search", "http_fetch",
-                        "bash", "read_file", "write_file", "edit_file",
-                        "ls", "glob", "grep",
-                        # Phase 2 extended (agent-builtin-tools-v2.md)
-                        "apply_patch", "diff", "image_view", "pdf_read",
-                        "json_query", "csv_query",
-                        "git_status", "git_diff", "git_log",
-                        "code_search", "convert_format",
-                        "fetch_url_with_auth", "calculator",
-                        # Frontend-coupled stubs
-                        "ask_user_question", "notify_user",
-                        "plan_submit", "todo_write",
-                        "delegate_to_agent",
-                    ):
-                        session.add(
-                            ToolORM(
-                                id=uuid4(),
-                                tenant_id=seed_tenant_id,
-                                workspace_id=ws_row.id,
-                                name=name,
-                                description=f"built-in {name}",
-                                protocol="custom",
-                                spec={},
-                                spec_operations=[],
-                                auth_config=None,
-                                rate_limit_per_minute=None,
-                                enabled=True,
-                                version=1,
-                            )
-                        )
-                    await session.commit()
-                    _log.info("seeded built-in tools tenant_id=%s", seed_tenant_id)
     except Exception:  # noqa: BLE001
         _log.exception("ensure_default_resources failed; continuing boot")

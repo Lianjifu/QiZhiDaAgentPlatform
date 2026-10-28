@@ -11,7 +11,7 @@ const PATH = '/api/catalog/agents';
 export function useAgents(params: AgentListParams = {}) {
   const query = withDefaults(params);
   return useApiQuery<Agent[]>(
-    [...qk.user.agents.list, query],
+    [...qk.user.agents.list],
     PATH,
     { query },
     { staleTime: 15_000, placeholderData: (prev) => prev },

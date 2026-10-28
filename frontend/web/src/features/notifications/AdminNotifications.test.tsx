@@ -3,7 +3,7 @@
  */
 import { describe, expect, it, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import NotificationsPage from './NotificationsPage';
 import { mockChannels, mockGroups, mockWebhooks, mockEvents } from './fixtures';
 import { qk } from '@/api/shared/query-keys';
@@ -22,10 +22,10 @@ function renderPage() {
   return renderWithProviders(<NotificationsPage />, {
     initialEntries: ['/admin/notifications'],
     seeds: [
-      { key: [...qk.admin.notifications.root, 'channels', 'w1'], data: mockChannels },
-      { key: [...qk.admin.notifications.root, 'webhooks', 'w1'], data: mockWebhooks },
-      { key: [...qk.admin.notifications.root, 'groups', 'w1'], data: mockGroups },
-      { key: [...qk.admin.notifications.root, 'events', 'w1'], data: mockEvents },
+      { key: pageQueryKey([...qk.admin.notifications.root, 'channels']), data: mockChannels },
+      { key: pageQueryKey([...qk.admin.notifications.root, 'webhooks']), data: mockWebhooks },
+      { key: pageQueryKey([...qk.admin.notifications.root, 'groups']), data: mockGroups },
+      { key: pageQueryKey([...qk.admin.notifications.root, 'events']), data: mockEvents },
     ],
   });
 }

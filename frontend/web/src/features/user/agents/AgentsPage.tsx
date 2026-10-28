@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { SideDrawer } from '@/components/feedback/SideDrawer';
 import { CardActionButton, CardActions, CatalogToolbar, EmptyFilterState, PageIntro, WorkspacePage } from '../components';
 import { BrowseAndUseDrawer } from './components/BrowseAndUseDrawer';
+import { applyFavorite } from '../favoriteState';
 import { useAgents, useToggleAgentFavorite } from './useAgents';
 import type { Agent, AgentCategory } from './schema';
 
@@ -89,7 +90,13 @@ export default function AgentsPage() {
     setSelected(null);
     triggerRef.current?.focus();
   };
-  const toggleFavorite = (id: string) => favoriteMutation.mutate({ id, on: !favorites.includes(id) }, { onSuccess: () => setFavorites((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]), onError: (cause) => window.alert(`收藏失败：${String(cause)}`) });
+  const toggleFavorite = (id: string) => {
+    const on = !favorites.includes(id);
+    favoriteMutation
+      .mutateAsync({ id, on })
+      .then(() => setFavorites((current) => applyFavorite(current, id, on)))
+      .catch((cause) => window.alert(`收藏失败：${String(cause)}`));
+  };
   const toggleChosen = (id: string) => setChosenIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   const startConversation = (agent: Agent) => {
     if (!chosenIds.includes(agent.id)) {

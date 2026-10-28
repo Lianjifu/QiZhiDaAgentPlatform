@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal, Self
-from uuid import UUID
+from uuid import UUID, uuid4
 
 EMBEDDING_DIM = 1536
 
@@ -132,6 +132,38 @@ class L3Entry:
     hits_trend: list[int] = field(default_factory=list)
     promoted_from_l2_ids: list[str] = field(default_factory=list)
 
+    @classmethod
+    def create(
+        cls,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        team: str,
+        title: str,
+        summary: str,
+        category: str = "knowledge",
+        contributor: str = "管理员",
+        status: L3Status = "published",
+        promoted_from_l2_ids: list[str] | None = None,
+    ) -> Self:
+        now = _utcnow()
+        return cls(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            team=team,
+            title=title,
+            summary=summary,
+            category=category,
+            hits=0,
+            contributor=contributor,
+            status=status,
+            updated_at=now,
+            created_at=now,
+            hits_trend=[],
+            promoted_from_l2_ids=list(promoted_from_l2_ids or []),
+        )
+
     def recall_text(self) -> str:
         return f"{self.title}: {self.summary}".strip()
 
@@ -212,7 +244,6 @@ class RetentionPolicy:
             ("l2", "长期记忆", "用户偏好与事实", 60 * 24 * 90, 200, 32, "lru", 0.88),
             ("l3", "知识记忆", "团队级共享知识", 60 * 24 * 365, 500, 128, "lru", 0.92),
         ]
-        from uuid import uuid4
 
         return [
             cls(

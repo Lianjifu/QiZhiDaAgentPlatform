@@ -6,6 +6,25 @@ import { getApiClient } from '@qzdap/web-api';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { runtimeStorageKey } from '@/lib/environment';
 
+/**
+ * 查询 key 的**唯一**算法 —— 所有 useApiQuery 都走这里, 单测预置缓存也走这里.
+ *
+ * 形状固定为 `[...key, workspaceId, runtimeStorageKey('query')]`:
+ *
+ * * ``workspaceId``  当前工作区.
+ * * ``runtimeStorageKey('query')``  按业务环境隔离 (演示/开发各一份缓存).
+ *
+ * **查询参数不进 key** —— 每个页面都是拿到整份列表再在客户端过滤
+ * (后端那些 catalog 端点本来也不支持过滤参数), 所以按过滤条件切 key
+ * 只会让缓存碎片化、白白多发请求. 请求参数照传, 只是不参与缓存身份.
+ */
+export function apiQueryKey(
+  key: readonly unknown[],
+  opts?: { workspaceId?: string },
+): readonly unknown[] {
+  return [...key, opts?.workspaceId ?? 'w1', runtimeStorageKey('query')];
+}
+
 export function useApiQuery<T>(
   key: readonly unknown[],
   path: string,
@@ -14,7 +33,7 @@ export function useApiQuery<T>(
 ) {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId ?? 'w1');
   const q = useQuery<T>({
-    queryKey: [...key, workspaceId, runtimeStorageKey('query')],
+    queryKey: apiQueryKey(key, { workspaceId }),
     queryFn: async () => {
       const c = getApiClient();
       return c.request<T>(path, {

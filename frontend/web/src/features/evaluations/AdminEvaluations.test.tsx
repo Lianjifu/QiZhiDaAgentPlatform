@@ -4,7 +4,7 @@
 import { describe, expect, it, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import { mockEvalResults, mockEvalSuites } from './fixtures';
 import EvaluationsPage from './index';
 
@@ -18,8 +18,8 @@ vi.mock('react-router-dom', async () => {
 function renderPage() {
   return renderWithProviders(<EvaluationsPage />, {
     seeds: [
-      { key: [...qk.admin.evaluations.list, 'w1'], data: mockEvalSuites },
-      { key: [...qk.admin.evaluations.results, 'w1'], data: mockEvalResults },
+      { key: pageQueryKey(qk.admin.evaluations.list), data: mockEvalSuites },
+      { key: pageQueryKey(qk.admin.evaluations.results), data: mockEvalResults },
     ],
   });
 }

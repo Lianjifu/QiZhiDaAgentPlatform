@@ -3,6 +3,7 @@
  * 比 ArtifactCard 轻量, 不带预览; 嵌入 assistant message 底部.
  */
 import { Download, Paperclip } from 'lucide-react';
+import { getApiClient } from '@qzdap/web-api';
 
 function formatSize(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -21,9 +22,7 @@ export type AttachmentReady = {
 export function AttachmentChip({ attachment }: { attachment: AttachmentReady }) {
   const download = async () => {
     try {
-      const r = await fetch(attachment.download_path, { credentials: 'include' });
-      if (!r.ok) return;
-      const blob = await r.blob();
+      const blob = await getApiClient().download(attachment.download_path);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

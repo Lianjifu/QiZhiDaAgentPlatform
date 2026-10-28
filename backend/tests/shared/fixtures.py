@@ -23,8 +23,6 @@ def _ensure_qzdap_env() -> None:
     """Set safe defaults for tests that don't go through env files."""
     os.environ.setdefault("QZDAP_ENV", "test")
     os.environ.setdefault("QZDAP_JWT_SECRET", "test-secret-not-for-production-use-only")
-    os.environ.setdefault("QZDAP_BAN_MOCK_TOKEN", "1")
-    os.environ.setdefault("QZDAP_ALLOW_DEMO_TOKEN", "0")
 
 
 # ── Async event loop (pytest-asyncio in auto mode handles this; kept for

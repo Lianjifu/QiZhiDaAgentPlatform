@@ -2,7 +2,7 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { cleanup, screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { qk } from '@/api/shared/query-keys';
-import { renderWithProviders } from '@/test-utils/seed';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import QuotaDetailPage from './QuotaDetailPage';
 import { mockBudgets, mockDepartments } from './fixtures';
 
@@ -14,8 +14,8 @@ function renderAt(id: string) {
     {
       initialEntries: [`/admin/quotas/${id}`],
       seeds: [
-        { key: [...qk.admin.quotas.root, 'budgets', 'w1'], data: mockBudgets },
-        { key: [...qk.admin.quotas.root, 'departments', 'w1'], data: mockDepartments },
+        { key: pageQueryKey([...qk.admin.quotas.root, 'budgets']), data: mockBudgets },
+        { key: pageQueryKey([...qk.admin.quotas.root, 'departments']), data: mockDepartments },
       ],
     },
   );
