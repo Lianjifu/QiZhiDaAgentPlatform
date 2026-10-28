@@ -19,8 +19,12 @@ interface MermaidBlockProps {
   source: string;
 }
 
+// 每次渲染用独立 id: React StrictMode 下 effect 会连跑两次, 同一个 id 并发
+// render 会让 mermaid 的临时节点被后一次调用清掉, 渲染结果错乱.
+let mermaidSeq = 0;
+
 function MermaidBlock({ source }: MermaidBlockProps) {
-  const id = useId().replace(/[^a-zA-Z0-9_-]/g, '_');
+  const reactId = useId().replace(/[^a-zA-Z0-9_-]/g, '_');
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string>('');
 
@@ -34,8 +38,10 @@ function MermaidBlock({ source }: MermaidBlockProps) {
           theme: 'neutral',
           securityLevel: 'loose',
           fontFamily: 'inherit',
+          // 出错时抛出真实原因, 而不是让 mermaid 画一张塞满 CSS 的错误图.
+          suppressErrorRendering: true,
         });
-        const { svg: rendered } = await mermaid.render(`mmd-${id}`, source);
+        const { svg: rendered } = await mermaid.render(`mmd-${reactId}-${mermaidSeq++}`, source);
         if (!cancelled) {
           setSvg(rendered);
           setError('');
@@ -47,13 +53,17 @@ function MermaidBlock({ source }: MermaidBlockProps) {
     return () => {
       cancelled = true;
     };
-  }, [source, id]);
+  }, [source, reactId]);
 
   if (error) {
     return (
       <div className="my-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-[11px] text-rose-700">
         <p className="font-semibold">Mermaid 渲染失败</p>
         <pre className="mt-1 whitespace-pre-wrap font-mono">{error}</pre>
+        <details className="mt-2">
+          <summary className="cursor-pointer font-semibold">查看图表源码</summary>
+          <pre className="mt-1 overflow-auto whitespace-pre-wrap font-mono">{source}</pre>
+        </details>
       </div>
     );
   }

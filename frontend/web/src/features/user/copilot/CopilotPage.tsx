@@ -8,6 +8,7 @@ import {
   Search,
   Settings2,
   Sparkles,
+  Square,
   Trash2,
 } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -21,12 +22,14 @@ import {
 import { InteractionHost } from './InteractionHost';
 import { MarkdownView } from '@/features/agents/components/MarkdownView';
 import {
+  cancelCopilotTurn,
   createCopilotSession,
   decideCopilotApproval,
   deleteCopilotSession,
   listCopilotSessions,
   loadCopilotSession,
   streamCopilotTurn,
+  submitCopilotFeedback,
   type ChatMessage,
 } from './copilotApi';
 import {
@@ -53,6 +56,7 @@ type Message = ChatMessage & {
   plan?: PlanProposal;
   artifacts?: ArtifactReady[];
   attachments?: AttachmentReady[];
+  usage?: { inputTokens: number; outputTokens: number; costUsd?: number };
 };
 type CopilotEntryState = { knowledgeTitle?: string; agentId?: string; agentName?: string; agentExample?: string; skillName?: string; sessionId?: string };
 
@@ -60,6 +64,13 @@ type CopilotEntryState = { knowledgeTitle?: string; agentId?: string; agentName?
  * getStarters — 按时间 + 周末动态产出问候语, 拟人/亲切型.
  * 4 条循环, 同一会话多次进 empty 态会有不同开场.
  */
+function newRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function getStarters(now: Date = new Date()): string[] {
   const h = now.getHours();
   const dow = now.getDay();
@@ -184,12 +195,19 @@ function CopilotInner() {
   useEffect(() => {
     void listCopilotSessions().then(setSessions).catch((error) => setNotices((current) => pushNotice(current, `查询失败：${String(error)}`)));
   }, []);
+  // 已经跟服务端同步过的会话 —— 每个会话只同步一次.
+  // 之前这个 effect 依赖 isSending: 一轮结束后 isSending 变 false 会再跑一次,
+  // 用服务端的消息整个替换本地状态, 于是刚渲染出来的工具卡片 / 产物 / 用量
+  // 全被抹掉. 本地消息本来就比服务端那条更全, 不该被覆盖.
+  const syncedSessionRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     // 发送中时不要触发重载, 避免 race:
     // sendMessage 已经把 user message push 进 messages, 紧跟着 setSessionId
     // 会触发本 effect, loadCopilotSession 返回空 / 旧数据 → setMessages([])
     // 把刚加的 user message 覆盖掉, 页面就只剩空态.
     if (!sessionId || isSending) return;
+    if (syncedSessionRef.current === sessionId) return;
+    syncedSessionRef.current = sessionId;
     void loadCopilotSession(sessionId).then((detail) => {
       if (!detail) { setMessages([]); setPendingApproval(null); return; }
       const loaded = (detail.messages || [])
@@ -219,7 +237,36 @@ function CopilotInner() {
       : `请使用「${skillName}」帮我完成这项工作。`));
   }, [skillName, agentName, knowledgeTitle]);
   const [sessionListOpen, setSessionListOpen] = useState(false);
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<number, 5 | 1>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const sendFeedback = async (index: number, rating: 5 | 1) => {
+    if (!sessionId || feedbackGiven[index]) return;
+    setFeedbackGiven((current) => ({ ...current, [index]: rating }));
+    try {
+      await submitCopilotFeedback(sessionId, rating);
+    } catch {
+      // 反馈写失败不该打扰用户 —— 标记先撤掉.
+      setFeedbackGiven((current) => {
+        const next = { ...current };
+        delete next[index];
+        return next;
+      });
+    }
+  };
+
+  const stopSending = async () => {
+    // 先断掉前端的流, 再让后端停 —— 用户立刻看到停止, 后端随后收尾.
+    abortRef.current?.abort();
+    const sid = sessionId;
+    if (!sid) return;
+    try {
+      await cancelCopilotTurn(sid);
+    } catch {
+      // 后端收尾失败不影响前端 —— 流已经断了.
+    }
+  };
 
   const sendMessage = async (value = input) => {
     const content = value.trim();
@@ -228,6 +275,10 @@ function CopilotInner() {
     setMessages((current) => [...current, { role: 'user', content }]);
     setInput('');
     setComposerMenu(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    // 幂等 id —— 双击 / 网络重试不会跑出两轮对话.
+    const clientRequestId = newRequestId();
     try {
       let sid = sessionId;
       let effectiveAgentId = entry?.agentId;
@@ -248,7 +299,11 @@ function CopilotInner() {
       if (!sid && effectiveAgentId) {
         const created = await createCopilotSession(effectiveAgentId, agentName ? `与${agentName}对话` : content.slice(0, 24));
         sid = created?.id;
-        if (sid) setSessionId(sid);
+        if (sid) {
+          setSessionId(sid);
+          // 本地新建的会话不需要再从服务端拉一遍 —— 拉了会把刚加的消息冲掉.
+          syncedSessionRef.current = sid;
+        }
       }
       if (!sid) {
         // 没有 agent 上下文: 回滚刚 push 的 user 消息, 给一个跳转提示, 不污染消息栈.
@@ -319,12 +374,13 @@ function CopilotInner() {
           // 工具结果里带 _meta.subagent_dispatched. 这里把结果摘要 push 成
           // 一条提示 — 父 turn 继续生成, 用户只是被通知 "X 帮我处理完了, 用时 Ns".
           if (
-            toolCalls[outIdx]?.name === 'delegate_to_agent' &&
+            outIdx != null &&
+            toolCalls[outIdx]?.tool_name === 'delegate_to_agent' &&
             data.is_error === false
           ) {
             try {
               const parsed = typeof data.output === 'string'
-                ? JSON.parse(data.output) as { _meta?: { subagent_dispatched?: boolean; sub_session_id?: string; duration_ms?: number; status?: string }; error_code?: string }
+                ? JSON.parse(data.output) as { _meta?: { subagent_dispatched?: boolean; sub_session_id?: string; duration_ms?: number; status?: string }; error_code?: string; error?: string }
                 : null;
               const meta = parsed?._meta;
               if (meta?.subagent_dispatched) {
@@ -404,6 +460,32 @@ function CopilotInner() {
             reason: String(data.reason || '需要确认后才会执行'),
           });
         }
+        if (event === 'usage') {
+          const usage = {
+            inputTokens: Number(data.input_tokens || 0),
+            outputTokens: Number(data.output_tokens || 0),
+            costUsd: Number(data.cost_usd || 0),
+          };
+          setMessages((current) => {
+            const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
+            const next = current.slice();
+            const existing = next[idx];
+            if (!existing || existing.role !== 'assistant') return current;
+            next[idx] = { ...existing, usage };
+            return next;
+          });
+        }
+        if (event === 'skill_invocation') {
+          // 技能执行状态 — 合并进对应的工具调用条目.
+          const tcId = String(data.tool_call_id || '');
+          const outIdx = toolIndexById.get(tcId);
+          if (outIdx != null) {
+            const tc = toolCalls[outIdx];
+            const status = String(data.status || '');
+            if (status === 'succeeded') tc.status = 'succeeded';
+            else if (status === 'failed') tc.status = 'failed';
+          }
+        }
         if (event === 'context_compacted') setNotices((n) => pushNotice(n, '上下文已压缩'));
         if (event === 'memory_write') setNotices((n) => pushNotice(n, '已写入记忆'));
         if (event === 'done') {
@@ -479,7 +561,7 @@ function CopilotInner() {
           // 不在这里 pushNotice, 让 streamCopilotTurn 的 throw 走 sendMessage 的 catch
           // (统一出口 + dedupe 避免双显示)
         }
-      });
+      }, controller.signal, clientRequestId);
       // 把累积的 extras / plan / artifacts / attachments 写回这条 assistant 消息
       setMessages((current) => {
         const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
@@ -503,23 +585,33 @@ function CopilotInner() {
       });
       void listCopilotSessions().then(setSessions).catch((error) => setNotices((current) => pushNotice(current, `查询失败：${String(error)}`)));
     } catch (error) {
-      const norm = normalizeError(error);
-      const raw = norm.message;
-      // 把 503 / PROVIDER_UNAVAILABLE 翻译成"未配置 LLM 供应商"提示,
-      // 引导用户去 /admin/models/new. 历史文案里 "QZDAP_LLM_PROVIDER /
-      // QZDAP_LLM_API_KEY" 的 .env 提示已下线, 统一走管理侧.
-      //
-      // 判据用**结构化的 status/code**, 不要去正则匹配错误文案 ——
-      // 流式请求失败的消息是 "流式请求失败（HTTP 503）", 括号是全角的,
-      // 匹配 ASCII 括号的正则从来没生效过, 提示语一直退化成原始报错.
-      const friendly =
-        norm.code === 'PROVIDER_UNAVAILABLE' ||
-        norm.status === 503 ||
-        /PROVIDER_UNAVAILABLE/.test(raw)
-          ? '当前后端未配置 LLM 供应商, 无法对话. 请到 管理 → 模型管理 → 新建供应商 配置 API key 后再试.'
-          : raw;
-      setNotices((current) => pushNotice(current, `请求失败：${friendly}`));
+      if (controller.signal.aborted) {
+        // 用户主动停止 —— 不是错误.
+        setNotices((current) => pushNotice(current, '已停止生成'));
+      } else {
+        const norm = normalizeError(error);
+        const raw = norm.message;
+        // 把 503 / PROVIDER_UNAVAILABLE 翻译成"未配置 LLM 供应商"提示,
+        // 引导用户去 /admin/models/new. 历史文案里 "QZDAP_LLM_PROVIDER /
+        // QZDAP_LLM_API_KEY" 的 .env 提示已下线, 统一走管理侧.
+        //
+        // 判据用**结构化的 status/code**, 不要去正则匹配错误文案 ——
+        // 流式请求失败的消息是 "流式请求失败（HTTP 503）", 括号是全角的,
+        // 匹配 ASCII 括号的正则从来没生效过, 提示语一直退化成原始报错.
+        if (/DUPLICATE_REQUEST/.test(raw)) {
+          // 同一个请求已经跑过了 —— 静默忽略, 不要当成错误.
+          return;
+        }
+        const friendly =
+          norm.code === 'PROVIDER_UNAVAILABLE' ||
+          norm.status === 503 ||
+          /PROVIDER_UNAVAILABLE/.test(raw)
+            ? '当前后端未配置 LLM 供应商, 无法对话. 请到 管理 → 模型管理 → 新建供应商 配置 API key 后再试.'
+            : raw;
+        setNotices((current) => pushNotice(current, `请求失败：${friendly}`));
+      }
     } finally {
+      abortRef.current = null;
       setIsSending(false);
     }
   };
@@ -655,14 +747,26 @@ function CopilotInner() {
           placeholder="描述你想完成的工作..."
           className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-[var(--text-muted)]"
         />
-        <button
-          type="submit"
-          disabled={!input.trim() || isSending}
-          className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--brand)] text-white disabled:cursor-not-allowed disabled:opacity-40"
-          aria-label="发送消息"
-        >
-          <ArrowUp className="h-4 w-4" />
-        </button>
+        {isSending ? (
+          <button
+            type="button"
+            onClick={() => void stopSending()}
+            className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--border)] bg-[var(--surface-1)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
+            aria-label="停止生成"
+            title="停止生成"
+          >
+            <Square className="h-3.5 w-3.5 fill-current" />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--brand)] text-white disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="发送消息"
+          >
+            <ArrowUp className="h-4 w-4" />
+          </button>
+        )}
       </div>
       <p className="mt-2 text-center text-[10px] text-[var(--text-muted)]">
         智能体可能会出错，请检查重要结果和来源。
@@ -779,6 +883,13 @@ function CopilotInner() {
           // 空态: welcome + composer 一起垂直居中
           <div className="flex flex-1 flex-col items-center justify-center overflow-auto px-5 py-8 sm:px-10">
             <div className="flex w-full max-w-4xl flex-col items-center gap-8">
+              {notices.length ? (
+                // 空态也要能看到提示 —— 否则"没有会话就上传附件"这类错误
+                // 在默认界面里完全静默.
+                <div className="w-full max-w-2xl rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">
+                  {notices[notices.length - 1]}
+                </div>
+              ) : null}
               {!entry?.agentId ? (
                 // 没选智能体: 顶部显眼提示 (不是右下 notice, notice 只在非空态显示)
                 <div className="w-full max-w-2xl rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
@@ -928,6 +1039,36 @@ function CopilotInner() {
                           </div>
                         ) : null}
                         {message.extras ? <MessageExtrasView extras={message.extras} /> : null}
+                        {sessionId && !isSending ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => void sendFeedback(index, 5)}
+                              disabled={Boolean(feedbackGiven[index])}
+                              className="rounded-md px-1.5 py-0.5 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] disabled:opacity-60"
+                              aria-label="这条回答有帮助"
+                              title="有帮助"
+                            >
+                              👍{feedbackGiven[index] === 5 ? ' 已反馈' : ''}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void sendFeedback(index, 1)}
+                              disabled={Boolean(feedbackGiven[index])}
+                              className="rounded-md px-1.5 py-0.5 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] disabled:opacity-60"
+                              aria-label="这条回答没帮助"
+                              title="没帮助"
+                            >
+                              👎{feedbackGiven[index] === 1 ? ' 已反馈' : ''}
+                            </button>
+                          </div>
+                        ) : null}
+                        {message.usage && message.usage.inputTokens + message.usage.outputTokens > 0 ? (
+                          <p className="text-[11px] text-[var(--text-muted)]">
+                            本轮 token:输入 {message.usage.inputTokens.toLocaleString()} · 输出 {message.usage.outputTokens.toLocaleString()}
+                            {message.usage.costUsd ? ` · 成本 ${message.usage.costUsd.toFixed(4)}` : ''}
+                          </p>
+                        ) : null}
                       </article>
                     )
                   )}
