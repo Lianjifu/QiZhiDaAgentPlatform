@@ -73,6 +73,10 @@ class SkillInvocationChunk(ChunkEnvelope):
     invocation_id: UUID
     skill_name: str
     status: Literal["started", "stream", "succeeded", "failed", "cancelled"]
+    tool_call_id: UUID | None = Field(
+        default=None,
+        description="关联的 tool_call_id — 前端据此把技能状态合并进工具调用条目",
+    )
 
 
 class MemoryWriteChunk(ChunkEnvelope):

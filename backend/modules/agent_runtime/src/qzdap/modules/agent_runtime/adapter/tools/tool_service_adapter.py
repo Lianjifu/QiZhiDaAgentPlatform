@@ -12,6 +12,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from qzdap.modules.tool.application.services import ToolService
+from qzdap.modules.tool.application.tool_catalog import BUILTIN_TOOL_SPECS
 
 from qzdap.modules.agent_runtime.application.ports import ToolPort
 
@@ -44,6 +45,50 @@ class ToolServiceAdapter(ToolPort):
         # omit it), the use case generates a fresh UUID and persists under
         # that. Either way, the dict result is what callers see.
         return call.result or {}
+
+    async def list_tools(self) -> list[dict]:
+        """Enumerate the tenant's enabled tools with their argument contract.
+
+        The ``tools`` rows carry name + description but an empty ``spec``,
+        so the function schema the model sees comes from the static
+        built-in catalog. Rows the catalog doesn't know about (admin
+        registered OpenAPI / MCP tools) fall back to a permissive schema
+        rather than being hidden.
+        """
+        try:
+            rows = await self._svc.list_tools().execute(
+                tenant_id=self._tenant_id,
+                enabled=True,
+                limit=200,
+            )
+        except Exception:  # noqa: BLE001 — catalog is best-effort
+            return []
+
+        out: list[dict] = []
+        for row in rows:
+            name = str(row.name)
+            spec = BUILTIN_TOOL_SPECS.get(name)
+            if spec is not None:
+                out.append(
+                    {
+                        "name": name,
+                        "description": spec["description"],
+                        "parameters": spec["parameters"],
+                        "risk": spec.get("risk", "low"),
+                        "needConfirm": bool(spec.get("needConfirm", False)),
+                    }
+                )
+                continue
+            out.append(
+                {
+                    "name": name,
+                    "description": row.description or name,
+                    "parameters": {"type": "object", "properties": {}},
+                    "risk": "medium",
+                    "needConfirm": True,
+                }
+            )
+        return out
 
 
 __all__ = ["ToolServiceAdapter"]

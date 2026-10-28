@@ -15,6 +15,7 @@ from qzdap_persistence.base import Base, TenantScopedMixin, make_composite_index
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -119,6 +120,7 @@ class TurnORM(TenantScopedMixin, Base):
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     __table_args__ = (
         make_composite_index("session_id", "status"),

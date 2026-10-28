@@ -46,6 +46,41 @@ class SessionRepository(ABC):
         """派生 /api/tasks: 多一层 workspace 过滤, 默认 limit 更大."""
         ...
 
+    async def try_claim(self, session_id: UUID) -> bool:
+        """Claim the session for one turn.
+
+        Returns False when another turn already holds the claim — two
+        turns on one session interleave their messages and race on the
+        message sequence number. The default implementation allows
+        everything; repositories that can do an atomic compare-and-set
+        should override it.
+        """
+        return True
+
+    async def release(self, session_id: UUID) -> None:
+        """Release a claim taken by :meth:`try_claim`."""
+        return
+
+    async def cancel_requested(self, session_id: UUID) -> bool:
+        """Has the user asked for the running turn to stop?"""
+        return False
+
+    async def request_cancel(self, session_id: UUID) -> bool:
+        """Ask the running turn to stop. Returns True when a turn was live."""
+        return False
+
+    async def clear_cancel(self, session_id: UUID) -> None:
+        """Drop a stale cancel flag."""
+        return
+
+    async def record_request_id(self, session_id: UUID, request_id: str) -> bool:
+        """Remember a client request id.
+
+        Returns False when the id was already used on this session — the
+        caller must not run the turn again (double click / network retry).
+        """
+        return True
+
 
 class TurnRepository(ABC):
     @abstractmethod
@@ -103,6 +138,17 @@ class ToolPort(Protocol):
     async def invoke(
         self, *, call_id: UUID, tool_name: str, arguments: dict
     ) -> dict: ...
+
+    async def list_tools(self) -> list[dict]:
+        """Catalog of invocable tools.
+
+        Each entry: ``{name, description, parameters, risk, needConfirm}``.
+        ``parameters`` is a JSON-Schema object; the runtime turns it into the
+        function schema handed to the model. Implementations that cannot
+        enumerate a catalog may return ``[]`` — the runtime then exposes no
+        catalog tools to the model (skills and ``sandbox_exec`` still work).
+        """
+        ...
 
 
 class MemoryPort(Protocol):

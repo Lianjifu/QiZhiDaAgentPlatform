@@ -40,31 +40,47 @@ async def execute_tool(
     tool_port: ToolPort | None,
     confirmed: bool = False,
 ) -> dict[str, Any]:
+    """Run one tool and return a result dict.
+
+    Never raises: a tool that blows up must surface to the model as a
+    failed tool result, not kill the whole turn. The caller turns
+    ``ok=False`` into an error tool message.
+    """
     call_id = uuid4()
-    if name == "sandbox_exec" and sandbox_port is not None:
-        return await sandbox_port.exec(
-            call_id=call_id,
-            language=str(arguments.get("language") or "python"),
-            code=str(arguments.get("code") or arguments.get("input") or ""),
-            timeout_ms=int(arguments.get("timeout_ms") or 30_000),
-        )
-    if skill_port is not None:
-        result = await skill_port.invoke(
-            call_id=call_id,
-            skill_name=name,
-            arguments=arguments,
-            confirmed=confirmed,
-        )
-        if result.get("error_code") != "SKILL_NOT_FOUND":
-            return result
-    if tool_port is not None:
-        return await tool_port.invoke(call_id=call_id, tool_name=name, arguments=arguments)
-    return {
-        "ok": False,
-        "error_code": "TOOL_NOT_FOUND",
-        "error_message": f"tool {name} is not bound",
-        "call_id": str(call_id),
-    }
+    try:
+        if name == "sandbox_exec" and sandbox_port is not None:
+            return await sandbox_port.exec(
+                call_id=call_id,
+                language=str(arguments.get("language") or "python"),
+                code=str(arguments.get("code") or arguments.get("input") or ""),
+                timeout_ms=int(arguments.get("timeout_ms") or 30_000),
+            )
+        if skill_port is not None:
+            result = await skill_port.invoke(
+                call_id=call_id,
+                skill_name=name,
+                arguments=arguments,
+                confirmed=confirmed,
+            )
+            if result.get("error_code") != "SKILL_NOT_FOUND":
+                return result
+        if tool_port is not None:
+            return await tool_port.invoke(
+                call_id=call_id, tool_name=name, arguments=arguments
+            )
+        return {
+            "ok": False,
+            "error_code": "TOOL_NOT_FOUND",
+            "error_message": f"tool {name} is not bound",
+            "call_id": str(call_id),
+        }
+    except Exception as exc:  # noqa: BLE001 — a tool must not kill the turn
+        return {
+            "ok": False,
+            "error_code": type(exc).__name__,
+            "error_message": str(exc) or repr(exc),
+            "call_id": str(call_id),
+        }
 
 
 def result_text(result: dict[str, Any]) -> str:

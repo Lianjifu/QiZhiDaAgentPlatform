@@ -36,5 +36,19 @@ class CatalogModelResolver(ABC):
         """返回 active model 的 UUID; 没找到返回 None."""
         ...
 
+    async def price_of(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        model_id: ModelId,
+    ) -> tuple[float, float] | None:
+        """单价的 (price_in, price_out), 每 1K token.
+
+        用来算一轮对话的成本. 默认实现返回 None (未知价格 = 不计成本),
+        实现方可以覆盖.
+        """
+        return None
+
 
 __all__ = ["CatalogModelResolver"]

@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import logging
+import sys as _sys
+from collections.abc import AsyncGenerator
 from contextlib import aclosing
+from time import monotonic
 from typing import Any
 from uuid import UUID, uuid4
 
+from opentelemetry import trace as _trace
+from qzdap_observability.tracing import get_tracer
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
     ArtifactReadyChunk,
@@ -57,6 +62,9 @@ from qzdap.modules.agent_runtime.application.ports import (
 )
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 
+_tracer = get_tracer("qzdap.agent_runtime")
+_log = logging.getLogger(__name__)
+
 
 class SessionGraphRunner:
     def __init__(
@@ -84,9 +92,64 @@ class SessionGraphRunner:
         self._graph = compile_loop_graph(llm_node=_passthrough_llm, tools_node=_passthrough_tools)
         self.last_loop_state: dict[str, Any] = {}
 
-    async def run_turn(
+    def bind_ports(
         self,
         *,
+        skill_port: SkillPort | None = None,
+        sandbox_port: SandboxPort | None = None,
+        tool_port: ToolPort | None = None,
+    ) -> None:
+        """Re-bind request-scoped ports.
+
+        Tenant / workspace / owner are only known per request, so the
+        HTTP layer replaces the ports it can scope before the turn runs.
+        """
+        if skill_port is not None:
+            self._skill_port = skill_port
+        if sandbox_port is not None:
+            self._sandbox_port = sandbox_port
+        if tool_port is not None:
+            self._tool_port = tool_port
+
+    async def run_turn(
+        self, *, parent_span_context: Any = None, **kwargs: Any
+    ) -> AsyncGenerator[TurnChunk, None]:
+        """Run one turn under an ``agent.turn`` span.
+
+        The span is the parent of the per-LLM-call and per-tool-call spans,
+        so a turn reads as one trace in the APM. ``parent_span_context`` lets
+        the HTTP layer put this span under the request span.
+        """
+        # 注意: 不能用 start_as_current_span —— 它靠 ContextVar 的 token 复位,
+        # 而异步生成器的每次恢复可能跑在不同的 Context 里, 退出时会抛
+        # "created in a different Context". 这里用显式的 parent/child.
+        span = _tracer.start_span("agent.turn", context=parent_span_context)
+        span.set_attribute("agent.tenant_id", str(kwargs.get("tenant_id")))
+        span.set_attribute("agent.workspace_id", str(kwargs.get("workspace_id")))
+        span.set_attribute("agent.session_id", str(kwargs.get("session_id")))
+        span.set_attribute("agent.turn_id", str(kwargs.get("turn_id")))
+        span.set_attribute("agent.model", str(kwargs.get("model")))
+        span.set_attribute("agent.agent_id", str(getattr(kwargs.get("agent"), "id", "")))
+        child_ctx = _trace.set_span_in_context(span)
+        tools = 0
+        try:
+            async with aclosing(self._run_turn_inner(span_ctx=child_ctx, **kwargs)) as inner:
+                async for chunk in inner:
+                    if getattr(chunk, "kind", None) == "tool_call":
+                        tools += 1
+                    yield chunk
+        except Exception:
+            span.set_status(_trace.Status(_trace.StatusCode.ERROR))
+            span.record_exception(_sys.exc_info()[1])  # type: ignore[arg-type]
+            raise
+        finally:
+            span.set_attribute("agent.tool_calls", tools)
+            span.end()
+
+    async def _run_turn_inner(
+        self,
+        *,
+        span_ctx: Any = None,
         tenant_id: UUID,
         workspace_id: UUID,
         owner_id: UUID,
@@ -103,7 +166,7 @@ class SessionGraphRunner:
         # Phase 14: 父 session id. delegate_to_agent 工具需要用它 spawn sub-session.
         # 默认 None — 测试 / 评估场景没有父 session.
         session_id: UUID | None = None,
-    ) -> AsyncIterator[TurnChunk]:
+    ) -> AsyncGenerator[TurnChunk, None]:
         seq = 0
         max_steps = 8
         if agent is not None:
@@ -113,13 +176,35 @@ class SessionGraphRunner:
 
         whitelist = await self._whitelist(agent)
         tools_schema = _openai_tools(whitelist)
-        messages = await self._load_messages(
+        messages, knowledge_hits = await self._load_messages(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             user_input=user_input,
             history=history,
             agent=agent,
         )
+        if knowledge_hits:
+            seq += 1
+            yield KnowledgeSearchChunk(
+                turn_id=turn_id,
+                seq=seq,
+                query=user_input,
+                hits=[
+                    {
+                        "id": str(item.get("id") or ""),
+                        "title": str(item.get("asset_name") or item.get("package_name") or ""),
+                        "snippet": str(item.get("content") or "")[:200],
+                        "score": float(item.get("score") or 0.0),
+                    }
+                    for item in knowledge_hits
+                ],
+                citations=[
+                    str(item.get("package_name") or "")
+                    for item in knowledge_hits
+                    if item.get("package_name")
+                ],
+                degraded=False,
+            )
         messages, rolling_summary, did_compact = compact_messages(
             messages, rolling_summary=rolling_summary, context_window=context_window
         )
@@ -176,6 +261,7 @@ class SessionGraphRunner:
 
         input_tokens = 0
         output_tokens = 0
+        cost_usd = 0.0
         while True:
             messages, rolling_summary, did_compact = compact_messages(
                 list(state.get("messages") or []),
@@ -215,15 +301,24 @@ class SessionGraphRunner:
                 resolve_workspace_id=workspace_id,
             )
             assistant: dict[str, Any] | None = None
-            async with aclosing(chat_stream):
-                async for event in chat_stream:
-                    if isinstance(event, str):
-                        seq += 1
-                        yield MessageChunk(turn_id=turn_id, seq=seq, content=event)
-                    else:
-                        assistant = event
+            llm_span = _tracer.start_span("agent.llm", context=span_ctx)
+            llm_span.set_attribute("llm.model", model)
+            try:
+                async with aclosing(chat_stream):
+                    async for event in chat_stream:
+                        if isinstance(event, str):
+                            seq += 1
+                            yield MessageChunk(turn_id=turn_id, seq=seq, content=event)
+                        else:
+                            assistant = event
+            except Exception:
+                llm_span.set_status(_trace.Status(_trace.StatusCode.ERROR))
+                raise
+            finally:
+                llm_span.end()
             if assistant is None:
                 raise RuntimeError("LLM stream ended without an assistant message")
+            resolved_model_id = str(assistant.get("model_id") or "")
 
             # Round-7: LLM side-channel 注入 plan / artifact / workflow 事件.
             # 真 LLM 默认 []; mock LLM 按触发词返回 chunk dicts.
@@ -235,8 +330,18 @@ class SessionGraphRunner:
                 seq += 1
                 yield chunk
             usage = assistant.get("usage") or {}
-            input_tokens += int(usage.get("input_tokens") or 0)
-            output_tokens += int(usage.get("output_tokens") or 0)
+            step_input = int(usage.get("input_tokens") or 0)
+            step_output = int(usage.get("output_tokens") or 0)
+            input_tokens += step_input
+            output_tokens += step_output
+            step_cost = await self._price_of(
+                resolved_model_id=resolved_model_id,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                input_tokens=step_input,
+                output_tokens=step_output,
+            )
+            cost_usd += step_cost
 
             state["messages"] = list(state["messages"]) + [assistant]
             state["step"] = int(state.get("step") or 0) + 1
@@ -291,14 +396,48 @@ class SessionGraphRunner:
                 tool_arguments = dict(arguments)
                 if name == "delegate_to_agent" and session_id is not None:
                     tool_arguments.setdefault("parent_session_id", str(session_id))
-                result = await execute_tool(
-                    name=name,
-                    arguments=tool_arguments,
-                    skill_port=self._skill_port,
-                    sandbox_port=self._sandbox_port,
-                    tool_port=self._tool_port,
-                    confirmed=False,
-                )
+                is_skill = meta.get("kind") == "skill"
+                if is_skill:
+                    seq += 1
+                    yield SkillInvocationChunk(
+                        turn_id=turn_id,
+                        seq=seq,
+                        invocation_id=call_uuid,
+                        skill_name=name,
+                        status="started",
+                        tool_call_id=call_uuid,
+                    )
+                tool_span = _tracer.start_span("agent.tool", context=span_ctx)
+                tool_span.set_attribute("tool.name", name)
+                tool_started = monotonic()
+                try:
+                    result = await execute_tool(
+                        name=name,
+                        arguments=tool_arguments,
+                        skill_port=self._skill_port,
+                        sandbox_port=self._sandbox_port,
+                        tool_port=self._tool_port,
+                        confirmed=False,
+                    )
+                    tool_span.set_attribute("tool.ok", result.get("ok") is not False)
+                except Exception:
+                    tool_span.set_status(_trace.Status(_trace.StatusCode.ERROR))
+                    raise
+                finally:
+                    tool_span.set_attribute(
+                        "tool.latency_ms", int((monotonic() - tool_started) * 1000)
+                    )
+                    tool_span.end()
+                if is_skill:
+                    seq += 1
+                    yield SkillInvocationChunk(
+                        turn_id=turn_id,
+                        seq=seq,
+                        invocation_id=call_uuid,
+                        skill_name=name,
+                        status="failed" if result.get("ok") is False else "succeeded",
+                        tool_call_id=call_uuid,
+                    )
                 text = result_text(result)
                 new_messages.append(
                     {
@@ -344,7 +483,7 @@ class SessionGraphRunner:
             output_tokens=output_tokens,
             cache_read_tokens=0,
             cache_write_tokens=0,
-            cost_usd=0,
+            cost_usd=round(cost_usd, 6),
         )
         seq += 1
         yield DoneChunk(turn_id=turn_id, seq=seq, final_message=final)
@@ -361,7 +500,8 @@ class SessionGraphRunner:
         user_input: str,
         history: list[dict[str, Any]],
         agent: CatalogAgent | None,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Build the model input and report what knowledge was recalled."""
         prompts = dict(agent.prompts) if agent is not None else {}
         system_parts = [
             prompts.get("soul") or "",
@@ -423,23 +563,82 @@ class SessionGraphRunner:
             if role in {"user", "assistant", "tool", "system"}:
                 messages.append(item)
         messages.append({"role": "user", "content": user_input})
-        return messages
+        return messages, knowledge
+
+    async def _price_of(
+        self,
+        *,
+        resolved_model_id: str,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> float:
+        """Cost of one LLM call, in the model's own currency units.
+
+        Prices live on the model catalog row (``price_in`` / ``price_out``,
+        per 1K tokens). Unknown model → 0, never an error: cost accounting
+        must not break a conversation.
+        """
+        if not resolved_model_id or self._catalog_model_resolver is None:
+            return 0.0
+        try:
+            prices = await self._catalog_model_resolver.price_of(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                model_id=ModelId(UUID(resolved_model_id)),
+            )
+        except (RuntimeError, OSError, ValueError) as exc:  # defensive
+            _log.warning("model price lookup failed: %s", exc)
+            return 0.0
+        if not prices:
+            return 0.0
+        price_in, price_out = prices
+        return (input_tokens / 1000.0) * float(price_in) + (
+            output_tokens / 1000.0
+        ) * float(price_out)
 
     async def _whitelist(self, agent: CatalogAgent | None) -> dict[str, dict[str, Any]]:
-        allowed = {"sandbox_exec": {"name": "sandbox_exec", "needConfirm": True, "risk": "high"}}
+        """Tools the model may call.
+
+        ``sandbox_exec`` is always available. Skills follow the existing
+        rule: when the agent doesn't pin a tool list, every executable
+        skill is offered. Catalog tools (the built-in set) are only
+        offered when the agent explicitly lists them — otherwise every
+        agent would silently gain network/filesystem reach.
+        """
+        allowed: dict[str, dict[str, Any]] = {
+            "sandbox_exec": {
+                "name": "sandbox_exec",
+                "needConfirm": True,
+                "risk": "high",
+                "kind": "sandbox",
+            }
+        }
         if self._skill_port is not None:
             try:
                 for item in await self._skill_port.list_executable():
-                    allowed[str(item.get("name"))] = item
+                    allowed[str(item.get("name"))] = {**item, "kind": "skill"}
             except Exception:  # noqa: BLE001
                 pass
+        catalog: dict[str, dict[str, Any]] = {}
+        if self._tool_port is not None:
+            try:
+                for item in await self._tool_port.list_tools():
+                    name = str(item.get("name") or "")
+                    if name:
+                        catalog[name] = {**item, "kind": "tool"}
+            except Exception:  # noqa: BLE001
+                catalog = {}
         if agent is None:
             return allowed
         named = {str(tool.get("name")) for tool in agent.tools if tool.get("enabled", True)}
         if not named:
             return allowed
         named.add("sandbox_exec")
-        return {key: value for key, value in allowed.items() if key in named}
+        selected = {key: value for key, value in allowed.items() if key in named}
+        selected.update({key: value for key, value in catalog.items() if key in named})
+        return selected
 
     async def _request_approval(
         self,
@@ -456,7 +655,7 @@ class SessionGraphRunner:
         svc = self._approval_factory
         approval = await svc.create(
             tenant_id=TenantId(tenant_id),
-            requester_id=UserId(UUID(int=1)),
+            requester_id=UserId(owner_id),
             action=f"agent.tool.{tool_name}",
             resource={"tool": tool_name, "arguments": arguments, "owner_id": str(owner_id)},
         )
@@ -510,6 +709,21 @@ class SessionGraphRunner:
         # Phase 14: 同上, 把 parent session_id 注入 delegate_to_agent.
         if pending_tool == "delegate_to_agent" and session_id is not None:
             pending_args.setdefault("parent_session_id", str(session_id))
+        pending_meta = whitelist.get(pending_tool) or {}
+        is_skill = pending_meta.get("kind") == "skill"
+        out: list[Any] = []
+        if is_skill:
+            call_id = _as_uuid(pending.get("call_id"))
+            out.append(
+                SkillInvocationChunk(
+                    turn_id=turn_id,
+                    seq=seq + 1,
+                    invocation_id=call_id,
+                    skill_name=pending_tool,
+                    status="started",
+                    tool_call_id=call_id,
+                )
+            )
         result = await execute_tool(
             name=pending_tool,
             arguments=pending_args,
@@ -518,6 +732,18 @@ class SessionGraphRunner:
             tool_port=self._tool_port,
             confirmed=True,
         )
+        if is_skill:
+            call_id = _as_uuid(pending.get("call_id"))
+            out.append(
+                SkillInvocationChunk(
+                    turn_id=turn_id,
+                    seq=seq + 2,
+                    invocation_id=call_id,
+                    skill_name=pending_tool,
+                    status="failed" if result.get("ok") is False else "succeeded",
+                    tool_call_id=call_id,
+                )
+            )
         text = result_text(result)
         messages = list(state.get("messages") or [])
         messages.append(
@@ -529,15 +755,16 @@ class SessionGraphRunner:
             }
         )
         state = {**state, "messages": messages, "pending_approval": None}
+        next_seq = seq + 1 + len(out)
         chunk = ToolResultChunk(
             turn_id=turn_id,
-            seq=seq + 1,
+            seq=next_seq,
             tool_call_id=_as_uuid(pending.get("call_id")),
             output=text,
             is_error=result.get("ok") is False,
             latency_ms=0,
         )
-        out: list[TurnChunk] = [chunk]
+        out.append(chunk)
         # Stub tools (frontend-coupled) carry `_pending_frontend_action` in
         # their result. Emit a sibling `interactive_action` chunk so the
         # client knows to render the matching UI (modal/toast/drawer).
@@ -550,7 +777,7 @@ class SessionGraphRunner:
             }:
                 out.append(InteractiveActionChunk(
                     turn_id=turn_id,
-                    seq=seq + 2,
+                    seq=next_seq + 1,
                     call_id=str(pending.get("call_id") or ""),
                     action=action,
                     payload={k: v for k, v in inner.items()
@@ -570,13 +797,16 @@ async def _passthrough_tools(state: LoopState) -> LoopState:
 def _openai_tools(whitelist: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     tools = []
     for name, meta in whitelist.items():
+        parameters = meta.get("parameters")
+        if not isinstance(parameters, dict) or not parameters.get("properties"):
+            parameters = {"type": "object", "properties": {}}
         tools.append(
             {
                 "type": "function",
                 "function": {
                     "name": name,
                     "description": str(meta.get("description") or name),
-                    "parameters": {"type": "object", "properties": {}},
+                    "parameters": parameters,
                 },
             }
         )

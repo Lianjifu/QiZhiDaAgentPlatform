@@ -2,14 +2,32 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
 from collections.abc import AsyncIterator
 from contextlib import aclosing
+from time import monotonic
 from typing import Any
 from uuid import UUID, uuid4
 
 from qzdap_kernel.contextvars import current_trace_id
-from qzdap_schema.dtos.turn import ApprovalRequiredChunk, DoneChunk, TurnChunk
-from qzdap_schema.ids import AgentId, SessionId, TenantId, TurnId, UserId, WorkspaceId
+from qzdap_schema.dtos.turn import (
+    ApprovalRequiredChunk,
+    DoneChunk,
+    ErrorChunk,
+    TurnChunk,
+    UsageChunk,
+)
+from qzdap_schema.ids import (
+    AgentId,
+    ModelId,
+    SessionId,
+    TenantId,
+    TurnId,
+    UserId,
+    WorkspaceId,
+)
 
 from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
 from qzdap.modules.agent_runtime.adapter.persistence.catalog_repositories import (
@@ -24,9 +42,20 @@ from qzdap.modules.agent_runtime.application.ports import (
 from qzdap.modules.agent_runtime.domain import Session, SessionStatus, Turn
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 from qzdap.modules.agent_runtime.domain.errors import (
+    DuplicateRequestError,
+    SessionBusyError,
     SessionClosedError,
     SessionNotFound,
 )
+
+_log = logging.getLogger(__name__)
+
+# 用户点「停止」后, 最多隔多久检查一次停止标记.
+CANCEL_POLL_SECONDS = 1.0
+
+
+class _TurnCancelled(Exception):
+    """内部信号: 用户请求停止当前轮次."""
 
 
 class CopilotSessionService:
@@ -46,6 +75,10 @@ class CopilotSessionService:
         self._catalog = catalog
         self._events = events
         self._graph = graph
+
+    def bind_ports(self, **ports: Any) -> None:
+        """Re-bind request-scoped ports (tenant/workspace are per request)."""
+        self._graph.bind_ports(**ports)
 
     async def list_sessions(self, *, owner_id: UUID, search: str = "") -> list[dict[str, Any]]:
         rows = await self._sessions.list_for_owner(owner_id, limit=80)
@@ -85,6 +118,8 @@ class CopilotSessionService:
                 "agentName": agent.name,
                 "model": agent.model,
                 "rolling_summary": "",
+                # 标题先占位, 用户说第一句话后换成真实标题.
+                "title_auto": True,
             },
         )
         await self._sessions.add(session)
@@ -173,14 +208,72 @@ class CopilotSessionService:
         session_id: UUID,
         user_input: str,
         model: str | None = None,
-        route_id: "UUID | None" = None,
+        route_id: ModelId | None = None,
         resume: dict[str, Any] | None = None,
+        client_request_id: str = "",
+        parent_span_context: Any = None,
+    ) -> AsyncIterator[TurnChunk]:
+        """Run one turn, holding an exclusive claim on the session.
+
+        Two turns on the same session would interleave their messages and
+        race on the message sequence number, so the second one is rejected
+        with ``SESSION_BUSY`` instead.
+        """
+        # 先校验会话存在且未关闭, 再抢占用 —— 否则「会话不存在」会被误报成
+        # 「会话忙」.
+        await self._require_session(tenant_id, session_id)
+        claimed = await self._sessions.try_claim(session_id)
+        if not claimed:
+            raise SessionBusyError(
+                f"session {session_id} already has a turn in flight",
+                code="SESSION_BUSY",
+            )
+        try:
+            fresh = await self._sessions.record_request_id(
+                session_id, client_request_id
+            )
+            if not fresh:
+                # 同一个 clientRequestId 又来了 —— 双击或网络重试, 不跑第二轮.
+                raise DuplicateRequestError(
+                    f"request {client_request_id} was already handled",
+                    code="DUPLICATE_REQUEST",
+                )
+            async for chunk in self._run_turn(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_id=owner_id,
+                session_id=session_id,
+                user_input=user_input,
+                model=model,
+                route_id=route_id,
+                resume=resume,
+                parent_span_context=parent_span_context,
+            ):
+                yield chunk
+        finally:
+            with contextlib.suppress(Exception):
+                await asyncio.shield(self._sessions.release(session_id))
+
+    async def _run_turn(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        owner_id: UUID,
+        session_id: UUID,
+        user_input: str,
+        model: str | None = None,
+        route_id: ModelId | None = None,
+        resume: dict[str, Any] | None = None,
+        parent_span_context: Any = None,
     ) -> AsyncIterator[TurnChunk]:
         session = await self._require_session(tenant_id, session_id)
         if session.workspace_id != workspace_id or session.owner_id != owner_id:
             raise SessionNotFound(f"session {session_id} not found")
         if session.status is SessionStatus.CLOSED:
             raise SessionClosedError(f"session {session_id} is closed", code="SESSION_CLOSED")
+        # 上一轮遗留的停止标记不能影响这一轮.
+        await self._sessions.clear_cancel(session_id)
         agent_row = await self._catalog.get_published(session.agent_id)
         history = await self._messages.list_for_session(session_id)
         hist_msgs = [
@@ -214,10 +307,19 @@ class CopilotSessionService:
                 content=user_input,
             )
             seq += 1
+            # 会话标题还没定的话, 用第一句话当标题 —— 会话列表里全是
+            # 「与 XX 对话」根本没法认.
+            if session.metadata.get("title_auto"):
+                meta = dict(session.metadata)
+                meta["title"] = _auto_title(user_input)
+                meta["title_auto"] = False
+                session = session.with_runtime(metadata=meta)
+                await self._sessions.update(session)
         graph_resume = dict(session.graph_state or {})
         if resume:
             graph_resume = {**graph_resume, **resume}
         assistant_parts: list[str] = []
+        turn_usage: UsageChunk | None = None
         graph_stream = self._graph.run_turn(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -234,44 +336,102 @@ class CopilotSessionService:
             # Phase 14: 把 session_id 透给 graph, 让 delegate_to_agent 工具 stub
             # 知道在哪个 session 上 spawn sub-session.
             session_id=session_id,
+            parent_span_context=parent_span_context,
         )
-        async with aclosing(graph_stream):
-            async for chunk in graph_stream:
-                yield chunk
-                if getattr(chunk, "kind", None) == "message":
-                    assistant_parts.append(getattr(chunk, "content", "") or "")
-                if isinstance(chunk, ApprovalRequiredChunk):
-                    meta = dict(session.metadata)
-                    meta["preview"] = "等待确认操作"
-                    updated = session.with_runtime(
-                        metadata=meta,
-                        graph_state=dict(self._graph.last_loop_state),
-                        wait_status="waiting_approval",
-                    )
-                    await self._sessions.update(updated)
-                if isinstance(chunk, DoneChunk):
-                    final = chunk.final_message or "".join(assistant_parts)
-                    await self._messages.append(
-                        tenant_id=tenant_id,
-                        workspace_id=workspace_id,
-                        session_id=session_id,
-                        turn_id=turn.id,
-                        seq=seq,
-                        role="assistant",
-                        content=final,
-                    )
-                    meta = dict(session.metadata)
-                    meta["preview"] = final[:80]
-                    summary = str((self._graph.last_loop_state or {}).get("rolling_summary") or meta.get("rolling_summary") or "")
-                    meta["rolling_summary"] = summary
-                    updated = session.with_runtime(
-                        metadata=meta,
-                        graph_state=dict(self._graph.last_loop_state or {}),
-                        wait_status="idle",
-                    )
-                    await self._sessions.update(updated)
-                    finished = turn.succeed(final_response=final)
-                    await self._turns.add(finished)
+        emitted = False
+        last_cancel_check = monotonic()
+        try:
+            async with aclosing(graph_stream):
+                async for chunk in graph_stream:
+                    emitted = True
+                    now = monotonic()
+                    if now - last_cancel_check >= CANCEL_POLL_SECONDS:
+                        last_cancel_check = now
+                        if await self._sessions.cancel_requested(session_id):
+                            raise _TurnCancelled("用户请求停止生成")
+                    yield chunk
+                    if getattr(chunk, "kind", None) == "message":
+                        assistant_parts.append(getattr(chunk, "content", "") or "")
+                    if isinstance(chunk, ApprovalRequiredChunk):
+                        meta = dict(session.metadata)
+                        meta["preview"] = "等待确认操作"
+                        updated = session.with_runtime(
+                            metadata=meta,
+                            graph_state=dict(self._graph.last_loop_state),
+                            wait_status="waiting_approval",
+                        )
+                        await self._sessions.update(updated)
+                    if isinstance(chunk, UsageChunk):
+                        turn_usage = chunk
+                    if isinstance(chunk, DoneChunk):
+                        final = chunk.final_message or "".join(assistant_parts)
+                        await self._messages.append(
+                            tenant_id=tenant_id,
+                            workspace_id=workspace_id,
+                            session_id=session_id,
+                            turn_id=turn.id,
+                            seq=seq,
+                            role="assistant",
+                            content=final,
+                        )
+                        meta = dict(session.metadata)
+                        meta["preview"] = final[:80]
+                        summary = str((self._graph.last_loop_state or {}).get("rolling_summary") or meta.get("rolling_summary") or "")
+                        meta["rolling_summary"] = summary
+                        updated = session.with_runtime(
+                            metadata=meta,
+                            graph_state=dict(self._graph.last_loop_state or {}),
+                            wait_status="idle",
+                        )
+                        await self._sessions.update(updated)
+                        finished = turn.succeed(
+                            final_response=final,
+                            input_tokens=turn_usage.input_tokens if turn_usage else None,
+                            output_tokens=turn_usage.output_tokens if turn_usage else None,
+                            cost_usd=turn_usage.cost_usd if turn_usage else None,
+                        )
+                        await self._turns.add(finished)
+        except _TurnCancelled as exc:
+            await self._fail_turn(turn, code="TURN_CANCELLED", message=str(exc))
+            yield ErrorChunk(
+                turn_id=turn.id,
+                seq=seq + 1,
+                code="TURN_CANCELLED",
+                message="已停止生成",
+                retriable=True,
+            )
+        except (asyncio.CancelledError, GeneratorExit):
+            # 客户端断开 / 请求被取消 (GeneratorExit = 响应体生成器被关闭):
+            # 轮次必须落到 failed, 否则它会永远停在 running, 任务列表里一直
+            # 显示「执行中」.
+            with contextlib.suppress(Exception):
+                await asyncio.shield(self._fail_turn(turn, code="TURN_CANCELLED"))
+            raise
+        except Exception as exc:  # 失败必须可见
+            _log.warning("copilot turn failed turn_id=%s", turn.id, exc_info=True)
+            await self._fail_turn(turn, code="TURN_FAILED", message=str(exc))
+            if not emitted:
+                # 一个 chunk 都没产出 → 轮次根本没起来. 抛给 HTTP 层, 让状态码
+                # 表达失败 (而不是 200 + error 事件).
+                raise
+            yield ErrorChunk(
+                turn_id=turn.id,
+                seq=seq + 1,
+                code="TURN_FAILED",
+                message=str(exc) or type(exc).__name__,
+                retriable=False,
+            )
+
+    async def _fail_turn(
+        self, turn: Turn, *, code: str, message: str = ""
+    ) -> None:
+        """Persist a failed turn. Best effort — never raises."""
+        try:
+            await self._turns.add(
+                turn.fail(error_code=code, error_message=message or None)
+            )
+        except Exception:  # noqa: BLE001
+            _log.exception("failed to persist failed turn turn_id=%s", turn.id)
 
     async def decide_approval(
         self,
@@ -283,6 +443,7 @@ class CopilotSessionService:
         approval_id: UUID,
         approved: bool,
         approval_service: Any | None,
+        parent_span_context: Any = None,
     ) -> AsyncIterator[TurnChunk]:
         session = await self._require_session(tenant_id, session_id)
         pending = dict((session.graph_state or {}).get("pending_approval") or {})
@@ -298,13 +459,13 @@ class CopilotSessionService:
                     await approval_service.approve(
                         tenant_id=TId(tenant_id),
                         approval_id=ApprovalId(approval_id),
-                        approver_id=UId(UUID(int=1) if owner_id == UUID(int=0) else UUID(int=0)),
+                        approver_id=UId(owner_id),
                     )
                 else:
                     await approval_service.deny(
                         tenant_id=TId(tenant_id),
                         approval_id=ApprovalId(approval_id),
-                        approver_id=UId(UUID(int=1) if owner_id == UUID(int=0) else UUID(int=0)),
+                        approver_id=UId(owner_id),
                         reason="user denied",
                     )
             except Exception:  # noqa: BLE001
@@ -317,8 +478,53 @@ class CopilotSessionService:
             session_id=session_id,
             user_input="继续",
             resume={"pending_approval": pending, "decision": pending["decision"], "messages": (session.graph_state or {}).get("messages")},
+            parent_span_context=parent_span_context,
         ):
             yield chunk
+
+    async def request_cancel(self, *, tenant_id: UUID, session_id: UUID) -> bool:
+        """Ask the running turn to stop.
+
+        Returns True when a turn was actually in flight. The flag lives in
+        the session row, so it reaches the worker that owns the turn.
+        """
+        session = await self._require_session(tenant_id, session_id)
+        live = await self._sessions.request_cancel(session_id)
+        _ = session
+        return live
+
+    async def require_owned_session(
+        self, *, tenant_id: UUID, session_id: UUID, owner_id: UUID
+    ) -> Session:
+        """Fetch a session, enforcing tenant + owner.
+
+        Used by endpoints that act on behalf of the user (feedback),
+        where a tenant-level read is not enough.
+        """
+        session = await self._require_session(tenant_id, session_id)
+        if session.owner_id != owner_id:
+            raise SessionNotFound(f"session {session_id} not found")
+        return session
+
+    async def decide_plan(
+        self,
+        *,
+        tenant_id: UUID,
+        session_id: UUID,
+        plan_id: UUID,
+        decision: str,
+    ) -> None:
+        """Persist a plan decision (approve / deny) on the session.
+
+        The decision lands in ``session.graph_state["plan_decisions"]`` so
+        the next turn — and the transcript — can see what the user chose.
+        """
+        session = await self._require_session(tenant_id, session_id)
+        graph_state = dict(session.graph_state or {})
+        decisions = dict(graph_state.get("plan_decisions") or {})
+        decisions[str(plan_id)] = decision
+        graph_state["plan_decisions"] = decisions
+        await self._sessions.update(session.with_runtime(graph_state=graph_state))
 
     async def _require_session(self, tenant_id: UUID, session_id: UUID) -> Session:
         session = await self._sessions.get(session_id)
@@ -329,6 +535,14 @@ class CopilotSessionService:
     async def _next_seq(self, session_id: UUID) -> int:
         rows = await self._messages.list_for_session(session_id)
         return (rows[-1]["seq"] + 1) if rows else 0
+
+
+def _auto_title(user_input: str) -> str:
+    """Derive a session title from the first user message."""
+    text = " ".join(str(user_input or "").split())
+    if len(text) <= 24:
+        return text or "新对话"
+    return text[:24] + "…"
 
 
 def _session_card(session: Session) -> dict[str, Any]:
@@ -389,10 +603,18 @@ def _task_card(session: Session, latest_turn: Turn | None) -> dict[str, Any]:
         due = "未排期"
         time_label = "—"
     elif latest_turn.status.value == "running":
-        status = "执行中"
-        priority = "高"
-        due = "进行中"
-        time_label = "运行中"
+        # 轮次挂起等审批时, 展示成「等你确认」而不是「执行中」—— 后者会让人
+        # 以为系统还在跑, 实际上球在用户手里.
+        if session.wait_status == "waiting_approval":
+            status = "待处理"
+            priority = "高"
+            due = "等你确认"
+            time_label = "待确认"
+        else:
+            status = "执行中"
+            priority = "高"
+            due = "进行中"
+            time_label = "运行中"
     elif latest_turn.status.value == "failed":
         status = "异常"
         priority = "高"

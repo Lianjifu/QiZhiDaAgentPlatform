@@ -31,6 +31,61 @@ class InMemorySessionRepository(SessionRepository):
     async def get(self, session_id: UUID) -> Session | None:
         return self._by_id.get(session_id)
 
+    async def try_claim(self, session_id: UUID) -> bool:
+        session = self._by_id.get(session_id)
+        if session is None:
+            return False
+        if session.wait_status == "running":
+            return False
+        await self.update(session.with_runtime(wait_status="running"))
+        return True
+
+    async def release(self, session_id: UUID) -> None:
+        session = self._by_id.get(session_id)
+        if session is None or session.wait_status != "running":
+            return
+        await self.update(session.with_runtime(wait_status="idle"))
+
+    async def cancel_requested(self, session_id: UUID) -> bool:
+        session = self._by_id.get(session_id)
+        if session is None:
+            return False
+        return bool((session.metadata or {}).get("cancel_requested"))
+
+    async def request_cancel(self, session_id: UUID) -> bool:
+        session = self._by_id.get(session_id)
+        if session is None:
+            return False
+        live = session.wait_status == "running"
+        await self.update(
+            session.with_runtime(metadata={**session.metadata, "cancel_requested": True})
+        )
+        return live
+
+    async def clear_cancel(self, session_id: UUID) -> None:
+        session = self._by_id.get(session_id)
+        if session is None:
+            return
+        meta = dict(session.metadata or {})
+        if not meta.pop("cancel_requested", None):
+            return
+        await self.update(session.with_runtime(metadata=meta))
+
+    async def record_request_id(self, session_id: UUID, request_id: str) -> bool:
+        if not request_id:
+            return True
+        session = self._by_id.get(session_id)
+        if session is None:
+            return True
+        meta = dict(session.metadata or {})
+        ids = [str(item) for item in (meta.get("recent_request_ids") or [])]
+        if request_id in ids:
+            return False
+        ids.append(request_id)
+        meta["recent_request_ids"] = ids[-8:]
+        await self.update(session.with_runtime(metadata=meta))
+        return True
+
     async def list_for_owner(
         self, owner_id: UUID, *, limit: int = 50, offset: int = 0
     ) -> list[Session]:
@@ -73,7 +128,7 @@ class InMemoryTurnRepository(TurnRepository):
         turns = [t for t in self._by_id.values() if t.session_id == session_id]
         if not turns:
             return None
-        return max(turns, key=lambda t: t.created_at)
+        return max(turns, key=lambda t: t.started_at)
 
 
 class FakeLLM(LLMPort):

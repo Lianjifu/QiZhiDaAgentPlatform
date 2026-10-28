@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import asyncio
+import logging
+from collections.abc import AsyncIterator, Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
+from opentelemetry import trace as _trace
+from qzdap_observability.tracing import get_tracer
 
 from qzdap.modules.agent_runtime.adapter.http.dto import (
     CreateSessionRequest,
@@ -20,6 +25,8 @@ from qzdap.modules.agent_runtime.adapter.http.dto import (
 from qzdap.modules.agent_runtime.adapter.http.sse import sse_stream
 from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
 
+_tracer = get_tracer("qzdap.agent_runtime")
+
 
 def _owner_id(request: Request, fallback: UUID) -> UUID:
     principal = getattr(request.state, "principal", None)
@@ -27,6 +34,39 @@ def _owner_id(request: Request, fallback: UUID) -> UUID:
     if pid is None:
         return fallback
     return UUID(str(pid))
+
+
+async def _write_audit(
+    request: Request,
+    *,
+    tenant_id: UUID,
+    actor_id: UUID,
+    event_type: str,
+    payload: dict[str, Any],
+) -> None:
+    """Best-effort audit row. Never raises — audit must not break the flow."""
+    try:
+        from qzdap.modules.governance.adapter.persistence.models import AuditLogORM
+
+        container = getattr(request.app.state, "container", None)
+        if container is None:
+            return
+        sf = container.session_factory()
+        async with sf.session() as session:
+            session.add(
+                AuditLogORM(
+                    id=uuid4(),
+                    tenant_id=tenant_id,
+                    actor_id=actor_id,
+                    event_type=event_type,
+                    payload=payload,
+                )
+            )
+            await session.commit()
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "audit_log write failed event=%s", event_type, exc_info=True
+        )
 
 
 async def copilot_dependency(request: Request) -> CopilotSessionService:
@@ -46,26 +86,43 @@ async def copilot_dependency(request: Request) -> CopilotSessionService:
                 SandboxRuntimeAdapter,
             )
             from qzdap.modules.agent_runtime.adapter.skills import SkillServiceAdapter
+            from qzdap.modules.agent_runtime.adapter.tools import ToolServiceAdapter
 
             tenant_id = TenantId(UUID(tenant_raw))
             workspace_id = WorkspaceId(UUID(workspace_raw))
             owner_id = UserId(_owner_id(request, UUID(int=0)))
+            skill_port = None
             skill_factory = getattr(request.app.state, "skill_factory", None)
             if skill_factory is not None:
-                svc._graph._skill_port = SkillServiceAdapter(
+                skill_port = SkillServiceAdapter(
                     svc=skill_factory.for_session(session),
                     tenant_id=tenant_id,
                     workspace_id=workspace_id,
                     owner_id=owner_id,
                 )
+            sandbox_port = None
             sandbox_client = getattr(request.app.state, "sandbox_client", None)
             if sandbox_client is not None:
-                svc._graph._sandbox_port = SandboxRuntimeAdapter(
+                sandbox_port = SandboxRuntimeAdapter(
                     sandbox_client,
                     tenant_id=tenant_id,
                     workspace_id=workspace_id,
                     agent_id=None,
                 )
+            tool_port = None
+            tool_factory = getattr(request.app.state, "tool_factory", None)
+            if tool_factory is not None:
+                tool_port = ToolServiceAdapter(
+                    tool_service=tool_factory.for_session(session),
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    owner_id=owner_id,
+                )
+            svc.bind_ports(
+                skill_port=skill_port,
+                sandbox_port=sandbox_port,
+                tool_port=tool_port,
+            )
         try:
             yield svc
         except Exception:
@@ -215,27 +272,116 @@ def build_session_router() -> APIRouter:
                 logging.getLogger(__name__).warning(
                     "phase12_route_id_parse_failed: %s", exc
                 )
-        chunks = svc.stream_turn(
+        # 整个 HTTP 请求一个 span —— 它是 agent.turn 的父 span.
+        return await _sse_response(
+            _tracer.start_span("http.chat.stream"),
+            route="/api/sessions/{session_id}/turns/stream",
+            session_id=session_id,
             tenant_id=x_tenant_id,
             workspace_id=x_workspace_id,
-            owner_id=_owner_id(request, x_user_id),
+            build=lambda span_ctx: svc.stream_turn(
+                tenant_id=x_tenant_id,
+                workspace_id=x_workspace_id,
+                owner_id=_owner_id(request, x_user_id),
+                session_id=session_id,
+                user_input=content,
+                model=body.get("model"),
+                route_id=route_id_uuid,
+                # 幂等: 前端每次发送带一个唯一 id, 重复到达时不跑第二轮.
+                client_request_id=str(body.get("clientRequestId") or ""),
+                parent_span_context=span_ctx,
+            ),
+        )
+
+    @router.post("/api/sessions/{session_id}/feedback", status_code=201)
+    async def submit_feedback(
+        session_id: UUID,
+        body: dict[str, Any],
+        request: Request,
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
+        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+    ) -> dict[str, Any]:
+        """用户对一轮回答的反馈 —— 写进平台的反馈池 (feedback.list).
+
+        反馈池是管理侧已经在用的集合, 这里直接写进去, 管理员在
+        「管理 → 反馈池」就能看到对话里的真实反馈.
+        """
+        owner_id = _owner_id(request, x_user_id)
+        session = await svc.require_owned_session(
+            tenant_id=x_tenant_id, session_id=session_id, owner_id=owner_id
+        )
+        rating = int(body.get("rating") or 0)
+        if rating not in (1, 5):
+            raise HTTPException(status_code=422, detail="rating must be 1 (踩) or 5 (赞)")
+        comment = str(body.get("comment") or "")[:2000]
+        topic = str(body.get("topic") or "对话质量")[:64]
+        tags = [str(item)[:32] for item in (body.get("tags") or [])][:8]
+        principal = getattr(request.state, "principal", None)
+        display_name = str(getattr(principal, "display_name", "") or "")[:64]
+        payload = {
+            "agent": str(session.metadata.get("agentName") or "智能体")[:64],
+            "user": display_name or str(owner_id)[:8],
+            "session": f"会话 #{str(session_id)[:8]}",
+            "sessionId": str(session_id),
+            "turnId": str(body.get("turnId") or ""),
+            "type": "thumbs",
+            "rating": rating,
+            "sentiment": "positive" if rating == 5 else "negative",
+            "status": "new",
+            "priority": "low" if rating == 5 else "high",
+            "topic": topic,
+            "comment": comment,
+            "submittedAt": datetime.now(UTC).isoformat(),
+            "tags": tags,
+        }
+        factory = getattr(request.app.state, "admin_ops_factory", None)
+        container = getattr(request.app.state, "container", None)
+        if factory is None or container is None:
+            raise HTTPException(status_code=503, detail="feedback storage not wired")
+        sf = container.session_factory()
+        async with sf.session() as fb_session:
+            ops = factory.for_session(fb_session)
+            doc = await ops.create(
+                tenant_id=x_tenant_id,
+                workspace_id=x_workspace_id,
+                collection="feedback.list",
+                prefix="fb",
+                body=payload,
+            )
+            await fb_session.commit()
+        await _write_audit(
+            request,
+            tenant_id=x_tenant_id,
+            actor_id=owner_id,
+            event_type="chat.feedback",
+            payload={
+                "session_id": str(session_id),
+                "turn_id": payload["turnId"],
+                "rating": rating,
+            },
+        )
+        return {"ok": True, "feedback_id": str(doc.get("id") or ""), "rating": rating}
+
+    @router.post("/api/sessions/{session_id}/cancel")
+    async def cancel_turn(
+        session_id: UUID,
+        request: Request,
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
+        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+    ) -> dict[str, Any]:
+        """请求停止当前轮次.
+
+        停止标记写在 session 行上, 因此能跨 worker 送达真正在跑那一轮的进程.
+        """
+        live = await svc.request_cancel(
+            tenant_id=x_tenant_id,
             session_id=session_id,
-            user_input=content,
-            model=body.get("model"),
-            route_id=route_id_uuid,
         )
-        aiterator = chunks.__aiter__()
-        first = await aiterator.__anext__()
-
-        async def safe_stream() -> AsyncIterator[bytes]:
-            async for piece in sse_stream(_chain(first, aiterator)):
-                yield piece
-
-        return StreamingResponse(
-            safe_stream(),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
+        return {"ok": True, "cancelled": live}
 
     @router.post("/api/sessions/{session_id}/approvals/{approval_id}/approve")
     async def approve_tool(
@@ -305,33 +451,18 @@ def build_session_router() -> APIRouter:
         user's actual pick in the next turn.
         """
         actor = _owner_id(request, x_user_id)
-        # Audit log (best-effort; never raises).
-        try:
-            from qzdap.modules.governance.adapter.persistence.models import (
-                AuditLogORM,
-            )
-            container = getattr(request.app.state, "container", None)
-            if container is not None:
-                sf = container.session_factory()
-                async with sf.session() as session:
-                    session.add(AuditLogORM(
-                        id=__import__("uuid").uuid4(),
-                        tenant_id=x_tenant_id,
-                        actor_id=actor,
-                        event_type="tool.interactive_answer",
-                        payload={
-                            "session_id": str(session_id),
-                            "call_id": body.call_id,
-                            "action": body.action,
-                            "payload": body.payload,
-                        },
-                    ))
-                    await session.commit()
-        except Exception:  # noqa: BLE001
-            import logging
-            logging.getLogger(__name__).warning(
-                "interactive_answer audit_log write failed", exc_info=True,
-            )
+        await _write_audit(
+            request,
+            tenant_id=x_tenant_id,
+            actor_id=actor,
+            event_type="tool.interactive_answer",
+            payload={
+                "session_id": str(session_id),
+                "call_id": body.call_id,
+                "action": body.action,
+                "payload": body.payload,
+            },
+        )
         return {"accepted": True, "call_id": body.call_id, "action": body.action}
 
     # ------------------------------------------------------------------
@@ -346,9 +477,22 @@ def build_session_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
+        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
     ) -> dict[str, Any]:
-        """批准 plan. 真实续传 run_turn 下一轮做, 这里先 ack."""
-        _ = (session_id, plan_id, x_tenant_id, x_workspace_id, x_user_id, request)
+        """批准 plan — 决策落库到 session.graph_state, 并写一行审计."""
+        await svc.decide_plan(
+            tenant_id=x_tenant_id,
+            session_id=session_id,
+            plan_id=plan_id,
+            decision="approved",
+        )
+        await _write_audit(
+            request,
+            tenant_id=x_tenant_id,
+            actor_id=_owner_id(request, x_user_id),
+            event_type="agent.plan_approved",
+            payload={"session_id": str(session_id), "plan_id": str(plan_id)},
+        )
         return {"ok": True, "plan_id": str(plan_id), "decision": "approved"}
 
     @router.post("/api/sessions/{session_id}/plans/{plan_id}/deny")
@@ -359,8 +503,22 @@ def build_session_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
+        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
     ) -> dict[str, Any]:
-        _ = (session_id, plan_id, x_tenant_id, x_workspace_id, x_user_id, request)
+        """拒绝 plan — 决策落库到 session.graph_state, 并写一行审计."""
+        await svc.decide_plan(
+            tenant_id=x_tenant_id,
+            session_id=session_id,
+            plan_id=plan_id,
+            decision="denied",
+        )
+        await _write_audit(
+            request,
+            tenant_id=x_tenant_id,
+            actor_id=_owner_id(request, x_user_id),
+            event_type="agent.plan_denied",
+            payload={"session_id": str(session_id), "plan_id": str(plan_id)},
+        )
         return {"ok": True, "plan_id": str(plan_id), "decision": "denied"}
 
     @router.get("/api/artifacts/{artifact_id}/content")
@@ -429,21 +587,75 @@ async def _resume(
                 approval_service = None
     else:
         approval_service = factory
-    chunks = svc.decide_approval(
+    return await _sse_response(
+        _tracer.start_span("http.chat.stream"),
+        route="/api/sessions/{session_id}/approvals/{approval_id}",
+        session_id=session_id,
         tenant_id=tenant_id,
         workspace_id=workspace_id,
-        owner_id=_owner_id(request, x_user_id),
-        session_id=session_id,
-        approval_id=approval_id,
-        approved=approved,
-        approval_service=approval_service,
+        build=lambda span_ctx: svc.decide_approval(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_id=_owner_id(request, x_user_id),
+            session_id=session_id,
+            approval_id=approval_id,
+            approved=approved,
+            approval_service=approval_service,
+            parent_span_context=span_ctx,
+        ),
     )
-    aiterator = chunks.__aiter__()
-    first = await aiterator.__anext__()
+
+
+async def _sse_response(
+    span: Any,
+    *,
+    route: str,
+    session_id: UUID,
+    tenant_id: UUID,
+    workspace_id: UUID,
+    build: Callable[[Any], AsyncIterator[Any]],
+) -> StreamingResponse:
+    """SSE 响应 + 一层 ``http.chat.stream`` span.
+
+    span 覆盖整个请求: 首 chunk 预取 + 后续流式输出. ``build`` 收到
+    span context, 用来把下游的 ``agent.turn`` 挂到这个 span 底下.
+
+    注意: 不用 ``start_as_current_span`` —— 它靠 ContextVar 的 token 复位,
+    而异步生成器每次恢复可能跑在不同的 Context 里, 退出时会抛
+    "created in a different Context". 这里全程显式传 context.
+    """
+    span.set_attribute("http.method", "POST")
+    span.set_attribute("http.route", route)
+    span.set_attribute("session.id", str(session_id))
+    span.set_attribute("tenant.id", str(tenant_id))
+    span.set_attribute("workspace.id", str(workspace_id))
+    span_ctx = _trace.set_span_in_context(span)
+    try:
+        chunks = build(span_ctx)
+        aiterator = chunks.__aiter__()
+        first = await aiterator.__anext__()
+    except Exception as exc:
+        span.set_status(_trace.Status(_trace.StatusCode.ERROR))
+        span.record_exception(exc)
+        span.end()
+        raise
 
     async def safe_stream() -> AsyncIterator[bytes]:
-        async for piece in sse_stream(_chain(first, aiterator)):
-            yield piece
+        try:
+            async for piece in sse_stream(_chain(first, aiterator)):
+                yield piece
+        except asyncio.CancelledError:
+            # 客户端断开 —— 记一笔, 别让 APM 里看起来像正常结束.
+            span.set_status(
+                _trace.Status(_trace.StatusCode.ERROR, "client disconnected")
+            )
+            raise
+        except Exception as exc:
+            span.set_status(_trace.Status(_trace.StatusCode.ERROR))
+            span.record_exception(exc)
+            raise
+        finally:
+            span.end()
 
     return StreamingResponse(
         safe_stream(),

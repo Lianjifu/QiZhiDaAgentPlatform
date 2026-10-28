@@ -162,6 +162,7 @@ class Turn:
     final_response: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    cost_usd: float | None = None
     error_code: str | None = None
 
     @classmethod
@@ -188,6 +189,7 @@ class Turn:
             final_response=None,
             input_tokens=None,
             output_tokens=None,
+            cost_usd=None,
             error_code=None,
         )
 
@@ -198,6 +200,7 @@ class Turn:
         final_response: str | None = None,
         input_tokens: int | None = None,
         output_tokens: int | None = None,
+        cost_usd: float | None = None,
     ) -> Self:
         return type(self)(
             id=self.id,
@@ -211,6 +214,7 @@ class Turn:
             final_response=final_response,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            cost_usd=cost_usd,
             error_code=None,
         )
 
@@ -233,6 +237,7 @@ class Turn:
             final_response=error_message,
             input_tokens=None,
             output_tokens=None,
+            cost_usd=None,
             error_code=error_code,
         )
 

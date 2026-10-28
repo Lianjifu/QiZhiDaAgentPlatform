@@ -33,9 +33,33 @@ class SessionClosedError(AppError):
     status = 410
 
 
+class DuplicateRequestError(AppError):
+    """Raised when a client request id is replayed on the same session.
+
+    The frontend sends a fresh id per send; a repeat means a double click
+    or a network retry, and must not start a second turn.
+    """
+
+    code = "DUPLICATE_REQUEST"
+    status = 409
+
+
+class SessionBusyError(AppError):
+    """Raised when a second turn is started while one is still in flight.
+
+    Concurrent turns on one session interleave their messages and race on
+    the message sequence number, so the second one is rejected instead.
+    """
+
+    code = "SESSION_BUSY"
+    status = 409
+
+
 __all__ = [
     "ActionDeniedError",
     "ApprovalRequiredError",
+    "DuplicateRequestError",
+    "SessionBusyError",
     "SessionClosedError",
     "SessionNotFound",
     "TurnNotFound",

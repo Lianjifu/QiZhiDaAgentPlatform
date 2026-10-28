@@ -171,6 +171,8 @@ async def stream_chat(
         "role": "assistant",
         "content": "".join(text_parts),
         "tool_calls": tool_calls.finish(),
+        # 解析出来的模型 id — 上层用它查单价算成本.
+        "model_id": str(model_id) if model_id is not None else None,
         "usage": usage,
     }
 

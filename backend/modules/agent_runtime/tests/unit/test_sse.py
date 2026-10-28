@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from collections.abc import AsyncIterator
 from uuid import UUID
 
@@ -71,3 +73,41 @@ async def test_sse_stream_round_trips_error_chunk() -> None:
     decoded = out.decode("utf-8")
     assert "event: error\n" in decoded
     assert "SESSION_CLOSED" in decoded
+
+
+async def test_sse_stream_emits_keepalive_while_the_stream_is_idle() -> None:
+    """A slow tool/model must not let the ingress cut the connection."""
+
+    async def slow() -> AsyncIterator:
+        tid = UUID(int=3)
+        await asyncio.sleep(0.05)
+        yield MessageChunk(turn_id=tid, seq=1, content="late")
+
+    out = b""
+    async for piece in sse_stream(slow(), keepalive_seconds=0.01):
+        out += piece
+    decoded = out.decode("utf-8")
+    assert ": keepalive\n\n" in decoded
+    assert "event: message\n" in decoded
+    assert decoded.rstrip().endswith("event: end\ndata: {}")
+
+
+async def test_sse_stream_keepalive_does_not_break_the_frontend_parser() -> None:
+    """The keepalive frame carries no data line — clients must skip it."""
+
+    async def slow() -> AsyncIterator:
+        tid = UUID(int=4)
+        await asyncio.sleep(0.05)
+        yield MessageChunk(turn_id=tid, seq=1, content="late")
+
+    out = b""
+    async for piece in sse_stream(slow(), keepalive_seconds=0.01):
+        out += piece
+    for block in out.decode("utf-8").split("\n\n"):
+        data_lines = [
+            line for line in block.split("\n") if line.startswith("data:")
+        ]
+        if not data_lines:
+            continue
+        assert block.startswith("event: ")
+        json.loads("".join(line[5:].strip() for line in data_lines))

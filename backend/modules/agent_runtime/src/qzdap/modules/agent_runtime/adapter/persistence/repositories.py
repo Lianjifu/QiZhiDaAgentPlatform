@@ -7,10 +7,13 @@ installed by `qzdap_persistence.tenant_guard.install_tenant_loader`.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from uuid import UUID
 
 from qzdap_persistence.tenant_guard import current_tenant_id
-from sqlalchemy import select
+from sqlalchemy import func, or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from qzdap.modules.agent_runtime.adapter.persistence.mappers import (
@@ -26,6 +29,9 @@ from qzdap.modules.agent_runtime.application.ports import (
     TurnRepository,
 )
 from qzdap.modules.agent_runtime.domain import Session, Turn
+
+# 一个轮次占用会话超过这个时长, 就认为上一轮已经异常退出 (可被接管).
+CLAIM_STALE_MINUTES = 30
 
 
 def _cross_tenant(o: object) -> bool:
@@ -75,6 +81,93 @@ class SqlSessionRepository(SessionRepository):
         if o is None or _cross_tenant(o):
             return None
         return session_orm_to_domain(o)
+
+    async def try_claim(self, session_id: UUID) -> bool:
+        """Atomically claim the session for one turn.
+
+        The UPDATE + COMMIT is the compare-and-set: a second turn on the
+        same session sees ``wait_status='running'`` and is rejected. The
+        commit is immediate — the claim has to be visible to other workers
+        before the turn starts streaming.
+        """
+        stale_before = datetime.now(UTC) - timedelta(minutes=CLAIM_STALE_MINUTES)
+        result = await self._s.execute(
+            update(SessionORM)
+            .where(
+                SessionORM.id == session_id,
+                or_(
+                    SessionORM.wait_status != "running",
+                    # 兜底: 上一次轮次异常退出没释放, 超过阈值就当它死了.
+                    SessionORM.updated_at < stale_before,
+                ),
+            )
+            .values(wait_status="running", updated_at=func.now())
+        )
+        claimed = bool(cast("CursorResult[Any]", result).rowcount)
+        await self._s.commit()
+        return claimed
+
+    async def release(self, session_id: UUID) -> None:
+        """Release the claim — but leave a session that is waiting on an
+        approval alone (``wait_status='waiting_approval'``)."""
+        result = await self._s.execute(
+            update(SessionORM)
+            .where(SessionORM.id == session_id, SessionORM.wait_status == "running")
+            .values(wait_status="idle", updated_at=func.now())
+        )
+        if cast("CursorResult[Any]", result).rowcount:
+            await self._s.commit()
+
+    async def cancel_requested(self, session_id: UUID) -> bool:
+        """Has the user asked for this session's turn to stop?
+
+        Reads the column directly (not through the identity map) so the
+        answer comes from the database — the flag is set by another
+        request, possibly on another worker.
+        """
+        raw = await self._s.scalar(
+            select(SessionORM.metadata_).where(SessionORM.id == session_id)
+        )
+        return bool((raw or {}).get("cancel_requested"))
+
+    async def request_cancel(self, session_id: UUID) -> bool:
+        """Ask the running turn to stop. Returns True when a turn was live."""
+        session = await self.get(session_id)
+        if session is None:
+            return False
+        meta = dict(session.metadata or {})
+        meta["cancel_requested"] = True
+        await self.update(session.with_runtime(metadata=meta))
+        await self._s.commit()
+        return session.wait_status == "running"
+
+    async def clear_cancel(self, session_id: UUID) -> None:
+        """Drop a stale cancel flag — a new turn starts fresh."""
+        session = await self.get(session_id)
+        if session is None:
+            return
+        meta = dict(session.metadata or {})
+        if not meta.pop("cancel_requested", None):
+            return
+        await self.update(session.with_runtime(metadata=meta))
+        await self._s.commit()
+
+    async def record_request_id(self, session_id: UUID, request_id: str) -> bool:
+        """Remember a client request id; False when it was already used."""
+        if not request_id:
+            return True
+        session = await self.get(session_id)
+        if session is None:
+            return True
+        meta = dict(session.metadata or {})
+        ids = [str(item) for item in (meta.get("recent_request_ids") or [])]
+        if request_id in ids:
+            return False
+        ids.append(request_id)
+        meta["recent_request_ids"] = ids[-8:]
+        await self.update(session.with_runtime(metadata=meta))
+        await self._s.commit()
+        return True
 
     async def list_for_owner(
         self, owner_id: UUID, *, limit: int = 50, offset: int = 0
@@ -137,6 +230,7 @@ class SqlTurnRepository(TurnRepository):
                     final_response=turn.final_response,
                     input_tokens=turn.input_tokens,
                     output_tokens=turn.output_tokens,
+                    cost_usd=turn.cost_usd,
                     error_code=turn.error_code,
                 )
             )
@@ -146,6 +240,7 @@ class SqlTurnRepository(TurnRepository):
         o.final_response = turn.final_response
         o.input_tokens = turn.input_tokens
         o.output_tokens = turn.output_tokens
+        o.cost_usd = turn.cost_usd
         o.error_code = turn.error_code
 
     async def get(self, turn_id: UUID) -> Turn | None:

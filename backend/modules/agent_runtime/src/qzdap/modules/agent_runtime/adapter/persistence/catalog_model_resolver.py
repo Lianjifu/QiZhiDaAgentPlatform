@@ -81,4 +81,37 @@ class SqlCatalogModelResolver(CatalogModelResolver):
             return None
 
 
+    async def price_of(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        model_id: ModelId,
+    ) -> tuple[float, float] | None:
+        """单价的 (price_in, price_out), 每 1K token."""
+        try:
+            async with self._sf.session() as session:
+                row = (
+                    await session.execute(
+                        select(
+                            CatalogModelORM.price_in,
+                            CatalogModelORM.price_out,
+                        ).where(
+                            CatalogModelORM.id == UUID(str(model_id)),
+                            CatalogModelORM.tenant_id == tenant_id,
+                            CatalogModelORM.workspace_id == workspace_id,
+                        )
+                    )
+                ).one_or_none()
+                if row is None:
+                    return None
+                return float(row[0] or 0.0), float(row[1] or 0.0)
+        except (SQLAlchemyError, RuntimeError, OSError) as exc:  # defensive
+            _log.warning(
+                "catalog_price_lookup_failed",
+                extra={"model_id": str(model_id), "error": str(exc)},
+            )
+            return None
+
+
 __all__ = ["SqlCatalogModelResolver"]
