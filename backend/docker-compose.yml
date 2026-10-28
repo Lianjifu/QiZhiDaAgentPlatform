@@ -9,6 +9,10 @@ services:
       POSTGRES_DB: qzdap_dev
     ports:
       - "9153:5432"
+    # colima VM 会不定时重启; 无重启策略时容器留在 Exited, 后端请求全部
+    # 500 (ConnectionRefusedError → INTERNAL_ERROR). unless-stopped 让它
+    # 跟着 VM 一起回来.
+    restart: unless-stopped
     volumes:
       - qzdap_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -23,6 +27,7 @@ services:
     command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--port", "9154"]
     ports:
       - "9154:9154"
+    restart: unless-stopped
     volumes:
       - qzdap_redis:/data
     healthcheck:
