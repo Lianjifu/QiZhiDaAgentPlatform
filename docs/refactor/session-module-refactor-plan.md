@@ -1,12 +1,20 @@
 # 会话功能模块整合重构方案
 
+> ⚠️ **本文的分层视角已被取代**（2026-10-29）。新的权威基线是 [`session-architecture/session-lifecycle-sequence.md`](session-architecture/session-lifecycle-sequence.md)——七条泳道 + 两条横切，逐层方案在 [`session-architecture/`](session-architecture/) 下。
+>
+> **仍然有效的部分**：§4 状态与持久化模型（`SessionState` 契约、`session_turns` / `session_messages` / `session_events` / `session_inbox` / `tool_executions` 表设计、outbox 投递状态机）、§5.7 治理语义、§13.3–13.5 工具/记忆/结果契约、§14 迁移细节——**新的层方案直接复用这些设计，不重新发明**。
+>
+> **已被取代的部分**：§3.1 / §3.2 的分层与 19 节点平图（改为按泳道分层，LangGraph 只圈住 Agent Loop 内循环）、§8 / §16 的 Stage 划分（改为按层推进，每层自带旧实现清理阶段）。
+>
+> **实施状态**：§8 的 8 个 Stage 已于 2026-10-15 一次性执行完毕，产出 `backend/runtimes/agent_runtime/`——**但从未被 composition 根接线**，且全部依赖为 InMemory 假实现（详见 `session-architecture/cleanup-ledger.md` 条目 X1）。这批代码**不是**当前方案的实施基础，而是待替换对象。
+
 > 版本：3.1
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：整合版 v3.1（在 v3.0 基础上修正 6 项启动阻塞点），待评审
+> 状态：整合版 v3.1（在 v3.0 基础上修正 6 项启动阻塞点），**分层视角已被 `session-architecture/` 取代**
 > 目标技术：LangChain 1.x + LangGraph 1.x + Deep Agents + LangSmith Local
 > v3.1 修正要点：**新增 §2.5 启动前置条件（6 项阻塞点逐一收敛）**；§3.1 / §3.2 / §13.2 节点数权威定版为 **19**（§13.2 表为唯一权威源，§3.1 注同步更新，废弃"17 节点"早期估算口径）；§7.2 / §15 新 runtime library 落位 `backend/runtimes/agent_runtime/`（不再是 `libs/agent_runtime/`）；§5.5 Deep Agents 触发拆为 Stage 4 启发式 + Stage 6b 分类器 spec 两段；§5.9 / §13.1 新增 Stage 1 前置：`qzdap_schema/dtos/errors.py` 从零建枚举（当前文件仅 re-export `ErrorEnvelope`，枚举不存在）；§8 / §13.1 新增 Stage 0 前置：LangChain 1.x lock-file 升级预演 PR + `deepagents` import 探针 PR。
 
-本文整合了两份独立模型产出的会话重构方案，统一了架构边界、状态模型、容错策略、实施任务和验收标准。本文是唯一有效方案；旧方案文件已移除。
+本文整合了两份独立模型产出的会话重构方案，统一了架构边界、状态模型、容错策略、实施任务和验收标准。**本文不再是唯一有效方案**：分层与实施改由 [`session-architecture/`](session-architecture/) 承接，本文转为其**状态模型与持久化设计的上游参考**（见文首说明）。
 
 ---
 
