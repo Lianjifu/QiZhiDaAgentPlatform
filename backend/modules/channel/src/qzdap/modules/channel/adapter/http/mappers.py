@@ -26,6 +26,7 @@ def channel_to_response(ch: Channel) -> ChannelResponse:
         status=ch.status.value,
         inbound_path=ch.inbound_path,
         has_webhook_secret=ch.webhook_secret_id is not None,
+        service_account=dict(ch.service_account) if ch.service_account else None,
         created_at=ch.created_at.isoformat(),
         updated_at=ch.updated_at.isoformat(),
     )

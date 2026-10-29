@@ -73,10 +73,14 @@ class InMemorySessionRepository(SessionRepository):
         await self.update(session.with_runtime(metadata=meta))
 
     async def list_for_owner(
-        self, owner_id: UUID, *, limit: int = 50, offset: int = 0
+        self, tenant_id: UUID, owner_id: UUID, *, limit: int = 50, offset: int = 0
     ) -> list[Session]:
         items = sorted(
-            (s for s in self._by_id.values() if s.owner_id == owner_id),
+            (
+                s
+                for s in self._by_id.values()
+                if s.tenant_id == tenant_id and s.owner_id == owner_id
+            ),
             key=lambda s: s.created_at,
             reverse=True,
         )
@@ -84,6 +88,7 @@ class InMemorySessionRepository(SessionRepository):
 
     async def list_for_owner_workspace(
         self,
+        tenant_id: UUID,
         owner_id: UUID,
         workspace_id: UUID,
         *,
@@ -91,8 +96,11 @@ class InMemorySessionRepository(SessionRepository):
     ) -> list[Session]:
         items = sorted(
             (
-                s for s in self._by_id.values()
-                if s.owner_id == owner_id and s.workspace_id == workspace_id
+                s
+                for s in self._by_id.values()
+                if s.tenant_id == tenant_id
+                and s.owner_id == owner_id
+                and s.workspace_id == workspace_id
             ),
             key=lambda s: s.created_at,
             reverse=True,

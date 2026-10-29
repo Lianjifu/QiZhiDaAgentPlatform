@@ -14,8 +14,6 @@ wired in step 7 (adapters).
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -44,6 +42,16 @@ from qzdap.modules.channel.domain.value_objects import (
     ChannelType,
     DeliveryStatus,
 )
+from qzdap_agent_runtime.gateway.identity import (
+    REASON_TIMESTAMP_SKEW,
+    HmacWebhookVerifier,
+    Identity,
+    IdentityRejected,
+    IdentityRequest,
+    IdentityVerifier,
+    ServiceAccount,
+)
+from qzdap_kernel.contextvars import current_trace_id
 from qzdap_observability.metrics import record_legacy_call
 
 if TYPE_CHECKING:
@@ -75,6 +83,9 @@ class ChannelService:
     ids: IdGeneratorPort
     publisher: ChannelEventPublisher | None = None
     default_timestamp_tolerance_seconds: int = DEFAULT_TIMESTAMP_TOLERANCE_SECONDS
+    # ② Auth Identity —— 验签实现住在 gateway/identity.py（§10 Stage 2）。
+    # 留空则用默认的 HMAC 验签器（本层的 clock 决定时间戳容差）。
+    identity: IdentityVerifier | None = None
 
     # ── Registration / admin ────────────────────────────────────────────────
 
@@ -89,6 +100,7 @@ class ChannelService:
         inbound_path: str,
         webhook_secret: str | None = None,
         outbound_config: dict[str, Any] | None = None,
+        service_account: dict[str, Any] | None = None,
     ) -> Channel:
         secret_id: UUID | None = None
         if webhook_secret:
@@ -108,6 +120,7 @@ class ChannelService:
             inbound_path=inbound_path,
             webhook_secret_id=secret_id,
             outbound_config=outbound_config,
+            service_account=service_account,
         )
         await self.channel_repo.add(channel)
         return channel
@@ -155,6 +168,7 @@ class ChannelService:
         headers: dict[str, str],
         inbound_registry: dict[ChannelType, InboundAdapter],
         tolerance_seconds: int | None = None,
+        trace_id: str = "",
     ) -> ChannelDelivery:
         """Verify signature, parse envelope, persist delivery.
 
@@ -193,27 +207,31 @@ class ChannelService:
             if blob is not None:
                 secret_bytes = self.cipher.decrypt(blob)
 
-        # Validate timestamp skew + HMAC signature (publish rejects).
-        record_legacy_call("G2")  # IM 验签分支 _verify_signature / _reject
+        # ② Auth Identity：验签 + 时间戳容差。实现已迁到 gateway/identity.py，
+        # 本层只负责把渠道配置（密钥 / 服务账号）喂给它，并把拒绝映射回本层的
+        # 错误类型（对外契约不变：401 + WEBHOOK_*）。
+        # ⚠️ 这里**不再打 G2 的点** —— 旧实现（渠道内的 `_verify_signature`）已经
+        # 没了，现在跑的是新实现；继续打点会让「旧路径还在服役」永远为真。
         try:
-            await self._verify_signature(
-                secret=secret_bytes,
+            await self._verify_identity(
+                tenant_id=tenant_id,
+                channel=channel,
                 body=body,
                 headers=headers,
+                secret=secret_bytes,
                 tolerance_seconds=tolerance,
+                trace_id=trace_id,
             )
-        except (WebhookSignatureInvalid, WebhookTimestampSkew) as exc:
-            code = (
-                "WEBHOOK_TIMESTAMP_SKEW"
-                if isinstance(exc, WebhookTimestampSkew)
-                else "WEBHOOK_SIGNATURE_INVALID"
-            )
+        except IdentityRejected as exc:
             await self._reject(
                 tenant_id=tenant_id,
                 channel_id=channel_id,
-                reason_code=code,
+                reason_code=exc.reason_code,
+                trace_id=exc.trace_id,
             )
-            raise
+            if exc.reason_code == REASON_TIMESTAMP_SKEW:
+                raise WebhookTimestampSkew(str(exc), code="WEBHOOK_TIMESTAMP_SKEW") from exc
+            raise WebhookSignatureInvalid(str(exc), code="WEBHOOK_SIGNATURE_INVALID") from exc
 
         # Pick the adapter and parse the envelope.
         adapter = inbound_registry.get(channel.type)
@@ -332,50 +350,37 @@ class ChannelService:
         else:
             return updated
 
-    # ── Signature verification ─────────────────────────────────────────────
+    # ── ② Auth Identity ───────────────────────────────────────────────────
 
-    async def _verify_signature(
+    async def _verify_identity(
         self,
         *,
-        secret: bytes,
+        tenant_id: TenantId,
+        channel: Channel,
         body: bytes,
         headers: dict[str, str],
+        secret: bytes,
         tolerance_seconds: int,
-    ) -> None:
-        ts_raw = headers.get("x-webhook-timestamp") or headers.get("X-Webhook-Timestamp")
-        sig_raw = headers.get("x-webhook-signature") or headers.get("X-Webhook-Signature")
-        if not ts_raw or not sig_raw:
-            raise WebhookSignatureInvalid(
-                "missing X-Webhook-Timestamp / X-Webhook-Signature",
-                code="WEBHOOK_SIGNATURE_INVALID",
-            )
-        try:
-            ts = int(ts_raw)
-        except ValueError as exc:
-            raise WebhookSignatureInvalid(
-                "X-Webhook-Timestamp must be an integer",
-                code="WEBHOOK_SIGNATURE_INVALID",
-            ) from exc
+        trace_id: str,
+    ) -> Identity:
+        """验签 + 归一身份 —— **实现住在 gateway/identity.py**（§10 Stage 2）。
 
-        now = int(self.clock.now().timestamp())
-        if abs(now - ts) > tolerance_seconds:
-            raise WebhookTimestampSkew(
-                f"webhook timestamp {ts} outside ±{tolerance_seconds}s",
-                code="WEBHOOK_TIMESTAMP_SKEW",
+        本层只提供「渠道配置 → 验签材料」：密钥来自渠道登记的密文，服务账号
+        来自渠道登记的配置（IM 的 actor 由此物化，§3.2）。
+        """
+        verifier = self.identity or HmacWebhookVerifier(clock=self.clock)
+        return await verifier.verify(
+            IdentityRequest(
+                trace_id=trace_id or current_trace_id() or "",
+                headers=headers,
+                body=body,
+                secret=secret,
+                tolerance_seconds=tolerance_seconds,
+                tenant_id=tenant_id,
+                workspace_id=channel.workspace_id,
+                service_account=ServiceAccount.from_mapping(channel.service_account),
             )
-
-        if secret:
-            expected = hmac.new(
-                secret,
-                f"{ts}.".encode() + body,
-                hashlib.sha256,
-            ).hexdigest()
-            provided = sig_raw.split("=", 1)[-1] if "=" in sig_raw else sig_raw
-            if not hmac.compare_digest(expected, provided):
-                raise WebhookSignatureInvalid(
-                    "webhook signature does not match",
-                    code="WEBHOOK_SIGNATURE_INVALID",
-                )
+        )
 
     async def _reject(
         self,
@@ -383,6 +388,7 @@ class ChannelService:
         tenant_id: TenantId,
         channel_id: ChannelId,
         reason_code: str,
+        trace_id: str = "",
     ) -> None:
         if self.publisher is None:
             return
@@ -391,6 +397,7 @@ class ChannelService:
                 channel_id=channel_id,
                 reason_code=reason_code,
                 tenant_id=tenant_id,
+                trace_id=trace_id or current_trace_id() or "",
             ),
             tenant_id=tenant_id,
             workspace_id=None,

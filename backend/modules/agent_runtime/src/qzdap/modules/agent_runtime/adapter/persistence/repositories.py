@@ -159,11 +159,13 @@ class SqlSessionRepository(SessionRepository):
         await self._s.commit()
 
     async def list_for_owner(
-        self, owner_id: UUID, *, limit: int = 50, offset: int = 0
+        self, tenant_id: UUID, owner_id: UUID, *, limit: int = 50, offset: int = 0
     ) -> list[Session]:
+        # 租户过滤**显式**写在 SQL 里 —— 不依赖请求上下文里绑定的租户
+        # （没有绑定时 ORM 自动过滤退化成 no-op，查询会跨租户）。
         q = (
             select(SessionORM)
-            .where(SessionORM.owner_id == owner_id)
+            .where(SessionORM.tenant_id == tenant_id, SessionORM.owner_id == owner_id)
             .order_by(SessionORM.created_at.desc())
             .limit(limit)
             .offset(offset)
@@ -173,15 +175,17 @@ class SqlSessionRepository(SessionRepository):
 
     async def list_for_owner_workspace(
         self,
+        tenant_id: UUID,
         owner_id: UUID,
         workspace_id: UUID,
         *,
         limit: int = 200,
     ) -> list[Session]:
-        """/api/tasks 派生用 — owner + workspace 复合过滤, 不返回 closed 状态之外的孤儿 session."""
+        """/api/tasks 派生用 — tenant + owner + workspace 复合过滤, 不返回 closed 状态之外的孤儿 session."""
         q = (
             select(SessionORM)
             .where(
+                SessionORM.tenant_id == tenant_id,
                 SessionORM.owner_id == owner_id,
                 SessionORM.workspace_id == workspace_id,
             )

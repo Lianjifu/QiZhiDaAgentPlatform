@@ -17,6 +17,9 @@ class RegisterChannelRequest(BaseModel):
     workspace_id: UUID | None = None
     webhook_secret: str | None = Field(default=None, min_length=1)
     outbound_config: dict[str, Any] = Field(default_factory=dict)
+    # 渠道登记的服务账号（IM 的 actor 由此物化）——
+    # {"user_id": uuid, "agent_id": uuid, "agent_version": str}
+    service_account: dict[str, Any] | None = None
 
 
 class UpdateChannelRequest(BaseModel):
@@ -25,6 +28,7 @@ class UpdateChannelRequest(BaseModel):
     status: str | None = Field(default=None, pattern="^(active|disabled)$")
     outbound_config: dict[str, Any] | None = None
     webhook_secret: str | None = Field(default=None, min_length=1)
+    service_account: dict[str, Any] | None = None
 
 
 class ChannelResponse(BaseModel):
@@ -39,6 +43,7 @@ class ChannelResponse(BaseModel):
     status: str
     inbound_path: str
     has_webhook_secret: bool
+    service_account: dict[str, Any] | None = None
     created_at: str
     updated_at: str
 

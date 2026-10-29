@@ -33,11 +33,19 @@ class SessionRepository(ABC):
     async def update(self, session: Session) -> None: ...
     @abstractmethod
     async def list_for_owner(
-        self, owner_id: UUID, *, limit: int = 50, offset: int = 0
-    ) -> list[Session]: ...
+        self, tenant_id: UUID, owner_id: UUID, *, limit: int = 50, offset: int = 0
+    ) -> list[Session]:
+        """列出会话 —— **必须显式带租户**。
+
+        租户过滤不能只靠 ORM 的自动过滤（那依赖请求上下文里绑定了租户）；
+        没有绑定时自动过滤退化成 no-op，查询就会跨租户。
+        """
+        ...
+
     @abstractmethod
     async def list_for_owner_workspace(
         self,
+        tenant_id: UUID,
         owner_id: UUID,
         workspace_id: UUID,
         *,

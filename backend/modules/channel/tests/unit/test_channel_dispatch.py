@@ -13,9 +13,6 @@ from uuid import UUID, uuid4
 import pytest
 
 from qzdap.modules.channel.adapter.dispatch.dispatch_subscriber import (
-    SYSTEM_AGENT_ID,
-    SYSTEM_AGENT_VERSION,
-    SYSTEM_USER_ID,
     ChannelDispatchSubscriber,
 )
 from qzdap.modules.channel.domain.events import ChannelMessageReceived
@@ -31,10 +28,30 @@ class _FakeChannelRepo:
         return self._channel
 
 
+# 渠道登记的服务账号（IM 的 actor 由此物化）—— 取代旧的全局常量.
+_SERVICE_USER_ID = UUID("11111111-1111-1111-1111-111111111111")
+_SERVICE_AGENT_ID = UUID("22222222-2222-2222-2222-222222222222")
+_SERVICE_AGENT_VERSION = "channel-router-1.0.0"
+_SERVICE_ACCOUNT = {
+    "user_id": str(_SERVICE_USER_ID),
+    "agent_id": str(_SERVICE_AGENT_ID),
+    "agent_version": _SERVICE_AGENT_VERSION,
+}
+
+
+_UNSET = object()
+
+
 class _FakeChannel:
-    def __init__(self, type: str, workspace_id: UUID) -> None:
+    def __init__(
+        self,
+        type: str,
+        workspace_id: UUID,
+        service_account: dict | None | object = _UNSET,
+    ) -> None:
         self.type = type
         self.workspace_id = workspace_id
+        self.service_account = _SERVICE_ACCOUNT if service_account is _UNSET else service_account
 
 
 class _FakeAgentRuntime:
@@ -205,7 +222,8 @@ async def test_channel_not_found_drops_event() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_turn_uses_system_actor() -> None:
+async def test_run_turn_uses_the_channels_service_account() -> None:
+    """IM 的 actor 由**渠道登记的服务账号**物化 —— 不再是全局常量（台账 G3）。"""
     sub, bus, _, rt = _make_subscriber(channel=_FakeChannel("web", uuid4()))
     await sub.install(bus)
     evt = _evt()
@@ -221,12 +239,32 @@ async def test_run_turn_uses_system_actor() -> None:
     await handler({"payload": payload})
     assert len(rt.created_sessions) == 1
     owner_id = rt.created_sessions[0]["owner_id"]
-    assert str(owner_id) == str(SYSTEM_USER_ID)
+    assert str(owner_id) == str(_SERVICE_USER_ID)
     agent_id = rt.created_sessions[0]["agent_id"]
-    assert str(agent_id) == str(SYSTEM_AGENT_ID)
-    assert rt.created_sessions[0]["agent_version"] == SYSTEM_AGENT_VERSION
+    assert str(agent_id) == str(_SERVICE_AGENT_ID)
+    assert rt.created_sessions[0]["agent_version"] == _SERVICE_AGENT_VERSION
     # turn ran
     assert len(rt.turns) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_channel_without_a_service_account_does_not_run_a_turn() -> None:
+    """渠道没登记服务账号 → **不跑这一轮**（配置问题，不是请求问题）。"""
+    sub, bus, _, rt = _make_subscriber(channel=_FakeChannel("web", uuid4(), service_account=None))
+    await sub.install(bus)
+    evt = _evt()
+    payload = {
+        "channel_id": str(evt.channel_id),
+        "channel_type": evt.channel_type,
+        "external_user_id": evt.external_user_id,
+        "external_chat_id": evt.external_chat_id,
+        "text_preview": evt.text_preview,
+        "tenant_id": str(evt.tenant_id),
+    }
+    handler = bus.subs[_MSG_TOPIC][0]
+    await handler({"payload": payload})
+    assert rt.created_sessions == []
+    assert rt.turns == []
 
 
 @pytest.mark.asyncio

@@ -39,6 +39,8 @@ class Channel:
     status: ChannelStatus
     inbound_path: str
     outbound_config: dict[str, Any] = field(default_factory=dict)
+    # 渠道登记的服务账号（IM 的 actor 由此物化）—— None = 未登记。
+    service_account: dict[str, Any] | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -56,6 +58,7 @@ class Channel:
             status=status,
             inbound_path=self.inbound_path,
             outbound_config=dict(self.outbound_config),
+            service_account=(dict(self.service_account) if self.service_account else None),
             created_at=self.created_at,
             updated_at=_dt.now(UTC),
         )
@@ -74,6 +77,7 @@ class Channel:
             status=self.status,
             inbound_path=self.inbound_path,
             outbound_config=dict(cfg),
+            service_account=(dict(self.service_account) if self.service_account else None),
             created_at=self.created_at,
             updated_at=_dt.now(UTC),
         )
@@ -92,6 +96,26 @@ class Channel:
             status=self.status,
             inbound_path=self.inbound_path,
             outbound_config=dict(self.outbound_config),
+            service_account=(dict(self.service_account) if self.service_account else None),
+            created_at=self.created_at,
+            updated_at=_dt.now(UTC),
+        )
+
+    def with_service_account(self, account: dict[str, Any] | None) -> Channel:
+        from datetime import datetime as _dt
+
+        return Channel(
+            id=self.id,
+            tenant_id=self.tenant_id,
+            workspace_id=self.workspace_id,
+            type=self.type,
+            name=self.name,
+            external_id=self.external_id,
+            webhook_secret_id=self.webhook_secret_id,
+            status=self.status,
+            inbound_path=self.inbound_path,
+            outbound_config=dict(self.outbound_config),
+            service_account=dict(account) if account else None,
             created_at=self.created_at,
             updated_at=_dt.now(UTC),
         )
@@ -107,6 +131,7 @@ def make_channel(
     workspace_id: UUID | None = None,
     webhook_secret_id: UUID | None = None,
     outbound_config: dict[str, Any] | None = None,
+    service_account: dict[str, Any] | None = None,
 ) -> Channel:
     """Factory with input validation."""
     if not name or not name.strip():
@@ -130,6 +155,7 @@ def make_channel(
         status=ChannelStatus.ACTIVE,
         inbound_path=inbound_path,
         outbound_config=dict(outbound_config or {}),
+        service_account=dict(service_account) if service_account else None,
     )
 
 

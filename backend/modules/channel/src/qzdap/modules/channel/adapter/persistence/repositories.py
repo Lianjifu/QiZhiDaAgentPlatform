@@ -42,6 +42,7 @@ def _channel_to_domain(row: ChannelORM) -> Channel:
         status=ChannelStatus(row.status),
         inbound_path=row.inbound_path,
         outbound_config=dict(row.outbound_config or {}),
+        service_account=(dict(row.service_account) if row.service_account else None),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -134,6 +135,7 @@ class SqlChannelRepository(ChannelRepository):
             row.name = channel.name
             row.status = channel.status.value
             row.outbound_config = dict(channel.outbound_config)
+            row.service_account = dict(channel.service_account) if channel.service_account else None
             row.webhook_secret_id = channel.webhook_secret_id
             row.updated_at = channel.updated_at
             await session.commit()

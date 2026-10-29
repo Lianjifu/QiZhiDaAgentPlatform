@@ -26,6 +26,8 @@ from qzdap.modules.channel.adapter.http.mappers import (
     channel_to_response,
     delivery_to_response,
 )
+from qzdap_kernel.contextvars import current_trace_id
+
 from qzdap.modules.channel.domain.errors import ChannelNotFound
 from qzdap.modules.channel.domain.value_objects import ChannelStatus, ChannelType
 from qzdap_schema.ids import ChannelId, TenantId
@@ -34,6 +36,19 @@ from qzdap.modules.channel.application.ports import InboundAdapter, OutboundAdap
 from qzdap.modules.channel.application.services import ChannelService
 
 router = APIRouter(prefix="/v1", tags=["channel"])
+
+
+def _trace_id(headers: dict[str, str]) -> str:
+    """取入站请求的 trace id。
+
+    优先用平台自带的（飞书 ``X-Trace-Id``），否则用中间件已经绑定的那个 ——
+    鉴权失败的请求往往没有平台 trace，但**必须**有一个能追的 id。
+    """
+    for key in ("x-trace-id", "x-webhook-trace-id", "x-request-id"):
+        value = headers.get(key)
+        if value:
+            return value
+    return current_trace_id() or ""
 
 
 def _make_channel_service(request: Request) -> ChannelService:
@@ -100,6 +115,7 @@ async def register_channel(
         inbound_path=body.inbound_path,
         webhook_secret=body.webhook_secret,
         outbound_config=body.outbound_config,
+        service_account=body.service_account,
     )
     return channel_to_response(ch)
 
@@ -155,6 +171,8 @@ async def update_channel(
         updated = updated.with_status(ChannelStatus(body.status))
     if body.outbound_config is not None:
         updated = updated.with_outbound_config(body.outbound_config)
+    if body.service_account is not None:
+        updated = updated.with_service_account(body.service_account)
     if body.webhook_secret is not None:
         blob = svc.cipher.encrypt(body.webhook_secret.encode("utf-8"))
         new_sid = await svc.secret_repo.add(  # type: ignore[attr-defined]
@@ -197,6 +215,9 @@ async def receive_webhook(
         body=body_bytes,
         headers=headers,
         inbound_registry=_inbound_registry(request),
+        # ① 建立 trace：IM 平台自带的 trace 优先，没有就用中间件生成的那个 ——
+        # 鉴权失败的请求同样要能追到（§2.3 顺序规则 ②）。
+        trace_id=_trace_id(headers),
     )
     return delivery_to_response(delivery)
 

@@ -40,6 +40,8 @@ class ChannelORM(TenantScopedMixin, _Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="active")
     inbound_path: Mapped[str] = mapped_column(String(512), nullable=False)
     outbound_config: Mapped[dict] = mapped_column(JSON, nullable=False, server_default="{}")
+    # 渠道登记的服务账号（IM 的 actor 由此物化）—— None = 未登记.
+    service_account: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

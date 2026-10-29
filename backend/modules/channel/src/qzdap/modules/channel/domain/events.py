@@ -62,19 +62,25 @@ class ChannelReplySent(DomainEvent):
 
 @dataclass(slots=True, frozen=True)
 class ChannelWebhookRejected(DomainEvent):
-    """A webhook was rejected (bad signature, skew, or disabled channel)."""
+    """A webhook was rejected (bad signature, skew, or disabled channel).
+
+    ⚠️ **必须带 trace_id** —— 鉴权失败的请求往往在进入业务处理之前就结束了，
+    没有 trace_id 就追不到（Gateway 方案 §2.3 的顺序规则 ② / §10 Stage 2 验收）。
+    """
 
     TOPIC = "channel.webhook.rejected"
 
     channel_id: UUID
     reason_code: str
     tenant_id: UUID | None = None
+    trace_id: str = ""
 
     def to_payload(self) -> dict[str, Any]:
         return {
             "channel_id": str(self.channel_id),
             "reason_code": self.reason_code,
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
+            "trace_id": self.trace_id,
         }
 
 

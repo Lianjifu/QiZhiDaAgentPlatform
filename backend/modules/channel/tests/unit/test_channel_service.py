@@ -550,3 +550,186 @@ def test_event_payloads_are_dicts() -> None:
         tenant_id=tenant,
     )
     assert rej.TOPIC == "channel.webhook.rejected"
+
+
+# ── Stage 2 验收：拒绝 + 审计事件 + trace_id ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_forged_signature_is_rejected_with_an_audit_event_and_trace_id() -> None:
+    """伪造签名 → 拒绝 + 产生审计事件 + **带 trace_id**（§10 Stage 2 验收）。
+
+    鉴权失败的请求往往在进入业务处理之前就结束 —— 没有 trace_id 就追不到。
+    """
+    svc, _channel_repo, _delivery_repo, _, publisher = _make_service()
+    tenant = TenantId(uuid4())
+    ch = await svc.register_channel(
+        tenant_id=tenant,
+        workspace_id=None,
+        type=ChannelType.WEB,
+        name="forged",
+        external_id="e",
+        inbound_path="/hook",
+        webhook_secret="secret",
+    )
+    body = b'{"text":"hello"}'
+    ts = int(svc.clock.now().timestamp())
+    with pytest.raises(WebhookSignatureInvalid):
+        await svc.handle_webhook(
+            tenant_id=tenant,
+            channel_id=ch.id,
+            body=body,
+            headers={
+                "X-Webhook-Timestamp": str(ts),
+                "X-Webhook-Signature": "sha256=deadbeef",
+            },
+            inbound_registry={ChannelType.WEB: EchoInbound()},
+            trace_id="trace-forged",
+        )
+    rejected = [
+        payload for topic, payload in publisher.events if topic == "channel.webhook.rejected"
+    ]
+    assert rejected, publisher.events
+    assert rejected[-1]["reason_code"] == "WEBHOOK_SIGNATURE_INVALID"
+    assert rejected[-1]["trace_id"] == "trace-forged"
+
+
+@pytest.mark.asyncio
+async def test_an_expired_timestamp_is_rejected_with_an_audit_event_and_trace_id() -> None:
+    svc, _channel_repo, _delivery_repo, _, publisher = _make_service()
+    tenant = TenantId(uuid4())
+    ch = await svc.register_channel(
+        tenant_id=tenant,
+        workspace_id=None,
+        type=ChannelType.WEB,
+        name="skew",
+        external_id="e",
+        inbound_path="/hook",
+        webhook_secret="secret",
+    )
+    body = b'{"text":"hello"}'
+    skew_ts = int(svc.clock.now().timestamp()) - 3600
+    sig = _sign(b"secret", skew_ts, body)
+    with pytest.raises(WebhookTimestampSkew):
+        await svc.handle_webhook(
+            tenant_id=tenant,
+            channel_id=ch.id,
+            body=body,
+            headers={
+                "X-Webhook-Timestamp": str(skew_ts),
+                "X-Webhook-Signature": f"sha256={sig}",
+            },
+            inbound_registry={ChannelType.WEB: EchoInbound()},
+            trace_id="trace-skew",
+        )
+    rejected = [
+        payload for topic, payload in publisher.events if topic == "channel.webhook.rejected"
+    ]
+    assert rejected
+    assert rejected[-1]["reason_code"] == "WEBHOOK_TIMESTAMP_SKEW"
+    assert rejected[-1]["trace_id"] == "trace-skew"
+
+
+@pytest.mark.asyncio
+async def test_a_signature_replayed_across_tenants_is_rejected() -> None:
+    """跨租户重放：租户 A 的签名打到租户 B 的渠道 → 拒绝 + 审计事件。
+
+    签名绑定的是**渠道的密钥**，而密钥按租户登记 —— 因此跨租户重放必然对不上。
+    """
+    svc, _channel_repo, _delivery_repo, _, publisher = _make_service()
+    tenant_a = TenantId(uuid4())
+    tenant_b = TenantId(uuid4())
+    ch_a = await svc.register_channel(
+        tenant_id=tenant_a,
+        workspace_id=None,
+        type=ChannelType.WEB,
+        name="a",
+        external_id="ea",
+        inbound_path="/hook/a",
+        webhook_secret="secret-a",
+    )
+    ch_b = await svc.register_channel(
+        tenant_id=tenant_b,
+        workspace_id=None,
+        type=ChannelType.WEB,
+        name="b",
+        external_id="eb",
+        inbound_path="/hook/b",
+        webhook_secret="secret-b",
+    )
+    body = b'{"text":"hello"}'
+    ts = int(svc.clock.now().timestamp())
+    sig_a = _sign(b"secret-a", ts, body)
+    # 用 A 的密钥算出的签名，打到 B 的渠道上.
+    with pytest.raises(WebhookSignatureInvalid):
+        await svc.handle_webhook(
+            tenant_id=tenant_b,
+            channel_id=ch_b.id,
+            body=body,
+            headers={
+                "X-Webhook-Timestamp": str(ts),
+                "X-Webhook-Signature": f"sha256={sig_a}",
+            },
+            inbound_registry={ChannelType.WEB: EchoInbound()},
+            trace_id="trace-replay",
+        )
+    # 打到 A 自己的渠道上，同样的签名是有效的 —— 证明拒绝原因是「密钥不同」，
+    # 不是「这个签名被用过」。
+    delivery = await svc.handle_webhook(
+        tenant_id=tenant_a,
+        channel_id=ch_a.id,
+        body=body,
+        headers={
+            "X-Webhook-Timestamp": str(ts),
+            "X-Webhook-Signature": f"sha256={sig_a}",
+        },
+        inbound_registry={ChannelType.WEB: EchoInbound()},
+    )
+    assert delivery.status is DeliveryStatus.PENDING
+    rejected = [
+        payload for topic, payload in publisher.events if topic == "channel.webhook.rejected"
+    ]
+    assert rejected
+    assert rejected[-1]["trace_id"] == "trace-replay"
+
+
+@pytest.mark.asyncio
+async def test_the_channel_service_account_is_handed_to_the_identity_verifier() -> None:
+    """服务账号随渠道配置进入验签 —— IM 的 actor 由此物化（§3.2）。"""
+    svc, _channel_repo, _delivery_repo, _, _publisher = _make_service()
+    tenant = TenantId(uuid4())
+    account = {
+        "user_id": str(uuid4()),
+        "agent_id": str(uuid4()),
+        "agent_version": "v9",
+    }
+    ch = await svc.register_channel(
+        tenant_id=tenant,
+        workspace_id=None,
+        type=ChannelType.WEB,
+        name="with-account",
+        external_id="e",
+        inbound_path="/hook",
+        webhook_secret="secret",
+        service_account=account,
+    )
+    assert ch.service_account == account
+    body = b'{"text":"hello"}'
+    ts = int(svc.clock.now().timestamp())
+    sig = _sign(b"secret", ts, body)
+    identity = await svc._verify_identity(
+        tenant_id=tenant,
+        channel=ch,
+        body=body,
+        headers={
+            "X-Webhook-Timestamp": str(ts),
+            "X-Webhook-Signature": f"sha256={sig}",
+        },
+        secret=b"secret",
+        tolerance_seconds=300,
+        trace_id="trace-ok",
+    )
+    assert identity.actor is not None
+    assert str(identity.actor.actor_id) == account["user_id"]
+    assert identity.actor.actor_kind == "service_account"
+    assert identity.trust.value == "verified_hmac"

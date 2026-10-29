@@ -1,10 +1,11 @@
 """Channel → agent_runtime dispatch subscriber.
 
 Subscribes to :class:`ChannelMessageReceived` events on the in-process
-event bus, opens an ephemeral system-actor session, runs a single
-agent turn through :class:`RunTurnCompletionUseCase`, and writes the
-final assistant message back through the outbound adapter registered
-for the channel's ``channel_type``.
+event bus, opens an ephemeral session **owned by the channel's registered
+service account**, runs a single agent turn through
+:class:`RunTurnCompletionUseCase`, and writes the final assistant message
+back through the outbound adapter registered for the channel's
+``channel_type``.
 
 v1 (P7-8):
 * idempotency: process-local LRU keyed by
@@ -26,6 +27,7 @@ from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from qzdap_agent_runtime.gateway.identity import ServiceAccount
 from qzdap.modules.channel.domain.events import ChannelMessageReceived
 from qzdap_observability.metrics import record_legacy_call
 
@@ -37,12 +39,11 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger("qzdap.channel.dispatch")
 
-# Deterministic UUIDs reserved for the system actor that drives channel
-# messages through agent_runtime. Stable across restarts so the same
-# logical actor always owns the row ownership column.
-SYSTEM_USER_ID: UUID = UUID("00000000-0000-0000-0000-00000000c0c0")
-SYSTEM_AGENT_ID: UUID = UUID("00000000-0000-0000-0000-00000000c0c1")
-SYSTEM_AGENT_VERSION = "channel-router-1.0.0"
+# ⚠️ **服务账号不再是全局常量** —— IM 的 actor 由**渠道登记的服务账号**物化
+# （Gateway 方案 §3.2 / §10 Stage 2，台账 G3）。所有租户、所有渠道共用一个
+# 硬编码身份，意味着「渠道 A 的消息记在渠道 B 名下」这类问题无处追查。
+#
+# 渠道没登记服务账号 → **不跑这一轮**（配置问题，不是请求问题），并留下错误日志。
 
 DEFAULT_MODEL = "default"
 DEFAULT_TIMEOUT_SECONDS = 60
@@ -139,10 +140,22 @@ class ChannelDispatchSubscriber:
             )
             return
 
+        # 物化 IM 的 actor —— 渠道登记的服务账号（不是全局常量）。
+        account = ServiceAccount.from_mapping(getattr(channel, "service_account", None))
+        if account is None:
+            _log.error(
+                "channel has no service account registered; dropping event",
+                extra={
+                    "channel_id": str(evt.channel_id),
+                    "tenant_id": str(evt.tenant_id),
+                },
+            )
+            return
+
         # Open an ephemeral agent_runtime session, create + run a turn,
         # then write the reply via the outbound adapter (best effort).
         try:
-            _, final_message, turn_id = await self._run_turn(evt, channel)
+            _, final_message, turn_id = await self._run_turn(evt, channel, account)
         except Exception:
             _log.exception(
                 "channel dispatch turn failed",
@@ -166,7 +179,7 @@ class ChannelDispatchSubscriber:
     # ── helpers ──────────────────────────────────────────────────────────
 
     async def _run_turn(
-        self, evt: ChannelMessageReceived, channel: Any
+        self, evt: ChannelMessageReceived, channel: Any, account: ServiceAccount
     ) -> tuple[UUID, str, UUID | None]:
         """Open session, create agent turn, drain to completion."""
         from qzdap_schema.ids import AgentId, UserId
@@ -175,14 +188,13 @@ class ChannelDispatchSubscriber:
             session_obj = self._open_session()
             async with session_obj as sess:
                 svc = self._ar_factory.for_session(sess)
-                record_legacy_call("G3")  # 硬编码 SYSTEM_USER_ID / SYSTEM_AGENT_ID
                 record_legacy_call("R1")  # IM 每条消息新建临时 session
                 session = await svc.create_session().execute(
                     tenant_id=evt.tenant_id,
                     workspace_id=channel.workspace_id,
-                    owner_id=UserId(SYSTEM_USER_ID),
-                    agent_id=AgentId(SYSTEM_AGENT_ID),
-                    agent_version=SYSTEM_AGENT_VERSION,
+                    owner_id=UserId(account.user_id),
+                    agent_id=AgentId(account.agent_id),
+                    agent_version=account.agent_version,
                     metadata={
                         "channel_id": str(evt.channel_id),
                         "channel_type": evt.channel_type,
@@ -196,7 +208,7 @@ class ChannelDispatchSubscriber:
                 result = await svc.run_turn_to_completion().execute(
                     tenant_id=evt.tenant_id,
                     workspace_id=channel.workspace_id,
-                    owner_id=UserId(SYSTEM_USER_ID),
+                    owner_id=UserId(account.user_id),
                     session_id=session.id,
                     user_input=user_input,
                     model=self._model,
@@ -270,9 +282,4 @@ class ChannelDispatchSubscriber:
             self._seen.popitem(last=False)
 
 
-__all__ = [
-    "SYSTEM_AGENT_ID",
-    "SYSTEM_AGENT_VERSION",
-    "SYSTEM_USER_ID",
-    "ChannelDispatchSubscriber",
-]
+__all__ = ["ChannelDispatchSubscriber"]

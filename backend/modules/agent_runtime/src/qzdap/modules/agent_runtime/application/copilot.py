@@ -92,8 +92,10 @@ class CopilotSessionService:
         """Re-bind request-scoped ports (tenant/workspace are per request)."""
         self._graph.bind_ports(**ports)
 
-    async def list_sessions(self, *, owner_id: UUID, search: str = "") -> list[dict[str, Any]]:
-        rows = await self._sessions.list_for_owner(owner_id, limit=80)
+    async def list_sessions(
+        self, *, tenant_id: UUID, owner_id: UUID, search: str = ""
+    ) -> list[dict[str, Any]]:
+        rows = await self._sessions.list_for_owner(tenant_id, owner_id, limit=80)
         query = search.strip().lower()
         out: list[dict[str, Any]] = []
         for session in rows:
@@ -181,6 +183,7 @@ class CopilotSessionService:
     async def list_tasks(
         self,
         *,
+        tenant_id: UUID,
         owner_id: UUID,
         workspace_id: UUID,
         q: str = "",
@@ -195,7 +198,10 @@ class CopilotSessionService:
           session.closed                         → 已完成
         """
         sessions = await self._sessions.list_for_owner_workspace(
-            owner_id=owner_id, workspace_id=workspace_id, limit=200
+            tenant_id=tenant_id,
+            owner_id=owner_id,
+            workspace_id=workspace_id,
+            limit=200,
         )
         out: list[dict[str, Any]] = []
         for session in sessions:

@@ -1263,7 +1263,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 > - **修复** —— 修复类条目（如 X14），用测试判定，**不进指标**。
 >
 > ✅ **实施状态（2026-10-29）**：指标与 `record_legacy_call` / `record_new_call` 已落地
-> （`libs/observability/src/qzdap_observability/metrics.py`，有单测）。**24 条在旧实现的
+> （`libs/observability/src/qzdap_observability/metrics.py`，有单测）。**22 条在旧实现的
 > 入口处打点**（下表「打点位置」列非空者）—— 比原骨架多打了 10 条：原判为「扫描 / 修复」
 > 但**确实有调用入口**的条目（G4 / G5 / G10 / R3 / X3 / X5 / X6 / X7 / X15 / X16）也一并打点，
 > **打点只是额外观测，它们的清零判据不变**（扫描 / 测试）。
@@ -1273,15 +1273,15 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 >   **X4 / X12 / X13 / X19**（数据类 / 旧表 / 死表）。
 >   **这 7 条不得用「指标为 0」判清零** —— 从未被调用的代码，打点永远不会 inc，
 >   指标恒为 0，**看起来已清零、实则从未被观测**。
-> - **3 条「已不需要打点」**：**G1**（旧实现已删除 —— 打点随代码一起撤除）、
+> - **5 条「已不需要打点」**：**G1 / G2 / G3**（旧实现已删除 —— 打点随代码一起撤除）、
 >   **G10 / X14**（修复类 —— 判据是回归测试，不进指标）。
 >   **修复完成后继续保留打点，会让指标永远非零、清理判据永远不成立**。
 
 | 台账条目 | 判据类型 | 打点位置（实施后的真实位置） | 扫描规则 id | 备注 |
 |---|---|---|---|---|
 | G1 `record_request_id` | **已清理** | —（**2026-10-29 删除**：协议方法 + 两处实现 + `recent_request_ids` 读写 + 打点一并撤除） | — | 替代物 = `session_inbox` 原子 claim；Gateway Stage 1 |
-| G2 `_verify_signature` | 指标 | `channel/application/services.py`（`_verify_signature` 调用前） | — | |
-| G3 硬编码身份常量 | 指标 | `channel/adapter/dispatch/dispatch_subscriber.py` `_run_turn` | — | |
+| G2 `_verify_signature` | **已清理** | —（**2026-10-29 删除**：渠道服务里的验签迁到 `gateway/identity.py`，打点一并撤除） | `G2` | 替代物 = `HmacWebhookVerifier`；Gateway Stage 2 |
+| G3 硬编码身份常量 | **已清理** | —（**2026-10-29 删除**：`SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` 改为渠道登记的服务账号，打点一并撤除） | `G3` | 替代物 = `channels.service_account`（迁移 0049）；Gateway Stage 2 |
 | G4 `ParsedMessage` | 指标 | 四个 inbound adapter 的 `parse_webhook` 入口 | `G4` | 原判「扫描」——**有调用入口，已打点** |
 | G5 `ChannelMessageReceived` | 指标 | `channel/application/services.py`（发布前） | `G5` | 原判「扫描」——**已打点**；发布端与消费端同 PR |
 | G6 IM 进程内 LRU | 指标 | `dispatch_subscriber.py` `_handle_event` | — | |
@@ -1315,9 +1315,9 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 | X18 `copilot.py` turn 编排 | 指标 | `copilot.py` `stream_turn` | `X18` | 判据 = 语义迁入 `turn_runner.py` **且** 指标归零 ≥7 天 **且** 扫描零命中（Stage 3b） |
 | X19 `memory_l2_embeddings` 死表 | **扫描** | — | `X19` | 判据 = 表已 DROP（Memory Stage 0，迁移 0048 内） |
 
-> **34 行里 24 行有打点**（G2–G9 · R1 · R2 · R3 · X2 · X3 · X5 · X6 · X7 · X8 · X9 · X10 · X11 · X15 · X16 · X17 · X18），
-> **10 行靠替代判据**（G1 已清理 · R4 · X1 · X1-a · X1-b · X4 · X12 · X13 · X19 —— 已删除 / 从未接线 / 数据类），
-> **其中 3 行同时是修复类**（G1 已清理 · G10 / X14 —— 清零靠测试或删除）。
+> **34 行里 22 行有打点**（G4–G9 · R1 · R2 · R3 · X2 · X3 · X5 · X6 · X7 · X8 · X9 · X10 · X11 · X15 · X16 · X17 · X18），
+> **12 行靠替代判据**（G1 / G2 / G3 已清理 · R4 · X1 · X1-a · X1-b · X4 · X12 · X13 · X19 —— 已删除 / 从未接线 / 数据类），
+> **其中 5 行同时是修复类**（G1 / G2 / G3 已清理 · G10 / X14 —— 清零靠测试或删除）。
 >
 > **「指标」类条目既打点也扫描**：调用入口归零（`qzdap_legacy_calls_total{entry}` = 0 ≥7 天）**且** 残留符号 grep 零命中 —— 两者都满足才算清零。
 

@@ -1,6 +1,7 @@
 # Gateway 层重构方案
 
-> 版本：1.5（2026-10-29：**Stage 1 已实施** —— 幂等守卫落地：契约 `qzdap_agent_runtime/gateway/` + 落库 `PostgresIdempotencyStore` + 接线 `copilot.stream_turn` + 审批恢复路径带键（G10 已修复）+ **删除 `record_request_id` / `recent_request_ids`（G1 已清理）**；详见 §10 Stage 1「实施结果」与附录 C.1）
+> 版本：1.6（2026-10-29：**Stage 2 已实施** —— 鉴权收口：`gateway/identity.py`（`IdentityVerifier` 端口 + web JWT / IM HMAC / internal 三种实现）+ **服务账号物化**（`channels.service_account`，迁移 0049，取代硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID`）+ 会话列表**显式租户过滤**；详见 §10 Stage 2「实施结果」与附录 C.2）
+> 沿革：v1.5（2026-10-29：**Stage 1 已实施** —— 幂等守卫落地：契约 `qzdap_agent_runtime/gateway/` + 落库 `PostgresIdempotencyStore` + 接线 `copilot.stream_turn` + 审批恢复路径带键（G10 已修复）+ **删除 `record_request_id` / `recent_request_ids`（G1 已清理）**；详见 §10 Stage 1「实施结果」与附录 C.1）
 > 沿革：v1.4（2026-10-29：**本轮重排** —— §0 按共享模板重写为 §0.1–§0.5；**限流独立成章**（§5）；**数据与表**提前到 §8、**逐文件清单**移到 §9、**边界章**移到 §7；§10.4「外部依赖的现状核实」并入 §1.6
 > **v1.4 同时修正**：§0.3「选模型 → Router」**违反 D1**、§10 对照表**把 Session 的删除量记到本层**、附录 A **被引用块截断成两张表**、§3.3 `InboundMessage` **缺 `unprotected` 字段**（正文引用 6 处）、§5「L1 接入层」串用了 Memory 的层名、限流指标名与 §13.2 不一致
 > 沿革：v1.3（2026-10-29：**独立审查后的 15 项修正** —— 错误码收敛、weak 键不抑制的落地、部分唯一索引、过期行清理归属、NOT NULL 列的合成值、依赖方向、前端零使用 `/v1/sessions`、`channel_deliveries` 归属）
@@ -949,6 +950,8 @@ composition
 
 ### Stage 2：Auth Identity 收口
 
+> ✅ **已实施（2026-10-29）** —— 产出与验证见本节末尾的「实施结果」。
+
 | 动作 | 细节 |
 |---|---|
 | `IdentityVerifier` 端口 | web(JWT) / IM(HMAC) / internal 三种实现 |
@@ -958,6 +961,35 @@ composition
 
 **旧代码减少**：`channel/application/services.py` 的验签分支删除；`dispatch_subscriber.py` 的硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` 删除。
 **验收**：伪造签名 / 过期时间戳 / 跨租户重放全部拒绝且产生审计事件；鉴权失败的请求**有 trace_id**。
+
+#### Stage 2 实施结果（2026-10-29）
+
+| 项 | 落地位置 |
+|---|---|
+| **端口 + 三种实现** | `backend/runtimes/agent_runtime/src/qzdap_agent_runtime/gateway/identity.py` —— `IdentityVerifier` 端口、`HmacWebhookVerifier`（IM）、`JwtIdentityVerifier`（web）、`InternalIdentityVerifier`（内部）；`ServiceAccount`（服务账号的形状 + `from_mapping` 解析）、`IdentityRejected`（带 reason code 与 trace_id） |
+| **验签迁出** | `modules/channel/.../application/services.py` 的 `_verify_signature` **已删除**，改为 `_verify_identity` 调 gateway 的验签器；对外契约不变（401 + `WEBHOOK_SIGNATURE_INVALID` / `WEBHOOK_TIMESTAMP_SKEW`） |
+| **服务账号物化** | `channels.service_account` JSON 列（迁移 **0049**）+ `Channel.service_account` + 管理接口的 `serviceAccount` 字段；IM 的 actor 由 `ServiceAccount.from_mapping(channel.service_account)` 物化 —— **渠道没登记就不跑这一轮**（配置问题，不是请求问题） |
+| **硬编码身份删除** | `dispatch_subscriber.py` 的 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` / `SYSTEM_AGENT_VERSION` **全部删除**（台账 **G3 已清理**） |
+| **trace_id** | ① 建立：webhook 路由取平台 trace（`X-Trace-Id`）或中间件生成的那个；拒绝事件 `ChannelWebhookRejected` **新增 `trace_id` 字段** —— 鉴权失败的请求也追得到 |
+| **会话列表租户校验** | `list_for_owner` / `list_for_owner_workspace` **显式带 `tenant_id`**（写进 SQL，不依赖请求上下文里绑定的租户）；`GET /api/sessions` 与 `GET /v1/sessions` 的 `X-Tenant-Id` **改为必填** |
+
+> **⚠️ 为什么服务账号要落在渠道行上**（实施时定下的，不是随意的）：
+> 服务账号是**渠道的属性** ——「这个渠道以谁的身份说话」。「所有租户、所有渠道共用一个
+> 硬编码身份」意味着「渠道 A 的消息记在渠道 B 名下」这类问题无处追查。
+> 迁移 0049 把既有全局身份**回填**进存量渠道行（升级不丢身份），此后每个渠道独立可配。
+
+> **⚠️ 「验签」与「身份」是两件事**（实施时发现并分开的）：
+> **验签**回答「这个请求可信吗」，**服务账号**回答「可信的请求以谁的身份说话」。
+> 因此渠道没登记服务账号时，**验签照样通过** —— 那是**配置问题**，不是**请求问题**，
+> 不能因此拒掉这一批请求。服务账号只在**派发起轮次**那一步才被需要。
+
+> **验收结果**：
+> - 伪造签名 → 拒绝 + 产生 `channel.webhook.rejected` 审计事件 + **带 trace_id**；
+> - 过期时间戳 → 拒绝 + 审计事件 + trace_id；
+> - 跨租户重放（租户 A 的签名打到租户 B 的渠道）→ 拒绝 + 审计事件（签名绑定**渠道的密钥**，而密钥按租户登记）；
+> - 渠道没登记服务账号 → **不跑这一轮**，留错误日志；
+> - 会话列表只返回请求租户的行（`/api/tasks` 同理）；
+> - 验签器单测 17 条（三种实现 + 服务账号解析）。
 
 ### Stage 3：Message Normalizer 收口
 
@@ -1247,6 +1279,13 @@ Gateway 域对应的规则：
 | **G-17** | 严重 | **审批键若掺入原轮次的键就不稳定** —— 审批恢复时原轮次状态已推进（`pending_approval` 被清空），原键取不到 → 同一个审批两次派生出的键**不同** → 连点两次「同意」挡不住（**G10 修不掉**） | 审批键固定为 `approval\|{approval_id}\|{decision}`，**只由审批自身的稳定标识派生**；§4.2 的阶梯补第 ④ 档并写明这条约束 | §4.2 / §4.4 |
 | **G-18** | 中 | **§4.5 说重复命中要「返回 202 + turn_id」，但 Stage 1 没有 REST 重复入口** —— web 只有 SSE；前端已对 `DUPLICATE_REQUEST` 做静默忽略 | Stage 1 的重复分支**沿用 `DuplicateRequestError`**，把「不重复执行」定为硬要求、「无感重放」明确归 Stage 4b（依赖 `session_events`） | §4.5 |
 | **G-19** | 中 | **「先幂等还是先抢会话占用」方案里没定** —— 两个次序的失败模式不同：先抢占用则并发同键会返回「会话忙」而非「重复」；先幂等则会话忙时键被消费，重试会被误判重复 | 定为**先幂等 claim、再抢占用**，并补「本轮没跑起来就释放键」（`IdempotencyStore.release`） | §10 Stage 1 |
+
+### C.2 Stage 2 实施带回的两处修正（v1.5 → v1.6，2026-10-29）
+
+| # | 级别 | 问题 | 修正 | 落点 |
+|---|---|---|---|---|
+| **G-20** | 严重 | **「服务账号没登记」被当成了「请求不可信」** —— 初版把「渠道没登记服务账号」做成验签失败，会把**配置问题**变成**请求被拒**（该渠道的每一批消息都被拒） | 验签与身份**分成两件事**：验签只回答「可信吗」；服务账号只在**派发起轮次**那一步被需要。`Identity.actor` 因此可以是 None | §10 Stage 2 / `gateway/identity.py` |
+| **G-21** | 中 | **会话列表的租户过滤依赖 ORM 自动过滤** —— 那依赖请求上下文里绑定了租户；没有绑定时它退化成 no-op，查询就会跨租户 | 租户过滤**显式写进 SQL**（`list_for_owner` / `list_for_owner_workspace` 都带 `tenant_id`），并把 `X-Tenant-Id` 设为必填 | §10 Stage 2 / `session_router.py` |
 
 **跨文档同步**（本轮一并改掉的对 Gateway 章节号的引用）：
 

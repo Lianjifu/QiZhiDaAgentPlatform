@@ -69,8 +69,8 @@
 | # | 旧实现 | 位置 | 替代者 | 状态 | 所属方案 |
 |---|---|---|---|---|---|
 | G1 | `record_request_id` + `session.metadata.recent_request_ids` | ~~`modules/agent_runtime/adapter/persistence/repositories.py:155-170`~~（**已删**） | `qzdap_agent_runtime/gateway/idempotency.py` + `session_inbox` 原子 claim | **已清理**（2026-10-29：Gateway Stage 1 —— `record_request_id` 的协议方法与实现、`recent_request_ids` 的全部读写**已删除**；`copilot.stream_turn` 改走 `IdempotencyGuard`；替代物 = `session_inbox` 的 strong 键部分唯一索引 + 原子 claim） | Gateway Stage 1 |
-| G2 | IM 验签分支 `_verify_signature` / `_reject` | `modules/channel/application/services.py:195-215` | `gateway/identity.py` | 未开始 | Gateway Stage 2 |
-| G3 | 硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` | `modules/channel/adapter/dispatch/dispatch_subscriber.py:42-46` | 渠道配置登记的服务账号 | 未开始 | Gateway Stage 2 / Router Stage 2 |
+| G2 | IM 验签分支 `_verify_signature` / `_reject` | ~~`modules/channel/application/services.py:195-215`~~（**已删**） | `qzdap_agent_runtime/gateway/identity.py` 的 `HmacWebhookVerifier` | **已清理**（2026-10-29：Gateway Stage 2 —— 渠道服务里的 `_verify_signature` **已删除**，改为调用 gateway 的验签器；`_reject`（审计事件）**保留** —— 拒绝事件是当前职责，不是旧实现） | Gateway Stage 2 |
+| G3 | 硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` | ~~`modules/channel/adapter/dispatch/dispatch_subscriber.py:42-46`~~（**已删**） | **渠道配置登记的服务账号**（`channels.service_account` JSON 列，迁移 0049） | **已清理**（2026-10-29：Gateway Stage 2 —— 两个常量**已删除**；IM 的 actor 由渠道登记的服务账号物化（`ServiceAccount.from_mapping`），渠道没登记就**不跑这一轮**并留错误日志。迁移 0049 把既有全局身份**回填**进存量渠道行，升级不丢身份） | Gateway Stage 2 / Router Stage 2 |
 | G4 | `ParsedMessage` 数据类 | `modules/channel/application/ports.py:95-104` | `gateway/types.py` 的 `InboundMessage` | 未开始 | Gateway Stage 3 |
 | G5 | `ChannelMessageReceived` 事件（缺 `external_message_id` / `trace_id`） | `modules/channel/domain/events.py:27-46` | `InboundMessage` + `session_inbox` | 未开始 | Gateway Stage 3 |
 | G6 | IM 进程内 LRU 去重 | `modules/channel/adapter/dispatch/dispatch_subscriber.py:43-44,113-125,253-260` | `session_inbox` 原子 claim | 未开始 | Gateway Stage 3 |
@@ -210,6 +210,7 @@ _scan "record_request_id"         modules/          "G1"
 _scan "class ParsedMessage"       modules/          "G4"
 _scan "ChannelMessageReceived"    modules/          "G5"
 _scan "SYSTEM_USER_ID|SYSTEM_AGENT_ID" modules/      "G3"
+_scan "_verify_signature"          modules/channel/  "G2"
 _scan "OrderedDict"               modules/channel/  "G6"
 _scan "/v1/sessions"              modules/          "G7/G8"
 _scan "dispatch_subscriber"       modules/          "G9"
@@ -334,7 +335,7 @@ def record_legacy_call(entry: str) -> None:
 
 **打点位置**：旧实现的**入口处**（不是内部），保证「旧实现被调用」与「旧实现被调用但走的是别的分支」都能被观测到。
 
-**打点覆盖（2026-10-29 实施）**：33 条中 **24 条在旧实现的入口处打点** ——
+**打点覆盖（2026-10-29 实施）**：33 条中 **22 条在旧实现的入口处打点** ——
 `record_legacy_call("<编号>")` 落在**入口**（不是内部），保证「旧实现被调用」与
 「旧实现被调用但走了别的分支」都能被观测到。
 
@@ -350,9 +351,11 @@ def record_legacy_call(entry: str) -> None:
 | **X19** 死表 `memory_l2_embeddings` | 数据类；已在迁移 0048 内 DROP |
 | **X14** 跨用户泄漏 | **修复类** —— 判据是回归测试（`modules/memory/tests/unit/test_memory_scope_isolation.py`），不进指标 |
 | **G1** `record_request_id` | **旧实现已删除**（2026-10-29 Gateway Stage 1）—— 打点随代码一起撤除 |
+| **G2** IM 验签分支 | **旧实现已删除**（2026-10-29 Gateway Stage 2，验签迁到 `gateway/identity.py`）—— 打点随代码一起撤除 |
+| **G3** 硬编码系统身份 | **旧实现已删除**（2026-10-29 Gateway Stage 2，改为渠道登记的服务账号）—— 打点随代码一起撤除 |
 | **G10** 审批恢复路径丢幂等键 | **修复类** —— 判据是回归测试（`modules/agent_runtime/tests/unit/test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`），不进指标 |
 
-> **「7 条打不了点」+「3 条已不需要打点」= 10 条**必须改用替代判据（扫描 / 测试 / 删除 /
+> **「7 条打不了点」+「5 条已不需要打点」= 12 条**必须改用替代判据（扫描 / 测试 / 删除 /
 > 「无生产调用方」），**不得**用「指标为 0」判清零。
 > **修复完成后继续保留打点，会让指标永远非零、清理判据永远不成立** —— 打点是清理前的
 > 观测手段，不是终态。
@@ -445,10 +448,10 @@ def record_legacy_call(entry: str) -> None:
 
 | 状态 | 条目数 | 说明 |
 |---|---|---|
-| 未开始 | 29 | 旧实现仍是唯一生效路径 |
+| 未开始 | 27 | 旧实现仍是唯一生效路径 |
 | 已弃用 | 0 | — |
 | 待清理 | 1 | X19（死表 `memory_l2_embeddings`，迁移 0048 已实现并在 dev 库执行） |
-| 已清理 | 1 | **G1**（`record_request_id` + `recent_request_ids` —— 2026-10-29 Gateway Stage 1 直接删除，无调用方） |
+| 已清理 | 3 | **G1**（`record_request_id` + `recent_request_ids` —— Gateway Stage 1 直接删除）、**G2**（渠道内的 `_verify_signature` —— Gateway Stage 2 迁到 `gateway/identity.py`）、**G3**（硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` —— Gateway Stage 2 改为渠道登记的服务账号） |
 | **已修复** | 2 | X14（跨用户泄漏）、**G10**（审批恢复路径丢幂等键）—— 判据是测试不是指标 |
 
 > **打点覆盖率**：33 条中 **26 条已打点**，其余 7 条走替代判据（见 §3.2 的「打点覆盖」表）。
@@ -485,8 +488,8 @@ def record_legacy_call(entry: str) -> None:
 | 台账条目 | 出现在 | 删除阶段 |
 |---|---|---|
 | G1 | `gateway-refactor-plan.md` §9.2、Stage 1 | Gateway Stage 1（直接删，无调用方）—— ✅ **已执行**（2026-10-29） |
-| G2 | `gateway-refactor-plan.md` §9.2、Stage 2 | Gateway Stage 2 |
-| G3 | `gateway-refactor-plan.md` §9.2；`router-refactor-plan.md` §7.2 | Gateway Stage 2 / Router Stage 2 |
+| G2 | `gateway-refactor-plan.md` §9.2、Stage 2 | Gateway Stage 2 —— ✅ **已执行**（2026-10-29） |
+| G3 | `gateway-refactor-plan.md` §9.2；`router-refactor-plan.md` §7.2 | Gateway Stage 2 —— ✅ **已执行**（2026-10-29；Router Stage 2 的「按渠道解析会话」部分仍未做） |
 | G4、G5、G6 | `gateway-refactor-plan.md` §9.2、Stage 3 | Gateway Stage 3 |
 | G7、G8、G9 | `gateway-refactor-plan.md` §9.4、Stage 4 | Gateway Stage 5 |
 | R1 | `router-refactor-plan.md` §7.2、§7.4 | Router Stage 2（**行为替换**；文件删除归 Gateway G9） |

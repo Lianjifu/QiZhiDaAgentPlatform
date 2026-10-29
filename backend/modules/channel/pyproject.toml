@@ -12,6 +12,8 @@ dependencies = [
   "qzdap-messaging",
   "qzdap-vault",
   "qzdap-http",
+  # Gateway 层契约（qzdap_agent_runtime.gateway）—— 验签与服务账号物化.
+  "qzdap-agent-runtime-runtime",
   "fastapi>=0.110",
   "pydantic>=2.5",
   "httpx>=0.27",

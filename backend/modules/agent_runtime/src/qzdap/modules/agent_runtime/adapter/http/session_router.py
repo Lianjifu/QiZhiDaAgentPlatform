@@ -144,11 +144,14 @@ def build_session_router() -> APIRouter:
     async def list_sessions(
         request: Request,
         search: str = Query(default=""),
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
         svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
     ) -> list[dict[str, Any]]:
         return await svc.list_sessions(
-            owner_id=_owner_id(request, x_user_id), search=search
+            tenant_id=x_tenant_id,
+            owner_id=_owner_id(request, x_user_id),
+            search=search,
         )
 
     @router.post("/api/sessions", status_code=201)
@@ -204,6 +207,7 @@ def build_session_router() -> APIRouter:
         svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
     ) -> list[dict[str, Any]]:
         return await svc.list_tasks(
+            tenant_id=x_tenant_id,
             owner_id=_owner_id(request, x_user_id),
             workspace_id=x_workspace_id,
             q=q,
@@ -560,11 +564,15 @@ def build_session_router() -> APIRouter:
     @router.get("/v1/sessions")
     async def list_v1(
         request: Request,
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
         svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
     ) -> list[dict[str, Any]]:
         record_legacy_call("G8")  # GET /v1/sessions 列表别名
-        return await svc.list_sessions(owner_id=_owner_id(request, x_user_id))
+        # 租户是**必填**：列表查询必须显式按租户过滤（§10 Stage 2）。
+        return await svc.list_sessions(
+            tenant_id=x_tenant_id, owner_id=_owner_id(request, x_user_id)
+        )
 
     return router
 
