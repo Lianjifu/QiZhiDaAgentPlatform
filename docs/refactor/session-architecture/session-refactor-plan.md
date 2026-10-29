@@ -2,7 +2,7 @@
 
 > 版本：1.2（审查修正后 + 按审查结论重排骨架）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**已评审**（15 条审查问题已修正 + **本轮重排**，逐条见附录 C；附录 A 的 7 条决策待确认）
+> 状态：**已定稿**（15 条审查问题已修正 + **本轮重排**，逐条见附录 C；附录 A 的 7 条决策于 2026-10-29 逐条确认）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) —— 本方案实现其中 **Session 泳道**
 > 收敛机制：[`cleanup-ledger.md`](cleanup-ledger.md) —— 本方案对应条目 **X2、X3、X4、X6、X7、X18**
@@ -249,11 +249,11 @@ class SessionManagerPort(Protocol):
 | `archive` | close + 标记归档（「我的任务」里的「已完成」） | ✅ 已有（`copilot.py:152`） |
 | `delete` | 物理删除 | ⚠️ 现状是 `DELETE /api/sessions/{id}` → 调 `close_session`（**软关闭，不是删**）→ 命名与行为不符，需澄清 |
 
-> **决策 #1**：`DELETE /api/sessions/{id}` 的语义是「关闭」还是「删除」？现状实现是关闭。方案建议：**对外路径与语义统一为「关闭」，删除走独立的用户数据删除流程（治理域）** —— 避免「以为删了其实还在」。
+> **决策 #1（已定稿）**：`DELETE /api/sessions/{id}` 的语义 → **对外路径与语义统一为「关闭」，删除走独立的用户数据删除流程（治理域）** —— 避免「以为删了其实还在」。
 
 ### 3.3 超时管理
 
-> **决策 #7**：**空闲超时阈值取 30 天（可配）**。不按 agent / 工作区分别配置 —— 那会让配置面爆炸，而 30 天对绝大多数场景既不浪费也不影响体验。
+> **决策 #7（已定稿）**：**空闲超时阈值取 30 天（可配）**。不按 agent / 工作区分别配置 —— 那会让配置面爆炸，而 30 天对绝大多数场景既不浪费也不影响体验。
 
 **四类超时**，**现状只有第一类**：
 
@@ -277,7 +277,7 @@ class SessionManagerPort(Protocol):
 - **推荐**：自动**复活**（= **新建一个会话**接管该外部会话，旧会话保持 `closed` 终态；**不是**状态转移，见 §4.2），而不是报错——对 IM 渠道尤其重要，否则用户「隔了一周再问一句」就得到一个死会话错误；
 - **与唯一约束的相容性**：**Session 迁移 0046 建的是** `(tenant_id, channel_session_key)` 的**部分唯一索引**（`WHERE channel_session_key IS NOT NULL`；Router 只派生 key，不建会话 —— 见决策 #10 与 §3.1）。复活的做法必须是「**旧会话的 `channel_session_key` 置 NULL，新会话占用该 key**」——部分唯一索引允许多行 NULL，因此旧行释放 key、新行占用 key 不会冲突。**不能**让两个会话同时持有同一个 key。
 
-> **决策 #2**：空闲超时后同一外部会话再次来消息 → **复活为新会话**（推荐），还是**拒绝**（返回明确错误码）？
+> **决策 #2（已定稿）**：空闲超时后同一外部会话再次来消息 → **复活为新会话**（不返回错误码）。
 
 ---
 
@@ -340,7 +340,7 @@ class SessionManagerPort(Protocol):
 
 **取舍**：`try_claim` 原来靠 `wait_status='running'` 做单条 UPDATE 的 CAS（`repositories.py:99-104`），改成推导后要多一次查询。**解法**：CAS 改到轮次表上——`UPDATE session_turns SET status='running' WHERE id=:current_turn AND status='queued'`（配合 FIFO 判定），会话行的 `current_turn_id` 只作指针，不承担互斥语义。
 
-> **决策 #3**：废弃 `wait_status`（推荐，消灭重复真相），还是保留但与 `status` 对齐取值？
+> **决策 #3（已定稿）**：**废弃 `wait_status`**（消灭重复真相），用 `current_turn_id` + `session_turns.status` 推导。**前提**：轮次表需有 `queued` 态 —— 来自 **Router 决策 #1（S1 严格排队）**，两者同日定稿。
 
 ### 4.5 状态变更的事件
 
@@ -460,7 +460,7 @@ class SessionManagerPort(Protocol):
 
 **审批重复点击**：恢复时幂等键必须参与（§6 轮次幂等），同一个 `(session_id, tool_call_id, request_hash)` 复用同一 approval ID，不重复执行工具。
 
-> **决策 #4**：审批恢复失败时的错误**对用户可见**（推荐，`ErrorChunk` + 明确错误码），还是**静默降级为「工具未执行」并继续本轮**？
+> **决策 #4（已定稿）**：审批恢复失败时的错误**对用户可见**（`ErrorChunk` + 明确错误码），**不执行工具**，不静默降级为「工具未执行」并继续本轮。
 >
 > **本方案取「对用户可见」**：`ErrorChunk` + 对应的 `ErrorCode`（`APPROVAL_NOT_MATCH` / `APPROVAL_EXPIRED` / `APPROVER_MUST_DIFFER` / `TOOL_ARGUMENT_INVALID`），**不执行工具**。
 
@@ -1020,15 +1020,17 @@ def test_session_layer_has_no_framework_imports():
 > 审计写入走 Governance 模块，Session 只投递事件。
 ---
 
-## 附录 A：待确认的决策
+## 附录 A：已定稿的决策（2026-10-29 逐条确认）
 
-| # | 决策 | 本方案建议 | 备选 | 影响 |
+> 以下 **7 条**决策（#1–#7）已逐条确认并定稿。**改动其中任何一条，都必须同步修改正文对应章节，并在 §10 补记受影响的阶段。**
+
+| # | 决策 | 定稿结果 | 备选 | 影响 |
 |---|---|---|---|---|
 | 1 | `DELETE /api/sessions/{id}` 的语义 | **关闭**（不是物理删除）；删除走治理域的用户数据删除流程 | 改为真删除 | API 语义、前端预期 |
-| 2 | 空闲超时后再来消息 | **复活为新会话**（推荐） | 拒绝并返回错误码 | IM 渠道体验 |
-| 3 | `wait_status` | **废弃**，用 `current_turn_id` + `session_turns.status` 推导 | 保留但与 `status` 对齐取值 | 消灭重复真相 vs 多一次查询。**前提：轮次表需有 `queued` 态**——这来自 **Router 决策 #1（S1 排队）**，两者是同一件事的两面，见 `README.md` §3.3 |
+| 2 | 空闲超时后再来消息 | **复活为新会话** | 拒绝并返回错误码 | IM 渠道体验 |
+| 3 | `wait_status` | **废弃**，用 `current_turn_id` + `session_turns.status` 推导 | 保留但与 `status` 对齐取值 | 消灭重复真相 vs 多一次查询。**前提：轮次表需有 `queued` 态**——这来自 **Router 决策 #1（S1 严格排队）**，两者是同一件事的两面，**已于同日定稿** |
 | 4 | 审批恢复失败 | **对用户可见**（`ErrorChunk` + 明确错误码），不执行工具 | 静默降级为「工具未执行」并继续 | 安全 vs 体验 |
-| 5 | 旧表处置 | **`session_turns` / `session_messages` 启用，旧表迁数据后 DROP**（Stage 6） | 沿用旧表并补列 | 与 Router 决策 #2 必须一致。**注意**：第二套 turn 实现的删除在 **Stage 5b**（与 Gateway 的 IM 入口切换原子），不随旧表一起 |
+| 5 | 旧表处置 | **`session_turns` / `session_messages` 启用，旧表迁数据后 DROP**（Stage 6） | 沿用旧表并补列 | **与 Router 决策 #2 同值**（两者是同一决策的两面，已同日定稿）。**注意**：第二套 turn 实现的删除在 **Stage 5b**（与 Gateway 的 IM 入口切换原子），不随旧表一起 |
 | 6 | 审批挂起的落点 | `session_turns.pending_approval`（JSONB） | 独立 `session_approvals` 表 | 查询与审计便利性 |
 | 7 | 空闲超时阈值 | 30 天（可配） | 按 agent / 工作区分别配置 | 存储成本与体验 |
 
@@ -1057,6 +1059,8 @@ def test_session_layer_has_no_framework_imports():
 ## 附录 C：2026-10-29 审查修正记录
 
 > 本方案 v1.0 → **v1.1** 的全部修正。**每条都对着 `backend/` 的代码或迁移文件核实过**。
+>
+> **决策定稿（2026-10-29）**：附录 A 的 **7 条**决策已由用户拍板，取值为本方案的建议值；其中 **#5 与 Router #2 同值**、**#3 的前提来自 Router #1（S1 严格排队）**，两组跨层耦合同日落定。
 
 | # | 级别 | 问题 | 修正 | 落点 |
 |---|---|---|---|---|

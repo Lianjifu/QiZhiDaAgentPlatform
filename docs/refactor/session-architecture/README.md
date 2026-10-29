@@ -17,12 +17,12 @@
 | 1 | [`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) | **权威基线**：会话完整生命周期的泳道划分与时序。所有层方案的共同上游契约 | **已定稿** |
 | 2 | [`cleanup-ledger.md`](cleanup-ledger.md) | **全局收敛机制**：旧实现台账（弃用标记 → 调用打点 → 指标归零 → 删除 → CI 扫描脚本 → 阶段门禁） | **生效中** |
 | 3 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | Gateway 泳道：Channel Gateway / Auth Identity / Message Normalizer / Idempotency Guard ＋ 入口级限流 | **已定稿（v1.4）** |
-| 4 | [`router-refactor-plan.md`](router-refactor-plan.md) | Router 泳道：Strategy（选 agent）+ Session Routing（选会话 + 有序保证） | **已评审（v1.2）** |
-| 5 | [`session-refactor-plan.md`](session-refactor-plan.md) | Session 泳道：Manager（生命周期）+ State（状态机）+ Thread（多轮线程）+ 唯一 turn 实现 | **已评审（v1.1）** |
-| 6 | [`context-refactor-plan.md`](context-refactor-plan.md) | Context 泳道：Builder（拼装）+ Compressor（压缩）+ Persistence（manifest 落库） | 待评审 |
-| 7 | [`memory-refactor-plan.md`](memory-refactor-plan.md) | Memory 泳道：Retrieval（检索）+ Writer（沉淀）+ STM/LTM 分层 | 待评审 |
-| 8 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | ⑦ Agent Loop（大脑）· ⑧ Agent Router（**只选专家**：模型 / 工具 / 知识都来自 agent 配置，**不做 Model Router**）· ⑨ Execution Runtime（Agent / Model Runtime / Tool Runtime）。技术栈：LangGraph 1.x + LangChain + Deep Agents | **已评审（v1.2）** |
-| 9 | [`implementation-plan.md`](implementation-plan.md) | **实施方案**（**按层组织**）：六层各自的 Stage 表、工作项、删除项、退出判据、回退点 + 跨层编排（依赖 / 并行 / 排期 / 里程碑）+ 守卫规则 + 风险预案 | 待评审 |
+| 4 | [`router-refactor-plan.md`](router-refactor-plan.md) | Router 泳道：Strategy（选 agent）+ Session Routing（选会话 + 有序保证） | **已定稿（v1.3）** |
+| 5 | [`session-refactor-plan.md`](session-refactor-plan.md) | Session 泳道：Manager（生命周期）+ State（状态机）+ Thread（多轮线程）+ 唯一 turn 实现 | **已定稿（v1.2）** |
+| 6 | [`context-refactor-plan.md`](context-refactor-plan.md) | Context 泳道：Builder（拼装）+ Compressor（压缩）+ Persistence（manifest 落库） | **已定稿（v1.2）** |
+| 7 | [`memory-refactor-plan.md`](memory-refactor-plan.md) | Memory 泳道：Retrieval（检索）+ Writer（沉淀）+ STM/LTM 分层 | **已定稿（v1.4）** |
+| 8 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | ⑦ Agent Loop（大脑）· ⑧ Agent Router（**只选专家**：模型 / 工具 / 知识都来自 agent 配置，**不做 Model Router**）· ⑨ Execution Runtime（Agent / Model Runtime / Tool Runtime）。技术栈：LangGraph 1.x + LangChain + Deep Agents | **已定稿（v1.2）** |
+| 9 | [`implementation-plan.md`](implementation-plan.md) | **实施方案**（**按层组织**）：六层各自的 Stage 表、工作项、删除项、退出判据、回退点 + 跨层编排（依赖 / 并行 / 排期 / 里程碑）+ 守卫规则 + 风险预案 | **已定稿（v3.6）** |
 
 **为什么是这个顺序**：基线定契约 → 台账定收敛规则 → 从最外层（Gateway）往里推进。Gateway 是最外层、边界最清晰、最容易独立验收的一层；Router 次之；Session 层同时是 Gateway 的上游依赖（`session_events` 落库是「无感重放」的前提），是所有层的枢纽，因此**建议在 Gateway 与 Router 定稿后立刻写 Session 层**。
 
@@ -30,18 +30,18 @@
 
 ## 2. 决策状态汇总
 
-> 每份层方案的附录 A 列了该层的待定决策。**任一决策改动，都要同步修改该方案正文对应章节**，并在这里更新状态。
+> 每份层方案的附录 A 列了该层的决策。**任一决策改动，都要同步修改该方案正文对应章节**，并在这里更新状态。
 
-| 方案 | 决策数 | 已定稿 | 待确认 | 未定稿的关键项 |
+| 方案 | 决策数 | 已定稿 | 待确认 | 定稿要点 |
 |---|---|---|---|---|
-| Gateway | 9（+ #2b） | 9 | 0 | **#5 的落地方式已补记**（2026-10-29 审查）：「weak 不抑制」不能只写在文档里 —— §4.4 的原子 claim 若让 weak 键也参与唯一约束，两条相同内容的消息会互相冲突 → **直接违反 #5**。落地 = §4.3 的**部分唯一索引**（`WHERE key_strength='strong'`）+ §4.4 的 **strong / weak 两条 INSERT 路径** |
-| Router | 10 | 0 | 10 | #1 并发语义（排队 / 拒绝）；**#2 表选择（新表 `session_*` vs 旧表 `agent_*`）—— 全部方案的前置决策**；#7 排队上限/超时；**#10 会话实例由谁创建（Router 只派生 key，Session 负责 `resolve_or_create`）** —— ⚠️ 2026-10-29 审查补充：**决策 #10 的边界是「不写会话表」，不禁止读**；且粘性规则需要 Session 提供**只读的 `lookup(session_key)` 端口**（`resolve_or_create` 需要 `agent_binding` 入参 → 鸡生蛋） |
-| Session | 7 | 0 | 7 | **#5 表选择必须与 Router #2 同值**，否则两层落在两套表上；#3 `wait_status` 是否废弃 |
-| Context | 7 | 0 | 7 | **#2 token 估算口径**（2026-10-29 审查改写：新 runtime **已经是**按语种估算，真问题是**新旧两条路径口径不一致**）；#1 agent prompts 拼装位置；**#7 `context_compacted` 的 `degraded` 字段**（前端目前不读 chunk 字段 → 补字段向后兼容） |
-| Memory | 12 | 0 | 12 | **#1 L3 与 knowledge 的职责边界（最大架构分叉）**；#2 向量过滤下沉（安全，落在 `admin_memory_vec`）；#5 L1 处置；**#11 存量 L2 的 `user_id` 归属**（写入侧持久化 `owner_id`，存量自动记忆不回填）；**#12 `policyLabel` 表达力**（放开 `admin_memory_policies` 唯一约束） |
-| Agent Loop / Agent Router / Execution | 8 | **1**（#4） | 7 | **#4 模型来源已定（用户拍板）**：模型由管理员在 agent 配置里绑定，运行时**查表**，**不做 Model Router**；#1 Agent Loop 骨架（自建 6 节点 vs `create_react_agent`）；**#2 平台模型如何接入 LangChain（`QZDAPChatModel` 适配器）**；#6 工具幂等落点（`tool_executions` vs `tool_calls`）；#8 Deep Agents 接入方式 |
+| Gateway | 9（+ #2b） | **10** | 0 | #1 出站归 ①；#2 `modules/channel` 保持独立模块；#2b `session_inbox` 表归 Session；#3 改造成 **strong 部分唯一索引**；#4 无感重放（未就绪降级 202 + `replay_unavailable`）；#5 weak **不抑制** + 标 `unprotected` + 禁用副作用工具；#6 不迁对象存储；#7 `/v1/sessions*` 只留兼容别名；#8 先上新后清旧；#9 限流硬编码 + 环境变量 |
+| Router | 10 | **10** | 0 | **#1 S1 严格排队（FIFO）**；**#2 启用新表 `session_*`**；#3 配置落点 `admin_agents.profile`；#4 深度任务判定归 Agent 层；#5 `ingress_seq` 会话行原子自增；#6 审批**不占** FIFO 位；#7 N=5 / T=60 秒；#8 排队开关默认 off；#9 轮次表 CAS 为唯一权威；**#10 Router 只派生 key + 分配 `ingress_seq`，`resolve_or_create` 归 Session**（**边界是「不写会话表」，不禁止读**；粘性规则另需 Session 提供**只读的 `lookup(session_key)` 端口**） |
+| Session | 7 | **7** | 0 | #1 `DELETE /api/sessions/{id}` = **关闭**（删除走治理域）；#2 空闲超时后**复活为新会话**；**#3 废弃 `wait_status`**（用 `current_turn_id` + `session_turns.status` 推导）；#4 审批恢复失败**对用户可见**；**#5 与 Router #2 同值**（启用新表 + 旧表迁数据后 DROP，Stage 6）；#6 审批挂起落 `session_turns.pending_approval`；#7 空闲阈值 30 天可配 |
+| Context | 7 | **7** | 0 | #1 agent prompts **放在 Builder 内**；**#2 统一用 `budget.py:42` 的按语种估算**，旧路径也用它；#3 上下文快照**先不做**；#4 摘要阈值 `window × 0.70`；#5 仍超限抛 `CONTEXT_TOO_LARGE`；#6 manifest **每次模型调用一条**；**#7 给 `ContextCompactedChunk` 补可选 `degraded` 字段**（前端目前不读 chunk 字段 → 补字段向后兼容） |
+| Memory | 12 | **12** | 0 | **#1 L3 退役**，知识统一归 `modules/knowledge`（最大架构分叉）；#2 向量过滤**下沉到 pgvector**（安全，落在 `admin_memory_vec`）；#3 规则起步 + 预留 LLM 接口；#4 每轮结束写一次；**#5 L1 退役**（STM 换带 `session_id` 的新表）；#6 embedding 统一走独立 `embedding_runtime`；#7 召回**更新**统计；#8 记忆模块实现 `data_subject` 的一个 scope；#9 沿用 `admin_memory_*` 补列；#10 管理面乐观并发（版本号）；**#11 写入侧持久化 `owner_id`，存量自动记忆不回填**；**#12 放开 `admin_memory_policies` 唯一约束到 `(tenant_id, workspace_id, layer, label)`** |
+| Agent Loop / Agent Router / Execution | 8 | **8** | 0 | **#4 模型来源（早已拍板）**：模型由管理员在 agent 配置里绑定，运行时**查表**，**不做 Model Router**；#1 **自建 6 节点 StateGraph**（不用 `create_react_agent`）；**#2 `QZDAPChatModel(BaseChatModel)` 薄适配器**；#3 **复用 `agent_versions` + role 标签**，不建专家表；#5 绑定集 ∩ 风险 ∩ 作用域，`unprotected` **剔除**副作用工具；#6 **`tool_executions` 为唯一权威**；#7 成本闸门**两级**；#8 Deep Agents **先隔离分支验证再接 Stage 6** |
 
-**跨层一致性约束**（每一对都必须同时定、取值相同）：
+**跨层一致性约束**（每一对都必须同时定、取值相同 —— ✅ 下列各对已于 2026-10-29 同批定稿）：
 
 | 耦合对 | 内容 |
 |---|---|
@@ -190,17 +190,15 @@ Agent  Stage 5(循环)  ←  Session Stage 3(唯一 turn 实现)
 
 ### 3.4 前置决策：**表选择**（其余决策的前置）
 
-Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一个决策的两面**。它未定，则：
+Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一个决策的两面**。它曾是所有迁移的前置：
 
 - 五个 Stage 0 的迁移设计无法定稿；
 - Context / Memory 的写入切换路径无法确定；
 - 「数据回填 vs 双写」的工作量无法估算。
 
-> **建议：把「表选择」作为唯一的前置决策先定。** 推荐值：**启用新表 `session_turns` / `session_messages` / `session_events`**（迁移 0035 已建、零生产数据），旧表 `agent_turns` / `agent_session_messages` 双写 → 对账 → 切读 → 停旧写 → DROP。
+> **定稿（2026-10-29 用户拍板）：启用新表 `session_turns` / `session_messages` / `session_events`**（迁移 0035 已建、零生产数据），旧表 `agent_turns` / `agent_session_messages` 双写 → 对账 → 切读 → 停旧写 → DROP。废弃动作在 **Session Stage 6**，迁移归 **Session（0046）**，Gateway 方案 §8 已同步为「迁数据后废弃」。
 >
-> **状态：⏳ 待用户拍板（2026-10-29 尚未确认）**。本方案集**内部已按推荐值对齐** —— Router 决策 #2 与 Session 决策 #5 都写「启用新表 + 旧表迁数据后废弃」，废弃动作在 **Session Stage 6**，迁移归 **Session（0046）**，Gateway 方案 §8 已同步为「迁数据后废弃」。
->
-> **但这不等于「已定稿」** —— 两个方案附录 A 里它仍在「待确认」列表中（README §2 的决策状态汇总同步反映）。**在用户明确拍板前，不得把这两条标记为已定稿**，否则会重演「文档写了就当定了」的毛病。
+> **状态：✅ 已定稿** —— Router 决策 #2 与 Session 决策 #5 均已标记为定稿（README §2 的决策状态汇总同步反映）。**迁移 0045–0048 的 DDL 现在可以定稿**，六个 Stage 0 中的四个不再被此项阻塞。
 
 ### 3.5 横切关注点的落点约定
 
@@ -247,7 +245,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 3. **不得在同一层内并存两套实现**；
 4. 每个阶段验收必须包含「**旧代码减少了什么**」；
 5. 旧实现登记进 [`cleanup-ledger.md`](cleanup-ledger.md)，删除时同步更新状态；
-6. 附录 A 列出该层的待定决策，决策改动要回改正文；
+6. 附录 A 列出该层的**已定稿决策**，决策改动要回改正文；
 7. 引用上位方案时明确说明**哪些部分仍有效**（当前：§4 状态模型、§5.7 治理语义、§13.3–13.5 契约、§14 迁移细节）。
 
 ### 5.1 六份方案的结构自检
@@ -267,7 +265,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 | §10 | 验收标准（功能 + 架构测试 + 扫描） | ✅ |
 | §11 | 风险 | ✅ |
 | §12（Gateway 为 §13） | 治理与可观测性落点 | ✅ |
-| 附录 A | 待确认的决策 | ✅ |
+| 附录 A | 已定稿的决策（决策名 / 定稿结果 / 备选 / 影响） | ✅ |
 | 附录 B | 现状 → 目标 文件对照速查 | ✅ |
 | 附录 C | 本轮重排 / 审查修正记录（问题 → 修正 → 落点） | ✅（**六份都有**） |
 

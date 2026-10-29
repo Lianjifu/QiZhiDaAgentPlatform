@@ -2,7 +2,7 @@
 
 > 版本：3.6（2026-10-29 · **按层组织** + 独立审查后的 16 项修正 + **Session 层审查同步**（X18 → Stage 3b）+ **Context 层审查同步**（关注点 #9–#11 停用阶段统一为 Stage 4 / 决策 #2 改写为「口径对齐」/ 新增决策 #7）+ **Memory 层审查同步**（新增台账 **X19** / 关注点 #12–#13 停用阶段修正 / 决策 #11 #12 / 台账条目数 32 → 33）+ **Agent 层审查同步**：**决策 #4 取消 Model Router**（模型与工具只从 agent 配置取）/ X5 归属统一为 Agent Stage 7 / A-09 删除时机修正 / 空壳数 6 → 5 / `cost_usd` 迁移号改正）+ **Agent 层骨架重排**（配置轴 / 执行轴分离；模型解析与工具绑定归 ⑨ Execution；`ToolRouterPort` → `ToolBindingPort`）
 > 上一版：3.4（2026-10-29 · Memory 层审查同步）· 3.3（Context 层审查同步）· 3.2（Session 层审查同步）· 3.1（按层组织 + 16 项修正）· 3.0（按层组织重写）· 2.0（按迭代组织，已废止）
-> 状态：**待评审**（需先完成 §2 的全局前置）
+> 状态：**已定稿**（§2 的全局前置于 2026-10-29 全部完成；六层方案的 53 条决策亦已同日定稿）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md)
 > 收敛台账：[`cleanup-ledger.md`](cleanup-ledger.md)
@@ -207,18 +207,19 @@
 |---|---|---|
 | **表选择**（Router 决策 #2 ↔ Session 决策 #5） | `router-refactor-plan.md` 附录 A #2 · `session-refactor-plan.md` 附录 A #5 | **五个迁移（0044–0048）的设计都依赖它**。表没定，迁移没法写；迁移没写，所有层的 Stage 0 都悬空。 |
 
-> **状态**：⏳ **待你拍板**。方案集内部已按推荐值对齐（启用新表 `session_turns` / `session_messages` / `session_events`，旧表迁数据后废弃，废弃在 **Session Stage 6**，迁移归 **Session（0046）**），但**文档对齐 ≠ 已定稿**。
+> **状态**：✅ **已定稿（2026-10-29 用户拍板）** —— 启用新表 `session_turns` / `session_messages` / `session_events`，旧表迁数据后废弃，废弃在 **Session Stage 6**，迁移归 **Session（0046）**。**五个迁移（0044–0048）的设计不再被此项阻塞。**
 
-**其余 50 条按层拍板，不阻塞开工**：
+**全部 53 条决策已于 2026-10-29 按各方案的建议值定稿**（Gateway 9+#2b、Router 10、Session 7、Context 7、Memory 12、Agent 8）——
+上表列的是其中的**前置 gate**；下表是各层决策的定稿要点与状态：
 
-| 层 | 条数 | 何时拍完 | 关键项 |
+| 层 | 条数 | 状态 | 定稿要点 |
 |---|---|---|---|
-| Gateway | 9（+ #2b） | ✅ 已全部定稿 | — |
-| Router | 10 | **Router Stage 1 前**（#1 排队语义）、Stage 3 前（其余） | #1 并发语义 |
-| Session | 7 | **Session Stage 0 前**（#3 / #5 / #6） | **#5 表选择**（= 前置 A） |
-| Context | 7 | **Context Stage 0 前** | #2 token 估算**口径**、#1 prompts 拼装位置、**#7 `context_compacted` 的 `degraded` 字段** |
-| Memory | 12 | **Memory Stage 0 前**（#1 L3 退役、**#11 存量 `user_id` 归属**、**#12 `policyLabel` 表达力**）、Stage 7 前（其余） | **#1 L3 与 knowledge 的边界（最大架构分叉）** |
-| Agent | 8 | **Agent Stage 0 前**（#1 / #2 / #5 / #6）、Stage 6 前（#8） | #2 模型接入 LangChain、#6 工具幂等落点 |
+| Gateway | 9（+ #2b） | ✅ 已全部定稿 | 出站归 ①；`modules/channel` 保持独立模块；#2b `session_inbox` 表归 Session；#3 改造成 strong 部分唯一索引；#4 无感重放；#5 weak 不抑制 + 标 `unprotected`；#6 不迁对象存储；#7 `/v1/sessions*` 只留兼容别名；#8 先上新后清旧；#9 限流硬编码 + 环境变量 |
+| Router | 10 | ✅ 已全部定稿 | **#1 S1 严格排队（FIFO）**；#2 启用新表；#3 `admin_agents.profile`；#4 深度任务归 Agent 层；#5 会话行原子自增；#6 审批不占 FIFO 位；#7 N=5 / T=60 秒；#8 排队开关默认 off；#9 轮次表 CAS；#10 Router 只派生 key |
+| Session | 7 | ✅ 已全部定稿 | #1 DELETE = 关闭；#2 复活为新会话；#3 废弃 `wait_status`；#4 审批恢复失败对用户可见；#5 启用新表（= 前置 A）；#6 审批挂起落 `session_turns.pending_approval`；#7 空闲 30 天 |
+| Context | 7 | ✅ 已全部定稿 | #1 prompts 放 Builder；#2 统一按语种估算；#3 快照先不做；#4 阈值 0.70；#5 抛 `CONTEXT_TOO_LARGE`；#6 manifest 每次调用一条；#7 补 `degraded` 字段 |
+| Memory | 12 | ✅ 已全部定稿 | #1 **L3 退役**；#2 向量过滤下沉 pgvector；#3 规则起步；#4 每轮写一次；#5 L1 退役；#6 走 `embedding_runtime`；#7 召回更新统计；#8 实现 `data_subject` scope；#9 沿用 `admin_memory_*`；#10 乐观并发；#11 **存量不回填**；#12 放开唯一约束 |
+| Agent | 8 | ✅ 已全部定稿 | #1 自建 6 节点 StateGraph；#2 `QZDAPChatModel` 适配器；#3 复用 `agent_versions`；#4 **模型来源（早已拍板）**；#5 `unprotected` 剔除副作用工具；#6 **`tool_executions` 唯一权威**；#7 成本闸门两级；#8 Deep Agents 先验证再接 |
 
 ### 2.2 前置 B：修一个真实的打包缺陷（**5 分钟的事，但不做会埋雷**）
 
@@ -728,7 +729,7 @@
 | | A-18 沙箱接入 | 作为一类工具走同一 `ToolRuntime` | — | 0 | A-14 |
 | | A-19 成本结算 | `usage` + `price_of` → `session_turns.cost_usd`（**0035 建的列**；⚠️ 0043 加的是 `agent_turns.cost_usd`，旧表会在 Session Stage 6 被 DROP） | — | 0 | A-14 · **Session 0046 已落** |
 | | A-20 进程内幂等降级为快速路径 | `InMemoryToolExecutor` 的幂等缓存不再是权威 | — | — | A-14 |
-| | **A-20b `modules/tool` 的 `InvokeToolUseCase` 补幂等 / 重试 / 熔断** | ⚠️ **归属待定**（README §8 依赖 3）—— 幂等的唯一权威是 `tool_executions`，而执行器在 `modules/tool`。**倾向：改 `modules/tool`**（它已经在写 `tool_calls`）。**在归属拍板前，A-14 不得开工** | — | 0 | A-14 · **归属决策未拍板** |
+| | **A-20b `modules/tool` 的 `InvokeToolUseCase` 补幂等 / 重试 / 熔断** | ✅ **归属已拍板（2026-10-29）：改 `modules/tool`** —— 幂等的唯一权威是 `tool_executions`（Agent 决策 #6），而执行器在 `modules/tool`；它已经在写 `tool_calls`，在其内部补幂等 / 重试 / 熔断可避免「第二个执行器」。**A-14 不再被此项阻塞** | — | 0 | A-14 |
 | Stage 4 · 专家 Agent 选择 + 配置取值 | A-21 `AgentRouter` | 选专家 Agent；无专家 → 落回会话绑定 | — | 0 | **Session 0046 已落** |
 | | A-22 **模型解析接线** | 把**选中专家**的 `model_id` / `route_id` 交给 Execution 的模型解析（Agent 层方案 §5.2.1）→ 构造 `QZDAPChatModel`（**查表，不是决策** —— 决策 #4） | — | 0 | A-21 |
 | | A-23 **工具绑定接线** | 把**选中专家**的绑定集交给 Execution 的工具绑定（Agent 层方案 §5.3.1）→ 统一成 `BaseTool` + 治理过滤 | — | 0 | A-21 |
@@ -1179,7 +1180,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] A-09 **删 `chat_model.py` 的 `stream_chat`**
 - [ ] A-10 **工具绑定 + 治理过滤** · A-11 修 `list_tools` 空 schema · A-12 `governance` 接线真实 actor
 - [ ] A-13 **在新 AgentLoop 侧注入真实 actor**（⚠️ 不改 `nodes.py` —— 那是死代码，Stage 7 整体删）
-- [ ] A-14 `tool_executions` 开始写 · A-15 `request_hash` 冲突拒绝 · A-16 重试/熔断 · A-17 **修 async** · A-18 沙箱接入 · A-19 成本结算 · A-20 进程内幂等降级为快速路径 · **A-20b `modules/tool` 的 `InvokeToolUseCase` 补幂等 / 重试 / 熔断**（⚠️ 归属待定，未拍板则 A-14 不得开工）
+- [ ] A-14 `tool_executions` 开始写 · A-15 `request_hash` 冲突拒绝 · A-16 重试/熔断 · A-17 **修 async** · A-18 沙箱接入 · A-19 成本结算 · A-20 进程内幂等降级为快速路径 · **A-20b `modules/tool` 的 `InvokeToolUseCase` 补幂等 / 重试 / 熔断**（✅ 归属已定：**改 `modules/tool`**）
 - [ ] A-21 `AgentRouter`（选专家） · A-22 **模型解析接线** · A-23 **工具绑定接线** · A-24 路由留痕 `route_decision`
 - [ ] A-25 `AgentLoopRunner` + `Evaluator` · **A-26 把 `_run_turn_inner` 改接新 Builder / Writer**（旧循环的最后一次改造）· A-27 端到端回归 · A-28 停用打点 `_run_turn_inner` → **X17**
 - [ ] A-28 加 `deepagents` 依赖 · A-29 `deep/factory.py` · A-30 `deep/planner.py` · A-31 预算 · A-32 删 deep 空壳（**可选，决策 #8**）

@@ -2,7 +2,7 @@
 
 > 版本：1.2（D1 后重新梳理骨架：配置轴与执行轴分离）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**已评审**（17 条审查问题已修正；**v1.2 按 D1 重新梳理了骨架**，见 §0.2；附录 A 的 7 条决策待确认 —— **决策 #4 已由用户拍板**）
+> 状态：**已定稿**（17 条审查问题已修正；**v1.2 按 D1 重新梳理了骨架**，见 §0.2；附录 A 的 8 条决策于 2026-10-29 逐条确认 —— 其中 **决策 #4 早已由用户拍板**）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) —— 本方案实现其中 **Agent Loop / Agent Router / Execution** 三条泳道
 > 收敛机制：[`cleanup-ledger.md`](cleanup-ledger.md) —— 本方案对应条目 **X5**、**X1 的 Agent 部分**
@@ -468,7 +468,7 @@ ToolMessage(content=..., tool_call_id=..., name=..., status="success" | "error")
 | **exit** | 无 tool_calls，或模型给出最终答案 | 收尾，交 Session / Context / Memory |
 | **abort** | 步数 / 成本 / token 超限 | 抛明确错误（`DEEP_AGENT_BUDGET_EXCEEDED` —— ⚠️ 它目前只是**新 runtime 里的字符串常量**（`graph/deep_agent.py:25`），**不在 `ErrorCode` 枚举里** → 前端不认识这个码，本层要**新增错误码**并同步 `libs/schema`） |
 
-> **决策 #7**：成本闸门放在**轮次级**（整个 turn 一个预算）还是**深度任务级**？**建议两级都有**：轮次级是硬闸门，深度任务级是它的一个子集（deep path 允许更大但仍有上限）。
+> **决策 #7（已定稿）**：成本闸门 → **两级都有**：轮次级是硬闸门，深度任务级是它的一个子集（deep path 允许更大但仍有上限）。
 
 ### 3.4 循环终止条件（**必须全部兜住，且集中在一点**）
 
@@ -559,7 +559,7 @@ ToolMessage(content=..., tool_call_id=..., name=..., status="success" | "error")
 | 5 | **子代理不能绕过治理** —— 子代理的工具调用同样经过 governance → execute |
 | 6 | 规划器的产出（todos）要作为事件投递给前端（前端已有 `plan_proposed` chunk） |
 
-> **决策 #8**：Deep Agents 的接入方式 —— **加依赖并在深度路径接线**，还是**先只保留类型定义**？见附录 A。
+> **决策 #8（已定稿）**：Deep Agents 的接入方式 → **先加依赖并在隔离分支验证 API 与版本，验证通过后再在 Stage 6 接线**；**在此之前只保留类型定义**。见附录 A。
 
 ---
 
@@ -603,7 +603,7 @@ ToolMessage(content=..., tool_call_id=..., name=..., status="success" | "error")
 | 4 | **专家切换不改变会话绑定** —— 会话仍属于原 agent（否则历史上下文的解释方式会突变） |
 | 5 | 专家 Agent 的工具集 = **专家自己配置里的绑定集**（§5.3.1）—— 专家本来就是一份 agent 配置，不存在「会话绑定 agent 的集合 ∩ 某个子集」 |
 
-> **决策 #3**：专家 Agent 的建模方式 —— **复用 `agent_versions` + role 标签**（不新建表），还是**新建专家表**？**建议复用**：专家与普通 agent 的差别只是「角色 + 工具子集 + 指令模板」，新建表会带来第三套 agent 语义。
+> **决策 #3（已定稿）**：专家 Agent 的建模 → **复用 `agent_versions` + role 标签**（不新建表）—— 专家与普通 agent 的差别只是「角色 + 工具子集 + 指令模板」，新建表会带来第三套 agent 语义。
 
 ### 4.2 专家配置即绑定来源
 
@@ -1281,14 +1281,16 @@ def test_agent_layers_have_no_framework_imports():
 
 ---
 
-## 附录 A：待确认的决策
+## 附录 A：已定稿的决策（2026-10-29 逐条确认）
 
-| # | 决策 | 本方案建议 | 备选 | 影响 |
+> 以下 **8 条**决策（#1–#8）已逐条确认并定稿（**#4 早前已拍板**，其余同日确认）。**改动其中任何一条，都必须同步修改正文对应章节，并在 §9 补记受影响的阶段。**
+
+| # | 决策 | 定稿结果 | 备选 | 影响 |
 |---|---|---|---|---|
 | 1 | Agent Loop 的骨架 | **自建 6 节点 StateGraph**，复用 `langgraph.prebuilt` 的 `ToolNode` / `tools_condition` / `tool_validator`，**不用 `create_react_agent`** | 直接用 `create_react_agent`（省事，但审批中断、成本归属、`unprotected` 剔除都在它抽象之外，最终要大量 hook 改造） | 依赖面、审批中断的实现难度、平台语义的可控性 |
 | 2 | 平台模型如何接入 LangChain | **写 `QZDAPChatModel(BaseChatModel)` 薄适配器**（只做类型翻译，不碰供应商 / 路由 / 成本） | 保持 `LLMPort` 独立、不接 LangChain（则 `ToolNode`、`create_react_agent`、Deep Agents 全部用不了） | LangChain 生态能否复用；是否出现「第二个 LLM 客户端」 |
 | 3 | 专家 Agent 的建模 | **复用 `agent_versions` + role 标签**，不新建表 | 新建专家表 | 是否会出现第三套 agent 语义；路由查询成本 |
-| **4** | **模型来源** | ✅ **已定（用户拍板）**：模型由**管理员在 agent 配置里绑定**，运行时**查表**，**不做 Model Router**；`balanced` 分流、`route_strategy` 新取值、`qzdap_model_routing_total` 一并取消 | （已否）运行时按 `task_kind` 挑大 / 小模型 | 本层的「路由」只剩**专家 Agent 选择**；模型与工具都是**配置读取** |
+| **4** | **模型来源** | ✅ **已定稿（用户拍板）**：模型由**管理员在 agent 配置里绑定**，运行时**查表**，**不做 Model Router**；`balanced` 分流、`route_strategy` 新取值、`qzdap_model_routing_total` 一并取消 | （已否）运行时按 `task_kind` 挑大 / 小模型 | 本层的「路由」只剩**专家 Agent 选择**；模型与工具都是**配置读取** |
 | 5 | 工具绑定与治理过滤的口径 | 绑定集 ∩ 风险 ∩ 作用域，**`unprotected` 直接剔除副作用工具** | 只在执行时拦截（事后） | Gateway 决策 #5 的兑现方式 |
 | 6 | 工具幂等的落点 | **`tool_executions` 为唯一权威**（列已齐全，**不需要新迁移**）；`tool_calls` 保留为工具域明细，用 `tool_call_id` 关联 | 只用 `tool_calls`（需给它加幂等列 → 跨模块迁移）；或合并成一张表 | 幂等可靠性、两表对账成本 |
 | 7 | 成本闸门的位置 | **两级**：轮次级硬闸门 + 深度任务级子集预算 | 只有轮次级 | 深度任务可用性、成本上限 |
@@ -1338,6 +1340,8 @@ def test_agent_layers_have_no_framework_imports():
 ## 附录 C：2026-10-29 审查修正记录
 
 > 本方案 v1.0 → **v1.1**（审查修正）+ **v1.2**（按 D1 重新梳理骨架）的全部修正。**每条都对着 `backend/` 的代码与迁移核实过**。
+>
+> **决策定稿（2026-10-29）**：附录 A 的 **8 条**决策已全部拍板（**#4 早前已定**，其余同日定，取值为本方案的建议值）。
 
 | # | 级别 | 问题 | 修正 | 落点 |
 |---|---|---|---|---|

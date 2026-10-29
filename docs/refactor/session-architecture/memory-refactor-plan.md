@@ -2,7 +2,7 @@
 
 > 版本：1.4（审查修正后；按**使用面**切分为「会话记忆面 / 记忆管理面」两个平面，各自分层 —— **+ 本轮重排**：代码层改名 A1/A2/A3·S1/S2、§2.6 加「正文节」索引列）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**已评审**（19 条审查问题已修正 + **本轮重排**，逐条见附录 C；附录 A 的 12 条决策待确认）
+> 状态：**已定稿**（19 条审查问题已修正 + **本轮重排**，逐条见附录 C；附录 A 的 12 条决策于 2026-10-29 逐条确认）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) —— 本方案实现其中 **Memory 泳道**
 > 收敛机制：[`cleanup-ledger.md`](cleanup-ledger.md) —— 本方案对应条目 **X11–X16** + **X19**（死表 `memory_l2_embeddings`，Stage 0 迁移内 DROP）
@@ -275,7 +275,7 @@ system += f"\n\n相关知识：\n{hits}"    # ← 含 knowledge chunks
 >
 > 而且 **`memory_l2_embeddings` 只存 L2 的向量**（表名和 `_embed_item(fact.id, "l2", ...)` 都写明）→ **L3 没有向量，只能关键词检索**；而 knowledge 的 chunks **有向量**。**能力更强的那个反而不在运行时链路里。**
 
-> **决策 #1**：L3 与 knowledge 模块的职责边界如何定？见 §5.3。
+> **决策 #1（已定稿）**：L3 与 knowledge 模块的职责边界 → **L3 退役**（知识统一归 `modules/knowledge`），L2→团队知识改走 knowledge 的 KB。见 §5.3。
 
 ### 1.10 ✅ 可直接复用的资产
 
@@ -543,7 +543,7 @@ Agent Loop
 - **过滤条件带 `user_id`**：`filter={"workspace_id": ..., "user_id": ...}`；
 - **候选集**：`top_k × 4`（与 Context 层的降级序一致），而不是全量。
 
-> **决策 #2**：向量检索的过滤维度是否下沉到 pgvector？（**建议是**）向量库里若没有 `user_id` payload，就需要**回填历史向量**并同步改写入端。
+> **决策 #2（已定稿）**：向量检索的过滤维度 → **下沉到 pgvector**。向量库里若没有 `user_id` payload，就需要**回填历史向量**并同步改写入端。
 >
 > **⚠️ 落地对象是 `admin_memory_vec`**（迁移 0023，生产在用；`embedding vector(dim)` + `payload JSONB` + **HNSW 索引**；composition 里 `PgVectorStore(table="admin_memory_vec")`，`lifespan.py:647`），**不是** `memory_l2_embeddings`（0036，**死表**，Stage 0 直接 DROP —— 台账 **X19**）。
 > 过滤机制是 `payload ->> 'k' = 'v'`（`libs/vector/src/qzdap_vector/pg_vector.py:114-122`）→ **加 `user_id` 进 payload 即可**（filter key 必须是安全标识符）。
@@ -606,7 +606,7 @@ Agent Loop
 | **(b) LLM 抽取** | 用小模型从对话中抽事实 | 每次多一次 LLM 调用；可能抽错 |
 | **(c) 混合** | 规则先过，剩余交给 LLM | 最贵 |
 
-> **决策 #3**：抽取方式选哪个？（**建议 (a) 起步 + 预留 (b) 接口**）
+> **决策 #3（已定稿）**：抽取方式 → **(a) 规则起步 + 预留 (b) LLM 接口**。
 
 ### 4.3 敏感信息闸门
 
@@ -639,7 +639,7 @@ Agent Loop
 
 基线图：**Agent Loop 在 Observe/Evaluate 之后写入**。更精确的时机是**一轮结束（final answer 产生后）**，而不是每次 LLM 调用后。
 
-> **决策 #4**：写入触发点 —— 每轮结束一次（推荐） / 每次 LLM 调用后 / 达到阈值批量写。
+> **决策 #4（已定稿）**：写入触发点 → **每轮结束一次**。
 
 ---
 
@@ -653,7 +653,7 @@ Agent Loop
 | 滚动摘要 | `agent_sessions.rolling_summary`（Context 层） | 会话存续 |
 | 未提炼的对话缓冲 | **新增** `session_memory_buffer`（会话级） | 会话结束 → 提升为 L2 或丢弃 |
 
-> **决策 #5**：L1（`admin_memory_l1`）如何处置？
+> **决策 #5（已定稿）**：L1（`admin_memory_l1`）→ **退役**，STM 用带 `session_id` 的新表。
 > - **(a) 退役**（推荐）：L1 现有的「buffer + TTL + 无 session 关联 + 只写不读」语义与 STM 不符；STM 的消息与摘要已由 Session / Context 持有，剩下的「未提炼缓冲」用**带 `session_id` 的新表**表达。
 > - **(b) 改造**：给 `admin_memory_l1` 加 `session_id` / `user_id`，保留缓冲语义。
 > - **(c) 保留现状**：L1 继续做无主缓冲（不推荐 —— 它只增不减且与 STM 无关）。
@@ -691,7 +691,7 @@ Agent Loop
 | 幂等 | 无 | `content_hash` 作为**去重键**；向量表的 upsert 键仍是 `id`（`PgVectorStore.upsert` 是 `ON CONFLICT (id)`），不是 `content_hash` |
 | 服务 | `modules/memory/adapter/embedding/` 三适配器 + **独立 `embedding_runtime` 服务** | 统一走独立服务（sbert / openai / noop），memory 模块作为客户端 |
 
-> **决策 #6**：embedding 的调用形态 —— 统一走独立 `embedding_runtime` 服务（**建议**，可独立扩缩容），还是进程内直连适配器？
+> **决策 #6（已定稿）**：embedding 的调用形态 → **统一走独立 `embedding_runtime` 服务**（可独立扩缩容）。
 
 ---
 
@@ -730,7 +730,7 @@ Agent Loop
 >
 > **⚠️ `policyLabel` 的表达能力受表约束限制**：`admin_memory_policies` 有 **UNIQUE `(tenant_id, workspace_id, layer)`**（`models.py:97-100`），而 `RetentionPolicy.defaults()` 恰好每层播种一条（l1 / l2 / l3）→ **每个工作区每层只有一条策略**。
 > 于是 `policyLabel` 实际只能指向「本层那唯一一条」，**做不了「多策略、多个 agent 分别绑定不同保留规则」**。
-> **决策 #12**：把唯一约束放开为 `(tenant_id, workspace_id, layer, label)`（**本方案建议**，并入迁移 0048），还是承认「每层一条」的限制？
+> **决策 #12（已定稿）**：唯一约束放开为 `(tenant_id, workspace_id, layer, label)`（并入迁移 0048）。
 
 ### 7.2 C7 使用统计接线
 
@@ -741,7 +741,7 @@ Agent Loop
 | `hits` / `hits_trend` | L3 条目被召回时 |
 | `hit_rate` | 由上述统计计算 |
 
-> **决策 #7**：召回命中时更新统计 —— **更新**（推荐，淘汰与置信度调整都依赖它）/ 不更新（则 C4 与置信度反馈失去依据）。
+> **决策 #7（已定稿）**：召回命中时**更新**使用统计 —— 淘汰与置信度调整都依赖它。
 
 ### 7.3 C8 管理目录
 
@@ -760,7 +760,7 @@ Agent Loop
 | 向量库 | 删除必须同步删向量（否则向量成为残留副本） |
 | 用户数据导出 | 导出该用户的全部 L2 + 相关向量元数据 |
 
-> **决策 #8**：治理接入方式 —— 记忆模块**实现 `data_subject` 的一个 scope**（**建议**，与治理域的 provider 模式一致），还是治理域直接操作记忆表（耦合）。
+> **决策 #8（已定稿）**：治理接入方式 → 记忆模块**实现 `data_subject` 的一个 scope**（与治理域的 provider 模式一致）。
 
 ---
 
@@ -789,8 +789,8 @@ Agent Loop
 | 表 / 列 | 处置 | 说明 |
 |---|---|---|
 | `admin_memory_l2` | **保留 + 补列**（**决策 #9**：沿用 `admin_memory_*` 表族补列，不新建 `memory_*` 运行时表） | 加 `user_id`、`content_hash` + `content_hash_version`（唯一）、`source_turn_id`、`last_used_at`、`used_count`、`confidence_source`、`version`（乐观并发，决策 #10）。⚠️ **`user_id` 必须由写入侧先持久化 `owner_id`**（§1.4.1 / §3.2），存量自动记忆**不回填**（决策 #11） |
-| `admin_memory_l3` | **待定**（决策 #1） | 选 (a) 则迁往 knowledge 并退役；选 (b) 则补 chunk 结构与向量 |
-| `admin_memory_l1` | **待定**（决策 #5） | 建议退役 |
+| `admin_memory_l3` | **迁往 knowledge 后退役**（决策 #1 已定稿） | 知识统一归 `modules/knowledge`；L2→团队知识改走 knowledge 的 KB |
+| `admin_memory_l1` | **退役**（决策 #5 已定稿） | STM 改用带 `session_id` 的新表 |
 | `admin_memory_promotions` | **保留 + 补字段** | `from_layer` / `to_layer` / `reason`；⚠️ 旧 `layer` 是 `"l1→l2"` 单串，**必须回填拆分**（§9.2 第 3 步） |
 | `admin_memory_policies` | **保留 + 补执行者 + 放开约束** | 淘汰器读它；`policyLabel` 绑定要真的生效（§7.1）→ 唯一约束放开到 `(tenant_id, workspace_id, layer, label)`（决策 #12） |
 | **`admin_memory_vec`**（真正的向量表） | **保留 + 补 payload** | 决策 #2 的落地对象：`payload` 加 `user_id`；随 L2 删除同步删向量（§7.4） |
@@ -899,7 +899,7 @@ DROP TABLE IF EXISTS memory_l2_embeddings;
 > **`user_id` 回填是本方案最脏的一步，而且只是「一半」**：L2 存的是显示名，回填靠 `display_name` 匹配，**重名用户会串号**。脚本必须**输出冲突清单**并把无法确定归属的行标记为「待人工处理」，**不猜**。
 >
 > **⚠️ 但自动沉淀的那批根本回填不了**：它们的 `user_name` 是占位符 `"用户"`（§1.4.1）→ 回填要么落空、要么串号。
-> **决策 #11**（本方案建议）：**写入侧持久化 `owner_id`，存量自动记忆不回填** —— `user_id` 留 NULL 并标「待人工处理」。
+> **决策 #11（已定稿）**：**写入侧持久化 `owner_id`，存量自动记忆不回填** —— `user_id` 留 NULL 并标「待人工处理」。
 > 靠「显示名回填」救存量是不可行的：写入侧从来没记过 user id（`write()` 把 `owner_id` 丢了），显示名既可能是占位符、也可能重名、也可能改名即失联。
 >
 > **表名提醒**：identity 模块的用户表叫 **`users`**（`UserORM.__tablename__ = "users"`），**没有** `identity_users`。
@@ -1020,8 +1020,8 @@ ALTER TABLE admin_memory_policies
 |---|---|
 | 旧写入逻辑 | `runner._remember` |
 | 新 runtime 的反转实现 | `runtimes/.../memory/layered.py`、`graph/nodes.py` 的 `remember` 节点 |
-| 无主缓冲 | `admin_memory_l1`（若决策 #5 选退役） |
-| 重叠的知识层 | `admin_memory_l3`（若决策 #1 选 a，迁往 knowledge 后退役） |
+| 无主缓冲 | `admin_memory_l1`（**决策 #5 已定：退役**，STM 改用带 `session_id` 的新表） |
+| 重叠的知识层 | `admin_memory_l3`（**决策 #1 已定：迁往 knowledge 后退役**） |
 | 未实现的配置语义 | `memory_policy.autoSummarize` / `retentionDays`；`scope` 的无效标签语义 |
 | 旧的单文件服务 | `modules/memory/application/services.py`（`recall`/`write`/`_embed_item` 拆入 L1–L4 后删除；**管理面的 6 个写方法** `flush_l1` / `flush_all_l1` / `update_l2` / `update_l3` / `promote_l2` / `create_l3` 一并迁到平面 B） |
 | **死表** | `memory_l2_embeddings`（迁移 0036，零代码引用）—— **迁移 0048 内直接 DROP**（台账 **X19**，Stage 0 落地） |
@@ -1378,9 +1378,11 @@ def test_memory_layer_has_no_framework_imports():
 > 审计写入走 Governance 模块，Memory 只投递事件。
 ---
 
-## 附录 A：待确认的决策
+## 附录 A：已定稿的决策（2026-10-29 逐条确认）
 
-| # | 决策 | 本方案建议 | 备选 | 影响 |
+> 以下 **12 条**决策（#1–#12）已逐条确认并定稿。**改动其中任何一条，都必须同步修改正文对应章节，并在 §11 补记受影响的阶段。**
+
+| # | 决策 | 定稿结果 | 备选 | 影响 |
 |---|---|---|---|---|
 | **1** | **L3 与 knowledge 模块的职责边界** | **L3 退役**（知识统一归 `modules/knowledge`）；L2→团队知识改走 knowledge 的 KB | knowledge 降级为管道，运行时统一走 L3 / 维持现状双份（**不采纳**） | **最大架构分叉**；影响双份注入、向量能力归属、L2→L3 提升路径 |
 | 2 | 向量过滤维度 | **下沉到 pgvector**（payload 带 `user_id`，历史向量回填） | 保持 workspace 级过滤（**不采纳**） | 安全 + 迁移成本 |
@@ -1423,6 +1425,8 @@ def test_memory_layer_has_no_framework_imports():
 ## 附录 C：2026-10-29 审查修正记录
 
 > 本方案 v1.2 → **v1.3** 的全部修正。**每条都对着 `backend/` 的代码与迁移核实过**。
+>
+> **决策定稿（2026-10-29）**：附录 A 的 **12 条**决策已由用户拍板，取值为本方案的建议值；其中 **#1（L3 退役）与 Context 的知识召回路径同日落定**。
 
 | # | 级别 | 问题 | 修正 | 落点 |
 |---|---|---|---|---|

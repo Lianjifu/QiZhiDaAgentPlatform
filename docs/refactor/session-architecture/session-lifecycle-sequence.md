@@ -66,13 +66,13 @@ sequenceDiagram
 |---|---|---|---|---|
 | **用户/渠道** | 消息来源与结果接收 | → 原始消息；← 渠道回包 | — | 现状 |
 | **Gateway** | 协议边界：鉴权、归一化、幂等去重、协议编解码、渠道回包 | 收原始消息 → 出标准消息 → 回包 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | **已定稿** |
-| **Router** | 把标准消息路由到目标会话；决定目标 agent / 模型策略 / 深度任务 | 标准消息 → 路由到会话 | [`router-refactor-plan.md`](router-refactor-plan.md) | 待评审 |
-| **Session** | 会话身份与生命周期、轮次状态机、并发控制、消息与事件落库 | 路由到会话 → 构建上下文 → 更新会话状态 | [`session-refactor-plan.md`](session-refactor-plan.md) | 待评审 |
-| **Context** | 组装模型输入：提示词、租户上下文、历史与摘要、记忆与知识片段；token 预算与压缩 | ← Session；→ Memory 检索；→ Knowledge 检索；→ Agent Loop 完整上下文 | [`context-refactor-plan.md`](context-refactor-plan.md) | 待评审 |
-| **Memory** | 记忆的召回与写入（L1 会话 / L2 事实；L3 知识待退役，知识归 `modules/knowledge`） | ← Context 检索；← Agent Loop 写入 | [`memory-refactor-plan.md`](memory-refactor-plan.md) | 待评审 |
-| **Agent Loop** | 推理循环：Reason/Plan → Observe/Evaluate；决定下一步 | ← Context 完整上下文；→ Agent Router；← Execution 结果；→ Memory 写入；→ Session 更新状态 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | 待评审 |
-| **Agent Router** | 在一步推理之后**选专家 Agent**（客服 / 销售 / 订单…）。⚠️ **不选模型、不选工具** —— 那两样由管理员在 agent 配置里绑定，运行时**取值**（Agent 决策 #4） | ← Agent Loop；→ Execution 调度执行 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | **已评审（v1.2）** |
-| **Execution** | 实际调用 LLM / SLM / 工具 / 沙箱 | ← Agent Router；→ Agent Loop 执行结果 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | 待评审 |
+| **Router** | 把标准消息路由到目标会话；决定目标 agent | 标准消息 → 路由到会话 | [`router-refactor-plan.md`](router-refactor-plan.md) | **已定稿** |
+| **Session** | 会话身份与生命周期、轮次状态机、并发控制、消息与事件落库 | 路由到会话 → 构建上下文 → 更新会话状态 | [`session-refactor-plan.md`](session-refactor-plan.md) | **已定稿** |
+| **Context** | 组装模型输入：提示词、租户上下文、历史与摘要、记忆与知识片段；token 预算与压缩 | ← Session；→ Memory 检索；→ Knowledge 检索；→ Agent Loop 完整上下文 | [`context-refactor-plan.md`](context-refactor-plan.md) | **已定稿** |
+| **Memory** | 记忆的召回与写入（STM 会话 / L2 事实；**L3 已定退役**，知识归 `modules/knowledge`） | ← Context 检索；← Agent Loop 写入 | [`memory-refactor-plan.md`](memory-refactor-plan.md) | **已定稿** |
+| **Agent Loop** | 推理循环：Reason/Plan → Observe/Evaluate；决定下一步 | ← Context 完整上下文；→ Agent Router；← Execution 结果；→ Memory 写入；→ Session 更新状态 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | **已定稿** |
+| **Agent Router** | 在一步推理之后**选专家 Agent**（客服 / 销售 / 订单…）。⚠️ **不选模型、不选工具** —— 那两样由管理员在 agent 配置里绑定，运行时**取值**（Agent 决策 #4） | ← Agent Loop；→ Execution 调度执行 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | **已定稿** |
+| **Execution** | 实际调用 LLM / SLM / 工具 / 沙箱 | ← Agent Router；→ Agent Loop 执行结果 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | **已定稿** |
 | **Knowledge**（非本方案集的一层） | 工作区知识的存储与检索 | ← Context 检索 | `modules/knowledge`（既有模块） | 现状 |
 
 ### 2.1 「选 agent」有两处，边界必须分清
@@ -164,12 +164,12 @@ Router（标准消息）
 | 全局基线（本文） | `session-lifecycle-sequence.md` | **已定稿** | — |
 | 旧实现清理台账 | `cleanup-ledger.md` | **生效中**（全局收敛机制） | 全部 |
 | Gateway | `gateway-refactor-plan.md` | **已定稿**（附录 A 9 条决策已确认 + 1 条补充条目 #2b） | G1–G9 |
-| Router | `router-refactor-plan.md` | 待评审（附录 A **10** 条决策待确认） | R1–R4 |
-| Session | `session-refactor-plan.md` | 待评审（附录 A **7** 条决策待确认） | X2、X3、X4、X6、X7 |
-| Context | `context-refactor-plan.md` | 待评审（附录 A **6** 条决策待确认） | X8、X9、X10 |
-| Memory | `memory-refactor-plan.md` | 待评审（附录 A **10** 条决策待确认） | X11、X12、X13、X14、X15、X16 |
+| Router | `router-refactor-plan.md` | **已定稿**（附录 A 10 条决策于 2026-10-29 确认） | R1–R4 |
+| Session | `session-refactor-plan.md` | **已定稿**（附录 A 7 条决策于 2026-10-29 确认） | X2、X3、X4、X6、X7 |
+| Context | `context-refactor-plan.md` | **已定稿**（附录 A 7 条决策于 2026-10-29 确认） | X8、X9、X10 |
+| Memory | `memory-refactor-plan.md` | **已定稿**（附录 A 12 条决策于 2026-10-29 确认） | X11、X12、X13、X14、X15、X16 |
 | Agent Loop / Agent Router / Execution | [`agent-refactor-plan.md`](agent-refactor-plan.md) | **已评审（v1.2）**（附录 A **8** 条决策，其中 **#4 已定**） | X5、X1（Agent 部分） |
-| **实施方案** | [`implementation-plan.md`](implementation-plan.md) | 待评审（**按层组织**：六层各一节 + 跨层编排） | 全部（编排层） |
+| **实施方案** | [`implementation-plan.md`](implementation-plan.md) | **已定稿**（**按层组织**：六层各一节 + 跨层编排） | 全部（编排层） |
 
 ## 6. 跨层不变量（违反即为 bug，不是风格问题）
 

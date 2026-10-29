@@ -2,7 +2,7 @@
 
 > 版本：1.2（审查修正后 + 按审查结论重排骨架）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**已评审**（17 条审查问题已修正 + **本轮重排**，逐条见附录 C；附录 A 的 7 条决策待确认）
+> 状态：**已定稿**（17 条审查问题已修正 + **本轮重排**，逐条见附录 C；附录 A 的 7 条决策于 2026-10-29 逐条确认）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) —— 本方案实现其中 **Context 泳道**
 > 收敛机制：[`cleanup-ledger.md`](cleanup-ledger.md) —— 本方案对应条目 **X8、X9、X10**
@@ -217,7 +217,7 @@ except Exception:  # noqa: BLE001
                   ▼
   ┌────────────────────────────────────────────────┐
   │  ContextPersistence                              │
-  │  manifest 落库 · rolling_summary 落库 · 快照（采样） │
+  │  manifest 落库 · rolling_summary 落库 · 快照（暂不做，见决策 #3） │
   └───────────────┬────────────────────────────────┘
                   │
                   ▼
@@ -273,7 +273,7 @@ system = "\n\n".join(p for p in system_parts if p) or "你是企业助手…"
 
 新 runtime 的 `_format_agent` 只输出 `agent_id=… version=…` —— **agent 身份整个丢了**。修复：Builder 必须接收并使用 agent 的完整 prompts。
 
-> **决策 #1**：agent prompts 的拼装**放在 Builder 内**（推荐，与旧路径一致、agent 的语言风格可控），还是**下沉到 agent catalog 的一个「已渲染 system prompt」字段**（读时零拼装、但每次改 prompt 都要重渲）？
+> **决策 #1（已定稿）**：agent prompts 的拼装**放在 Builder 内**（与旧路径一致、agent 的语言风格可控）—— 不下沉到 agent catalog 的「已渲染 system prompt」字段。
 
 ### 3.4 四套 prompt 模板合并
 
@@ -315,7 +315,7 @@ def render_system_prompt(*, agent_prompts: dict, tenant_context: dict,
 
 **所以真正的问题不是「选哪个算法」**，而是：**两条路径的预算口径不一致** —— 同一个会话，走新路径不超预算、走旧路径可能超，反之亦然；压缩的触发点也会漂移。
 
-> **决策 #2**（改写）：token 估算口径怎么统一？
+> **决策 #2（已定稿）**：token 估算口径 → **统一用 `budget.py:42` 的按语种估算**，并让旧路径也用它。
 > - **(a) 统一用 `budget.py` 的按语种估算**（推荐）—— 新旧两条路径共用一个函数，中文按 1 字 1 token 估，**宁可高估**（预算控制的意义就是「不撞窗口」）
 > - **(b) 统一用 `len//4`** —— 零改动，但中文继续低估
 > - **(c) 引入 `tiktoken`** —— 最准，但要加依赖并接受「不同供应商口径不同」
@@ -334,8 +334,7 @@ tokens_estimated > budget(= context_window × 0.70)
 
 沿用旧路径 `compact.py` 的 `WINDOW_RATIO = 0.70`（留 30% 给模型输出与工具结果）。
 
-> **决策 #4**：阈值固定为 `context_window × 0.70`（沿用旧路径 `WINDOW_RATIO`），还是按模型实际窗口表查？
-> **建议**：固定比例，不引入模型窗口表 —— 窗口表本身是易过期的配置源，而压缩的目标是「留足输出与工具结果余量」，比例法足够。
+> **决策 #4（已定稿）**：阈值固定为 `context_window × 0.70`（沿用旧路径 `WINDOW_RATIO`）。**不引入模型窗口表** —— 窗口表本身是易过期的配置源，而压缩的目标是「留足输出与工具结果余量」，比例法足够。
 
 ### 4.2 压缩策略（两级）
 
@@ -455,9 +454,9 @@ tokens_estimated > budget(= context_window × 0.70)
 
 ### 5.4 快照（可选，采样存）
 
-完整上下文快照体积大，建议**按比例采样**（如 1%）存 `session_context_snapshots`，用于人工复核与回归夹具。**不做全量**。
+> **本节当前不落地**：决策 #3 已定「先不做快照」。将来若开启，按**比例采样**（如 1%）存 `session_context_snapshots`，用于人工复核与回归夹具，**不做全量**。
 
-> **决策 #3**：快照是否要做？（推荐：**先不做**，manifest 已能回答「喂了什么」；快照只在需要回归夹具时再开）
+> **决策 #3（已定稿）**：上下文快照**先不做** —— manifest 已能回答「喂了什么」；快照只在需要回归夹具时再开。
 
 ---
 
@@ -865,9 +864,11 @@ def test_context_layer_has_no_framework_imports():
 > 审计写入走 Governance 模块。manifest 本身**不是审计事件**，二者不可混用（见 §5.3）。
 ---
 
-## 附录 A：待确认的决策
+## 附录 A：已定稿的决策（2026-10-29 逐条确认）
 
-| # | 决策 | 本方案建议 | 备选 | 影响 |
+> 以下 **7 条**决策（#1–#7）已逐条确认并定稿。**改动其中任何一条，都必须同步修改正文对应章节，并在 §9 补记受影响的阶段。**
+
+| # | 决策 | 定稿结果 | 备选 | 影响 |
 |---|---|---|---|---|
 | 1 | agent prompts 拼装位置 | **放在 Builder 内**（与旧路径一致、风格可控） | 下沉到 catalog 的「已渲染 system prompt」字段 | 每次改 prompt 的成本、风格一致性 |
 | 2 | token 估算口径 | **统一用 `budget.py:42` 的按语种估算**（中文 ≈ 1 字 1 token，其他 ≈ len/4），并让旧路径也用它 | 统一用 `len//4` / 引入 `tiktoken` | 预算一致性（初稿把 `budget.py:42` 误读成 `len//4`，实际上它**已经是**按语种估算 —— 本决策的真问题是**两条路径口径不一致**） |
@@ -897,6 +898,8 @@ def test_context_layer_has_no_framework_imports():
 ## 附录 C：2026-10-29 审查修正记录
 
 > 本方案 v1.0 → **v1.1** 的全部修正。**每条都对着 `backend/` 的代码核实过**。
+>
+> **决策定稿（2026-10-29）**：附录 A 的 **7 条**决策已由用户拍板，取值为本方案的建议值。
 
 | # | 级别 | 问题 | 修正 | 落点 |
 |---|---|---|---|---|

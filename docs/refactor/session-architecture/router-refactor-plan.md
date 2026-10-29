@@ -2,7 +2,7 @@
 
 > 版本：1.3（2026-10-29：**独立审查后的 15 项修正** —— `try_claim` 的顺序职责更正、架构测试规则白名单化、粘性规则的两步流程、`last_completed_seq` 的兜底路径、互斥原语口径统一、错误码收敛、扫描规则补全、迁移回滚口径 —— **+ 按 D1 重排骨架**：新增 §0.2 前提、§5.1 改两轴对照、删 `model_hint`、附录 C 记重排）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**待评审**（附录 A 的 10 条决策待确认；#1 并发语义、#2 表选择、#10 会话创建归属会直接决定 Session 层方案的形态）—— **v1.3 已按 Agent 决策 #4 重排骨架**（见附录 C 的 D1 行）
+> 状态：**已定稿**（附录 A 的 10 条决策于 2026-10-29 逐条确认；**v1.3 已按 Agent 决策 #4 重排骨架**，见附录 C 的 D1 行）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) —— 本方案实现其中 **Router 泳道**
 > 兄弟方案：[`gateway-refactor-plan.md`](gateway-refactor-plan.md)（已定稿）
@@ -286,7 +286,7 @@ session_key = sha256(
 - **需要唯一约束** `(tenant_id, channel_session_key)`（否则并发首条消息会建出两个会话）——**该索引由 Session 的迁移 0046 建**（会话创建归 Session，决策 #10）；本方案只负责**派生 key**；
 - 查不到 → **交给 Session 创建**（见下）。
 
-> **决策 #10（新增）：Router 不直接写会话表。**
+> **决策 #10（已定稿）：Router 不直接写会话表。**
 >
 > | 方案 | 做法 | 问题 |
 > |---|---|---|
@@ -305,7 +305,7 @@ session_key = sha256(
 
 #### (a) 序号分配（会话内单调、原子）
 
-> **决策 #5**：用**会话行原子自增**（`agent_sessions.next_ingress_seq` 列）。不用全局序列（跨会话无意义）、不用分布式锁（多一次往返且不解决并发正确性）。
+> **决策 #5（已定稿）**：用**会话行原子自增**（`agent_sessions.next_ingress_seq` 列）。不用全局序列（跨会话无意义）、不用分布式锁（多一次往返且不解决并发正确性）。
 
 ```sql
 UPDATE agent_sessions
@@ -376,7 +376,7 @@ AND 该会话当前没有正在执行的 turn
 
 ### 4.3 「有序」的准确边界
 
-> **决策 #6**：审批中断**不占用 FIFO 执行位**（等待审批不阻塞新消息）。占用会造成「等审批 → 后续消息全部堵死」的死锁。代价是「审批恢复的那一轮」与「新消息」之间不保证全局有序 —— 靠会话级互斥保证不并发即可。
+> **决策 #6（已定稿）**：审批中断**不占用 FIFO 执行位**（等待审批不阻塞新消息）。占用会造成「等审批 → 后续消息全部堵死」的死锁。代价是「审批恢复的那一轮」与「新消息」之间不保证全局有序 —— 靠会话级互斥保证不并发即可。
 
 必须说清楚，否则会实现出错误的语义：
 
@@ -423,8 +423,8 @@ AND 该会话当前没有正在执行的 turn
 1. **前端需要知道「在排队」**。当前 **17** 种 `TurnChunk` 里**没有 `queued` 类型** → 需要新增 `QueuedChunk`（含 `position` / `waited_ms`），否则前端只能转圈直到首 chunk 到达。
 2. **队列上限与超时**：单会话排队上限（N 条）与最长等待时间（T 秒），超限返回明确错误码，**不得静默丢弃**。
 
-   > **决策 #7**（新增）：N 与 T 的取值，以及错误码。
-   > - **建议**：N = 5 条 / T = 60 秒；错误码 `QUEUE_FULL`（超上限）与 `QUEUE_TIMEOUT`（超等待时间），HTTP 409 / 504。
+   > **决策 #7（已定稿）**：N 与 T 的取值，以及错误码。
+   > - **定稿**：N = 5 条 / T = 60 秒；错误码 `QUEUE_FULL`（超上限）与 `QUEUE_TIMEOUT`（超等待时间），HTTP 409 / 504。
    > - **Stage 0 落点**：`ErrorCode` 枚举增这两个码 + `_HTTP_STATUS` 映射（`libs/schema/src/qzdap_schema/dtos/errors.py`）。
    > - **验收**：排队超限时返回 `QUEUE_FULL` / `QUEUE_TIMEOUT`，**不静默丢弃**；超限的 turn 落 `cancelled`（可从 `session_turns` 查到）。
    > - **前端契约**：排队中的消息需要前端可见 → 见下方「排队语义的前端契约」。
@@ -507,7 +507,7 @@ v3.1 §5.5 的启用规则依赖「消息数 > 20」「工具数 > 5」等**完�
 
 新表多了幂等键、乐观并发、agent 版本冻结、成本——**这些正是 Router 与 Session 需要的字段**（旧表没有）。
 
-> **决策 #2**：启用新表 `session_turns` / `session_messages` / `session_events`，旧表 `agent_turns` / `agent_session_messages` 在切换时**迁数据后废弃**。理由：新表是 Gateway 方案 §8 已定的目标形态，两层用同一套表才不产生第二套真相。
+> **决策 #2（已定稿）**：启用新表 `session_turns` / `session_messages` / `session_events`，旧表 `agent_turns` / `agent_session_messages` 在切换时**迁数据后废弃**。理由：新表是 Gateway 方案 §8 已定的目标形态，两层用同一套表才不产生第二套真相。
 >
 > 影响：`agent_sessions` 是否也换成新表？Gateway 方案 §8 已定「`agent_sessions` 保留」。本方案沿用 `agent_sessions` 作为会话主表，只在其上加列。
 
@@ -598,7 +598,7 @@ ALTER TABLE agent_sessions
 - `admin_agents.profile`（JSONB，已存在）里放「默认 agent 标记」与「业务线→agent 优先级」；
 - 工作区级配置（`admin_ops` 的 collection 机制）。
 
-> **决策 #3**：放 `admin_agents.profile`——策略是 agent 的属性，与 §3.3 的「不新建策略表」一致。
+> **决策 #3（已定稿）**：放 `admin_agents.profile`——策略是 agent 的属性，与 §3.3 的「不新建策略表」一致。
 
 ---
 
@@ -836,7 +836,7 @@ def test_router_layer_has_no_framework_imports():
 |---|---|---|
 | **并发语义从「拒绝」改为「排队」** | 前端契约变化（需 `queued` 事件）；用户预期变化 | 决策 #1 明确取舍；新增 `QueuedChunk`；队列上限与超时显式化 |
 | **「唯一 turn 实现」未先落地** | Router 的有序性只对一条路径成立 | §0.5 前置依赖：Session 层方案先落地；否则 Stage 3 不得开启 |
-| **表选择未定** | Router 落 `session_turns` 还是 `agent_turns` | 决策 #2；两表并存即第二套真相 |
+| ~~表选择未定~~ | — | **已消解**：决策 #2 已定稿（启用新表 `session_turns`），与 Session 决策 #5 同值；两表并存即第二套真相 |
 | 用户标签无结构化数据源 | 「按用户标签路由」只能近似 | §1.5；`UserDirectoryPort` 契约先行；不做大范围 identity 改造 |
 | `channel_session_key` 唯一约束加不上 | 并发首条消息可能建两个会话 | 部分唯一索引（Session 0046）+ 冲突后重查 |
 | advisory lock 依赖 Postgres | 多副本部署需共享 DB | 现状已是共享 Postgres；不引入 Redis |
@@ -900,12 +900,14 @@ def test_router_layer_has_no_framework_imports():
 > 审计写入走 Governance 模块，Router 只投递事件。
 ---
 
-## 附录 A：待确认的决策
+## 附录 A：已定稿的决策（2026-10-29 逐条确认）
 
-| # | 决策 | 本方案建议 | 备选 | 影响 |
+> 以下 **10 条**决策（#1–#10）已逐条确认并定稿。**改动其中任何一条，都必须同步修改正文对应章节，并在 §8 补记受影响的阶段。**
+
+| # | 决策 | 定稿结果 | 备选 | 影响 |
 |---|---|---|---|---|
 | 1 | 并发消息语义 | **S1 严格排队**（FIFO） | S2 拒绝（现状）/ S3 合并 | 前端契约、用户体验、工作量 |
-| 2 | 表选择 | **启用新表** `session_turns` / `session_messages`，旧 `agent_turns` / `agent_session_messages` 迁数据后废弃 | 沿用旧表（缺幂等键/revision/版本冻结字段） | 与 Gateway 方案 §8 一致性 |
+| 2 | 表选择 | **启用新表** `session_turns` / `session_messages`，旧 `agent_turns` / `agent_session_messages` 迁数据后废弃 | 沿用旧表（缺幂等键/revision/版本冻结字段） | **与 Session 决策 #5 同值**（两者是同一决策的两面，已同日定稿）；与 Gateway 方案 §8 一致 |
 | 3 | 默认 agent / 业务线映射的配置落点 | **`admin_agents.profile`**（不新建策略表） | 工作区级配置 / 新建 `routing_rules` 表 | 配置模型 |
 | 4 | 深度任务判定与模型链解析 | **不在本层**，归 Agent 层 | 放 Strategy（但入站拿不到上下文） | 与基线图的一致性 |
 | 5 | `ingress_seq` 分配方式 | **会话行原子自增**（`next_ingress_seq` 列） | 全局序列 / 分布式锁 | 跨 worker 正确性 |
@@ -920,6 +922,8 @@ def test_router_layer_has_no_framework_imports():
 ## 附录 C：2026-10-29 审查修正记录
 
 > 本方案 v1.2 → **v1.3** 的全部修正。**每条都对着 `backend/` 的代码与迁移核实过**。
+>
+> **决策定稿（2026-10-29）**：附录 A 的 **10 条**决策已由用户拍板，取值为本方案的建议值；正文中所有开放问句同步改为定稿表述。
 
 | # | 级别 | 问题 | 修正 | 落点 |
 |---|---|---|---|---|
