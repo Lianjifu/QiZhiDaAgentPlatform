@@ -16,14 +16,14 @@ import os
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from logging import getLogger
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI
 from qzdap.modules.memory.domain.entities import EMBEDDING_DIM
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
     from qzdap.composition.container import Container
 
@@ -211,6 +211,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from qzdap.modules.agent_runtime.application.use_cases.delegate_subagent import (
         DelegateSubagentUseCase,
     )
+
     app.state.delegate_subagent_usecase = DelegateSubagentUseCase(
         agent_runtime_factory=app.state.agent_runtime_factory,
         session_factory=container.session_factory(),
@@ -219,6 +220,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from qzdap.modules.tool.adapter.adapters.builtin_extra_tools import (
         bind_delegate_subagent_usecase,
     )
+
     bind_delegate_subagent_usecase(app.state.delegate_subagent_usecase)
 
     from qzdap.modules.agent_runtime.adapter.graph import SessionGraphRunner
@@ -231,8 +233,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
 
     async def _evaluate_catalog_agent(*, agent, prompt):
-        result = await catalog_evaluation_runner(tenant_id=agent.tenant_id, workspace_id=agent.workspace_id,
-            owner_id=UUID(int=0), agent_id=str(agent.id), user_input=prompt)
+        result = await catalog_evaluation_runner(
+            tenant_id=agent.tenant_id,
+            workspace_id=agent.workspace_id,
+            owner_id=UUID(int=0),
+            agent_id=str(agent.id),
+            user_input=prompt,
+        )
         return result["final_message"]
 
     class _AgentCatalogFactory:
@@ -244,6 +251,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
 
     app.state.agent_catalog_factory = _AgentCatalogFactory()
+
+    # ── Session Manager（Session Stage 1）──────────────────────────────
+    # 会话实例的创建与查回**归 Session 层**（决策 #10：Router 不写会话表）。
+    # 消费方是 Router Stage 2 的 IM 路径 —— 本层只交付**契约 + 实现** ✓。
+    class _SessionManagerFactory:
+        def for_session(self, session):  # type: ignore[no-untyped-def]
+            from qzdap.modules.agent_runtime.adapter.persistence.session_store import (
+                PostgresSessionStore,
+            )
+            from qzdap_agent_runtime.session.manager import SessionManager
+
+            return SessionManager(store=PostgresSessionStore(session))
+
+    app.state.session_manager_factory = _SessionManagerFactory()
 
     # ── Router 策略（Router Stage 1）────────────────────────────────────
     # 建会话的 agent 由**规则链**选出 —— 旧的 `agentId` 直取已下线
@@ -358,38 +379,81 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 journal=container.session_journal(),
             )
 
-    async def catalog_evaluation_runner(*, tenant_id, workspace_id, owner_id, agent_id, user_input, agent_version=None):
+    async def catalog_evaluation_runner(
+        *, tenant_id, workspace_id, owner_id, agent_id, user_input, agent_version=None
+    ):
         from dataclasses import replace
 
         from qzdap_kernel.errors import AppError
+
         sf = container.session_factory()
         async with sf.session() as evaluation_session:
             catalog = _AgentCatalogFactory().for_session(evaluation_session)
             catalog.bind_scope(tenant_id=tenant_id, workspace_id=workspace_id)
             candidates = await catalog._agents.list_for_workspace(workspace_id)
-            agent = next((a for a in candidates if a.tenant_id == tenant_id and
-                          (str(a.id) == str(agent_id) or a.name == str(agent_id))), None)
+            agent = next(
+                (
+                    a
+                    for a in candidates
+                    if a.tenant_id == tenant_id
+                    and (str(a.id) == str(agent_id) or a.name == str(agent_id))
+                ),
+                None,
+            )
             if agent is None:
-                raise AppError("evaluation agent not found", code="EVAL_AGENT_NOT_FOUND", status=404)
+                raise AppError(
+                    "evaluation agent not found",
+                    code="EVAL_AGENT_NOT_FOUND",
+                    status=404,
+                )
             if agent_version:
-                version = next((v for v in agent.versions if v.get("version") == agent_version), None)
+                version = next(
+                    (v for v in agent.versions if v.get("version") == agent_version),
+                    None,
+                )
                 if not version or not isinstance(version.get("snapshot"), dict):
-                    raise AppError("evaluation version snapshot missing", code="EVAL_VERSION_MISSING", status=422)
-                agent = replace(agent.apply_patch(version["snapshot"]), version=agent_version)
+                    raise AppError(
+                        "evaluation version snapshot missing",
+                        code="EVAL_VERSION_MISSING",
+                        status=422,
+                    )
+                agent = replace(
+                    agent.apply_patch(version["snapshot"]), version=agent_version
+                )
             copilot = _CopilotFactory().for_session(evaluation_session)
             graph = copilot._graph
             turn_id = uuid4()
-            output = {"final_message": "", "turn_id": str(turn_id), "input_tokens": 0, "output_tokens": 0}
-            async for chunk in graph.run_turn(tenant_id=tenant_id, workspace_id=workspace_id,
-                owner_id=owner_id, turn_id=turn_id, user_input=user_input, history=[], agent=agent, model=agent.model):
+            output = {
+                "final_message": "",
+                "turn_id": str(turn_id),
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
+            async for chunk in graph.run_turn(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_id=owner_id,
+                turn_id=turn_id,
+                user_input=user_input,
+                history=[],
+                agent=agent,
+                model=agent.model,
+            ):
                 if chunk.kind == "approval_required":
-                    raise AppError("evaluation requires human approval", code="EVAL_APPROVAL_REQUIRED", status=409)
+                    raise AppError(
+                        "evaluation requires human approval",
+                        code="EVAL_APPROVAL_REQUIRED",
+                        status=409,
+                    )
                 if chunk.kind == "error":
                     raise AppError(chunk.message, code=chunk.code, status=502)
                 if chunk.kind == "done":
                     output["final_message"] = chunk.final_message or ""
                 if chunk.kind == "usage":
-                    output["input_tokens"], output["output_tokens"] = chunk.input_tokens, chunk.output_tokens
+                    output["input_tokens"], output["output_tokens"] = (
+                        chunk.input_tokens,
+                        chunk.output_tokens,
+                    )
             await evaluation_session.commit()
             return output
 
@@ -463,15 +527,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     async with container.session_factory().session() as session:
                         # 找所有 healthy 状态的 provider
                         result = await session.execute(
-                            select(ProviderORM).where(
-                                ProviderORM.status == "healthy"
-                            )
+                            select(ProviderORM).where(ProviderORM.status == "healthy")
                         )
                         providers = result.scalars().all()
                         for prov in providers:
                             try:
                                 # 用 _ModelFactory 拿全配置 ModelService
-                                async with container.session_factory().session() as p_session:
+                                async with (
+                                    container.session_factory().session() as p_session
+                                ):
                                     factory = _ModelFactory()
                                     svc = factory.for_session(p_session)
                                     await svc.health_check(prov.id)
@@ -483,9 +547,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                                     _prov_exc,
                                 )
                 except Exception as _loop_exc:  # defensive
-                    _log.warning(
-                        "health_sampler_iteration_failed: %s", _loop_exc
-                    )
+                    _log.warning("health_sampler_iteration_failed: %s", _loop_exc)
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
             _log.info("health_sampler_cancelled")
@@ -592,7 +654,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     mcp_rt = MCPRuntimeAdapter(http=http_client, secrets_resolver=secrets_resolver)
 
-    custom_invoker = CustomInvokerRegistry(workspace_root=container.settings.workspace_root)
+    custom_invoker = CustomInvokerRegistry(
+        workspace_root=container.settings.workspace_root
+    )
     bind_settings_for_tools(container.settings)
     bind_audit_recorder(ToolAuditRecorder(session_factory=container.session_factory()))
     custom_invoker.register("echo", built_in_invoke_echo)
@@ -878,7 +942,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             # resolver 依赖 session_factory, 不会 raise; 任何 catalog 缺失时返回 None,
             # RunTurnUseCase 自然退到 env 默认 LLM (旧行为).
             catalog_model_resolver = self._container.catalog_model_resolver()
-            llm = LLMPortAdapter(self._container.llm_client(), model_service=model_service)
+            llm = LLMPortAdapter(
+                self._container.llm_client(), model_service=model_service
+            )
             runtime = AgentRuntimeService(
                 sessions=SqlSessionRepository(sf),
                 turns=SqlTurnRepository(sf),
@@ -913,7 +979,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Catalog knowledge is created via /api/admin/knowledge; signed office
     # knowledge packs are no longer seeded into RAG packages.
     if container.settings.platform_seed_office_knowledge_packs:
-        _log.info("office knowledge pack seed skipped (knowledge catalog replaces packs)")
+        _log.info(
+            "office knowledge pack seed skipped (knowledge catalog replaces packs)"
+        )
     if container.settings.platform_seed_office_plan_packs:
         _log.info("office plan pack seed skipped (workflow catalog replaces packs)")
 
@@ -1106,9 +1174,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
 
         session_factory_obj = container.session_factory()
-        await agent_factory_release_subscriber.install(
-            bus, session_factory_obj
-        )
+        await agent_factory_release_subscriber.install(bus, session_factory_obj)
         _log.info("agent_factory release subscriber active")
     else:
         _log.info("agent_factory release subscriber skipped (catalog_factory absent)")
@@ -1122,6 +1188,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:  # noqa: BLE001
         _log.warning("redis client not attached; /readyz will report redis=skipped")
 
+    # ── Session 生命周期（Session Stage 0/1）─────────────────────────────
+    # ① 超时清扫器 —— **幂等键过期是 Gateway 的硬依赖**（过期行留在表里，
+    #    同一个键重发仍会命中冲突 → 表无限膨胀）✓
+    app.state.session_sweeper_stop = await _start_session_sweeper(container)
+    # ② checkpoint saver —— **异步**版；同步版会阻塞事件循环 ✗
+    app.state.checkpointer_cm, app.state.checkpointer = await _start_checkpointer(
+        container
+    )
+
     try:
         yield
     finally:
@@ -1129,10 +1204,99 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         stop_sampler = getattr(app.state, "health_sampler_stop", None)
         if stop_sampler is not None:
             await stop_sampler()
+        # Session：先停清扫器，再关 saver（saver 的连接要在任务停后才关 ✓）
+        stop_sweeper = getattr(app.state, "session_sweeper_stop", None)
+        if stop_sweeper is not None:
+            await stop_sweeper()
+        checkpointer_cm = getattr(app.state, "checkpointer_cm", None)
+        if checkpointer_cm is not None:
+            await checkpointer_cm.__aexit__(None, None, None)
         await bus.stop()
         sandbox = getattr(app.state, "sandbox", None)
         if sandbox is not None:
             await sandbox.shutdown()
+
+
+async def _start_session_sweeper(container: Container) -> Callable[[], Awaitable[None]]:
+    """起超时清扫的后台任务 —— **幂等键过期**是 Gateway 的硬依赖 ✓。
+
+    ⚠️ 只清扫两类（Session 方案 §3.3）：僵尸轮次 + 幂等键过期。
+    审批过期归治理域；会话空闲要等「复活」路径（Stage 2）—— 只关不复活 =
+    用户的旧对话从列表里消失 ✗✗。
+    """
+    from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
+        PostgresIdempotencyStore,
+    )
+    from qzdap.modules.agent_runtime.adapter.persistence.session_sweeper import (
+        PostgresSessionSweeper,
+    )
+
+    interval = max(1, int(os.environ.get("QZDAP_SESSION_SWEEPER_INTERVAL", "300")))
+    sweeper = PostgresSessionSweeper(
+        session_factory=container.session_factory(),
+        idempotency_store=PostgresIdempotencyStore(container.session_factory()),
+    )
+
+    async def _loop() -> None:
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                report = await sweeper.sweep(now=datetime.now(UTC))
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                _log.exception("session sweep failed; will retry next tick")
+                continue
+            if report.total:
+                _log.info("session sweep: %s", report)
+
+    task = asyncio.create_task(_loop())
+    _log.info("session_sweeper_started interval=%ds", interval)
+
+    async def _stop() -> None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    return _stop
+
+
+def _psycopg_url(database_url: str) -> str:
+    """把 asyncpg 的连接串转成 psycopg 能吃的形式。
+
+    ⚠️ 只去驱动后缀 —— 其余（主机 / 端口 / 库名 / 参数）原样保留 ✓。
+    """
+    return database_url.replace("postgresql+asyncpg://", "postgresql://")
+
+
+async def _start_checkpointer(container: Container) -> tuple[Any | None, Any | None]:
+    """建**异步** Postgres checkpoint saver —— 生命周期归 lifespan ✓。
+
+    ⚠️ **不能用同步版** ``PostgresSaver.from_conn_string``
+    （``runtimes/.../graph/builder.py``）—— 全异步仓库里它会阻塞事件循环
+    （Session 方案 §5.3）。
+
+    ⚠️ 建表**不归这里**：迁移 0046 已按已安装的
+    ``langgraph-checkpoint-postgres 3.1.3`` 的实际 DDL 建好四张表，并把
+    ``checkpoint_migrations`` 写成 9 —— ``setup()`` 因此是幂等的空跑 ✓。
+    """
+    try:
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+        url = _psycopg_url(container.settings.database_url)
+        cm = AsyncPostgresSaver.from_conn_string(url)
+        saver = await cm.__aenter__()
+        await saver.setup()
+    except Exception:  # noqa: BLE001
+        _log.warning(
+            "checkpointer unavailable; checkpoint persistence disabled",
+            exc_info=True,
+        )
+        return None, None
+    _log.info("checkpointer_ready")
+    return cm, saver
 
 
 async def _seed_default_plans(container: Container) -> None:

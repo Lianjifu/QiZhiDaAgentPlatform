@@ -761,6 +761,28 @@ DROP TABLE IF EXISTS checkpoints;
 **旧代码减少**：`wait_status` 写入点归零。
 **验收**：并发建会话只有一个成功；僵尸轮次 30 分钟后被接管。
 
+#### 实施记录（2026-10-30 · Stage 0 + Stage 1）
+
+| 项 | 结果 |
+|---|---|
+| 契约包 | `runtimes/agent_runtime/src/qzdap_agent_runtime/session/` —— `state.py`（状态机）· `manager.py`（Manager + 端口）· `sweeper.py`（清扫端口） |
+| 适配器 | `modules/agent_runtime/.../adapter/persistence/session_store.py`（`PostgresSessionStore`）· `session_sweeper.py`（`PostgresSessionSweeper`） |
+| 接线 | **composition 的 lifespan**：① 周期清扫任务（默认 300s）② `AsyncPostgresSaver`（异步 saver；**同步 saver 工厂已删**，台账 X20）③ `app.state.session_manager_factory` |
+| ⚠️ saver 的**消费方**在 Stage 2 | `AsyncPostgresSaver` 现在只被**持有**（建连接 / `setup()` / 关停释放）—— 真正用它跑图（`thread_id=session_id`）是 **Stage 2 的 S-14**。本轮不假装「已接线即已接管」 |
+| 领域收敛 | 模块领域的 `SessionStatus` **删除**，改为**再导出**契约层的 5 值枚举（旧枚举只有 2 值，落后于表的 check constraint） |
+| 测试 | `test_session_state.py`（合法/非法转移全覆盖）· `test_session_manager.py` · `test_session_store.py`（**真库**）· `test_session_sweeper.py`（**真库**）· `tests/architecture/test_session_boundary.py`（架构边界）· `test_session_lifespan_wiring.py`（接线不静默失败） |
+
+**偏差与未接管**（不假装完成）：
+
+| # | 事项 | 原因 | 归属 |
+|---|---|---|---|
+| **S-06 / S-11** | `wait_status` 写入点归零 / 删 `try_claim` 的 `wait_status` 分支 | **第二套 turn 实现（X2）仍靠它做互斥** —— 删了 IM 侧就没有互斥 ✗✗ | **Stage 3**（唯一 turn 实现）落地后才能做；本轮改为**旧入口打点**（`record_legacy_call("X6")` / `("R3")`） |
+| **清扫第 2 类** | 审批过期 | 归**治理域**（`approval_service.expire_if_due`） | 治理域 / Session Stage 5（S-30） |
+| **清扫第 3 类** | 会话空闲（30 天） | **必须等「复活」路径**（Stage 2）—— 只关不复活 = 用户的旧对话从列表里消失 ✗✗ | Stage 2 |
+| **S-07** | `X7`（审批吞异常）**提前清理** | 该缺陷 = 审批失败后**工具照常执行**；本轮改成「记日志 + **再抛**」（旧打点撤除） | 比原定的 Stage 5 提前到 Stage 1 |
+| **两套 `TurnStatus`** | 契约层 `session/state.py` 的 `TurnStatus`（`queued`/`running`/`waiting`/`succeeded`/`failed`/`cancelled` = `session_turns` 的 check constraint）与模块领域 `entities.py` 的 `TurnStatus`（`running`/`succeeded`/`failed`/`denied` = 旧 `agent_turns` 的语义） | **语义不同** —— `denied` 在新表里没有对应值，不能直接换掉 | **Stage 3**（唯一 turn 实现时合并）。本轮只收敛了 `SessionStatus`（两边语义完全一致，只是取值集合落后于表约束） |
+| **§13.2 规则 1 / 2** | 架构测试里的「只有一个 turn 实现」「状态机是唯一状态写入点」 | 依赖 Stage 3 的唯一 turn 实现 —— 现在跑必然红（两套都在） | Stage 3；本轮只落**能判真**的规则（框架禁令 / 不反向依赖 / 不用同步 saver / `SessionStatus` 只有一处定义） |
+
 ### Stage 2：Thread 落地
 
 | 动作 | 细节 |

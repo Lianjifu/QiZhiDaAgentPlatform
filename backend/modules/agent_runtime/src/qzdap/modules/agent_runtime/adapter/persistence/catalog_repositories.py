@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from qzdap_observability.metrics import record_legacy_call
 from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -216,6 +217,7 @@ class SqlSessionMessageRepository:
         tool_name: str = "",
         extra: dict | None = None,
     ) -> None:
+        record_legacy_call("X4")  # 旧表 agent_session_messages
         self._s.add(
             SessionMessageORM(
                 tenant_id=tenant_id,

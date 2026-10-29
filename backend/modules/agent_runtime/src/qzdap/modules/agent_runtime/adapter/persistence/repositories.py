@@ -96,6 +96,7 @@ class SqlSessionRepository(SessionRepository):
         before the turn starts streaming.
         """
         record_legacy_call("X6")  # agent_sessions.wait_status 列
+        record_legacy_call("R3")  # try_claim 的会话互斥职责
         stale_before = datetime.now(UTC) - timedelta(minutes=CLAIM_STALE_MINUTES)
         result = await self._s.execute(
             update(SessionORM)
@@ -201,6 +202,7 @@ class SqlTurnRepository(TurnRepository):
         self._s = session
 
     async def add(self, turn: Turn) -> None:
+        record_legacy_call("X4")  # 旧表 agent_turns
         # `add` is called twice per turn: once when the turn starts (status=
         # running) and again when it finishes (succeeded/failed). The second
         # call must update the existing row in place — emitting a second

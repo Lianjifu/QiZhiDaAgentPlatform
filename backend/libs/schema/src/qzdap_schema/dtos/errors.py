@@ -78,6 +78,8 @@ class ErrorCode(str, Enum):
     # Gateway ② 的**拒绝原因码**（审计事件里的 reason_code）—— 与 API 错误码
     # 是两套词汇，都登记进枚举（投影表要覆盖它们），但**不互相替代**。
     SERVICE_ACCOUNT_NOT_CONFIGURED = "SERVICE_ACCOUNT_NOT_CONFIGURED"
+    # Session Stage 0 · S-04 —— 审批人不能是发起人（自审批拦截 ✓）。
+    APPROVER_MUST_DIFFER = "APPROVER_MUST_DIFFER"
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +128,7 @@ _HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.TOKEN_INVALID: 401,
     ErrorCode.TOKEN_EXPIRED: 401,
     ErrorCode.SERVICE_ACCOUNT_NOT_CONFIGURED: 503,
+    ErrorCode.APPROVER_MUST_DIFFER: 403,
 }
 
 
@@ -331,6 +334,11 @@ ERROR_PROJECTION: Mapping[ErrorCode, ErrorCopy] = {
         http="渠道未登记服务账号",
         im="这个渠道还没配置服务账号，暂时无法自动回复。",
         web="这个渠道还没配置服务账号，暂时无法自动回复。",
+    ),
+    ErrorCode.APPROVER_MUST_DIFFER: ErrorCopy(
+        http="审批人不能是发起人",
+        im="这个操作需要别人来确认，不能自己批。",
+        web="这个操作需要别人来确认，不能自己批。",
     ),
 }
 

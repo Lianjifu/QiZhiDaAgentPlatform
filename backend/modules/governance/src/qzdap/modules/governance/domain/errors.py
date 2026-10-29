@@ -9,6 +9,7 @@ from qzdap_kernel.errors import (
     NotFoundError,
     ValidationError,
 )
+from qzdap_schema.dtos.errors import ErrorCode
 
 
 class PolicyError(AppError):
@@ -44,7 +45,7 @@ class ApprovalAlreadyDecided(PolicyError, ConflictError):
 
 
 class ApproverMustDiffer(PolicyError, ForbiddenError):
-    code = "APPROVER_MUST_DIFFER"
+    code = ErrorCode.APPROVER_MUST_DIFFER.value
     status = 403
 
 

@@ -69,7 +69,7 @@
 
 | 规则 | 说明 |
 |---|---|
-| **弃用标记 + 观测** | 旧实现被接管时打 `@deprecated` + `qzdap_legacy_calls_total{entry="..."}`，让「旧路径还在被调用」成为可观测事实。✅ 指标与打点已落地（2026-10-29，26/33 条，见台账 §3.2 的打点覆盖表） |
+| **弃用标记 + 观测** | 旧实现被接管时打 `@deprecated` + `qzdap_legacy_calls_total{entry="..."}`，让「旧路径还在被调用」成为可观测事实。✅ 指标与打点已落地（2026-10-30 更新，16/36 条，见台账 §3.2 的打点覆盖表） |
 | **删除条件客观化** | 连续运行 **≥ 7 天** + 新路径流量占比 **≥ 95%** + `qzdap_legacy_calls_total{entry="…"}` 窗口内**累计为 0** + 窗口内无相关生产事故。**不使用「发布周期」概念** —— 本项目无 tag / CHANGELOG / release 目标，该周期不可定义，等于「随时」（见台账 §3.3 的论证） |
 | **台账化** | 全部旧实现登记在 [`cleanup-ledger.md`](cleanup-ledger.md) |
 | **单实现不变量** | **对每个关注点，任一时刻只有一个实现活着。**「弃用」不是终态 —— 每个旧实现的删除都落在**某一层的某个具体 Stage** 的具体 PR，见 [`implementation-plan.md`](implementation-plan.md) §1.2 的「关注点 → 唯一实现 → 删除时点 → 归属层 · Stage → **允许并存窗口**」表，并由 §6.2 的守卫规则在 CI 里强制 |
@@ -333,7 +333,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 | **M2 事件可重放** | Session 4/5 · Gateway 4a/4b · **Session 5b（删第二套 turn 实现）** | `session_events` 真写真读；SSE 断线带 `Last-Event-ID` 重连内容完整；重复请求**无感重放**（Gateway 4b 完成）；**IM 渠道上只剩一套 turn 实现**（Session 5b 与 Gateway 的 IM 切换同 PR 删除） |
 | **M3 上下文与记忆上线** | Context 1–3 · Memory 2–3 | 上下文可喂模型（`[{role, content}]`）；超预算走真压缩而非标记；记忆召回按用户隔离；manifest 落库 |
 | **M4 路由与执行成型** | Router 2–4 · Agent 1–5 | 同会话消息严格有序；工具幂等**跨 worker** 生效；`tool_executions` 有真实行；**专家选择有留痕**、模型 / 工具**取自 agent 配置**；**存在一条跑完整个循环的端到端测试** |
-| **M5 全部清零** | 全部 Stage N（清理） | 台账 33 条**全部「已清理」**；CI 扫描脚本零命中；`qzdap_legacy_calls_total` 全指标归零 |
+| **M5 全部清零** | 全部 Stage N（清理） | 台账 36 条**全部「已清理」**；CI 扫描脚本零命中；`qzdap_legacy_calls_total` 全指标归零 |
 
 ### 6.3 关键路径与并行度
 
@@ -364,7 +364,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 | 9 | **记忆不串用户**：用户 A 的会话召回结果里不含用户 B 的记忆（租户 / 工作区 / 用户三层隔离各有测试） | Memory |
 | 10 | **manifest 可查**：任一轮都能查出它每次模型调用的上下文组成与**淘汰原因** | Context |
 | 11 | **成本归属正确**：`session_turns.cost_usd` 与实际调用一致；专家路由 / 模型降级都计入 | Agent |
-| 12 | **旧实现真的少了**：台账 33 条全部「已清理」（**修复类条目 X14 / G10 走「已修复」**）；CI 扫描脚本零命中；`qzdap_legacy_calls_total` 全指标归零 | 全部（台账） |
+| 12 | **旧实现真的少了**：台账 36 条全部「已清理」（**修复类条目 X14 / G10 走「已修复」**）；CI 扫描脚本零命中；`qzdap_legacy_calls_total` 全指标归零 | 全部（台账） |
 | 13 | **架构边界不被绕过**：runtime 层零框架 import；摘掉任一层，其余层**不知道 HTTP / SSE / 飞书存在** | 全部 |
 
 ---
@@ -381,7 +381,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 | 4 | **`tools` 表的 spec 生成真实 schema** | `modules/tool` | **Agent Stage 2** | 现在 admin 注册的 OpenAPI / MCP 工具返回的是**空 schema**，模型看不到参数 |
 | 5 | **工具白名单与 `unprotected` 语义** | `modules/agent_runtime`（agent 配置） | **Agent Stage 2** | 白名单在 agent 配置里（`allowed_tools` / `allowed_skills`）；`unprotected` 是 Gateway 判定的事实，需沿链路传到工具绑定的治理过滤 |
 | 6 | **`deepagents` 依赖** | `runtimes/agent_runtime/pyproject.toml` | **Agent Stage 6** | **未安装、不在 `uv.lock`**；且现有 `InMemoryDeepAgentFactory` 的 docstring 声称「已验证可用」是**错的**（代码从未 import 它）。必须先在隔离分支验证 API 与版本 |
-| 7 | ~~**`qzdap_legacy_calls_total` 指标**~~ | ~~`libs/observability`~~ | — | ✅ **已落地（2026-10-29）**：`LEGACY_CALLS_TOTAL` + `record_legacy_call(entry)` + `NEW_CALLS_TOTAL` + `record_new_call(entry)`（有单测）；**26/33 条台账条目已在旧入口打点**，其余 7 条走替代判据（从未接线 / 数据类）。**这一条不再是外部前置依赖** |
+| 7 | ~~**`qzdap_legacy_calls_total` 指标**~~ | ~~`libs/observability`~~ | — | ✅ **已落地（2026-10-29）**：`LEGACY_CALLS_TOTAL` + `record_legacy_call(entry)` + `NEW_CALLS_TOTAL` + `record_new_call(entry)`（有单测）；**16/36 条台账条目已在旧入口打点**，其余 7 条走替代判据（从未接线 / 数据类）。**这一条不再是外部前置依赖** |
 | 8b | **`ErrorCode` 码收敛** | `libs/schema` + `modules/channel` + `modules/agent_runtime` | **Gateway Stage 0** | 7 个码（`CHANNEL_NOT_FOUND` / `CHANNEL_DISABLED` / `INBOUND_ADAPTER_MISSING` / `WEBHOOK_SIGNATURE_INVALID` / `WEBHOOK_TIMESTAMP_SKEW` / `DUPLICATE_REQUEST` / `TENANT_DENIED`）散落在模块内异常的 `code=` 字符串里，**`ErrorCode` 枚举不含它们**。Gateway 的 `ERROR_PROJECTION` 投影表按码查文案 → 必须先收敛 |
 | 8c | **`modules/channel` 依赖 `qzdap-agent-runtime`** | `modules/channel` + `uv.lock` | **Gateway Stage 2** | webhook 端点要调 `Gateway.accept`。**不改正 `uv.lock` 就装不上** |
 | 8 | **LangGraph checkpoint 表** | `backend/migrations`（Session 迁移 0046） | **Session Stage 0**（Agent Stage 0 **不受阻** —— Agent 只用 saver，不建表） | checkpoint 系列表**不在任何迁移里**；且现有 `builder.from_url` 用的是**同步** `PostgresSaver`，必须换 `AsyncPostgresSaver`。⚠️ **表名按已安装的 `langgraph-checkpoint-postgres` 3.1.3**：无 `langgraph_` 前缀、无 `_v2` 变体 |

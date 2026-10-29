@@ -312,45 +312,7 @@ def test_session_state_required_fields_flow_through_graph() -> None:
 # ---------------------------------------------------------------------------
 # 8. Postgres checkpointer 工厂（§8 Stage 2 PR B）
 # ---------------------------------------------------------------------------
-
-
-class TestPostgresCheckpointerFactory:
-    """from_url 工厂必须返回 context manager，可 `with` 出 PostgresSaver。
-
-    测试约束：测试环境无真实 Postgres，调用 `with from_url(...)` 进入
-    context 会触发 TCP 连接，连接失败会抛异常。我们只验证工厂的
-    API 形态（duck-typed context manager），不进入 context manager
-    （避免外部依赖）。
-    """
-
-    def test_from_url_returns_context_manager_protocol(self) -> None:
-        """from_url 工厂调用必须返回 duck-typed context manager。"""
-        from qzdap_agent_runtime.graph import from_url
-
-        cm = from_url("postgresql://user:pass@127.0.0.1:1/test")
-        # 必须实现 context manager 协议（__enter__ + __exit__）
-        assert hasattr(cm, "__enter__"), "missing __enter__"
-        assert hasattr(cm, "__exit__"), "missing __exit__"
-
-    def test_from_url_imports_postgres_saver(self) -> None:
-        """from_url 内部必须正确导入 langgraph.checkpoint.postgres.PostgresSaver。
-
-        通过尝试导入并断言类存在，验证内部延迟 import 路径正确。
-        """
-        from langgraph.checkpoint.postgres import PostgresSaver
-
-        # 验证 PostgresSaver 类的存在（保证 from_url 内部 import 不破）
-        assert hasattr(PostgresSaver, "from_conn_string")
-        assert callable(PostgresSaver.from_conn_string)
-
-    def test_from_url_is_reusable_factory(self) -> None:
-        """from_url 每次调用必须返回新的 context manager（不缓存实例）。"""
-        from qzdap_agent_runtime.graph import from_url
-
-        cm1 = from_url("postgresql://a:b@127.0.0.1:1/db1")
-        cm2 = from_url("postgresql://c:d@127.0.0.1:1/db2")
-        # 不同 URL 必须产生不同 context manager
-        assert cm1 is not cm2
-
-
-import pytest  # noqa: E402  # 用于 TestPostgresCheckpointerFactory
+#
+# ⚠️ 同步 saver 工厂（``graph.from_url``）**已删** —— 同步 saver 在全异步仓库里
+# 会阻塞事件循环（Session 方案 §5.3）。生产用的 ``AsyncPostgresSaver`` 由
+# composition 的 lifespan 创建（``qzdap.composition.lifespan``）。

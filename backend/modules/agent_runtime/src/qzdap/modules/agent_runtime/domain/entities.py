@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Self
 
+from qzdap_agent_runtime.session.state import SessionStatus
 from qzdap_schema.ids import (
     AgentId,
     SessionId,
@@ -31,10 +32,14 @@ from qzdap.modules.agent_runtime.domain.events import (
     TurnStarted,
 )
 
-
-class SessionStatus(StrEnum):
-    OPEN = "open"
-    CLOSED = "closed"
+# ⚠️ **会话状态是唯一的一份** —— 定义在契约层（Session 方案 §4.1），
+# 这里只是**转出** ✓（``domain/__init__.py`` 再导出给调用方）。
+#
+# 为什么收上去：这张表原先只有 `open` / `closed` 两个值，而
+# `agent_sessions.status` 的 check constraint 有**五个**（`running` /
+# `waiting_approval` / `cancelled` 从来没在领域层出现过 ✗）—— 领域枚举落后于
+# 表约束 = 又一套真相 ✓。契约层的 `session/state.py` 同时给出**状态机**
+# （合法转移 + 非法转移报错 ✓）。
 
 
 class TurnStatus(StrEnum):

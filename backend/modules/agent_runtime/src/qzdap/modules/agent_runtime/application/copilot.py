@@ -642,7 +642,6 @@ class CopilotSessionService:
             from qzdap_schema.ids import TenantId as TId
             from qzdap_schema.ids import UserId as UId
 
-            record_legacy_call("X7")  # 审批异常吞噬 except Exception: pass
             try:
                 if approved:
                     await approval_service.approve(
@@ -657,8 +656,14 @@ class CopilotSessionService:
                         approver_id=UId(owner_id),
                         reason="user denied",
                     )
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:
+                # 审批失败**必须可见**（台账 X7）—— 吞掉它 = 工具照常执行 ✗✗
+                _log.warning(
+                    "approval decision failed approval_id=%s",
+                    approval_id,
+                    exc_info=True,
+                )
+                raise
         pending["decision"] = "approved" if approved else "denied"
         # 审批恢复路径必须带幂等键 —— 键由 approval_id 派生：同一次审批的重复
         # 点击会撞键（连点两次「同意」只执行一次工具，台账 G10），而下一次

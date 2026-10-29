@@ -12,7 +12,8 @@ Stage 1 + Stage 2 PR A/B/C/D 范围内交付：
 - `ports` 协议：ToolRegistry / LayeredMemory / PolicyGuard / ToolExecutor（§13.3/§13.4/§5.7/§5.8）
 - `execution.lock` LockManager + InMemoryLockManager（§4.2/§4.3）
 - `outbox` OutboxWorker + InMemoryOutboxRepository（§4.4）
-- `graph.from_url` Postgres checkpointer 工厂（§13.1/§14.1）
+- `graph.from_url` Postgres checkpointer 工厂 → **已删**（同步 saver 会阻塞事件循环，
+  改由 composition 的 lifespan 建 `AsyncPostgresSaver`）
 """
 
 from __future__ import annotations

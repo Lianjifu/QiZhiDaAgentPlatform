@@ -87,7 +87,7 @@
 |---|---|---|---|---|---|
 | R1 | IM 每条消息新建临时 session | `modules/channel/adapter/dispatch/dispatch_subscriber.py:175-186` | `channel_session_key` → `session_id` 映射 | 未开始 | Router Stage 2（停用）→ Stage 5（删） |
 | R2 | `agentId` 直取（无任何策略） | ~~`modules/agent_runtime/adapter/http/session_router.py:162-171`~~（**已删**） | `qzdap_agent_runtime/router/strategy.py` 的规则链 | **已清理**（2026-10-29：Router Stage 1 —— `create_session` 的 `agentId` 直取**删除**，改为把请求里的 agentId 作为「**显式指定**」这一条规则的输入交给 `RuleChainStrategy`；旧的 `record_legacy_call("R2")` 打点撤除（打点是清理**前**的观测手段），改打 `record_new_call("R2")`。⚠️ **没有策略就没有会话** —— 一条规则都没命中且工作区无兜底默认 agent 时返回 400 并说明缺什么，**不静默换 agent**） | Router Stage 1 |
-| R3 | **`try_claim` 的会话互斥职责**（CAS `wait_status='running'`；⚠️ **它只有这一个职责** —— 实测无任何序号/顺序语义，旧路径从未有过顺序机制。2026-10-29 审查更正：原描述「混在一起的顺序职责」不成立） | `modules/agent_runtime/adapter/persistence/repositories.py:85-108` | `session_turns.status` 的状态 CAS（执行权） | 未开始 | **Session**（原写 Router Stage 3 —— 互斥归 Session 的执行权；Router 的 FIFO 是**全新建**，不是拆分） |
+| R3 | **`try_claim` 的会话互斥职责**（CAS `wait_status='running'`；⚠️ **它只有这一个职责** —— 实测无任何序号/顺序语义，旧路径从未有过顺序机制。2026-10-29 审查更正：原描述「混在一起的顺序职责」不成立） | `modules/agent_runtime/adapter/persistence/repositories.py:85-108` | `session_turns.status` 的状态 CAS（执行权） | **已开始**（2026-10-30：Session Stage 1 —— **已打点** `record_legacy_call("R3")`（`repositories.try_claim` + copilot 调用点）；**替代物**（`session_turns.status` 的 CAS）要等 Stage 3 的唯一 turn 实现） | **Session**（原写 Router Stage 3 —— 互斥归 Session 的执行权；Router 的 FIFO 是**全新建**，不是拆分） |
 | R4 | `build_session_key`（冒号拼接版） | ~~`runtimes/agent_runtime/src/qzdap_agent_runtime/channels/gateway.py`~~（**已删**） | 哈希版 `derive_session_key`（`runtimes/agent_runtime/src/qzdap_agent_runtime/router/session_key.py`） | **已清理**（2026-10-29：Router Stage 2 的 key 派生 —— 旧函数**删除**，改为 `router/session_key.py` 的**长度前缀 + sha256**（6 维，含 `channel_type` ✓）；引用点同步改（从未接线的 `engine.py` / `scripts/verify_e2e.py` / 单测）。⚠️ **扫描规则的目录原本写错**（扫 `modules/`，而旧实现在 `runtimes/` ✗ → 规则**从来没生效过**）→ 已改正并**启用**。⚠️ 按台账 §3.2，「停用 + 打点」**做不了** —— 旧实现无生产调用方，打点会得到恒为 0 的指标（比没有指标更危险 ✓）→ 按 Gateway 附录 C.8 的 **G-38 口径**（引用关系可证即当场删 ✓）执行） | Router Stage 2 |
 
 ### 2.3 跨层 / 历史遗留
@@ -96,11 +96,11 @@
 |---|---|---|---|---|---|
 | X1 | **未被接线的 `backend/runtimes/agent_runtime/` 整包**（19 节点图、InMemory 假实现、无任何 import） —— ⚠️ **2026-10-29 起不再是「整包未接线」**：Gateway 层**按需取用**了其中的 `gateway/` 子包（幂等契约与守卫），生产路径已 import 它；其余部件（19 节点图等）**仍未接线** | `backend/runtimes/agent_runtime/src/qzdap_agent_runtime/` | 各层方案按泳道逐步替换；最终只保留被采用的部件 | **未开始（最高风险项）** | 各层**按需取用部件**；**删除归 Agent Stage 7**（连同 §2.3.2 的平行实现）—— ⚠️ **已被取用的部件不再删**，只删未取用的残留（扫描规则 §3.1 的三条仍成立：盯的是 `graph/nodes.py` / `build_session_graph` / `InMemoryToolExecutor`，与 `gateway/` 无交集） |
 | X2 | 第二套 turn 实现（无 claim / 幂等 / 取消 / 审批） | `modules/agent_runtime/application/use_cases/run_turn.py`、`run_turn_to_completion.py` | `copilot.py` 的唯一 turn 编排（保留其 claim / 幂等 / 取消 / 审批语义） | **已弃用**（2026-10-29：Gateway Stage 4a —— 两个用例加弃用标记；调用点 `dispatch_subscriber` 打 `record_legacy_call("X2")`。⚠️ **IM 仍走它**（切 IM 入口被 Session 的「唯一 turn 实现」阻塞）→ 打点仍会有流量） | Session 层（主战场，**Stage 5b 删除**）；Gateway Stage 4a 切 IM 入口时同 PR |
-| X3 | `agent_sessions.graph_state`（续传状态与业务数据混装同列） | `modules/agent_runtime/adapter/persistence/models.py:56-61` | `session_events` / `session_turns` | 未开始（**替代物开始有数据**，2026-10-29：Gateway Stage 4b 连带落地了 `session_events` 的事件落库 —— 事件流真写真读了；`graph_state` 仍在写，迁移归 Session Stage 1/6） | Session 层 |
-| X4 | `agent_turns` / `agent_session_messages` 表 | `migrations/versions/`（早期） | `session_turns` / `session_messages` | 未开始（**双写期已开始**，2026-10-29：Gateway Stage 4b 连带落地了 `session_turns` 的**轮次双写** —— 它是 `session_events` 的外键父行；旧表仍在写，删除归 Session Stage 6） | Session 层（Router 决策 #2） |
+| X3 | `agent_sessions.graph_state`（续传状态与业务数据混装同列） | `modules/agent_runtime/adapter/persistence/models.py:56-61` | `session_events` / `session_turns` | 未开始（**替代物开始有数据**，2026-10-29：Gateway Stage 4b 连带落地了 `session_events` 的事件落库 —— 事件流真写真读了；`graph_state` 仍在写，迁移归 Session Stage 1/6。2026-10-30：Session Stage 1 补齐**旧入口打点** `record_legacy_call("X3")` —— 「没有打点就没有清理判据」） | Session 层 |
+| X4 | `agent_turns` / `agent_session_messages` 表 | `migrations/versions/`（早期） | `session_turns` / `session_messages` | 未开始（**双写期已开始**，2026-10-29：Gateway Stage 4b 连带落地了 `session_turns` 的**轮次双写** —— 它是 `session_events` 的外键父行；旧表仍在写，删除归 Session Stage 6。2026-10-30：Session Stage 1 补齐**旧表写入点的打点** `record_legacy_call("X4")`（`SqlTurnRepository.add` / `SqlSessionMessageRepository.append`）—— 旧表什么时候不再被写，指标说了算） | Session 层（Router 决策 #2） |
 | X5 | 占位图 `compile_loop_graph`（节点全是 `_passthrough_*`） | `modules/agent_runtime/adapter/graph/loop.py:63-69`、`runner.py:92` | Agent Loop 方案的真实图 | 未开始 | Agent 层（Stage 7） |
-| X6 | `agent_sessions.wait_status` 列（与 `status` 表达同一状态机，取值还不一致） | `modules/agent_runtime/adapter/persistence/models.py:63-67` | `current_turn_id` + `session_turns.status` 推导 | 未开始 | Session 层 |
-| X7 | 审批异常吞噬 `except Exception: pass`（吞掉 `ApproverMustDiffer` / `ApprovalExpired` / `ApprovalAlreadyDecided` → 工具照常执行） | `modules/agent_runtime/src/qzdap/modules/agent_runtime/application/copilot.py:466-471` | `ErrorChunk` + 明确错误码（Session 方案 §5.6 校验清单） | 未开始 | Session 层 |
+| X6 | `agent_sessions.wait_status` 列（与 `status` 表达同一状态机，取值还不一致） | `modules/agent_runtime/adapter/persistence/models.py:63-67` | `current_turn_id` + `session_turns.status` 推导 | 未开始（2026-10-30：Session Stage 1 —— 旧入口**已打点** `record_legacy_call("X6")`；⚠️ **写入点归零做不到**：第二套 turn 实现（X2）还靠 `try_claim` 的 `wait_status` 分支，必须等 Stage 3 的唯一 turn 实现） | Session 层 |
+| X7 | 审批异常吞噬 `except Exception: pass`（吞掉 `ApproverMustDiffer` / `ApprovalExpired` / `ApprovalAlreadyDecided` → 工具照常执行） | `modules/agent_runtime/src/qzdap/modules/agent_runtime/application/copilot.py:466-471` | `ErrorChunk` + 明确错误码（Session 方案 §5.6 校验清单） | **已清理**（2026-10-30：Session Stage 1 —— `except Exception: pass` 换成「记日志 + **再抛**」：审批失败（`ApproverMustDiffer` / `ApprovalExpired` / `ApprovalAlreadyDecided`）不再被吞掉，**工具不会照常执行** ✗→✓；旧打点撤除） | Session 层（**Stage 1**，比原定的 Stage 5 提前） |
 | X8 | 旧上下文组装 `_load_messages`（**在跑**，消息形状正确，是新 Builder 的实现基础）—— ⚠️ 但**召回失败被静默吞掉**（`runner.py:523,549`，无 `recall_degraded`），且 `top_k`（8/6）与每条 400 字截断需一并复刻 | `modules/agent_runtime/src/qzdap/modules/agent_runtime/adapter/graph/runner.py:495-566` | `context/builder.py`（迁入后删除原处） | 未开始 | Context 层 |
 | X9 | 旧上下文压缩 `compact_messages`（纯字符截断：每条 180 字 × 20 条，无摘要模型）—— ⚠️ 但它的**工具结果清洗（截 1500 字）/ 首个 system 保留 / 摘要累加**三项行为必须复刻 | `modules/agent_runtime/src/qzdap/modules/agent_runtime/adapter/graph/compact.py:14-50` | `context/compressor.py`（async 摘要 + 确定性降级，**降级时追加而非覆盖摘要**） | 未开始 | Context 层 |
 | X10 | 四套 system prompt 模板（无记忆 / 有记忆 / 有知识 / 有记忆+知识）——分支爆炸的源头 | `modules/agent_runtime/src/qzdap/modules/agent_runtime/adapter/llm/prompts.py:51-110` | `context/prompts.py` 单段式渲染 | 未开始 | Context 层 |
@@ -113,6 +113,7 @@
 | X16 | `MemoryService` 同时提供运行时（`recall`/`write`）与管理面（`list_*/trend`）语义；管理端 `PATCH /l2/{id}` 绕过写入侧的脱敏与去重 | `modules/memory/src/qzdap/modules/memory/application/services.py`、`adapter/persistence/repositories.py:167-175` | 拆为 `MemoryRuntimeService`（平面 A）+ `MemoryAdminService`（平面 B） | 未开始 | Memory 层 |
 | X15 | **L3 与 `modules/knowledge` 职责重叠 → 运行时双份注入**（L3 内容进「相关记忆」，knowledge chunks 进「相关知识」；且 L3 无向量而 chunks 有向量） | `modules/memory/.../domain/entities.py:119-188`（L3Entry）、`modules/agent_runtime/.../runner.py:517-559` | 决策 #1：L3 退役（知识统一归 knowledge）或 knowledge 降级为管道 | 未开始 | Memory 层 |
 | X19 | **死表 `memory_l2_embeddings`**（迁移 0036 建，列齐全 —— 连 `user_id` / `content_hash` 都有 —— 但**零代码引用**；与生产在用的向量表 `admin_memory_vec` 职责重复） | `migrations/versions/0036_memory_l2_embeddings.py` | **DROP**（迁移 0048 内；真正的向量表是 `admin_memory_vec`，迁移 0023） | **待清理**（迁移 0048 已实现并在 dev 库执行成功；**不可逆** —— 回滚不重建该表） | Memory 层（**Stage 0**） |
+| X20 | **同步 `PostgresSaver` 工厂**（`graph/builder.py` 的 `from_url`）—— 同步 saver 在**全异步**仓库里会阻塞事件循环（Session 方案 §5.3）；且**无生产调用方**（只有测试引用） | ~~runtimes/agent_runtime/src/qzdap_agent_runtime/graph/builder.py~~（**已删**） | `AsyncPostgresSaver`（`langgraph.checkpoint.postgres.aio`）—— 由 composition 的 **lifespan** 创建并持有 | **已清理**（2026-10-30：Session Stage 0 —— `from_url` 工厂删除（同步 saver 不再被 import）；`AsyncPostgresSaver` 接进 lifespan，生命周期归 composition；建表仍归**迁移 0046**（`setup()` 因此是幂等空跑）） | Session 层 |
 
 #### X1 已核实的具体缺陷（2026-10-29 读码核对）
 
@@ -256,6 +257,13 @@ _scan "graph_state"               modules/          "X3"
 _scan "agent_turns"               modules/          "X4"
 _scan "agent_session_messages"    modules/          "X4"
 
+# Session 域 · X20（同步 PostgresSaver）—— 同步 saver 在全异步仓库里会阻塞
+#   事件循环（Session 方案 §5.3）；只允许 `langgraph.checkpoint.postgres.aio`。
+_scan "def from_url\(url: str\)"  runtimes/         "X20"
+_scan 'from langgraph\.checkpoint\.postgres import'  runtimes/    "X20"
+_scan 'from langgraph\.checkpoint\.postgres import'  modules/     "X20"
+_scan 'from langgraph\.checkpoint\.postgres import'  composition/ "X20"
+
 # Session 域 · X18（copilot.py 的旧 turn 编排）
 #   ⚠️ 只绑旧编排的私有符号 —— copilot.py 保留为 HTTP 薄壳，
 #      stream_turn / decide_approval 在薄壳里仍会出现，不能作为扫描目标。
@@ -363,18 +371,20 @@ def record_legacy_call(entry: str) -> None:
 
 **打点位置**：旧实现的**入口处**（不是内部），保证「旧实现被调用」与「旧实现被调用但走的是别的分支」都能被观测到。
 
-**打点覆盖（2026-10-29 实施，Router Stage 1 后）**：35 条中 **18 条在旧实现的入口处打点** ——
+**打点覆盖（2026-10-30 更新，Session Stage 1 后）**：**36 条**中 **16 条在旧实现的入口处打点** ——
+本轮新增 **R3**（`try_claim` 的互斥职责）与 **X4**（旧表写入点 —— 双写期结束与否由指标说了算），
+**撤除 X7**（旧实现已删 → 打点随代码一起撤除）——
 `record_legacy_call("<编号>")` 落在**入口**（不是内部），保证「旧实现被调用」与
 「旧实现被调用但走了别的分支」都能被观测到。
 
-**未打点的 7 条 —— 全部是「打点不适用」的类型，不是遗漏**：
+**未打点的条目 —— 全部是「打点不适用」的类型，不是遗漏**：
 
 | 条目 | 为什么不打点 |
 |---|---|
 | **R4** `build_session_key` | **已删除**（2026-10-29 Router Stage 2）—— 原先在**从未接线**的 `backend/runtimes/agent_runtime/` 里、无生产调用方，打点会得到恒为 0 的指标（见 §3.2 开头）→ 按 Gateway 附录 C.8 的 **G-38 口径**（引用关系可证即当场删）直接清理 ✓ |
 | **X1** 未接线的 runtime 整包 | 同上 |
 | **X12** 新 runtime 的记忆写入 | 同上 |
-| **X4** 旧表 `agent_turns` / `agent_session_messages` | **数据类** —— 没有「调用」概念，按扫描判定（§3.1） |
+| ~~**X4** 旧表 `agent_turns` / `agent_session_messages`~~ | **2026-10-30 起已有打点**（旧表的**写入点**：`SqlTurnRepository.add` / `SqlSessionMessageRepository.append`）—— 判据从「grep 命中数」升级为「**指标归零 = 旧表不再被写**」；扫描（§3.1）作为第二道保险 |
 | **X13** `admin_memory_l1` | 数据类（同上） |
 | **X19** 死表 `memory_l2_embeddings` | 数据类；已在迁移 0048 内 DROP |
 | **X14** 跨用户泄漏 | **修复类** —— 判据是回归测试（`modules/memory/tests/unit/test_memory_scope_isolation.py`），不进指标 |
@@ -387,9 +397,11 @@ def record_legacy_call(entry: str) -> None:
 | **G10** 审批恢复路径丢幂等键 | **修复类** —— 判据是回归测试（`modules/agent_runtime/tests/unit/test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`），不进指标 |
 | **G11** 重复请求的 202 降级路径 | **旧实现已删除**（2026-10-29 Gateway Stage 4b，由「重放上一轮的事件流」取代）—— 打点随代码一起撤除 |
 | **R2** `agentId` 直取 | **旧实现已删除**（2026-10-29 Router Stage 1，改为策略链的「显式指定」规则）—— 打点随代码一起撤除 |
+| **X7** 审批异常吞噬 | **旧实现已删除**（2026-10-30 Session Stage 1，改为「记日志 + 再抛」）—— 打点随代码一起撤除 |
+| **X20** 同步 `PostgresSaver` 工厂 | **旧实现已删除**（2026-10-30 Session Stage 0）—— 打点随代码一起撤除 |
 
-> **「7 条打不了点」+「9 条已不需要打点」= 16 条**必须改用替代判据（扫描 / 测试 / 删除 /
-> 「无生产调用方」），**不得**用「指标为 0」判清零。
+> **下表这 18 条**必须改用替代判据（扫描 / 测试 / 删除 / 「无生产调用方」），
+> **不得**用「指标为 0」判清零。
 > **修复完成后继续保留打点，会让指标永远非零、清理判据永远不成立** —— 打点是清理前的
 > 观测手段，不是终态。
 
@@ -536,7 +548,8 @@ def record_legacy_call(entry: str) -> None:
 | X2 | `gateway-refactor-plan.md` §9.4（配合）；`session-refactor-plan.md` §8 | Session Stage 3（停用）→ **Stage 5b（删除，与 Gateway 的 IM 入口切换同 PR）** |
 | X3、X6 | `session-refactor-plan.md` §7.3、§8 | Session Stage 6 |
 | X4 | `session-refactor-plan.md` §7.1；Router 决策 #2 | Session Stage 6 |
-| X7 | `session-refactor-plan.md` §5.6 | Session Stage 5 |
+| X7 | `session-refactor-plan.md` §5.6 | Session **Stage 1** —— ✅ **已执行**（2026-10-30：吞异常改成「记日志 + 再抛」，旧打点撤除） |
+| X20 | `session-refactor-plan.md` §5.3、§10 Stage 0 | Session **Stage 0** —— ✅ **已执行**（2026-10-30：同步 saver 工厂删除，`AsyncPostgresSaver` 接进 lifespan） |
 | X18 | `session-refactor-plan.md` §8.2、§8.4、§9 Stage 3b | Session Stage 3（**切 web/api 入口 · 只停用**）→ **Stage 3b（删除：清理窗口 ≥7 天且指标归零后）** |
 | X8 | `context-refactor-plan.md` §8.2 | **Context Stage 4**（停用，前置 = Agent A-26）→ Stage 5（删除） |
 | X9 | `context-refactor-plan.md` §8.2 | **Context Stage 4**（停用，前置 = Agent A-26）→ Stage 5（删除） |
