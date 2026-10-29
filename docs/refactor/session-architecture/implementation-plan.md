@@ -324,6 +324,7 @@
 | | **G-17 删 `ParsedMessage` + `ChannelMessageReceived` + IM 进程内 LRU** | — | **G4 / G5 / G6**（关注点 #3、#4） | **~120 行** | G-15 |
 | Stage 4a · 接管（重放降级） | G-18 `ResultSink` 落地 | 出站编码 + 卡片 + 降级规则 | — | 0 | Stage 0–3 |
 | | **G-18a `Gateway.accept` 门面**（①②③）+ ④ 的三个动作 | 编排收进一处：查渠道 → 验签 → 归一化；claim / complete / release 拆给「开始轮次的一方」 | **渠道服务内联的 ②③ 删除**（`_verify_identity` + 归一化段落） | **~70 行** | G-15 |
+| | **G-18b web 入口走门面** | `gateway/web.py`（② principal/租户头、③ 请求体 → 标准消息）+ `container.web_gateway()`；`session_router` 的 SSE 端点改走 `Gateway.accept` | **身份与幂等键各只有一个来源**（原先：端点自取租户头 + copilot 自选键） | **~40 行** | G-18a |
 | | G-19 渠道入站切过来 | `receive_webhook` → `Gateway.accept` → Router | — | 0 | G-18 |
 | | **G-20 切 IM 入口（原子）** | `dispatch_subscriber.py` → `Gateway.accept` → 新链路 | 与 **Session S-30 同 PR**（关注点 #2） | 0（**只切不删**） | G-19 · **Session Stage 5b 同 PR** |
 | | G-21 `/v1/sessions*` turn 部分停用 + 打点 | — | **G7 / G8** | 0 | G-19 |

@@ -1,6 +1,7 @@
 # Gateway 层重构方案
 
-> 版本：1.8（2026-10-29：**Stage 4a 第一段已实施** —— `Gateway.accept` 门面（①②③）+ ④ 的三个动作 + 出站 `ResultSink`（编码 + 卡片降级）+ IM 入站/出站接管 + 重复请求的 202 降级路径 + G7/G9/X2 弃用打点；**「切 IM 入口到唯一 turn 实现」被 Session 阻塞，未接管**；详见 §10 Stage 4a「实施结果」与附录 C.4）
+> 版本：1.9（2026-10-29：**Stage 4a 两段都已实施** —— 第一段：门面接管 + 出站 sink + 202 降级 + 弃用打点；第二段：**web 入口也走 `Gateway.accept`**（身份与幂等键各只有一个来源）；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4a「实施结果」与附录 C.4 / C.5）
+> 沿革：v1.8（2026-10-29：**Stage 4a 第一段已实施** —— `Gateway.accept` 门面（①②③）+ ④ 的三个动作 + 出站 `ResultSink`（编码 + 卡片降级）+ IM 入站/出站接管 + 重复请求的 202 降级路径 + G7/G9/X2 弃用打点；**「切 IM 入口到唯一 turn 实现」被 Session 阻塞，未接管**；详见 §10 Stage 4a「实施结果」与附录 C.4）
 > 沿革：v1.7（2026-10-29：**Stage 3 已实施** —— 归一化收口：`InboundMessage` 成为唯一入站契约（4+1 个 inbound adapter 全部改产它）+ **`ParsedMessage` / `ChannelMessageReceived` / IM 侧进程内 LRU 去重全部删除（G4/G5/G6 已清理）** + 附件收敛为 `AttachmentRef` + 连带修掉「总线按类名路由」与「载荷方法名」两个真实缺陷；详见 §10 Stage 3「实施结果」与附录 C.3）
 > 沿革：v1.6（2026-10-29：**Stage 2 已实施** —— 鉴权收口：`gateway/identity.py`（`IdentityVerifier` 端口 + web JWT / IM HMAC / internal 三种实现）+ **服务账号物化**（`channels.service_account`，迁移 0049，取代硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID`）+ 会话列表**显式租户过滤**；详见 §10 Stage 2「实施结果」与附录 C.2）
 > 沿革：v1.5（2026-10-29：**Stage 1 已实施** —— 幂等守卫落地：契约 `qzdap_agent_runtime/gateway/` + 落库 `PostgresIdempotencyStore` + 接线 `copilot.stream_turn` + 审批恢复路径带键（G10 已修复）+ **删除 `record_request_id` / `recent_request_ids`（G1 已清理）**；详见 §10 Stage 1「实施结果」与附录 C.1）
@@ -1100,15 +1101,17 @@ composition
   （`skipped`）；错误**要告诉用户**；投递失败返回 `failed` 而**不炸掉主链路**；
 - **重复降级**（HTTP 层）：同一个 `clientRequestId` 再来一次 → **202**，
   响应体带 `turnId` + `replayUnavailable: true`（前端拿到的是空流，不是错误）；
-- **弃用 + 打点**：G7 / G9 / X2 三条旧路径都带标记与打点。
+- **弃用 + 打点**：G7 / G9 / X2 三条旧路径都带标记与打点；
+- **web 入口**（7 条用例）：principal 优先于用户头、缺身份 → 拒绝、请求体 → 标准消息、
+  `clientRequestId` → strong 键、没有 → weak 键 + 标 `unprotected`、载荷哈希覆盖请求体。
 
 #### ⚠️ 本阶段**未接管**的部分（明确记为被阻塞，**不许当成已完成**）
 
 | 未接管项 | 为什么 | 归属 |
 |---|---|---|
 | **切 IM 入口到唯一 turn 实现** | 被 Session 的「唯一 turn 实现（claim / 幂等 / 取消 / 审批合一）」阻塞（§0.5 的前置依赖表）。IM 的**入站与出站**已接管，**轮次编排**仍是第二套实现 | Session（Stage 3–5b）· 切的动作在 Gateway Stage 4a 的下一段，与 Session Stage 5b 同 PR |
-| **web 路径整体改走 `Gateway.accept`** | web 的身份有「header 与 principal 两套来源」，收口属于 Auth 层；本轮只把**重复分支的响应**改成 202 降级 | Auth / Session |
 | **卡片实际下发** | 编码器已产出卡片载荷，但**入站侧还没有「卡片点击 → 审批决策」的回调处理** —— 先发卡片 = 做出一个点了没反应的按钮。本轮一律按「无卡片能力」降级为文本，并把降级记进 `DeliveryOutcome` | Agent Loop / Execution（回调侧）+ 各平台卡片渲染 |
+| **`/v1/sessions*`（路径 C）走门面** | 它走的是**第二套 turn 实现**（无 claim / 幂等 / 取消 / 审批），本轮已加弃用标记 + 打点；「让它走门面」没有意义 —— **它的终态是被删除**（G7/G8，Stage 5） | Gateway Stage 5 |
 | **无感重放** | 依赖 `session_events` 真写真读 | Session Stage 4 → Gateway Stage 4b |
 
 > **因此本轮的清零判据不成立**：G9 / X2 的打点**仍会有流量**（IM 仍走它们），
@@ -1400,6 +1403,17 @@ Gateway 域对应的规则：
 > 而 **IM 是异步管道**（门口受理 → 总线 → 消费方执行）。把同步形状照搬到异步管道上，
 > 就会丢掉「失败时释放键」这个只有执行方才做得到的动作 —— **这类缺陷同样是静默的**：
 > 代码能编译、单测能绿，只是失败的消息再也重试不回来。
+
+### C.5 Stage 4a 第二段（web 入口）带回的两处修正（v1.8 → v1.9，2026-10-29）
+
+| # | 级别 | 问题 | 修正 | 落点 |
+|---|---|---|---|---|
+| **G-29** | 中 | **web 的正文是「附件解析之后」的** —— ③ 的契约是「原始字节 → 标准消息」，但 web 的附件上下文在 HTTP 层注入（正文里追加「[附件: …]」）。若把**未解析**的原始 body 交给归一化器，下游拿到的正文就少了附件上下文 —— **标准消息与真正发出去的话不一致** | ``RawIngress`` 放的是**附件解析之后**的正文。语义因此明确为：③ 翻译的是「**真正要发出去的那段文字**」，不是「传输层收到的字节」 | §10 Stage 4a / `session_router.py` |
+| **G-30** | 低 | **web 有两种信任级别** —— principal（认证中间件验过 JWT）与「只有租户头」（客户端自证）。方案 §3.2 的 4 个信任级别里没有「客户端自证」这一档 | **不新增枚举值**：复用既有的 ``INTERNAL``（语义 = 「调用方自己就是信任边界」，没有验签）。⚠️ **租户仍靠客户端头自证** —— 那是 Auth 层的债，Gateway 只做归一 | §3.2 / `gateway/web.py` |
+
+> **G-30 的遗留**：web 的租户自证问题**没有**被 Gateway 解决 —— 它只是被**归一**
+> （一处产生 actor）。真正的收口（用 principal 的 tenant 取代客户端头）在 Auth 层，
+> 不在 Gateway 的 Stage 4a。
 
 **跨文档同步**（本轮一并改掉的对 Gateway 章节号的引用）：
 

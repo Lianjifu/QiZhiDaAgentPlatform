@@ -41,13 +41,16 @@ class NormalizerContext:
 
     - ``actor`` 来自 ②（验签 / JWT 的结果）—— 归一化阶段**不再自己认身份**；
     - ``trace_id`` 来自 ①（传输层建立）—— 鉴权失败的请求也带得上；
-    - ``capabilities`` 来自 ①（渠道注册表）—— 出站不再按 channel_type 硬判断。
+    - ``capabilities`` 来自 ①（渠道注册表）—— 出站不再按 channel_type 硬判断；
+    - ``external_chat_id`` 是**外部会话标识**（web 的 session_id）—— IM 的聊天 id
+      在协议载荷里（适配器自己解），web 的在 URL 里（由 ① 放进来）。
     """
 
     actor: ActorContext
     channel_type: ChannelType
     trace_id: str
     channel_id: UUID | None = None
+    external_chat_id: str | None = None
     capabilities: ChannelCapabilities = field(default_factory=ChannelCapabilities)
 
 

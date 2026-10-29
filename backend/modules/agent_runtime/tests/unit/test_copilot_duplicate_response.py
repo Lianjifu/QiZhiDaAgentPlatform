@@ -15,7 +15,10 @@ import pytest
 from _ar_unit_in_memory import InMemoryIdempotencyStore, make_dependencies
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from qzdap_agent_runtime.gateway.facade import Gateway
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
+from qzdap_agent_runtime.gateway.types import ChannelType
+from qzdap_agent_runtime.gateway.web import WebChatNormalizer, WebIdentityVerifier
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 
@@ -108,6 +111,13 @@ async def test_a_repeated_request_answers_202_with_the_previous_turn_id() -> Non
     app = FastAPI()
     app.include_router(build_session_router())
     app.dependency_overrides[copilot_dependency] = lambda: svc
+    # web 入口的门面（①②③ + ④）—— 与生产装配同型。
+    app.state.web_gateway = Gateway(
+        channels=None,
+        identity=WebIdentityVerifier(),
+        normalizers={ChannelType.WEB: WebChatNormalizer()},
+        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+    )
 
     headers = {
         "X-Tenant-Id": str(tid),

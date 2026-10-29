@@ -504,6 +504,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.channel_service = channel_service_obj
     app.state.channel_inbound_registry = container.channel_inbound_registry()
     app.state.channel_outbound_registry = container.channel_outbound_registry()
+    # web 入口的门面（①②③ + ④）—— 与渠道门面同型。
+    app.state.web_gateway = container.web_gateway()
 
     # ── per-request tool factory ─────────────────────────────────────
     import httpx as _httpx

@@ -15,10 +15,9 @@ from qzdap_agent_runtime.gateway.idempotency import (
     IdempotencyGuard,
     InboxScope,
     approval_key,
-    client_request_key,
-    payload_fingerprint_key,
     payload_hash_of,
 )
+from qzdap_agent_runtime.gateway.normalizer import resolve_idempotency_key
 from qzdap_agent_runtime.gateway.types import ChannelType, IdempotencyKey
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_observability.metrics import record_legacy_call
@@ -316,19 +315,22 @@ class CopilotSessionService:
         owner_id: UUID,
         user_input: str,
     ) -> IdempotencyKey:
-        """幂等键的阶梯（Gateway 方案 §4.2）。
+        """幂等键的阶梯 —— **委托给 Gateway 的那一份**（Gateway 方案 §4.2）。
 
-        ① 客户端显式 ``clientRequestId`` —— strong；
-        ② 平台原始事件 ID —— IM 渠道用（web 走不到这里）；
-        ③ 内容指纹 —— **weak**，只记录不抑制（决策 #5）。
+        ⚠️ **阶梯只有一份实现**（``gateway/normalizer.py`` 的
+        ``resolve_idempotency_key``）—— 这里只是把本方法的参数映射过去，
+        不自己再写一遍规则。
+
+        走 HTTP 的入口**不再到这里**：web 的键由 Gateway ③ 派生后经
+        ``idempotency_key`` 传进来（§10 Stage 4a）；这里只服务**直接调用方**。
         """
-        if client_request_id:
-            return client_request_key(client_request_id)
-        _log.warning(
-            "inbound_without_client_request_id session_id=%s — 幂等降级为 weak（不抑制）",
-            session_id,
-        )
-        return payload_fingerprint_key(
+        if not client_request_id:
+            _log.warning(
+                "inbound_without_client_request_id session_id=%s — 幂等降级为 weak（不抑制）",
+                session_id,
+            )
+        return resolve_idempotency_key(
+            client_request_id=client_request_id or None,
             channel=str(channel),
             chat_id=str(session_id),
             user_id=str(owner_id),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
@@ -13,6 +14,9 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from opentelemetry import trace as _trace
+from qzdap_agent_runtime.gateway.channels import capabilities_for
+from qzdap_agent_runtime.gateway.types import ChannelType, RawIngress
+from qzdap_kernel.contextvars import current_trace_id
 from qzdap_observability.metrics import record_legacy_call
 from qzdap_observability.tracing import get_tracer
 
@@ -275,24 +279,55 @@ def build_session_router() -> APIRouter:
                 logging.getLogger(__name__).warning(
                     "phase12_route_id_parse_failed: %s", exc
                 )
+        # ①②③ —— **web 入口也走同一个门面**（§10 Stage 4a）。
+        # 身份与幂等键因此只有**一个**来源：认证中间件的 principal（兜底租户头）
+        # + Gateway 的键阶梯（§4.2）。
+        gateway = getattr(request.app.state, "web_gateway", None)
+        if gateway is None:
+            raise HTTPException(status_code=503, detail="gateway not configured")
+        principal = getattr(request.state, "principal", None)
+        principal_id = getattr(principal, "id", None)
+        accepted = await gateway.accept(
+            RawIngress(
+                transport="http",
+                channel_type=ChannelType.WEB,
+                channel_id=None,
+                capabilities=capabilities_for(ChannelType.WEB),
+                method="POST",
+                path="/api/sessions/{session_id}/turns/stream",
+                headers={key.lower(): value for key, value in request.headers.items()},
+                # 正文是**附件解析之后**的（附件上下文在这一层注入）——
+                # 归一化器看到的必须是真正要发出去的那段文字。
+                body=json.dumps({**body, "content": content}).encode(),
+                query={},
+                trace_id=current_trace_id() or "",
+                # 外部会话标识 = session_id（§3.3：web 的 chat id 填 session_id）。
+                ingress_ref=str(session_id),
+            ),
+            actor_id=UUID(str(principal_id)) if principal_id else None,
+            roles=tuple(getattr(principal, "roles", ()) or ()),
+        )
+        message = accepted.message
+
         # 整个 HTTP 请求一个 span —— 它是 agent.turn 的父 span.
         try:
             return await _sse_response(
                 _tracer.start_span("http.chat.stream"),
                 route="/api/sessions/{session_id}/turns/stream",
                 session_id=session_id,
-                tenant_id=x_tenant_id,
-                workspace_id=x_workspace_id,
+                tenant_id=message.actor.tenant_id,
+                workspace_id=message.actor.workspace_id or x_workspace_id,
                 build=lambda span_ctx: svc.stream_turn(
-                    tenant_id=x_tenant_id,
-                    workspace_id=x_workspace_id,
-                    owner_id=_owner_id(request, x_user_id),
+                    tenant_id=message.actor.tenant_id,
+                    workspace_id=message.actor.workspace_id or x_workspace_id,
+                    owner_id=message.actor.actor_id,
                     session_id=session_id,
-                    user_input=content,
+                    user_input=message.text,
                     model=body.get("model"),
                     route_id=route_id_uuid,
-                    # 幂等: 前端每次发送带一个唯一 id, 重复到达时不跑第二轮.
-                    client_request_id=str(body.get("clientRequestId") or ""),
+                    # 幂等键由 Gateway ③ 派生（前端每次发送带一个唯一 id，
+                    # 重复到达时不跑第二轮）。
+                    idempotency_key=message.idempotency,
                     parent_span_context=span_ctx,
                 ),
             )

@@ -217,6 +217,8 @@ class Gateway:
                 channel_type=channel_type,
                 channel_id=raw.channel_id,
                 trace_id=raw.trace_id,
+                # 外部会话标识（web 的 session_id）—— IM 的聊天 id 在协议载荷里。
+                external_chat_id=raw.ingress_ref,
                 capabilities=capabilities,
             ),
         )

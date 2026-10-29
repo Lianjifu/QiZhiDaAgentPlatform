@@ -841,6 +841,34 @@ class Container:
             capabilities=capabilities_for,
         )
 
+    def web_gateway(self):
+        """web 入口的门面 —— ② 用 principal/租户头，③ 用 web 归一化器。
+
+        **与渠道门面同型、不同装配**：web 没有渠道行（① 落空），身份来自
+        认证中间件的 principal（租户仍走租户头，§3.2）。
+        """
+        from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
+            PostgresIdempotencyStore,
+        )
+        from qzdap_agent_runtime.gateway.channels import capabilities_for
+        from qzdap_agent_runtime.gateway.facade import Gateway
+        from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
+        from qzdap_agent_runtime.gateway.types import ChannelType
+        from qzdap_agent_runtime.gateway.web import (
+            WebChatNormalizer,
+            WebIdentityVerifier,
+        )
+
+        return Gateway(
+            channels=None,
+            identity=WebIdentityVerifier(),
+            normalizers={ChannelType.WEB: WebChatNormalizer()},
+            idempotency=IdempotencyGuard(
+                PostgresIdempotencyStore(self.session_factory())
+            ),
+            capabilities=capabilities_for,
+        )
+
     def channel_result_sink(self):
         """出站 sink —— 标准结果事件 → 编码 → 投递（Gateway ① 的出站）。"""
         from qzdap.modules.channel.adapter.outbound.result_sink import (
