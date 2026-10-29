@@ -17,10 +17,11 @@ from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
-from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from qzdap_observability.metrics import record_legacy_call
+from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 
 from qzdap.modules.agent_runtime.adapter.http.dto import (
     CreateSessionRequest,
@@ -215,6 +216,7 @@ def build_router() -> APIRouter:
         request: Request = ...,  # type: ignore[assignment]
         svc: AgentRuntimeService = Depends(agent_runtime_dependency),  # noqa: B008
     ) -> StreamingResponse:
+        record_legacy_call("G7")  # /v1/sessions* 的 turn 部分
         from qzdap.modules.agent_runtime.application.use_cases.run_turn import (
             RunTurnUseCase,
         )

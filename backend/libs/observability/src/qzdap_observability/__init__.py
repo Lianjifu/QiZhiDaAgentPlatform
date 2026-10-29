@@ -11,6 +11,7 @@ from qzdap_observability.metrics import (
     metrics_registry,
     record_http_request,
     record_legacy_call,
+    record_new_call,
     render_prometheus,
 )
 from qzdap_observability.middleware import ObservabilityMiddleware
@@ -24,6 +25,7 @@ from qzdap_observability.tracing import (
 __all__ = [
     "LEGACY_CALLS_TOTAL",
     "LEGACY_CALL_LAST_TIMESTAMP",
+    "NEW_CALLS_TOTAL",
     "Counter",
     "Gauge",
     "Histogram",
@@ -37,6 +39,7 @@ __all__ = [
     "metrics_registry",
     "record_http_request",
     "record_legacy_call",
+    "record_new_call",
     "render_prometheus",
     "shutdown_tracing",
 ]

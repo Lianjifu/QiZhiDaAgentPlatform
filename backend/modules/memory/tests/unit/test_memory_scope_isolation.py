@@ -16,6 +16,7 @@ import math
 from uuid import UUID
 
 import pytest
+from qzdap_observability.metrics import LEGACY_CALLS_TOTAL
 
 from qzdap.modules.memory.application.ports import (
     MemoryCatalogRepository,
@@ -278,6 +279,29 @@ async def test_unowned_memories_are_not_recalled() -> None:
         user_id=USER_A,
     )
     assert all("存量自动沉淀" not in str(h["content"]) for h in hits)
+
+
+@pytest.mark.asyncio
+async def test_legacy_call_metric_is_recorded() -> None:
+    """收敛打点：旧实现被调用 → 指标可观测（台账 §3.2 的清理判据依赖它）。"""
+    svc, _ = _svc()
+    before = LEGACY_CALLS_TOTAL.labels(entry="X16")._value.get()
+    await svc.write(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        owner_id=USER_A,
+        content="打点验证",
+        metadata={"key": "打点"},
+    )
+    await svc.recall(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        query="打点",
+        top_k=5,
+        user_id=USER_A,
+    )
+    after = LEGACY_CALLS_TOTAL.labels(entry="X16")._value.get()
+    assert after == before + 2
 
 
 @pytest.mark.asyncio

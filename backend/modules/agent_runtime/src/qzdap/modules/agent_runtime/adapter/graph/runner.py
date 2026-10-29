@@ -11,6 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from opentelemetry import trace as _trace
+from qzdap_observability.metrics import record_legacy_call
 from qzdap_observability.tracing import get_tracer
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
@@ -89,6 +90,7 @@ class SessionGraphRunner:
         self._knowledge_port = knowledge_port
         self._approval_factory = approval_factory
         self._catalog_model_resolver = catalog_model_resolver
+        record_legacy_call("X5")  # 占位图 compile_loop_graph
         self._graph = compile_loop_graph(llm_node=_passthrough_llm, tools_node=_passthrough_tools)
         self.last_loop_state: dict[str, Any] = {}
 
@@ -167,6 +169,7 @@ class SessionGraphRunner:
         # 默认 None — 测试 / 评估场景没有父 session.
         session_id: UUID | None = None,
     ) -> AsyncGenerator[TurnChunk, None]:
+        record_legacy_call("X17")  # 旧路径的手写推理循环
         seq = 0
         max_steps = 8
         if agent is not None:
@@ -206,6 +209,7 @@ class SessionGraphRunner:
                 ],
                 degraded=False,
             )
+        record_legacy_call("X9")  # 旧上下文压缩 compact_messages
         messages, rolling_summary, did_compact = compact_messages(
             messages, rolling_summary=rolling_summary, context_window=context_window
         )
@@ -562,6 +566,10 @@ class SessionGraphRunner:
                 for item in sorted(knowledge, key=lambda row: float(row.get("score") or 0), reverse=True)[:6]
             )
             system += f"\n\n相关知识：\n{hits}"
+        record_legacy_call("X8")  # 旧上下文组装 _load_messages
+        if memories:
+            # L3 内容进「相关记忆」，knowledge 也进同一段 → 运行时双份注入。
+            record_legacy_call("X15")
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
         for item in history:
             role = item.get("role")
@@ -676,6 +684,7 @@ class SessionGraphRunner:
         user_input: str,
         final: str,
     ) -> list[tuple[str, str]]:
+        record_legacy_call("X11")  # 旧记忆写入 _remember
         policy = dict(agent.memory_policy) if agent is not None else {"enabled": True, "autoSummarize": True}
         if not policy.get("enabled", True) or self._memory_port is None or not final.strip():
             return []

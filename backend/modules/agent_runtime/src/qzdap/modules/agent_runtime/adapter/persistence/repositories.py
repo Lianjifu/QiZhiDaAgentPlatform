@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
 
+from qzdap_observability.metrics import record_legacy_call
 from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.engine import CursorResult
@@ -49,6 +50,8 @@ class SqlSessionRepository(SessionRepository):
         self._s = session
 
     async def add(self, session: Session) -> None:
+        record_legacy_call("X3")  # agent_sessions.graph_state 列
+        record_legacy_call("X6")  # agent_sessions.wait_status 列
         self._s.add(
             SessionORM(
                 id=session.id,
@@ -67,6 +70,8 @@ class SqlSessionRepository(SessionRepository):
         )
 
     async def update(self, session: Session) -> None:
+        record_legacy_call("X3")  # agent_sessions.graph_state 列
+        record_legacy_call("X6")  # agent_sessions.wait_status 列
         o = await self._s.get(SessionORM, session.id)
         if o is None or _cross_tenant(o):
             return
@@ -90,6 +95,7 @@ class SqlSessionRepository(SessionRepository):
         commit is immediate — the claim has to be visible to other workers
         before the turn starts streaming.
         """
+        record_legacy_call("X6")  # agent_sessions.wait_status 列
         stale_before = datetime.now(UTC) - timedelta(minutes=CLAIM_STALE_MINUTES)
         result = await self._s.execute(
             update(SessionORM)

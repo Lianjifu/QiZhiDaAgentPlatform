@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 
 from qzdap.composition.unavailable_providers import ProviderUnavailable
 from qzdap_kernel.errors import ValidationError
+from qzdap_observability.metrics import record_legacy_call
 
 from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
@@ -274,6 +275,7 @@ class MemoryService:
         user_name: str = "",
         agent_name: str = "",
     ) -> dict[str, Any]:
+        record_legacy_call("X16")  # MemoryService 单类（运行时 + 管理面未拆）
         meta = metadata or {}
         now = datetime.now(UTC)
         session = L1Session(
@@ -347,6 +349,7 @@ class MemoryService:
         scope_filter: str | None = None,
         user_id: UUID | None = None,
     ) -> list[dict[str, Any]]:
+        record_legacy_call("X16")  # MemoryService 单类（运行时 + 管理面未拆）
         _ = scope_filter
         limit = max(1, top_k)
         needle = query.strip().lower()

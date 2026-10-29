@@ -73,6 +73,14 @@ LEGACY_CALL_LAST_TIMESTAMP = Gauge(
     labelnames=("entry",),
     registry=metrics_registry,
 )
+# 新实现调用计数 —— 与 LEGACY_CALLS_TOTAL 同源同标签，供
+# 「新路径流量占比 ≥95%」的删除判据使用（README §3.1 的删除条件客观化）。
+NEW_CALLS_TOTAL = Counter(
+    "qzdap_new_calls_total",
+    "Calls to replacement implementations, by cleanup-ledger entry id",
+    labelnames=("entry",),
+    registry=metrics_registry,
+)
 
 
 def record_http_request(
@@ -92,6 +100,11 @@ def record_legacy_call(entry: str) -> None:
     """
     LEGACY_CALLS_TOTAL.labels(entry=entry).inc()
     LEGACY_CALL_LAST_TIMESTAMP.labels(entry=entry).set(time.time())
+
+
+def record_new_call(entry: str) -> None:
+    """记录一次新实现调用（与 :func:`record_legacy_call` 同一套 ``entry`` 标签）。"""
+    NEW_CALLS_TOTAL.labels(entry=entry).inc()
 
 
 def render_prometheus() -> tuple[bytes, str]:

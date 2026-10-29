@@ -22,6 +22,7 @@ from typing import Any
 
 from qzdap.modules.channel.application.ports import InboundAdapter, ParsedMessage
 from qzdap.modules.channel.domain.value_objects import ChannelType
+from qzdap_observability.metrics import record_legacy_call
 
 
 class WeChatWorkInboundAdapter(InboundAdapter):
@@ -54,6 +55,7 @@ class WeChatWorkInboundAdapter(InboundAdapter):
         body: bytes,
         headers: dict[str, str],
     ) -> ParsedMessage:
+        record_legacy_call("G4")  # ParsedMessage 数据类
         text = body.decode("utf-8", errors="replace").strip()
         if not text:
             return ParsedMessage(

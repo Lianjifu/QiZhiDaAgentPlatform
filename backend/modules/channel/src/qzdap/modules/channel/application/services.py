@@ -44,6 +44,7 @@ from qzdap.modules.channel.domain.value_objects import (
     ChannelType,
     DeliveryStatus,
 )
+from qzdap_observability.metrics import record_legacy_call
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -193,6 +194,7 @@ class ChannelService:
                 secret_bytes = self.cipher.decrypt(blob)
 
         # Validate timestamp skew + HMAC signature (publish rejects).
+        record_legacy_call("G2")  # IM 验签分支 _verify_signature / _reject
         try:
             await self._verify_signature(
                 secret=secret_bytes,
@@ -236,6 +238,7 @@ class ChannelService:
         await self.delivery_repo.add(delivery)
 
         if self.publisher is not None:
+            record_legacy_call("G5")  # ChannelMessageReceived 事件
             await self.publisher.publish(
                 ChannelMessageReceived(
                     channel_id=channel_id,

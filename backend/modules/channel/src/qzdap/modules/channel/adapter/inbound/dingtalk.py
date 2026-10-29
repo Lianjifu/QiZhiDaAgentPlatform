@@ -22,6 +22,7 @@ from typing import Any
 
 from qzdap.modules.channel.application.ports import InboundAdapter, ParsedMessage
 from qzdap.modules.channel.domain.value_objects import ChannelType
+from qzdap_observability.metrics import record_legacy_call
 
 
 class DingTalkInboundAdapter(InboundAdapter):
@@ -41,6 +42,7 @@ class DingTalkInboundAdapter(InboundAdapter):
         body: bytes,
         headers: dict[str, str],
     ) -> ParsedMessage:
+        record_legacy_call("G4")  # ParsedMessage 数据类
         payload = _safe_json(body)
 
         # Stream v2 encryption. Real DingTalk signs the request with a

@@ -69,7 +69,7 @@
 
 | 规则 | 说明 |
 |---|---|
-| **弃用标记 + 观测** | 旧实现被接管时打 `@deprecated` + `qzdap_legacy_calls_total{path="..."}`，让「旧路径还在被调用」成为可观测事实 |
+| **弃用标记 + 观测** | 旧实现被接管时打 `@deprecated` + `qzdap_legacy_calls_total{entry="..."}`，让「旧路径还在被调用」成为可观测事实。✅ 指标与打点已落地（2026-10-29，26/33 条，见台账 §3.2 的打点覆盖表） |
 | **删除条件客观化** | 连续运行 **≥ 7 天** + 新路径流量占比 **≥ 95%** + `qzdap_legacy_calls_total{entry="…"}` 窗口内**累计为 0** + 窗口内无相关生产事故。**不使用「发布周期」概念** —— 本项目无 tag / CHANGELOG / release 目标，该周期不可定义，等于「随时」（见台账 §3.3 的论证） |
 | **台账化** | 全部旧实现登记在 [`cleanup-ledger.md`](cleanup-ledger.md) |
 | **单实现不变量** | **对每个关注点，任一时刻只有一个实现活着。**「弃用」不是终态 —— 每个旧实现的删除都落在**某一层的某个具体 Stage** 的具体 PR，见 [`implementation-plan.md`](implementation-plan.md) §1.2 的「关注点 → 唯一实现 → 删除时点 → 归属层 · Stage → **允许并存窗口**」表，并由 §6.2 的守卫规则在 CI 里强制 |
@@ -374,7 +374,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 | 4 | **`tools` 表的 spec 生成真实 schema** | `modules/tool` | **Agent Stage 2** | 现在 admin 注册的 OpenAPI / MCP 工具返回的是**空 schema**，模型看不到参数 |
 | 5 | **工具白名单与 `unprotected` 语义** | `modules/agent_runtime`（agent 配置） | **Agent Stage 2** | 白名单在 agent 配置里（`allowed_tools` / `allowed_skills`）；`unprotected` 是 Gateway 判定的事实，需沿链路传到工具绑定的治理过滤 |
 | 6 | **`deepagents` 依赖** | `runtimes/agent_runtime/pyproject.toml` | **Agent Stage 6** | **未安装、不在 `uv.lock`**；且现有 `InMemoryDeepAgentFactory` 的 docstring 声称「已验证可用」是**错的**（代码从未 import 它）。必须先在隔离分支验证 API 与版本 |
-| 7 | **`qzdap_legacy_calls_total` 指标** | `libs/observability` | **全部六层的 Stage 0** | **代码里不存在**。没有它，收敛判据全部无从判定 —— 这是**所有清理动作的前提** |
+| 7 | ~~**`qzdap_legacy_calls_total` 指标**~~ | ~~`libs/observability`~~ | — | ✅ **已落地（2026-10-29）**：`LEGACY_CALLS_TOTAL` + `record_legacy_call(entry)` + `NEW_CALLS_TOTAL` + `record_new_call(entry)`（有单测）；**26/33 条台账条目已在旧入口打点**，其余 7 条走替代判据（从未接线 / 数据类）。**这一条不再是外部前置依赖** |
 | 8b | **`ErrorCode` 码收敛** | `libs/schema` + `modules/channel` + `modules/agent_runtime` | **Gateway Stage 0** | 7 个码（`CHANNEL_NOT_FOUND` / `CHANNEL_DISABLED` / `INBOUND_ADAPTER_MISSING` / `WEBHOOK_SIGNATURE_INVALID` / `WEBHOOK_TIMESTAMP_SKEW` / `DUPLICATE_REQUEST` / `TENANT_DENIED`）散落在模块内异常的 `code=` 字符串里，**`ErrorCode` 枚举不含它们**。Gateway 的 `ERROR_PROJECTION` 投影表按码查文案 → 必须先收敛 |
 | 8c | **`modules/channel` 依赖 `qzdap-agent-runtime`** | `modules/channel` + `uv.lock` | **Gateway Stage 2** | webhook 端点要调 `Gateway.accept`。**不改正 `uv.lock` 就装不上** |
 | 8 | **LangGraph checkpoint 表** | `backend/migrations`（Session 迁移 0046） | **Session Stage 0**（Agent Stage 0 **不受阻** —— Agent 只用 saver，不建表） | checkpoint 系列表**不在任何迁移里**；且现有 `builder.from_url` 用的是**同步** `PostgresSaver`，必须换 `AsyncPostgresSaver`。⚠️ **表名按已安装的 `langgraph-checkpoint-postgres` 3.1.3**：无 `langgraph_` 前缀、无 `_v2` 变体 |

@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from opentelemetry import trace as _trace
+from qzdap_observability.metrics import record_legacy_call
 from qzdap_observability.tracing import get_tracer
 
 from qzdap.modules.agent_runtime.adapter.http.dto import (
@@ -159,6 +160,7 @@ def build_session_router() -> APIRouter:
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
         svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
     ) -> dict[str, Any]:
+        record_legacy_call("R2")  # agentId 直取（无任何策略）
         agent_id = body.get("agentId") or body.get("agent_id")
         if not agent_id:
             raise HTTPException(status_code=400, detail="agentId is required")
@@ -561,6 +563,7 @@ def build_session_router() -> APIRouter:
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
         svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
     ) -> list[dict[str, Any]]:
+        record_legacy_call("G8")  # GET /v1/sessions 列表别名
         return await svc.list_sessions(owner_id=_owner_id(request, x_user_id))
 
     return router

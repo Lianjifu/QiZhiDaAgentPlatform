@@ -7,6 +7,8 @@ agent version + workspace context.
 
 from __future__ import annotations
 
+from qzdap_observability.metrics import record_legacy_call
+
 from qzdap.modules.agent_runtime.domain import Session
 
 _PROMPT = (
@@ -49,6 +51,7 @@ _PROMPT_WITH_MEMORY_AND_KNOWLEDGE = (
 
 
 def build_system_prompt(session: Session) -> str:
+    record_legacy_call("X10")  # 四套 system prompt 模板
     return _PROMPT.format(
         agent_name=f"agent-{session.agent_id.hex[:8]}",
         agent_version=session.agent_version,
@@ -58,6 +61,7 @@ def build_system_prompt(session: Session) -> str:
 
 
 def build_system_prompt_with_memory(session: Session, memories: list[dict]) -> str:
+    record_legacy_call("X10")  # 四套 system prompt 模板
     formatted = "\n".join(
         f"- ({m.get('score', 0):.3f}) {m.get('content', '')}" for m in memories
     )
@@ -71,6 +75,7 @@ def build_system_prompt_with_memory(session: Session, memories: list[dict]) -> s
 
 
 def build_system_prompt_with_knowledge(session: Session, chunks: list[dict]) -> str:
+    record_legacy_call("X10")  # 四套 system prompt 模板
     formatted = "\n".join(
         f"- ({c.get('score', 0):.3f}) [package:{c.get('package_name', '?')}:"
         f"{c.get('ordinal', '?')}] {c.get('content', '')}"
@@ -90,6 +95,7 @@ def build_system_prompt_with_memory_and_knowledge(
     memories: list[dict],
     chunks: list[dict],
 ) -> str:
+    record_legacy_call("X10")  # 四套 system prompt 模板
     mem_formatted = "\n".join(
         f"- ({m.get('score', 0):.3f}) {m.get('content', '')}" for m in memories
     )

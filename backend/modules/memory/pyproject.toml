@@ -9,6 +9,7 @@ dependencies = [
     "qzdap-persistence",
     "qzdap-vector",
     "qzdap-auth",
+  "qzdap-observability",
     "qzdap-http",
     "fastapi>=0.115.0",
     "pydantic>=2.9",

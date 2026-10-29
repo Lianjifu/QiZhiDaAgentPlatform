@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_observability.metrics import record_legacy_call
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
     DoneChunk,
@@ -221,14 +222,18 @@ class CopilotSessionService:
         """
         # 先校验会话存在且未关闭, 再抢占用 —— 否则「会话不存在」会被误报成
         # 「会话忙」.
+        # 收敛打点：旧实现被调用 = 「旧路径还在服役」的**可观测事实**。
+        record_legacy_call("X18")  # copilot.py 的 turn 编排
         await self._require_session(tenant_id, session_id)
         claimed = await self._sessions.try_claim(session_id)
+        record_legacy_call("R3")  # try_claim 的会话互斥职责
         if not claimed:
             raise SessionBusyError(
                 f"session {session_id} already has a turn in flight",
                 code="SESSION_BUSY",
             )
         try:
+            record_legacy_call("G1")  # record_request_id + recent_request_ids
             fresh = await self._sessions.record_request_id(
                 session_id, client_request_id
             )
@@ -454,6 +459,7 @@ class CopilotSessionService:
             from qzdap_schema.ids import TenantId as TId
             from qzdap_schema.ids import UserId as UId
 
+            record_legacy_call("X7")  # 审批异常吞噬 except Exception: pass
             try:
                 if approved:
                     await approval_service.approve(
@@ -471,6 +477,9 @@ class CopilotSessionService:
             except Exception:  # noqa: BLE001
                 pass
         pending["decision"] = "approved" if approved else "denied"
+        # 审批恢复路径不传 clientRequestId → 幂等被跳过 → 连点两次「同意」
+        # 工具会被再执行一次（台账 G10）。
+        record_legacy_call("G10")
         async for chunk in self.stream_turn(
             tenant_id=tenant_id,
             workspace_id=workspace_id,

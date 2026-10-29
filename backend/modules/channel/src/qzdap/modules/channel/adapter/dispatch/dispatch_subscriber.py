@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from qzdap.modules.channel.domain.events import ChannelMessageReceived
+from qzdap_observability.metrics import record_legacy_call
 
 if TYPE_CHECKING:
     from qzdap.modules.channel.application.ports import (
@@ -109,7 +110,9 @@ class ChannelDispatchSubscriber:
         await self._handle_event(evt)
 
     async def _handle_event(self, evt: ChannelMessageReceived) -> None:
+        record_legacy_call("G9")  # dispatch_subscriber.py 整体
         """Domain-level dispatch."""
+        record_legacy_call("G6")  # IM 进程内 LRU 去重
         msg_key = self._message_key(evt)
         dedup_key = (evt.tenant_id, evt.channel_id, msg_key)
         if dedup_key in self._seen:
@@ -172,6 +175,8 @@ class ChannelDispatchSubscriber:
             session_obj = self._open_session()
             async with session_obj as sess:
                 svc = self._ar_factory.for_session(sess)
+                record_legacy_call("G3")  # 硬编码 SYSTEM_USER_ID / SYSTEM_AGENT_ID
+                record_legacy_call("R1")  # IM 每条消息新建临时 session
                 session = await svc.create_session().execute(
                     tenant_id=evt.tenant_id,
                     workspace_id=channel.workspace_id,
@@ -187,6 +192,7 @@ class ChannelDispatchSubscriber:
                 user_input = (
                     f"[channel={evt.channel_type} chat={evt.external_chat_id}] {evt.text_preview}"
                 )
+                record_legacy_call("X2")  # 第二套 turn 实现
                 result = await svc.run_turn_to_completion().execute(
                     tenant_id=evt.tenant_id,
                     workspace_id=channel.workspace_id,
