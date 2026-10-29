@@ -33,10 +33,10 @@ from qzdap_agent_runtime import (
 )
 from qzdap_agent_runtime.channels import (
     ChannelMessage,
-    build_session_key,
     build_trace_id,
     payload_hash,
 )
+from qzdap_agent_runtime.router import derive_session_key
 from qzdap_agent_runtime.evaluation import (
     EngineSwitch,
     RolloutPolicy,
@@ -86,21 +86,40 @@ def check(name: str, condition: bool, detail: str = "") -> None:
 def test_channel_dto_helpers() -> None:
     print("\n[§5.1] Channel key + trace_id + payload_hash")
 
-    # session_key 稳定 + 含冒号
-    k1 = build_session_key("t1", "w1", "feishu", "oc_a", "u_x")
-    k2 = build_session_key("t1", "w1", "feishu", "oc_a", "u_x")
+    # session_key 稳定 + 定长哈希（Router 的会话 key 派生，§4.1）
+    k1 = derive_session_key(
+        tenant_id="t1",
+        workspace_id="w1",
+        channel_type="feishu",
+        channel_id="feishu",
+        external_chat_id="oc_a",
+        external_user_id="u_x",
+    )
+    k2 = derive_session_key(
+        tenant_id="t1",
+        workspace_id="w1",
+        channel_type="feishu",
+        channel_id="feishu",
+        external_chat_id="oc_a",
+        external_user_id="u_x",
+    )
     check("session_key_stable", k1 == k2)
-    check("session_key_format_5_parts", k1.count(":") == 4,
-          f"got {k1}")
-    k3 = build_session_key("t1", "w1", "feishu", "oc_b", "u_x")
+    check("session_key_is_sha256_hex", len(k1) == 64, f"got {k1}")
+    k3 = derive_session_key(
+        tenant_id="t1",
+        workspace_id="w1",
+        channel_type="feishu",
+        channel_id="feishu",
+        external_chat_id="oc_b",
+        external_user_id="u_x",
+    )
     check("different_chat_different_key", k1 != k3)
 
     # trace_id 决定性 + UUID 格式
     t1 = build_trace_id("feishu", "om_1")
     t2 = build_trace_id("feishu", "om_1")
     check("trace_id_stable", t1 == t2)
-    check("trace_id_uuid_v5", len(t1) == 36 and t1.count("-") == 4,
-          f"got {t1}")
+    check("trace_id_uuid_v5", len(t1) == 36 and t1.count("-") == 4, f"got {t1}")
     t3 = build_trace_id("feishu", "om_2")
     check("trace_id_different_event", t1 != t3)
 
@@ -113,9 +132,14 @@ def test_channel_dto_helpers() -> None:
 
     # ChannelMessage Pydantic frozen
     msg = ChannelMessage(
-        tenant_id="t1", workspace_id="w1", channel_id="f", channel_type="feishu",
-        external_chat_id="oc_1", external_user_id="u_1",
-        external_message_id="om_1", text="hi",
+        tenant_id="t1",
+        workspace_id="w1",
+        channel_id="f",
+        channel_type="feishu",
+        external_chat_id="oc_1",
+        external_user_id="u_1",
+        external_message_id="om_1",
+        text="hi",
     )
     try:
         msg.text = "tamper"  # type: ignore[misc]
@@ -135,15 +159,16 @@ def test_ensure_session() -> None:
     async def _run() -> None:
         engine = SessionEngine()
         identity = {
-            "tenant_id": "tnt-1", "workspace_id": "ws-1",
-            "channel_id": "feishu", "external_chat_id": "oc_1",
+            "tenant_id": "tnt-1",
+            "workspace_id": "ws-1",
+            "channel_id": "feishu",
+            "external_chat_id": "oc_1",
             "external_user_id": "u_1",
         }
         ref1 = await engine.ensure_session(identity)
         ref2 = await engine.ensure_session(identity)
         check("ensure_session_deterministic", ref1.session_id == ref2.session_id)
-        check("session_id_len_32", len(ref1.session_id) == 32,
-              f"got len={len(ref1.session_id)}")
+        check("session_id_len_32", len(ref1.session_id) == 32, f"got len={len(ref1.session_id)}")
         check("session_ref_tenant_preserved", ref1.tenant_id == "tnt-1")
         check("session_ref_workspace_preserved", ref1.workspace_id == "ws-1")
         # 不同 identity
@@ -167,9 +192,12 @@ def test_start_turn_end_to_end() -> None:
         gateway = ChannelGateway(engine)
 
         msg = ChannelMessage(
-            tenant_id="tnt-2", workspace_id="ws-2",
-            channel_id="web", channel_type="web",
-            external_chat_id="chat-2", external_user_id="u-2",
+            tenant_id="tnt-2",
+            workspace_id="ws-2",
+            channel_id="web",
+            channel_type="web",
+            external_chat_id="chat-2",
+            external_user_id="u-2",
             external_message_id="m-001",
             text="hello world",
         )
@@ -191,8 +219,7 @@ def test_start_turn_end_to_end() -> None:
         # sink 收到事件
         sink_events = engine.sink.get_events(d.turn_id)
         check("sink_has_events", len(sink_events) >= 1)
-        check("sink_last_event_is_done",
-              isinstance(sink_events[-1], DoneEvent))
+        check("sink_last_event_is_done", isinstance(sink_events[-1], DoneEvent))
 
         # latest_seq 正向
         latest = engine.sink.latest_seq(d.turn_id)
@@ -213,10 +240,14 @@ def test_replay_after_seq() -> None:
         engine = SessionEngine()
         gateway = ChannelGateway(engine)
         msg = ChannelMessage(
-            tenant_id="tnt-3", workspace_id="ws-3",
-            channel_id="api", channel_type="web",
-            external_chat_id="c-3", external_user_id="u-3",
-            external_message_id="m-3", text="replay test",
+            tenant_id="tnt-3",
+            workspace_id="ws-3",
+            channel_id="api",
+            channel_type="web",
+            external_chat_id="c-3",
+            external_user_id="u-3",
+            external_message_id="m-3",
+            text="replay test",
         )
         done_event = None
         async for ev in gateway.handle(msg):
@@ -232,8 +263,8 @@ def test_replay_after_seq() -> None:
         check("replay_all_nonempty", len(all_evs) >= 1)
         # 增量 (after_seq=latest) → 空
         incr = [ev async for ev in engine.replay(tid, after_seq=latest)]
-        check("replay_incremental_empty", len(incr) == 0,
-              f"got {len(incr)} events")
+        check("replay_incremental_empty", len(incr) == 0, f"got {len(incr)} events")
+
     asyncio.run(_run())
 
 
@@ -246,7 +277,9 @@ def test_routing_heuristic() -> None:
     print("\n[§2.5] classify_task_kind_heuristic: 永远返回 TaskKind")
 
     from qzdap_agent_runtime.graph import (
-        AgentRouteConfig, TaskKind, classify_task_kind_heuristic,
+        AgentRouteConfig,
+        TaskKind,
+        classify_task_kind_heuristic,
     )
 
     cfg = AgentRouteConfig(agent_id="a", deep_research=False)
@@ -254,43 +287,55 @@ def test_routing_heuristic() -> None:
 
     # 规则 1: deep_research=true 强制 DEEP_RESEARCH
     k = classify_task_kind_heuristic(
-        message_count=1, tools_count=0,
-        message_text="随便聊聊", agent_config=cfg_deep,
+        message_count=1,
+        tools_count=0,
+        message_text="随便聊聊",
+        agent_config=cfg_deep,
     )
     check("rule1_deep_research_flag", k is TaskKind.DEEP_RESEARCH)
 
     # 规则 3: 关键词 '研究' → DEEP_RESEARCH
     k = classify_task_kind_heuristic(
-        message_count=1, tools_count=0,
-        message_text="帮我研究 RAG", agent_config=cfg,
+        message_count=1,
+        tools_count=0,
+        message_text="帮我研究 RAG",
+        agent_config=cfg,
     )
     check("keyword_research", k is TaskKind.DEEP_RESEARCH)
 
     # 规则 3: 关键词 '写代码' → MULTI_STEP_CODE
     k = classify_task_kind_heuristic(
-        message_count=1, tools_count=0,
-        message_text="帮我写代码", agent_config=cfg,
+        message_count=1,
+        tools_count=0,
+        message_text="帮我写代码",
+        agent_config=cfg,
     )
     check("keyword_code", k is TaskKind.MULTI_STEP_CODE)
 
     # 规则 2: 长上下文 + 多工具 → MULTI_STEP_CODE
     k = classify_task_kind_heuristic(
-        message_count=25, tools_count=10,
-        message_text="随便", agent_config=cfg,
+        message_count=25,
+        tools_count=10,
+        message_text="随便",
+        agent_config=cfg,
     )
     check("rule2_long_context_multi_tools", k is TaskKind.MULTI_STEP_CODE)
 
     # 规则 4: fallback → SIMPLE_QA (永远合法)
     k = classify_task_kind_heuristic(
-        message_count=1, tools_count=0,
-        message_text="今天天气", agent_config=cfg,
+        message_count=1,
+        tools_count=0,
+        message_text="今天天气",
+        agent_config=cfg,
     )
     check("fallback_simple_qa", k is TaskKind.SIMPLE_QA)
 
     # 边界: 空字符串
     k = classify_task_kind_heuristic(
-        message_count=0, tools_count=0,
-        message_text="", agent_config=cfg,
+        message_count=0,
+        tools_count=0,
+        message_text="",
+        agent_config=cfg,
     )
     check("fallback_empty_text", k is TaskKind.SIMPLE_QA)
 
@@ -307,33 +352,51 @@ def test_approval_store() -> None:
     store = InMemoryApprovalStore()
     now = time.time()
     rec1 = ApprovalRecord(
-        approval_id="apr-1", session_id="s-1", turn_id="t-1",
-        tool_call_id="tc-1", tool_name="send_email",
-        request_hash="hash-1", arguments={"to": "u@x"},
-        policy_id="pol-1", requester="u-1",
-        created_at=now, expires_at=now + 900,
+        approval_id="apr-1",
+        session_id="s-1",
+        turn_id="t-1",
+        tool_call_id="tc-1",
+        tool_name="send_email",
+        request_hash="hash-1",
+        arguments={"to": "u@x"},
+        policy_id="pol-1",
+        requester="u-1",
+        created_at=now,
+        expires_at=now + 900,
     )
     store.save(rec1)
     check("save_first", store.get("apr-1") is not None)
 
     # 6.2 同 key 同 approval_id → 幂等 (不抛)
     rec_dup = ApprovalRecord(
-        approval_id="apr-1", session_id="s-1", turn_id="t-1",
-        tool_call_id="tc-1", tool_name="send_email",
-        request_hash="hash-1", arguments={"to": "u@x"},
-        policy_id="pol-1", requester="u-1",
-        created_at=now, expires_at=now + 900,
+        approval_id="apr-1",
+        session_id="s-1",
+        turn_id="t-1",
+        tool_call_id="tc-1",
+        tool_name="send_email",
+        request_hash="hash-1",
+        arguments={"to": "u@x"},
+        policy_id="pol-1",
+        requester="u-1",
+        created_at=now,
+        expires_at=now + 900,
     )
     store.save(rec_dup)
     check("idempotent_save", store.get("apr-1") is not None)
 
     # 6.3 同 key 不同 approval_id → ApprovalNotMatchError
     rec_dup_diff = ApprovalRecord(
-        approval_id="apr-2", session_id="s-1", turn_id="t-1",
-        tool_call_id="tc-1", tool_name="send_email",
-        request_hash="hash-1", arguments={"to": "u@x"},
-        policy_id="pol-1", requester="u-1",
-        created_at=now, expires_at=now + 900,
+        approval_id="apr-2",
+        session_id="s-1",
+        turn_id="t-1",
+        tool_call_id="tc-1",
+        tool_name="send_email",
+        request_hash="hash-1",
+        arguments={"to": "u@x"},
+        policy_id="pol-1",
+        requester="u-1",
+        created_at=now,
+        expires_at=now + 900,
     )
     raised = False
     try:
@@ -345,19 +408,29 @@ def test_approval_store() -> None:
     # 6.4 TTL 超时 → ApprovalExpiredError on consume
     store2 = InMemoryApprovalStore()
     expired = ApprovalRecord(
-        approval_id="apr-exp", session_id="s-2", turn_id="t-2",
-        tool_call_id="tc-2", tool_name="rm",
-        request_hash="hash-2", arguments={},
-        policy_id=None, requester="u-2",
-        created_at=now - 1000, expires_at=now - 100,  # 已过期
+        approval_id="apr-exp",
+        session_id="s-2",
+        turn_id="t-2",
+        tool_call_id="tc-2",
+        tool_name="rm",
+        request_hash="hash-2",
+        arguments={},
+        policy_id=None,
+        requester="u-2",
+        created_at=now - 1000,
+        expires_at=now - 100,  # 已过期
     )
     store2.save(expired)
     from qzdap_agent_runtime.governance import ApprovalExpiredError
+
     raised = False
     try:
         store2.consume(
-            approval_id="apr-exp", tool_call_id="tc-2",
-            request_hash="hash-2", actor_id="u-2", decision="approve",
+            approval_id="apr-exp",
+            tool_call_id="tc-2",
+            request_hash="hash-2",
+            actor_id="u-2",
+            decision="approve",
         )
     except ApprovalExpiredError:
         raised = True
@@ -366,23 +439,35 @@ def test_approval_store() -> None:
     # 6.5 consume 后再 consume → 拒绝 (consumed flag)
     store3 = InMemoryApprovalStore()
     fresh = ApprovalRecord(
-        approval_id="apr-fresh", session_id="s-3", turn_id="t-3",
-        tool_call_id="tc-3", tool_name="x",
-        request_hash="hash-3", arguments={},
-        policy_id=None, requester="u-3",
-        created_at=now, expires_at=now + 900,
+        approval_id="apr-fresh",
+        session_id="s-3",
+        turn_id="t-3",
+        tool_call_id="tc-3",
+        tool_name="x",
+        request_hash="hash-3",
+        arguments={},
+        policy_id=None,
+        requester="u-3",
+        created_at=now,
+        expires_at=now + 900,
     )
     store3.save(fresh)
     rec = store3.consume(
-        approval_id="apr-fresh", tool_call_id="tc-3",
-        request_hash="hash-3", actor_id="u-3", decision="approve",
+        approval_id="apr-fresh",
+        tool_call_id="tc-3",
+        request_hash="hash-3",
+        actor_id="u-3",
+        decision="approve",
     )
     check("consume_returns_record", rec is not None and rec.decision == "approve")
     raised = False
     try:
         store3.consume(
-            approval_id="apr-fresh", tool_call_id="tc-3",
-            request_hash="hash-3", actor_id="u-3", decision="approve",
+            approval_id="apr-fresh",
+            tool_call_id="tc-3",
+            request_hash="hash-3",
+            actor_id="u-3",
+            decision="approve",
         )
     except ApprovalNotMatchError:
         raised = True
@@ -409,11 +494,16 @@ def test_outbox_dead_letter() -> None:
 
     repo = InMemoryOutboxRepository()
     fail = _FailSink()
-    repo.add(OutboxEvent(
-        turn_id="t-out", seq=1, event_type="message",
-        delivery_status="pending", delivery_attempts=0,
-        payload={"content": "x"},
-    ))
+    repo.add(
+        OutboxEvent(
+            turn_id="t-out",
+            seq=1,
+            event_type="message",
+            delivery_status="pending",
+            delivery_attempts=0,
+            payload={"content": "x"},
+        )
+    )
     worker = OutboxWorker(repo, fail)
 
     async def _run() -> None:
@@ -421,11 +511,17 @@ def test_outbox_dead_letter() -> None:
         for _ in range(MAX_DELIVERY_ATTEMPTS):
             await worker.tick()
         # 验证: 失败次数 = MAX_DELIVERY_ATTEMPTS
-        check("failed_attempts_eq_max", fail.calls == MAX_DELIVERY_ATTEMPTS,
-              f"calls={fail.calls}, max={MAX_DELIVERY_ATTEMPTS}")
+        check(
+            "failed_attempts_eq_max",
+            fail.calls == MAX_DELIVERY_ATTEMPTS,
+            f"calls={fail.calls}, max={MAX_DELIVERY_ATTEMPTS}",
+        )
         # 死信累计
-        check("dead_lettered_count_eq_1", worker.stats.dead_lettered == 1,
-              f"dead_lettered={worker.stats.dead_lettered}")
+        check(
+            "dead_lettered_count_eq_1",
+            worker.stats.dead_lettered == 1,
+            f"dead_lettered={worker.stats.dead_lettered}",
+        )
         check("dead_letters_logged", len(repo.dead_letters) == 1)
 
     asyncio.run(_run())
@@ -445,8 +541,7 @@ def test_engine_switch_rollout() -> None:
         force_v1_agents=frozenset({"canary-agt"}),
     )
     sw = EngineSwitch(policy)
-    check("force_v1_agent", sw.pick_engine_version(
-        agent_id="canary-agt", tenant_id="any") == "v1")
+    check("force_v1_agent", sw.pick_engine_version(agent_id="canary-agt", tenant_id="any") == "v1")
 
     # 强制 v0 优先
     policy2 = RolloutPolicy(
@@ -454,8 +549,10 @@ def test_engine_switch_rollout() -> None:
         force_v0_agents=frozenset({"legacy-agt"}),
     )
     sw2 = EngineSwitch(policy2)
-    check("force_v0_overrides", sw2.pick_engine_version(
-        agent_id="legacy-agt", tenant_id="any") == "v0")
+    check(
+        "force_v0_overrides",
+        sw2.pick_engine_version(agent_id="legacy-agt", tenant_id="any") == "v0",
+    )
 
     # 稳定分桶
     policy3 = RolloutPolicy(rollout_percent=50)
@@ -464,8 +561,7 @@ def test_engine_switch_rollout() -> None:
     b = sw3.pick_engine_version(agent_id="a", tenant_id="t1")
     check("stable_bucket", a == b)
     # 50% 分桶: 100 个 (agent, tenant) 至少分到 2 个 bucket
-    variants = {sw3.pick_engine_version(agent_id=f"a{i}", tenant_id="t1")
-                for i in range(20)}
+    variants = {sw3.pick_engine_version(agent_id=f"a{i}", tenant_id="t1") for i in range(20)}
     check("bucket_has_variation", len(variants) >= 1, f"got {variants}")
 
 
@@ -498,6 +594,7 @@ def test_data_subject_4_scopes() -> None:
     class _LT:
         def __init__(self) -> None:
             self.deleted = 0
+
         def delete_user_facts(self, t, u):
             self.deleted += 1
             return 3
@@ -505,6 +602,7 @@ def test_data_subject_4_scopes() -> None:
     class _Msg:
         def __init__(self) -> None:
             self.deleted = 0
+
         def delete_user_messages(self, t, u):
             self.deleted += 1
             return 5
@@ -512,6 +610,7 @@ def test_data_subject_4_scopes() -> None:
     class _Tr:
         def __init__(self) -> None:
             self.deleted = 0
+
         def delete_user_traces(self, t, u):
             self.deleted += 1
             return 2
@@ -520,23 +619,24 @@ def test_data_subject_4_scopes() -> None:
     cp.add("tnt-x", "u-x", "th-1")
     cp.add("tnt-x", "u-x", "th-2")
     svc = InMemoryDataSubjectService(
-        checkpoint_store=cp, long_term_store=_LT(),
-        messages=_Msg(), trace=_Tr(),
+        checkpoint_store=cp,
+        long_term_store=_LT(),
+        messages=_Msg(),
+        trace=_Tr(),
     )
 
     async def _run() -> None:
         entry = await svc.delete_user_data("u-x", "tnt-x")
         check("status_completed", entry.status == "completed")
-        check("scope_checkpoints_count_2",
-              entry.counts.get("checkpoints") == 2)
+        check("scope_checkpoints_count_2", entry.counts.get("checkpoints") == 2)
         check("scope_store_count_3", entry.counts.get("store") == 3)
         check("scope_messages_count_5", entry.counts.get("messages") == 5)
         check("scope_trace_count_2", entry.counts.get("trace") == 2)
         check("audit_log_written", len(svc.audit_log) == 1)
         check("audit_entry_user", svc.audit_log[0].user_id == "u-x")
         check("audit_entry_tenant", svc.audit_log[0].tenant_id == "tnt-x")
-        check("completed_after_requested",
-              (entry.completed_at or 0) >= entry.requested_at)
+        check("completed_after_requested", (entry.completed_at or 0) >= entry.requested_at)
+
     asyncio.run(_run())
 
 
@@ -551,6 +651,7 @@ def test_result_dispatcher_fanout() -> None:
     class _OkSink:
         def __init__(self) -> None:
             self.events: list[Any] = []
+
         async def dispatch(self, ev):
             self.events.append(ev)
 
@@ -570,10 +671,9 @@ def test_result_dispatcher_fanout() -> None:
         check("ok1_received", len(ok1.events) == 1)
         check("ok2_received", len(ok2.events) == 1)
         # type(sink).__name__ 在两个同型实例间是同一个 key, 所以 _OkSink 合并
-        check("ok_sink_success", results.get("_OkSink") is True,
-              f"got {results}")
-        check("fail_marked_failed", results.get("_FailSink") is False,
-              f"got {results}")
+        check("ok_sink_success", results.get("_OkSink") is True, f"got {results}")
+        check("fail_marked_failed", results.get("_FailSink") is False, f"got {results}")
+
     asyncio.run(_run())
 
 

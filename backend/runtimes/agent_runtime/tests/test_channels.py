@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from qzdap_agent_runtime.channels import (
     ChannelMessage,
-    build_session_key,
     build_trace_id,
     payload_hash,
 )
@@ -35,9 +34,14 @@ def test_channel_message_required_fields() -> None:
 def test_channel_message_is_frozen() -> None:
     """ChannelMessage 必须不可变（避免在渠道派发链路上意外修改）。"""
     m = ChannelMessage(
-        tenant_id="t", workspace_id="w", channel_id="c",
-        channel_type="web", external_chat_id="chat", external_user_id="u",
-        external_message_id="m", text="hi",
+        tenant_id="t",
+        workspace_id="w",
+        channel_id="c",
+        channel_type="web",
+        external_chat_id="chat",
+        external_user_id="u",
+        external_message_id="m",
+        text="hi",
     )
     try:
         m.text = "modified"  # type: ignore[misc]
@@ -53,9 +57,14 @@ def test_channel_message_extras_forbidden() -> None:
 
     with pytest.raises(ValidationError):
         ChannelMessage(
-            tenant_id="t", workspace_id="w", channel_id="c",
-            channel_type="web", external_chat_id="chat", external_user_id="u",
-            external_message_id="m", text="hi",
+            tenant_id="t",
+            workspace_id="w",
+            channel_id="c",
+            channel_type="web",
+            external_chat_id="chat",
+            external_user_id="u",
+            external_message_id="m",
+            text="hi",
             rogue_field="x",  # type: ignore[call-arg]
         )
 
@@ -86,21 +95,6 @@ def test_build_trace_id_is_uuid_format() -> None:
     tid = build_trace_id("c", "e")
     assert len(tid) == 36
     assert tid.count("-") == 4
-
-
-def test_build_session_key_includes_all_dims() -> None:
-    """Session key 必须包含租户/工作区/渠道/外部会话/外部用户 5 维（§5.1）。"""
-    k = build_session_key("tnt-1", "ws-1", "feishu-bot", "oc_abc", "u_xyz")
-    parts = k.split(":")
-    assert parts == ["tnt-1", "ws-1", "feishu-bot", "oc_abc", "u_xyz"]
-
-
-def test_build_session_key_sanitizes_colons() -> None:
-    """Session key 中各组件含冒号必须替换为下划线（避免分隔符冲突）。"""
-    k = build_session_key("tnt:1", "ws:1", "c", "chat", "u")
-    # 原始 5 段：tnt:1 / ws:1 / c / chat / u → tnt_1 / ws_1 / c / chat / u
-    parts = k.split(":")
-    assert parts == ["tnt_1", "ws_1", "c", "chat", "u"]
 
 
 def test_payload_hash_is_stable() -> None:

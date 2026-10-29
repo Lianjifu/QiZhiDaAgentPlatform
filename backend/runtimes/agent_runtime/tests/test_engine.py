@@ -12,10 +12,7 @@ from qzdap_agent_runtime import (
     SessionRef,
     TurnRequest,
 )
-from qzdap_agent_runtime.channels import (
-    ChannelMessage,
-    build_session_key,
-)
+from qzdap_agent_runtime.channels import ChannelMessage
 from qzdap_agent_runtime.outbox import (
     InMemoryOutboxRepository,
     OutboxEvent,
@@ -38,13 +35,15 @@ from qzdap_agent_runtime.result import (
 class TestEnsureSession:
     async def test_ensure_session_returns_ref(self) -> None:
         engine = SessionEngine()
-        ref = await engine.ensure_session({
-            "tenant_id": "t-1",
-            "workspace_id": "w-1",
-            "channel_id": "feishu",
-            "external_chat_id": "oc_1",
-            "external_user_id": "u_1",
-        })
+        ref = await engine.ensure_session(
+            {
+                "tenant_id": "t-1",
+                "workspace_id": "w-1",
+                "channel_id": "feishu",
+                "external_chat_id": "oc_1",
+                "external_user_id": "u_1",
+            }
+        )
         assert isinstance(ref, SessionRef)
         assert ref.tenant_id == "t-1"
         assert ref.workspace_id == "w-1"
@@ -53,27 +52,46 @@ class TestEnsureSession:
     async def test_ensure_session_id_is_deterministic(self) -> None:
         """同一组 identity 必须产出同一 session_id (稳定 key)。"""
         engine = SessionEngine()
-        ref1 = await engine.ensure_session({
-            "tenant_id": "t-1", "workspace_id": "w-1", "channel_id": "feishu",
-            "external_chat_id": "oc_1", "external_user_id": "u_1",
-        })
-        ref2 = await engine.ensure_session({
-            "tenant_id": "t-1", "workspace_id": "w-1", "channel_id": "feishu",
-            "external_chat_id": "oc_1", "external_user_id": "u_1",
-        })
+        ref1 = await engine.ensure_session(
+            {
+                "tenant_id": "t-1",
+                "workspace_id": "w-1",
+                "channel_id": "feishu",
+                "external_chat_id": "oc_1",
+                "external_user_id": "u_1",
+            }
+        )
+        ref2 = await engine.ensure_session(
+            {
+                "tenant_id": "t-1",
+                "workspace_id": "w-1",
+                "channel_id": "feishu",
+                "external_chat_id": "oc_1",
+                "external_user_id": "u_1",
+            }
+        )
         assert ref1.session_id == ref2.session_id
 
     async def test_different_identity_yields_different_session(self) -> None:
         engine = SessionEngine()
-        ref1 = await engine.ensure_session({
-            "tenant_id": "t-1", "workspace_id": "w-1", "channel_id": "feishu",
-            "external_chat_id": "oc_1", "external_user_id": "u_1",
-        })
-        ref2 = await engine.ensure_session({
-            "tenant_id": "t-1", "workspace_id": "w-1", "channel_id": "feishu",
-            "external_chat_id": "oc_2",  # 不同 chat
-            "external_user_id": "u_1",
-        })
+        ref1 = await engine.ensure_session(
+            {
+                "tenant_id": "t-1",
+                "workspace_id": "w-1",
+                "channel_id": "feishu",
+                "external_chat_id": "oc_1",
+                "external_user_id": "u_1",
+            }
+        )
+        ref2 = await engine.ensure_session(
+            {
+                "tenant_id": "t-1",
+                "workspace_id": "w-1",
+                "channel_id": "feishu",
+                "external_chat_id": "oc_2",  # 不同 chat
+                "external_user_id": "u_1",
+            }
+        )
         assert ref1.session_id != ref2.session_id
 
 
@@ -102,8 +120,11 @@ class TestStartTurn:
     async def test_start_turn_does_not_raise(self) -> None:
         engine = SessionEngine()
         request = TurnRequest(
-            tenant_id="t-1", workspace_id="w-1", user_id="u-1",
-            agent_id="agt-1", agent_version="v1",
+            tenant_id="t-1",
+            workspace_id="w-1",
+            user_id="u-1",
+            agent_id="agt-1",
+            agent_version="v1",
             messages=[{"role": "user", "content": "hi"}],
         )
         async for _ in engine.start_turn(request):
@@ -120,8 +141,11 @@ class TestReplay:
         engine = SessionEngine()
         # 先 start_turn 触发事件
         request = TurnRequest(
-            tenant_id="t-1", workspace_id="w-1", user_id="u-1",
-            agent_id="agt-1", agent_version="v1",
+            tenant_id="t-1",
+            workspace_id="w-1",
+            user_id="u-1",
+            agent_id="agt-1",
+            agent_version="v1",
             messages=[{"role": "user", "content": "test"}],
         )
         turn_id = None
@@ -183,9 +207,12 @@ class TestChannelGateway:
         engine = SessionEngine()
         gateway = ChannelGateway(engine)
         msg = ChannelMessage(
-            tenant_id="t-1", workspace_id="w-1",
-            channel_id="feishu", channel_type="feishu",
-            external_chat_id="oc", external_user_id="u",
+            tenant_id="t-1",
+            workspace_id="w-1",
+            channel_id="feishu",
+            channel_type="feishu",
+            external_chat_id="oc",
+            external_user_id="u",
             external_message_id="om",
             text="hi",
             trace_id="X-Trace-Id-from-webhook-header",
@@ -199,26 +226,44 @@ class TestChannelGateway:
         engine = SessionEngine()
         gateway = ChannelGateway(engine)
         m1 = ChannelMessage(
-            tenant_id="t", workspace_id="w", channel_id="c",
-            channel_type="feishu", external_chat_id="chat-1",
-            external_user_id="u-1", external_message_id="m-1",
+            tenant_id="t",
+            workspace_id="w",
+            channel_id="c",
+            channel_type="feishu",
+            external_chat_id="chat-1",
+            external_user_id="u-1",
+            external_message_id="m-1",
             text="hi",
         )
         m2 = ChannelMessage(
-            tenant_id="t", workspace_id="w", channel_id="c",
-            channel_type="feishu", external_chat_id="chat-1",
-            external_user_id="u-1", external_message_id="m-2",  # 不同 message_id
+            tenant_id="t",
+            workspace_id="w",
+            channel_id="c",
+            channel_type="feishu",
+            external_chat_id="chat-1",
+            external_user_id="u-1",
+            external_message_id="m-2",  # 不同 message_id
             text="hi again",
         )
         # 用 ensure_session 比较
-        ref1 = await engine.ensure_session({
-            "tenant_id": "t", "workspace_id": "w", "channel_id": "c",
-            "external_chat_id": "chat-1", "external_user_id": "u-1",
-        })
-        ref2 = await engine.ensure_session({
-            "tenant_id": "t", "workspace_id": "w", "channel_id": "c",
-            "external_chat_id": "chat-1", "external_user_id": "u-1",
-        })
+        ref1 = await engine.ensure_session(
+            {
+                "tenant_id": "t",
+                "workspace_id": "w",
+                "channel_id": "c",
+                "external_chat_id": "chat-1",
+                "external_user_id": "u-1",
+            }
+        )
+        ref2 = await engine.ensure_session(
+            {
+                "tenant_id": "t",
+                "workspace_id": "w",
+                "channel_id": "c",
+                "external_chat_id": "chat-1",
+                "external_user_id": "u-1",
+            }
+        )
         assert ref1.session_id == ref2.session_id
 
 
@@ -232,10 +277,12 @@ class TestOutboxToSinkAdapter:
         sink = InMemoryResultSink()
         adapter = OutboxToSinkAdapter([sink])
         outbox_event = OutboxEvent(
-            turn_id="t-1", seq=1, event_type="message",
+            turn_id="t-1",
+            seq=1,
+            event_type="message",
             delivery_status="pending",
             delivery_attempts=0,
-payload={"content": "hello"},
+            payload={"content": "hello"},
         )
         await adapter.dispatch(outbox_event)
         events = sink.get_events("t-1")
@@ -247,10 +294,12 @@ payload={"content": "hello"},
         sink = InMemoryResultSink()
         adapter = OutboxToSinkAdapter([sink])
         outbox_event = OutboxEvent(
-            turn_id="t-1", seq=5, event_type="done",
+            turn_id="t-1",
+            seq=5,
+            event_type="done",
             delivery_status="pending",
             delivery_attempts=0,
-payload={"final_message": "all good", "status": "succeeded"},
+            payload={"final_message": "all good", "status": "succeeded"},
         )
         await adapter.dispatch(outbox_event)
         events = sink.get_events("t-1")
@@ -260,15 +309,18 @@ payload={"final_message": "all good", "status": "succeeded"},
         sink = InMemoryResultSink()
         adapter = OutboxToSinkAdapter([sink])
         outbox_event = OutboxEvent(
-            turn_id="t-1", seq=1, event_type="custom_unknown_type",
+            turn_id="t-1",
+            seq=1,
+            event_type="custom_unknown_type",
             delivery_status="pending",
             delivery_attempts=0,
-payload={"message": "fallback"},
+            payload={"message": "fallback"},
         )
         await adapter.dispatch(outbox_event)
         events = sink.get_events("t-1")
         assert len(events) == 1
         from qzdap_agent_runtime.result import ErrorEvent
+
         assert isinstance(events[0], ErrorEvent)
 
     async def test_dispatch_to_dispatcher(self) -> None:
@@ -276,12 +328,16 @@ payload={"message": "fallback"},
         sink = InMemoryResultSink()
         dispatcher = ResultDispatcher([sink])
         adapter = OutboxToSinkAdapter(dispatcher)  # 传 dispatcher
-        await adapter.dispatch(OutboxEvent(
-            turn_id="t-1", seq=1, event_type="message",
-            delivery_status="pending",
-            delivery_attempts=0,
-payload={"content": "x"},
-        ))
+        await adapter.dispatch(
+            OutboxEvent(
+                turn_id="t-1",
+                seq=1,
+                event_type="message",
+                delivery_status="pending",
+                delivery_attempts=0,
+                payload={"content": "x"},
+            )
+        )
         # dispatcher 应分发到 sink
         assert len(sink.get_events("t-1")) == 1
 
@@ -296,12 +352,16 @@ payload={"content": "x"},
         good = InMemoryResultSink()
         adapter = OutboxToSinkAdapter([_BoomSink(), good])
         # 不抛异常
-        await adapter.dispatch(OutboxEvent(
-            turn_id="t-1", seq=1, event_type="message",
-            delivery_status="pending",
-            delivery_attempts=0,
-payload={"content": "x"},
-        ))
+        await adapter.dispatch(
+            OutboxEvent(
+                turn_id="t-1",
+                seq=1,
+                event_type="message",
+                delivery_status="pending",
+                delivery_attempts=0,
+                payload={"content": "x"},
+            )
+        )
         # good sink 收到
         assert len(good.get_events("t-1")) == 1
 
@@ -323,12 +383,16 @@ class TestOutboxDeadLetterFirstWrite:
         adapter = OutboxToSinkAdapter([sink])
 
         # outbox 入队 1 个 message event
-        repo.add(OutboxEvent(
-            turn_id="t-1", seq=1, event_type="message",
-            delivery_status="pending",
-            delivery_attempts=0,
-payload={"content": "first delivery"},
-        ))
+        repo.add(
+            OutboxEvent(
+                turn_id="t-1",
+                seq=1,
+                event_type="message",
+                delivery_status="pending",
+                delivery_attempts=0,
+                payload={"content": "first delivery"},
+            )
+        )
 
         # 用 adapter 作 dispatcher, 跑 1 轮 worker
         worker = OutboxWorker(repo, adapter)  # type: ignore[arg-type]

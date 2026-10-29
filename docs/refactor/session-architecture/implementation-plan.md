@@ -1137,12 +1137,12 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] R-07 规则链 · R-08 `RouteDecision` 留痕
       （2026-10-29：**粘性规则已实现但拿不到输入** —— 依赖 Session Stage 1 的 `lookup` 端口 → 偏差 D1，详见 router 方案 §13.2）
 - [x] R-09 **web 建会话改走 Strategy** → **R2 已清理**
-- [ ] R-10 会话 key 派生 · **R-10b 调 Session 的 `lookup`（粘性依据）** · R-11 改调 `resolve_or_create` · R-12 `ingress_seq` 分配 + 入队
+- [x] R-10 会话 key 派生 ✅ 2026-10-29（哈希版 `router/session_key.py`，6 维含 `channel_type`；**旧的冒号拼接版已删 → R4 已清理**）· **R-10b 调 Session 的 `lookup`（粘性依据）** ⏳ 阻塞于 Session Stage 1（端口不存在）· R-11 改调 `resolve_or_create` ⏳ 同上 · R-12 `ingress_seq` 分配 + 入队 ⏳ 同上
 - [ ] R-13 IM 路径切换 + 旧 key 停用 → **R1**（行为）/ **R4**（停用）
 - [ ] R-14 FIFO 放行 · R-15 会话级互斥 · R-16 审批不占执行位 · R-17 并发语义切排队
 - [ ] R-18 **FIFO 兜底路径**（快照落后时以权威值为准 + 修复 + 告警）
 - [ ] R-19 渠道入站改走 Strategy · R-20 `dispatch_subscriber` 停用打点（不删）· R-21 第二套 turn 停用打点（不删）
-- [ ] R-22 **删 `build_session_key`** → **R4** · R-23 **确认 `try_claim` 的互斥已迁走**（⚠️ **不删**，R3 归 Session）· R-24 删 `catalog.py` 映射
+- [x] R-22 **删 `build_session_key`** → **R4 已清理** ✅ 2026-10-29（⚠️ 扫描规则的目录原本写错、从来没生效过 → 已改正并启用）· R-23 **确认 `try_claim` 的互斥已迁走**（⚠️ **不删**，R3 归 Session）· R-24 删 `catalog.py` 映射
 - [ ] R-25/R-26 **确认**无残留调用方（不删）· R-27 启用扫描脚本 Router 段 · R-28 更新台账 + 现状文档
 
 ### Session 层（§3.3）—— **删除 X2 / X3 / X4 / X6 / X7 / X18**（**全局关键路径**）

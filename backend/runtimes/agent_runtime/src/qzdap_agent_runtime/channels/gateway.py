@@ -28,7 +28,9 @@ class ChannelMessage(BaseModel):
     tenant_id: str
     workspace_id: str
     channel_id: str
-    channel_type: str  # "web" | "api" | "webhook" | "feishu" | "wecom" | "dingtalk" | ...
+    channel_type: (
+        str  # "web" | "api" | "webhook" | "feishu" | "wecom" | "dingtalk" | ...
+    )
 
     # 外部会话与用户维度
     external_chat_id: str
@@ -65,27 +67,8 @@ def payload_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def build_session_key(
-    tenant_id: str,
-    workspace_id: str,
-    channel_id: str,
-    external_chat_id: str,
-    external_user_id: str,
-) -> str:
-    """实现 §5.1 "Session key 由租户、工作区、渠道、外部会话和外部用户组成"。
-
-    返回的 key 形如 `{tenant}:{workspace}:{channel}:{chat}:{user}`，
-    所有组件均做最低限度清洗（去除冒号），避免 channel adapter
-    各自定义临时会话（§2 中提到的问题）。
-    """
-    parts = [tenant_id, workspace_id, channel_id, external_chat_id, external_user_id]
-    sanitized = [p.replace(":", "_") for p in parts]
-    return ":".join(sanitized)
-
-
 __all__ = [
     "ChannelMessage",
-    "build_session_key",
     "build_trace_id",
     "payload_hash",
 ]

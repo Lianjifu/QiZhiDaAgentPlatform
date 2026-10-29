@@ -25,7 +25,6 @@ from typing import Any, AsyncIterator
 
 from .channels.gateway import (
     ChannelMessage,
-    build_session_key,
     build_trace_id,
     payload_hash,
 )
@@ -38,22 +37,23 @@ from .execution.lock import (
 )
 from .graph.builder import build_session_graph
 from .graph.nodes import (
+    reset_default_dependencies,
+    set_default_agent_config,
+    set_default_approval_store,
     set_default_assembler,
+    set_default_audit,
     set_default_compactor,
+    set_default_executor,
     set_default_lock_manager,
     set_default_memory,
     set_default_policy,
-    set_default_executor,
     set_default_tool_registry,
-    set_default_agent_config,
-    set_default_approval_store,
-    set_default_audit,
-    reset_default_dependencies,
 )
 from .graph.routing import AgentRouteConfig
 from .memory.layered import InMemoryLayeredMemory, L1Source
 from .result.events import DoneEvent, ErrorEvent, MessageEvent, ResultEvent
 from .result.sink import InMemoryResultSink, ResultDispatcher, ResultSink
+from .router.session_key import derive_session_key
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +65,9 @@ class SessionRef:
     workspace_id: str
     channel_id: str
     channel_session_key: str
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,15 +170,17 @@ class SessionEngine:
         简化实现：基于 tenant/workspace/channel + external_* 计算 session_key，
         不持久化（Stage 2 接入 Postgres）。
         """
-        session_key = build_session_key(
+        session_key = derive_session_key(
             tenant_id=identity.get("tenant_id", ""),
             workspace_id=identity.get("workspace_id", ""),
+            channel_type=identity.get("channel_type", ""),
             channel_id=identity.get("channel_id", ""),
             external_chat_id=identity.get("external_chat_id", ""),
             external_user_id=identity.get("external_user_id", ""),
         )
         # deterministic session_id from key
         import hashlib
+
         session_id = hashlib.sha256(session_key.encode("utf-8")).hexdigest()[:32]
         return SessionRef(
             session_id=session_id,
@@ -196,13 +200,15 @@ class SessionEngine:
 
         简化实现：直接调 LangGraph graph，graph 完成后从 sink 拉所有事件。
         """
-        ref = await self.ensure_session({
-            "tenant_id": request.tenant_id,
-            "workspace_id": request.workspace_id,
-            "channel_id": "api",
-            "external_chat_id": request.user_id,
-            "external_user_id": request.user_id,
-        })
+        ref = await self.ensure_session(
+            {
+                "tenant_id": request.tenant_id,
+                "workspace_id": request.workspace_id,
+                "channel_id": "api",
+                "external_chat_id": request.user_id,
+                "external_user_id": request.user_id,
+            }
+        )
         turn_id = str(uuid.uuid4())
         trace_id = build_trace_id("api", turn_id)
         thread_id = ref.session_id
@@ -226,8 +232,12 @@ class SessionEngine:
             "tool_results": [],
             "todos": [],
             "usage": {
-                "input_tokens": 0, "output_tokens": 0, "cache_tokens": 0,
-                "cost_usd": None, "cost_unknown": True, "attribution_status": "degraded",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_tokens": 0,
+                "cost_usd": None,
+                "cost_unknown": True,
+                "attribution_status": "degraded",
             },
             "emitted_seq": 0,
             "errors": [],
@@ -236,6 +246,7 @@ class SessionEngine:
         # 跑 graph (同步, 在线程池)
         import asyncio
         import concurrent.futures
+
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
             final = await loop.run_in_executor(
@@ -247,9 +258,12 @@ class SessionEngine:
 
         # emit done event
         done = DoneEvent(
-            turn_id=turn_id, seq=1, event_id=f"done-{turn_id}",
+            turn_id=turn_id,
+            seq=1,
+            event_id=f"done-{turn_id}",
             final_message=str(final.get("result", {}).get("final_message", ""))
-                if isinstance(final.get("result"), dict) else "completed",
+            if isinstance(final.get("result"), dict)
+            else "completed",
             status="succeeded" if not final.get("errors") else "failed",
             agent_version=request.agent_version,
             model_version="m1",
@@ -286,7 +300,9 @@ class SessionEngine:
         store = self._approval_store
         if store is None:
             err = ErrorEvent(
-                turn_id=request.turn_id, seq=1, event_id=f"err-resume",
+                turn_id=request.turn_id,
+                seq=1,
+                event_id=f"err-resume",
                 error_code="APPROVAL_NOT_MATCH",
                 safe_message="approval store not configured",
                 retriable=False,
@@ -306,7 +322,9 @@ class SessionEngine:
                 tool_call_id = parts[1]
             # request_hash 必须由调用方提供
             err = ErrorEvent(
-                turn_id=request.turn_id, seq=1, event_id="err-resume-args",
+                turn_id=request.turn_id,
+                seq=1,
+                event_id="err-resume-args",
                 error_code="APPROVAL_NOT_MATCH",
                 safe_message="tool_call_id and request_hash required",
                 retriable=False,
@@ -326,16 +344,24 @@ class SessionEngine:
         except ApprovalExpiredError:
             audit = get_default_audit()
             if audit is not None:
-                audit.log(AuditEvent(
-                    kind=AuditKind.TIMEOUT,
-                    actor_id=request.actor_id,
-                    session_id="", turn_id=request.turn_id,
-                    tool_call_id=tool_call_id, tool_name="",
-                    policy_id=None, request_hash=request_hash,
-                    trace_id=None, reason="approval TTL expired",
-                ))
+                audit.log(
+                    AuditEvent(
+                        kind=AuditKind.TIMEOUT,
+                        actor_id=request.actor_id,
+                        session_id="",
+                        turn_id=request.turn_id,
+                        tool_call_id=tool_call_id,
+                        tool_name="",
+                        policy_id=None,
+                        request_hash=request_hash,
+                        trace_id=None,
+                        reason="approval TTL expired",
+                    )
+                )
             err = ErrorEvent(
-                turn_id=request.turn_id, seq=1, event_id="err-timeout",
+                turn_id=request.turn_id,
+                seq=1,
+                event_id="err-timeout",
                 error_code="APPROVAL_EXPIRED",
                 safe_message="approval expired",
                 retriable=False,
@@ -345,7 +371,9 @@ class SessionEngine:
             return
         except ApprovalNotMatchError:
             err = ErrorEvent(
-                turn_id=request.turn_id, seq=1, event_id="err-mismatch",
+                turn_id=request.turn_id,
+                seq=1,
+                event_id="err-mismatch",
                 error_code="APPROVAL_NOT_MATCH",
                 safe_message="approval does not match pending tool_call",
                 retriable=False,
@@ -355,7 +383,9 @@ class SessionEngine:
             return
         except KeyError:
             err = ErrorEvent(
-                turn_id=request.turn_id, seq=1, event_id="err-not-found",
+                turn_id=request.turn_id,
+                seq=1,
+                event_id="err-not-found",
                 error_code="APPROVAL_NOT_MATCH",
                 safe_message="approval not found",
                 retriable=False,
@@ -367,27 +397,34 @@ class SessionEngine:
         # 成功路径: 记 audit
         audit = get_default_audit()
         if audit is not None:
-            audit_kind = AuditKind.APPROVE if rec.decision == "approve" else AuditKind.DENY
-            audit.log(AuditEvent(
-                kind=audit_kind,
-                actor_id=rec.consumed_by or request.actor_id,
-                session_id=rec.session_id,
-                turn_id=rec.turn_id,
-                tool_call_id=rec.tool_call_id,
-                tool_name=rec.tool_name,
-                policy_id=rec.policy_id,
-                request_hash=rec.request_hash,
-                trace_id=None,
-                approval_id=rec.approval_id,
-            ))
+            audit_kind = (
+                AuditKind.APPROVE if rec.decision == "approve" else AuditKind.DENY
+            )
+            audit.log(
+                AuditEvent(
+                    kind=audit_kind,
+                    actor_id=rec.consumed_by or request.actor_id,
+                    session_id=rec.session_id,
+                    turn_id=rec.turn_id,
+                    tool_call_id=rec.tool_call_id,
+                    tool_name=rec.tool_name,
+                    policy_id=rec.policy_id,
+                    request_hash=rec.request_hash,
+                    trace_id=None,
+                    approval_id=rec.approval_id,
+                )
+            )
 
         # emit done event
         status = "succeeded" if rec.decision == "approve" else "failed"
         done = DoneEvent(
-            turn_id=request.turn_id, seq=1, event_id=f"done-resume",
+            turn_id=request.turn_id,
+            seq=1,
+            event_id=f"done-resume",
             final_message=f"approval {rec.decision}",
             status=status,  # type: ignore[arg-type]
-            agent_version="v1", model_version="m1",
+            agent_version="v1",
+            model_version="m1",
         )
         await self._dispatcher.dispatch(done)
         yield done
@@ -411,14 +448,18 @@ class SessionEngine:
         """
         # 简化: 记日志
         import logging
+
         logging.getLogger(__name__).info(
             "turn cancelled: session_id=%s turn_id=%s reason=%s",
-            session_id, turn_id, reason,
+            session_id,
+            turn_id,
+            reason,
         )
 
     async def close_session(self, session_id: str) -> None:
         """§5.2 close_session: 标记 session CLOSED."""
         import logging
+
         logging.getLogger(__name__).info("session closed: session_id=%s", session_id)
 
 
@@ -437,12 +478,14 @@ class ChannelGateway:
         """处理入站 ChannelMessage, 调 engine.start_turn。
 
         §5.1 关键:
-        - 用 build_session_key 计算稳定 session_key
+        - 用 derive_session_key 计算稳定 session_key
         - trace_id 优先从 webhook header 提取, 无则 UUIDv5
         - Channel adapter 不直接调 LLM
         """
         # 优先用 msg 自带的 trace_id, 无则生成
-        trace_id = msg.trace_id or build_trace_id(msg.channel_id, msg.external_message_id)
+        trace_id = msg.trace_id or build_trace_id(
+            msg.channel_id, msg.external_message_id
+        )
 
         # 把附件映射为 messages（简化: 文本作为 user message, 附件 metadata 一起）
         request = TurnRequest(

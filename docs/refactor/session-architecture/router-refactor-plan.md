@@ -1,8 +1,8 @@
 # Router 层重构方案
 
-> 版本：1.4（2026-10-29：**Stage 0 + Stage 1 已落地** —— 规则链 + `RouteDecision` 留痕 + web 建会话改走 Strategy（台账 **R2 已清理**）；实施结果与偏差见 **§13**）｜ 1.3（2026-10-29：**独立审查后的 15 项修正** —— `try_claim` 的顺序职责更正、架构测试规则白名单化、粘性规则的两步流程、`last_completed_seq` 的兜底路径、互斥原语口径统一、错误码收敛、扫描规则补全、迁移回滚口径 —— **+ 按 D1 重排骨架**：新增 §0.2 前提、§5.1 改两轴对照、删 `model_hint`、附录 C 记重排）
+> 版本：1.5（2026-10-29：**Stage 2 的会话 key 派生已落地** —— 哈希版 `derive_session_key`（6 维，含 `channel_type`）+ **旧的冒号拼接版删除**（台账 **R4 已清理**）；⚠️ **Stage 2 的主体（Session Routing / IM 路径）与 Stage 3（FIFO）仍被 Session 层硬阻塞** —— 见 §13.5）｜ 1.4（2026-10-29：**Stage 0 + Stage 1 已落地** —— 规则链 + `RouteDecision` 留痕 + web 建会话改走 Strategy（台账 **R2 已清理**）；实施结果与偏差见 **§13**）｜ 1.3（2026-10-29：**独立审查后的 15 项修正** —— `try_claim` 的顺序职责更正、架构测试规则白名单化、粘性规则的两步流程、`last_completed_seq` 的兜底路径、互斥原语口径统一、错误码收敛、扫描规则补全、迁移回滚口径 —— **+ 按 D1 重排骨架**：新增 §0.2 前提、§5.1 改两轴对照、删 `model_hint`、附录 C 记重排）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**Stage 0 + Stage 1 已执行**（2026-10-29；§13）—— Stage 2（Session Routing）**被 Session Stage 1 的 `lookup` / `resolve_or_create` 端口阻塞**；Stage 3（FIFO）被 Session Stage 3 阻塞
+> 状态：**Stage 0 + Stage 1 + Stage 2 的 key 派生已执行**（2026-10-29；§13）—— **本层能做的都做完了**；Stage 2 的主体（Session Routing / IM 路径）**被 Session Stage 1 的 `lookup` / `resolve_or_create` 端口阻塞**（代码里不存在 ✓）；Stage 3（FIFO）被 Session Stage 3 阻塞
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) —— 本方案实现其中 **Router 泳道**
 > 兄弟方案：[`gateway-refactor-plan.md`](gateway-refactor-plan.md)（已定稿）
@@ -935,10 +935,40 @@ def test_router_layer_has_no_framework_imports():
 | **D3** | **业务线规则（规则 3）在 web 路径恒不命中** | 规则 3 需要「本次请求的业务线」这个输入 —— **web 路径没有这个概念**（业务线是渠道 / 工作区的属性） | Router Stage 2（IM 路径） |
 | **D4** | **用户标签规则（规则 4）只是近似** | §1.5 的缺口没消失：部门**没有结构化字段**。实现取 `visible_scope` ∩（部门 ∪ 标签 ∪ roles）；`visible_scope` 写的是**范围类型**（默认的 `["部门"]`）时，按「用户有部门归属即命中」处理 | identity 补结构化字段（之后只改适配器） |
 | **D5** | **`QUEUE_FULL` / `QUEUE_TIMEOUT` 暂无消费方** | 排队语义（Stage 3）未落地 → 这两个错误码现在是**纯契约** | Router Stage 3 |
-| **D6** | **`session_key.py` / `sequencer.py` 故意没建** | 「没有调用方的类型就是建而不切」—— 它们分别归 Stage 2（会话 key 派生）与 Stage 3（FIFO 放行） | Router Stage 2 / 3 |
+| **D6** | ~~**`session_key.py` / `sequencer.py` 故意没建**~~ → **`session_key.py` 已建**（2026-10-29，见 13.3）；**`sequencer.py` 仍然没建** | 「没有调用方的类型就是建而不切」—— `sequencer.py`（FIFO 放行）归 Stage 3，且它的权威值来自 Session 的唯一 turn 实现 ✗ | Router Stage 3 |
 | **D7** | **兜底默认 agent 需要配置才有意义** | 兜底规则读 `admin_agents.profile.routing.default`。**存量 agent 都没打这个标** → 不带 `agentId` 的建会话请求仍是 400（与改造前同形，只是文案说明「缺什么」） | 运维打标（不改代码） |
 
-### 13.3 验收对照（§10.1）
+
+### 13.3 Stage 2 的**可做部分**：会话 key 派生（2026-10-29）
+
+> Stage 2 的主体（Session Routing / IM 路径切换）**被 Session Stage 1 硬阻塞** ✗
+> （§13.5）。但 Stage 2 有一项**不依赖 Session** 的工作 —— **会话 key 派生**
+> （§4.1 的 `session_key = sha256(tenant|workspace|channel_type|channel|chat|user)`）。
+
+| 动作 | 落点 | 状态 |
+|---|---|---|
+| 会话 key 派生（哈希版） | `runtimes/agent_runtime/src/qzdap_agent_runtime/router/session_key.py` —— `derive_session_key()` | ✅ |
+| **删除旧的冒号拼接版**（台账 **R4 已清理**） | `runtimes/.../channels/gateway.py` 的 `build_session_key` | ✅ |
+| 引用点同步 | 从未接线的 `engine.py` / `scripts/verify_e2e.py` / 两个单测 | ✅ |
+| 扫描规则 | 台账 §3.1 的 R4 规则**改正目录并启用** ⚠️（原本扫 `modules/`，而旧实现在 `runtimes/` —— **这条规则从来没生效过** ✗） | ✅ |
+
+**为什么旧实现非删不可**：冒号拼接有两个治不了的老问题 —— **分隔符注入**
+（`("a:b","c")` 与 `("a","b:c")` 撞车）与**清洗歧义**（把冒号换成下划线，
+`"a:b"` 与真的 `"a_b"` 又撞上）。哈希版用**长度前缀**编码，两者都不可能撞 ✓。
+而且旧 key **可读**（会进日志 / 审计 / 数据库）→ 哈希版不可逆 ✓
+（§12.2 的观测约束 ✓）。
+
+**新增维度**：旧实现只有 5 维 —— 漏了 `channel_type` ✗（同一个 `channel_id`
+在飞书与钉钉下不是一回事 ✓）。新实现 6 维 ✓。
+
+**为什么现在就能删**：旧实现**无生产调用方** ✓（引用关系可证：只有从未接线的
+`engine.py` / 一个开发脚本 / 两个单测）→ 按 Gateway 附录 C.8 的 **G-38 口径**
+（「能证明无人调用的当场删」）执行 ✓。⚠️ 台账 §3.2 要求的「停用 + 打点」
+**做不了** —— 无调用方的旧实现打点会得到恒为 0 的指标，那是**比没有指标更危险**
+的状态 ✓（台账自己的警告）。
+
+
+### 13.4 验收对照（§10.1）
 
 | # | 验收项 | 状态 |
 |---|---|---|
@@ -954,6 +984,19 @@ def test_router_layer_has_no_framework_imports():
 | 10 | 架构测试（Router 不引框架） | ✅ `tests/architecture/test_router_boundary.py` |
 | 11 | 排队超限不静默 | ⏳ 归 Stage 3（错误码已备好，D5） |
 | 12 | 开关可回滚（`QZDAP_ROUTER_QUEUE_ENABLED=off`） | ⏳ 归 Stage 3 |
+
+
+### 13.5 Stage 2 / Stage 3 仍然被 Session 阻塞（**本层到边界了**）
+
+| 本层阶段 | 硬前置 | 归属 | 现状 |
+|---|---|---|---|
+| **Stage 2**（Session Routing / IM 路径） | Session 的 **`resolve_or_create` + 只读 `lookup(session_key)`** 端口 | Session Stage 1 | ❌ **代码里不存在**（`grep resolve_or_create` 零命中 ✓）—— 粘性规则（规则 1）的输入、IM 路径切换、`ingress_seq` 入队**全都等它** |
+| **Stage 3**（FIFO 有序） | Session 的**唯一 turn 实现** | Session Stage 3 | ❌ 未落地 —— 旧路径**从来没有顺序机制**（§5.4 的更正）→ Router 的 FIFO 是**全新建**，且必须等「所有路径都走唯一实现」才有意义 |
+
+> **本层现在能做的都做完了**：Stage 0 ✓ · Stage 1 ✓（R2 已清理）·
+> Stage 2 的 **key 派生** ✓（R4 已清理）—— 剩下的是**两层之间那道门**
+> （Session 的端口），不是本层能自己拆的。
+
 
 ---
 
