@@ -39,6 +39,7 @@
 | 已弃用 | 新实现已接管；旧实现仍可被调用，但带弃用标记与调用打点 | ⚠️ 需在 PR 里说明 |
 | 待清理 | 满足 §3.2 的量化判据 | ✅ 应尽快删 |
 | 已清理 | 代码已删除、扫描脚本无命中 | ✅ |
+| **已修复** | **修复类条目**（X14 / G10）专用：缺陷已修掉，**不进指标**，由**回归测试**判定 | ⚠️ **不可回退**（见 README §3.1.1 回退纪律 1：安全修复回退等于重新打开漏洞） |
 
 ---
 
@@ -46,7 +47,7 @@
 
 > 「观测指标」统一为 `qzdap_legacy_calls_total{entry="<台账编号>"}`，在旧实现被调用的**入口处**打点。
 >
-> ⚠️ **该指标当前不存在于代码中**（`grep` 零命中）—— 见 §3.2。各层方案的 Stage 0 必须先建指标并给旧入口打点，否则该层的清理判据无从判定。
+> ✅ **该指标已于 2026-10-29 落地**：`libs/observability/src/qzdap_observability/metrics.py` 的 `LEGACY_CALLS_TOTAL` + `record_legacy_call(entry)`（另附 `LEGACY_CALL_LAST_TIMESTAMP` gauge）。**尚未打点** —— 各层方案的 Stage 0 仍需在旧入口调用 `record_legacy_call("<编号>")`，否则该层的清理判据仍无从判定。
 
 ### 2.0 台账条目的字段定义
 
@@ -104,12 +105,12 @@
 | X11 | 旧记忆写入 `_remember`（每轮无条件写、scope 无效、autoSummarize 无实现、无幂等） | `modules/agent_runtime/src/qzdap/modules/agent_runtime/adapter/graph/runner.py:664-694` | `memory/writer.py`（抽取 → 敏感过滤 → 去重 → 置信度） | 未开始 | Memory 层 |
 | X12 | 新 runtime 的记忆写入（**逻辑反转**：从召回结果 `memory_hits` 提取事实写回 L2 → 自我强化循环） | `runtimes/agent_runtime/src/qzdap_agent_runtime/memory/layered.py`（317 行）、`graph/nodes.py:1019` | `memory/writer.py`（输入只能是本轮对话内容） | 未开始 | Memory 层 |
 | X13 | `admin_memory_l1`（无 `session_id` / 无 `user_id`，只写不读，与 STM 无关） | `modules/memory/src/qzdap/modules/memory/adapter/persistence/models.py:21-33` | 退役，或改造为带 `session_id` 的 STM 缓冲（**决策 #5**：L1 处置） | 未开始 | Memory 层 |
-| X14 | 记忆召回缺用户隔离（`list_l2` / `list_l3` / 向量检索均只按 `workspace_id` 过滤 → 工作区内跨用户泄漏） | `modules/memory/src/qzdap/modules/memory/adapter/persistence/repositories.py:161-165,204-208`、`adapter/persistence/vector_adapter.py:62` | 作用域过滤下推到 SQL / 向量 payload | 未开始 | Memory 层 |
+| X14 | 记忆召回缺用户隔离（`list_l2` 与向量检索均只按 `workspace_id` 过滤 → 工作区内跨用户泄漏）。**L3 不计入**：L3 是**工作区级共享**的团队知识（决策 #1 后迁往 `modules/knowledge`），按设计对工作区内所有人可见 | `modules/memory/src/qzdap/modules/memory/adapter/persistence/repositories.py:161-165`、`adapter/persistence/vector_adapter.py:62` | 作用域过滤下推到 SQL / 向量 payload | **已修复**（2026-10-29：写入侧持久化 `owner_id` → `admin_memory_l2.user_id`（迁移 0048）+ `list_l2` 按 `user_id` 过滤 + 向量 payload 带 `user_id` 且过滤下推到 pgvector；回归测试 `modules/memory/tests/unit/test_memory_scope_isolation.py` 4 条） | Memory 层（**Stage 1**） |
 | X17 | **旧路径的手写推理循环**：`runner._run_turn_inner` 的 `while True`（含 `runner.py` 里「自己拼 messages」与「自己写记忆」的分支） | `modules/agent_runtime/src/qzdap/modules/agent_runtime/adapter/graph/runner.py:149`（调 `_load_messages` 于 `:179`、`_remember` 于 `:467`；两方法的**唯一调用点**） | `agent_loop/runner.py`（6 节点 LangGraph 图） | 未开始 | Agent 层（Stage 5 停用 → Stage 7 删，~250 行） |
 | X18 | **`copilot.py` 的 turn 编排**（~600 行；claim / 幂等 / 取消 / 审批语义的**权威来源**） | `modules/agent_runtime/src/qzdap/modules/agent_runtime/application/copilot.py` | `session/turn_runner.py`（**语义迁入后删**，不是重写） | 未开始 | Session 层（**Stage 3 停用并迁出 → Stage 3b 删除**：清理窗口 ≥7 天且指标归零后） |
 | X16 | `MemoryService` 同时提供运行时（`recall`/`write`）与管理面（`list_*/trend`）语义；管理端 `PATCH /l2/{id}` 绕过写入侧的脱敏与去重 | `modules/memory/src/qzdap/modules/memory/application/services.py`、`adapter/persistence/repositories.py:167-175` | 拆为 `MemoryRuntimeService`（平面 A）+ `MemoryAdminService`（平面 B） | 未开始 | Memory 层 |
 | X15 | **L3 与 `modules/knowledge` 职责重叠 → 运行时双份注入**（L3 内容进「相关记忆」，knowledge chunks 进「相关知识」；且 L3 无向量而 chunks 有向量） | `modules/memory/.../domain/entities.py:119-188`（L3Entry）、`modules/agent_runtime/.../runner.py:517-559` | 决策 #1：L3 退役（知识统一归 knowledge）或 knowledge 降级为管道 | 未开始 | Memory 层 |
-| X19 | **死表 `memory_l2_embeddings`**（迁移 0036 建，列齐全 —— 连 `user_id` / `content_hash` 都有 —— 但**零代码引用**；与生产在用的向量表 `admin_memory_vec` 职责重复） | `migrations/versions/0036_memory_l2_embeddings.py` | **DROP**（迁移 0048 内；真正的向量表是 `admin_memory_vec`，迁移 0023） | 未开始 | Memory 层（**Stage 0**） |
+| X19 | **死表 `memory_l2_embeddings`**（迁移 0036 建，列齐全 —— 连 `user_id` / `content_hash` 都有 —— 但**零代码引用**；与生产在用的向量表 `admin_memory_vec` 职责重复） | `migrations/versions/0036_memory_l2_embeddings.py` | **DROP**（迁移 0048 内；真正的向量表是 `admin_memory_vec`，迁移 0023） | **待清理**（迁移 0048 已实现并在 dev 库执行成功；**不可逆** —— 回滚不重建该表） | Memory 层（**Stage 0**） |
 
 #### X1 已核实的具体缺陷（2026-10-29 读码核对）
 
@@ -308,12 +309,9 @@ qzdap_legacy_calls_total{entry="<台账编号>"}   # 旧实现调用次数，按
 
 清理判定的唯一依据是**该指标归零**，不接受「代码看起来没人用了」。
 
-> 🔴 **2026-10-29 核对结论：这个指标在代码里不存在。**
+> ✅ **2026-10-29 已落地**：指标与 `record_legacy_call(entry)` 已写进 `libs/observability/src/qzdap_observability/metrics.py`（并有单测）。**收敛机制不再是空的。**
 >
-> `grep -rn "qzdap_legacy_calls_total" backend/` → **零命中**。
-> 也就是说，本台账 29 条条目的「指标归零」判据**目前全部无从判定** —— 收敛机制是空的。
->
-> 这与 2026-10-15 那次失败是同一个形状：**机制写在了文档里，但没有落地成代码**。
+> ⚠️ **但「指标存在」≠「判据可用」** —— **旧入口还没打点**。本台账每一条目的「指标归零」判据仍需要一个**打点**才能判定（没打点的条目，指标恒为 0，看起来像「已清零」，实则从未被观测 —— **这是比没有指标更危险的状态**）。
 >
 > **因此：本台账的每一条目，其所属方案的 Stage 0 必须包含「给该旧入口打点」这一步**，否则该条目不得进入 Stage N（接管）之后的任何阶段。
 

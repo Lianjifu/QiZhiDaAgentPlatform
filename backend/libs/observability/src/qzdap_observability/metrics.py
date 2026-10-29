@@ -7,6 +7,8 @@ the HTTP layer exposes at `/metrics`. We intentionally do NOT expose a global
 
 from __future__ import annotations
 
+import time
+
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     CollectorRegistry,
@@ -56,6 +58,21 @@ ACTIVE_TURNS = Gauge(
     "Turns currently in-flight",
     registry=metrics_registry,
 )
+# 旧实现调用计数 —— 收敛判据的唯一依据。
+# 标签 `entry` 取自 cleanup-ledger 的台账编号（G1 / R3 / X11 …）。
+# 清理窗口内该指标必须归零，否则对应旧实现不许删除。
+LEGACY_CALLS_TOTAL = Counter(
+    "qzdap_legacy_calls_total",
+    "Calls to legacy (deprecated) implementations, by cleanup-ledger entry id",
+    labelnames=("entry",),
+    registry=metrics_registry,
+)
+LEGACY_CALL_LAST_TIMESTAMP = Gauge(
+    "qzdap_legacy_call_last_timestamp_seconds",
+    "Unix timestamp of the most recent call to a legacy implementation",
+    labelnames=("entry",),
+    registry=metrics_registry,
+)
 
 
 def record_http_request(
@@ -65,6 +82,16 @@ def record_http_request(
     HTTP_REQUEST_DURATION.labels(
         method=method, route=route, status=str(status)
     ).observe(duration_s)
+
+
+def record_legacy_call(entry: str) -> None:
+    """记录一次旧实现调用。
+
+    ``entry`` 是 cleanup-ledger 的台账编号（如 ``"G1"``）。旧实现被新路径接管时
+    打这个点，清理判据（连续 ≥7 天 + 新路径占比 ≥95% + 本指标归零）依赖它。
+    """
+    LEGACY_CALLS_TOTAL.labels(entry=entry).inc()
+    LEGACY_CALL_LAST_TIMESTAMP.labels(entry=entry).set(time.time())
 
 
 def render_prometheus() -> tuple[bytes, str]:

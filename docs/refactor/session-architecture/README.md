@@ -167,12 +167,17 @@ Agent  Stage 5(循环)  ←  Session Stage 3(唯一 turn 实现)
 |---|---|---|
 | 0044 | Gateway | `session_inbox` 加列改约束 |
 | 0045 | Router | `agent_sessions` 加 `next_ingress_seq` / `last_completed_seq` |
-| 0046 | Session | `agent_sessions` 唯一索引；`session_turns` / `session_messages` 加列与状态枚举；`langgraph_checkpoint_*` 表 |
+| 0046 | Session | `agent_sessions` 唯一索引；`session_turns` / `session_messages` 加列与状态枚举；checkpoint 四表（`checkpoints` / `checkpoint_blobs` / `checkpoint_writes` / `checkpoint_migrations`） |
 | 0047 | Context | `agent_sessions.rolling_summary` 列 + `session_context_manifests` 表（**依赖 0046 的物理顺序**；回填按 `graph_state` 优先 → `metadata` 兜底 → 清 `metadata`） |
 | 0048 | Memory | `admin_memory_l2` 补列 + `session_memory_buffer` 表 + **DROP 死表 `memory_l2_embeddings`**（X19）+ 放开 `admin_memory_policies` 唯一约束 |
-| **（无）** | **Agent / Execution** | **不需要新迁移** —— `tool_executions` 的列与唯一约束已在 0035 建齐、`cost_usd` 在 0043、`route_decision` 在 0046、`langgraph_checkpoint_*` 在 0046 |
+| **（无）** | **Agent / Execution** | **不需要新迁移** —— `tool_executions` 的列与唯一约束已在 0035 建齐、`cost_usd` 在 0043、`route_decision` 在 0046、checkpoint 表在 0046 |
 
 > **0049 及之后**留给 Agent / Execution 层的后续演进（Deep Agents 依赖落 `pyproject.toml`，不占迁移号）。
+>
+> ✅ **0044–0048 已实现（2026-10-29）**：五个迁移脚本已落在 `backend/migrations/versions/`，**dev 库实测 upgrade → downgrade → upgrade 全程通过**（可回滚，M0 判据达成）。其中两处与本表原描述不同，已回写方案：
+> - **0046 的 checkpoint 表名**：按已安装的 `langgraph-checkpoint-postgres` **3.1.3** 的实际 DDL → `checkpoints` / `checkpoint_blobs` / `checkpoint_writes` / `checkpoint_migrations`（**无 `langgraph_` 前缀、无 `_v2` 变体**，那是 2.x 的命名）。迁移把 `checkpoint_migrations` 的版本行写成 `9`，saver 的 `setup()` 跑完仍是单行 → **不会重复建表**。
+> - **0047 的 `metadata` 清理**：**不在 0047 里做** —— 旧路径仍是 `rolling_summary` 的唯一写者，提前清空会丢摘要且旧路径会立刻写回来。清理落在 **Context Stage 4（旧循环停用）之后**。
+> - **0046 的 `session_messages` 回填 join 键**：`session_turns` 的主键列名是 **`id`**（不是 `turn_id`）—— 方案原文的 SQL 有误，已改。
 
 **表归属唯一**：每张表只有一个 owner 方案负责 DDL。
 
@@ -352,7 +357,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 | 9 | **记忆不串用户**：用户 A 的会话召回结果里不含用户 B 的记忆（租户 / 工作区 / 用户三层隔离各有测试） | Memory |
 | 10 | **manifest 可查**：任一轮都能查出它每次模型调用的上下文组成与**淘汰原因** | Context |
 | 11 | **成本归属正确**：`session_turns.cost_usd` 与实际调用一致；专家路由 / 模型降级都计入 | Agent |
-| 12 | **旧实现真的少了**：台账 33 条全部「已清理」；CI 扫描脚本零命中；`qzdap_legacy_calls_total` 全指标归零 | 全部（台账） |
+| 12 | **旧实现真的少了**：台账 33 条全部「已清理」（**修复类条目 X14 / G10 走「已修复」**）；CI 扫描脚本零命中；`qzdap_legacy_calls_total` 全指标归零 | 全部（台账） |
 | 13 | **架构边界不被绕过**：runtime 层零框架 import；摘掉任一层，其余层**不知道 HTTP / SSE / 飞书存在** | 全部 |
 
 ---
@@ -372,7 +377,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 | 7 | **`qzdap_legacy_calls_total` 指标** | `libs/observability` | **全部六层的 Stage 0** | **代码里不存在**。没有它，收敛判据全部无从判定 —— 这是**所有清理动作的前提** |
 | 8b | **`ErrorCode` 码收敛** | `libs/schema` + `modules/channel` + `modules/agent_runtime` | **Gateway Stage 0** | 7 个码（`CHANNEL_NOT_FOUND` / `CHANNEL_DISABLED` / `INBOUND_ADAPTER_MISSING` / `WEBHOOK_SIGNATURE_INVALID` / `WEBHOOK_TIMESTAMP_SKEW` / `DUPLICATE_REQUEST` / `TENANT_DENIED`）散落在模块内异常的 `code=` 字符串里，**`ErrorCode` 枚举不含它们**。Gateway 的 `ERROR_PROJECTION` 投影表按码查文案 → 必须先收敛 |
 | 8c | **`modules/channel` 依赖 `qzdap-agent-runtime`** | `modules/channel` + `uv.lock` | **Gateway Stage 2** | webhook 端点要调 `Gateway.accept`。**不改正 `uv.lock` 就装不上** |
-| 8 | **LangGraph checkpoint 表** | `backend/migrations`（Session 迁移 0046） | **Session Stage 0**（Agent Stage 0 **不受阻** —— Agent 只用 saver，不建表） | `langgraph_checkpoint_*` 系列表**不在任何迁移里**；且现有 `builder.from_url` 用的是**同步** `PostgresSaver`，必须换 `AsyncPostgresSaver` |
+| 8 | **LangGraph checkpoint 表** | `backend/migrations`（Session 迁移 0046） | **Session Stage 0**（Agent Stage 0 **不受阻** —— Agent 只用 saver，不建表） | checkpoint 系列表**不在任何迁移里**；且现有 `builder.from_url` 用的是**同步** `PostgresSaver`，必须换 `AsyncPostgresSaver`。⚠️ **表名按已安装的 `langgraph-checkpoint-postgres` 3.1.3**：无 `langgraph_` 前缀、无 `_v2` 变体 |
 
 ---
 

@@ -171,7 +171,13 @@ async def test_memory_and_knowledge_combined_into_system_prompt() -> None:
             self.calls = 0
 
         async def recall(
-            self, *, tenant_id: UUID, workspace_id: UUID, query: str, top_k: int
+            self,
+            *,
+            tenant_id: UUID,
+            workspace_id: UUID,
+            query: str,
+            top_k: int,
+            user_id: UUID | None = None,
         ) -> list[dict]:
             self.calls += 1
             return [{"id": "m1", "content": "mem-ctx", "score": 0.8}]

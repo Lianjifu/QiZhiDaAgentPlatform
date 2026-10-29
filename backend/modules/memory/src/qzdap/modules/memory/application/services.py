@@ -300,6 +300,9 @@ class MemoryService:
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             user_name=session.user_name,
+            # ⚠️ 决策 #11：归属必须由写入侧持久化 —— 过去这里把 owner_id 直接
+            # 丢了（`_ = owner_id`），导致召回时无法按用户隔离。
+            user_id=owner_id,
             key=str(meta.get("key") or "对话记忆"),
             value=content.strip(),
             category=category,  # type: ignore[arg-type]
@@ -324,8 +327,14 @@ class MemoryService:
                 created_at=now,
             )
         )
-        await self._embed_item(fact.id, "l2", fact.recall_text(), tenant_id, workspace_id)
-        _ = owner_id
+        await self._embed_item(
+            fact.id,
+            "l2",
+            fact.recall_text(),
+            tenant_id,
+            workspace_id,
+            user_id=owner_id,
+        )
         return fact.to_admin_dict()
 
     async def recall(
@@ -336,13 +345,17 @@ class MemoryService:
         query: str,
         top_k: int = 10,
         scope_filter: str | None = None,
+        user_id: UUID | None = None,
     ) -> list[dict[str, Any]]:
         _ = scope_filter
         limit = max(1, top_k)
         needle = query.strip().lower()
+        # ⚠️ 用户级作用域过滤（X14 跨用户泄漏修复）：user_id 给定时只召回
+        # **该用户自己**的记忆；归属不明（user_id IS NULL）的存量行**不召回**
+        # —— 宁可不可见，也不要把别人的记忆返回给当前用户。
         facts = [
             item
-            for item in await self._catalog.list_l2(workspace_id)
+            for item in await self._catalog.list_l2(workspace_id, user_id=user_id)
             if item.status != "retired"
         ]
         knowledge = [
@@ -350,6 +363,9 @@ class MemoryService:
             for item in await self._catalog.list_l3(workspace_id)
             if item.status == "published"
         ]
+        # ⚠️ L3 **不按用户过滤**，这是设计如此：L3 是**工作区级的团队知识**，
+        #    对工作区内所有人可见（决策 #1：L3 退役后由 modules/knowledge 接管）。
+        #    用户级隔离只作用于 L2（个人事实）与向量检索 —— 那两条才是 X14 的泄漏面。
         keyword: list[tuple[float, dict[str, Any]]] = []
         for fact in facts:
             hay = fact.recall_text().lower()
@@ -365,6 +381,7 @@ class MemoryService:
                 workspace_id=workspace_id,
                 query_embedding=query_vec,
                 top_k=limit * 4,
+                user_id=user_id,
             ):
                 vector_hits.append(
                     (
@@ -402,6 +419,7 @@ class MemoryService:
         content: str,
         tenant_id: UUID,
         workspace_id: UUID,
+        user_id: UUID | None = None,
     ) -> None:
         if self._embedding is None or self._vectors is None or not content.strip():
             return
@@ -425,6 +443,7 @@ class MemoryService:
             layer=layer,
             content=content,
             embedding=vector,
+            user_id=user_id,
         )
 
 

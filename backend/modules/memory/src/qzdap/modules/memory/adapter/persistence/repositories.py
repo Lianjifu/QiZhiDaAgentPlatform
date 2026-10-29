@@ -54,6 +54,7 @@ def _l2(row: MemoryL2ORM) -> L2Fact:
         tenant_id=row.tenant_id,
         workspace_id=row.workspace_id,
         user_name=row.user_name,
+        user_id=row.user_id,
         key=row.key,
         value=row.value,
         category=row.category,  # type: ignore[arg-type]
@@ -139,6 +140,7 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
                 tenant_id=item.tenant_id,
                 workspace_id=item.workspace_id,
                 user_name=item.user_name,
+                user_id=item.user_id,
                 key=item.key,
                 value=item.value,
                 category=item.category,
@@ -158,10 +160,15 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
             return None
         return _l2(row)
 
-    async def list_l2(self, workspace_id: UUID) -> list[L2Fact]:
-        result = await self._s.execute(
-            select(MemoryL2ORM).where(MemoryL2ORM.workspace_id == workspace_id)
-        )
+    async def list_l2(
+        self, workspace_id: UUID, *, user_id: UUID | None = None
+    ) -> list[L2Fact]:
+        # user_id 不为 None 时按用户过滤 —— **归属不明的行（user_id IS NULL）
+        # 会被排除**：宁可不可见，也不要把别人的记忆召回给当前用户。
+        stmt = select(MemoryL2ORM).where(MemoryL2ORM.workspace_id == workspace_id)
+        if user_id is not None:
+            stmt = stmt.where(MemoryL2ORM.user_id == user_id)
+        result = await self._s.execute(stmt)
         return [_l2(row) for row in result.scalars().all() if not _cross_tenant(row)]
 
     async def update_l2(self, item: L2Fact) -> None:

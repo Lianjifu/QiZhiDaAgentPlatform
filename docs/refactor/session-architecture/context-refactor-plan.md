@@ -562,13 +562,19 @@ UPDATE agent_sessions s
    AND s.metadata ? 'rolling_summary';
 
 -- 3c) 清空 metadata 里的旧副本（§7.1 声明要移除它）
-UPDATE agent_sessions
-   SET metadata = metadata - 'rolling_summary'
- WHERE metadata ? 'rolling_summary';
+-- ⚠️ **本迁移不执行**（2026-10-29 实施核对修正）：旧路径
+--    （copilot.py:379-380 / runner.py）**仍是 rolling_summary 的唯一写者**，
+--    直到 Context Stage 3 迁移写入点、Stage 4 停用旧循环。提前清空会把旧路径
+--    正在写的副本删掉 —— 摘要丢失且无法重建。清理动作在 **Stage 4 之后**执行。
+-- UPDATE agent_sessions
+--    SET metadata = metadata - 'rolling_summary'
+--  WHERE metadata ? 'rolling_summary';
 ```
 
 > **⚠️ 只读 `metadata` 会丢摘要**：`graph_state` 里的值才是权威的（可能是更新的），`metadata` 是上一次持久化的副本。初稿只写了 `metadata` 回填 —— 与 Session 方案 §7.3 矛盾，已修正。
 > **回滚**：必须先 `metadata['rolling_summary'] = rolling_summary` 回填（§7.2.1）。
+>
+> **⚠️ 清空 `metadata` 的时机（本轮实施核对修正）**：清理**不在 0047 里做** —— 旧路径还在写 `metadata['rolling_summary']`，提前清空会丢摘要且旧路径会立刻写回来。清理落在 **Stage 4（旧循环停用）之后**。迁移 0047 已按此实现（回填做、清空不做）。
 
 ---
 

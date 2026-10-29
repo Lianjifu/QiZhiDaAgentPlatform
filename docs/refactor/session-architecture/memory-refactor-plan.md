@@ -1171,6 +1171,7 @@ ALTER TABLE admin_memory_policies
 | 阶段 | 删除/替换 | 旧代码减少（行） | **新写入量（估算）** | 旧路径状态 |
 |---|---|---|---|---|
 | Stage 0 | 拆分 `MemoryService`（单类 → 两服务类） | ~0（纯重构） | **L2 补 8 列**（`user_id` / `content_hash` / `content_hash_version` / `source_turn_id` / `last_used_at` / `used_count` / `confidence_source` / `version`）+ `session_memory_buffer` 新表 | X16 → 已弃用 |
+| Stage 0（迁移部分） | **迁移 0048** | 0 | ✅ **已实现**：`migrations/versions/0048_memory_runtime.py`（L2 补 8 列 + `user_id` 回填 + `content_hash` 部分唯一索引 + STM 缓冲表 + promotions 补字段 + policies 放开唯一约束 + DROP 死表 X19）。**dev 库已跑通 upgrade → downgrade → upgrade** | X19 → 待清理 |
 | Stage 1 | 无（安全修复） | 0 | 0 | — |
 | Stage 2 | C2 检索重写（替换全量扫描） | ~120 行 | 统计字段更新（每次召回一行） | **不停用**（`layered.py` 从未接线，删除在 Stage 7） |
 | Stage 3 | `runner._remember`（30 行） | 0（**只实现新 Writer，不停用旧写入点**） | 每轮 1 行写入（去重后实际更少） | **不停用**（停用与删除在 Agent A-26 之后 / Stage 7） |

@@ -37,6 +37,8 @@ class MemoryL2ORM(TenantScopedMixin, Base):
 
     workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     user_name: Mapped[str] = mapped_column(String(128), nullable=False, default="", server_default=text("''"))
+    # 归属用户（迁移 0048）。nullable：存量自动沉淀的记忆没有归属，不回填。
+    user_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True, index=True)
     key: Mapped[str] = mapped_column(String(256), nullable=False)
     value: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default=text("''"))
     category: Mapped[str] = mapped_column(String(32), nullable=False, default="fact", server_default=text("'fact'"))

@@ -2,12 +2,15 @@
 
 from qzdap_observability.logging import configure_logging, get_logger
 from qzdap_observability.metrics import (
+    LEGACY_CALL_LAST_TIMESTAMP,
+    LEGACY_CALLS_TOTAL,
     Counter,
     Gauge,
     Histogram,
     MetricsRegistry,
     metrics_registry,
     record_http_request,
+    record_legacy_call,
     render_prometheus,
 )
 from qzdap_observability.middleware import ObservabilityMiddleware
@@ -19,6 +22,8 @@ from qzdap_observability.tracing import (
 )
 
 __all__ = [
+    "LEGACY_CALLS_TOTAL",
+    "LEGACY_CALL_LAST_TIMESTAMP",
     "Counter",
     "Gauge",
     "Histogram",
@@ -31,6 +36,7 @@ __all__ = [
     "get_tracer",
     "metrics_registry",
     "record_http_request",
+    "record_legacy_call",
     "render_prometheus",
     "shutdown_tracing",
 ]

@@ -34,7 +34,13 @@ class _RecordingMemoryPort:
         self.calls: list[dict[str, Any]] = []
 
     async def recall(
-        self, *, tenant_id: UUID, workspace_id: UUID, query: str, top_k: int
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        query: str,
+        top_k: int,
+        user_id: UUID | None = None,
     ) -> list[dict]:
         self.calls.append(
             {
@@ -42,6 +48,7 @@ class _RecordingMemoryPort:
                 "workspace_id": workspace_id,
                 "query": query,
                 "top_k": top_k,
+                "user_id": user_id,
             }
         )
         if self._raise is not None:

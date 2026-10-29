@@ -14,13 +14,20 @@ class MemoryServiceAdapter:
         self._service = memory_service
 
     async def recall(
-        self, *, tenant_id: UUID, workspace_id: UUID, query: str, top_k: int
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        query: str,
+        top_k: int,
+        user_id: UUID | None = None,
     ) -> list[dict]:
         return await self._service.recall(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             query=query,
             top_k=top_k,
+            user_id=user_id,
         )
 
     async def write(

@@ -92,6 +92,9 @@ class L2Fact:
     updated_at: datetime
     created_at: datetime
     usage_history: list[str] = field(default_factory=list)
+    # 归属用户（决策 #11）。None = 归属不明（存量自动沉淀的记忆）——
+    # 这类行在用户级作用域过滤下**不可见**，宁可不可见也不能串号。
+    user_id: UUID | None = None
 
     def recall_text(self) -> str:
         return f"{self.key}: {self.value}".strip()
@@ -100,6 +103,7 @@ class L2Fact:
         out: dict[str, Any] = {
             "id": str(self.id),
             "userName": self.user_name,
+            "userId": str(self.user_id) if self.user_id else None,
             "key": self.key,
             "value": self.value,
             "category": self.category,

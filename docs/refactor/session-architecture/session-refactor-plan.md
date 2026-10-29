@@ -380,7 +380,8 @@ class SessionManagerPort(Protocol):
 - **归属**：Agent Loop 的图状态（LangGraph checkpoint）按 `thread_id=session_id` 存储，用 Postgres saver；
 - **接线**：改用 **`AsyncPostgresSaver`**（`langgraph.checkpoint.postgres.aio`）—— 仓库全异步，同步 saver 会在事件循环里阻塞。`runtimes/.../graph/builder.py:144` 的 `PostgresSaver.from_conn_string` 是**同步版**，不能直接用（`builder.py` 里那段本身也无调用者）；
 - **依赖声明**：`psycopg` 当前**已安装但未在根 `pyproject.toml` 声明**（只有 asyncpg / pgvector）→ 异步 saver 需要 `psycopg[binary]`，**必须在本次补进依赖声明**，否则生产镜像缺驱动；
-- **表缺失**：`langgraph_checkpoint_*` 系列表**不在任何迁移里** → 必须在迁移 0046 里一并建表（saver 的 `setup()` 会建，但**迁移必须可重复执行且可回滚**，不能依赖运行期自动建表）；
+- **表缺失**：checkpoint 系列表**不在任何迁移里** → 必须在迁移 0046 里一并建表（saver 的 `setup()` 会建，但**迁移必须可重复执行且可回滚**，不能依赖运行期自动建表）。
+  > **⚠️ 2026-10-29 实施核对修正**：表名按**已安装的 `langgraph-checkpoint-postgres` 3.1.3** 的实际 DDL 为 `checkpoints` / `checkpoint_blobs` / `checkpoint_writes` / `checkpoint_migrations` —— **无 `langgraph_` 前缀、无 `_v2` 变体**（那是 2.x 的命名，3.x 已不存在）。迁移建完把 `checkpoint_migrations` 的版本行写成 `9`（`len(MIGRATIONS) - 1`），saver 的 `setup()` 就不会重复执行它自己的迁移。已实测：`setup()` 跑完 `checkpoint_migrations` 仍是单行 `v=9`。
 - **归属**：本层负责把 saver 接进 lifespan（**不是** Agent Loop 方案负责，因为连接串与生命周期由 composition 管）；
 - **回退路径**：checkpoint 缺失或损坏 → 从 `session_messages` 重建（会话的规范真相是消息序列，不是 checkpoint）；
 - **禁止**把 checkpoint 只放在进程内存——重启即丢。
@@ -578,14 +579,14 @@ ALTER TABLE session_messages
 UPDATE session_messages m
    SET session_id = t.session_id
   FROM session_turns t
- WHERE t.turn_id = m.turn_id
+ WHERE t.id = m.turn_id          -- ⚠️ 主键列名是 id（0035 建表），不是 turn_id
    AND m.session_id IS NULL;
 
 -- 3b) 孤儿检查：turn_id 在 session_turns 无对应 → 回填留 NULL → SET NOT NULL 会失败
 --     必须为 0；非 0 时先处置孤儿行（迁到 agent_session_messages 或标记废弃），再继续。
 -- SELECT count(*) FROM session_messages m
 --  WHERE m.session_id IS NULL
---    AND NOT EXISTS (SELECT 1 FROM session_turns t WHERE t.turn_id = m.turn_id);
+--    AND NOT EXISTS (SELECT 1 FROM session_turns t WHERE t.id = m.turn_id);
 
 -- 3c) 回填完成后才加 NOT NULL
 ALTER TABLE session_messages
@@ -637,11 +638,10 @@ ALTER TABLE session_turns
     CHECK (status IN ('running','waiting','succeeded','failed','cancelled'));
 
 -- 4) checkpoint 表（若由 0046 建）
-DROP TABLE IF EXISTS langgraph_checkpoint_writes;
-DROP TABLE IF EXISTS langgraph_checkpoint_blobs;
-DROP TABLE IF EXISTS langgraph_checkpoint_blobs_v2;
-DROP TABLE IF EXISTS langgraph_checkpoint_migrations;
-DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
+DROP TABLE IF EXISTS checkpoint_writes;
+DROP TABLE IF EXISTS checkpoint_blobs;
+DROP TABLE IF EXISTS checkpoint_migrations;
+DROP TABLE IF EXISTS checkpoints;
 ```
 
 > **⚠️ 回滚会丢数据**：
@@ -651,7 +651,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 >
 > **`wait_status` 不在回滚范围内**：Stage 0 只**停止写入**、保留列；物理 DROP 在 Stage 6 的独立迁移里。因此 0046 回滚后 `wait_status` 列仍在（值已停更），**旧代码仍可读**（读到旧值）—— 这正是「先停写、后删列」的设计意图。
 >
-> **`langgraph_checkpoint_*` 表**：若用 saver 的 `setup()` 运行期建表，删除前必须先停 saver 的连接。
+> **checkpoint 表**：若用 saver 的 `setup()` 运行期建表，删除前必须先停 saver 的连接。
 
 ### 10.3 `graph_state` 的拆分去向
 
@@ -735,7 +735,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 | 动作 | 细节 |
 |---|---|
 | 建 `session/` 骨架 + `state.py` | 状态机定义 + 转移校验 |
-| 迁移 0046 | 加 `pending_approval` / `cancel_requested` / `ingress_seq` / `route_decision`（**Router 写**）/ `agent_decision`（**Agent 写**）（L2）；`session_messages` 加 `session_seq` / `session_id`（L3）；`session_turns.status` 枚举加 `queued`（先 DROP `session_turns_status_enum` 再重建）；建 `langgraph_checkpoint_*` 表；**`wait_status` 仅停止写入，列保留到 Stage 6 再 DROP** |
+| 迁移 0046 | 加 `pending_approval` / `cancel_requested` / `ingress_seq` / `route_decision`（**Router 写**）/ `agent_decision`（**Agent 写**）（L2）；`session_messages` 加 `session_seq` / `session_id`（L3）；`session_turns.status` 枚举加 `queued`（先 DROP `session_turns_status_enum` 再重建）；建 checkpoint 表（`checkpoints` / `checkpoint_blobs` / `checkpoint_writes` / `checkpoint_migrations`）；**`wait_status` 仅停止写入，列保留到 Stage 6 再 DROP** |
 | `session_messages.session_id` 回填 | 从 `session_turns` 回填后建唯一索引 |
 | `ErrorCode` 补 `APPROVER_MUST_DIFFER` | `libs/schema/.../errors.py` |
 | **Async** Postgres saver 接线 | **`AsyncPostgresSaver`**（`langgraph.checkpoint.postgres.aio`）接进 lifespan。⚠️ **不能用 `PostgresSaver.from_conn_string`** —— 那是**同步版**，会在全异步仓库里阻塞事件循环（§5.3） |
@@ -866,7 +866,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 
 | 阶段 | 删除/替换 | 旧代码减少（行） | **新写入量（估算）** | 旧路径状态 |
 |---|---|---|---|---|
-| Stage 0 | 无（纯新增 + 迁移 0046） | 0 | `session_turns` / `session_messages` / `session_events` 三表开始写入；`langgraph_checkpoint_*` 表 | — |
+| Stage 0 | 无（纯新增 + 迁移 0046） | 0 | `session_turns` / `session_messages` / `session_events` 三表开始写入；checkpoint 四表 | — |
 | Stage 1 | `wait_status` 写入点 | ~20 行 | 同上 | 直接替换 |
 | Stage 2 | 旧表写入点 | — | **双写期**：新旧两套表同时写（迁移期成本翻倍） | 直接替换（读保留用于迁移） |
 | Stage 3 | `copilot.py` 的 turn 编排（**X18**）**停用 + 打点** | 0（删除见 Stage 3b） | 同上 | **停用 + 打点** → 清理窗口 → **Stage 3b 删除**。`runner.py` 的 ReAct 循环（**X17**）**归 Agent 层**（Stage 5 接线 → Stage 7 删），本层不碰 |

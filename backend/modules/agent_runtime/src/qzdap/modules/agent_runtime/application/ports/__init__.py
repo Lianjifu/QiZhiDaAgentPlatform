@@ -159,7 +159,13 @@ class MemoryPort(Protocol):
     """
 
     async def recall(
-        self, *, tenant_id: UUID, workspace_id: UUID, query: str, top_k: int
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        query: str,
+        top_k: int,
+        user_id: UUID | None = None,
     ) -> list[dict]: ...
 
     async def write(

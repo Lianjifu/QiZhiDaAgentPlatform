@@ -36,6 +36,7 @@ class VectorSearchPort(Protocol):
         layer: str,
         content: str,
         embedding: list[float],
+        user_id: UUID | None = None,
     ) -> None: ...
 
     async def delete(self, ids: list[UUID]) -> None: ...
@@ -47,6 +48,7 @@ class VectorSearchPort(Protocol):
         workspace_id: UUID,
         query_embedding: list[float],
         top_k: int,
+        user_id: UUID | None = None,
     ) -> list[VectorHit]: ...
 
 
@@ -70,7 +72,9 @@ class MemoryCatalogRepository(ABC):
     async def get_l2(self, item_id: UUID) -> L2Fact | None: ...
 
     @abstractmethod
-    async def list_l2(self, workspace_id: UUID) -> list[L2Fact]: ...
+    async def list_l2(
+        self, workspace_id: UUID, *, user_id: UUID | None = None
+    ) -> list[L2Fact]: ...
 
     @abstractmethod
     async def update_l2(self, item: L2Fact) -> None: ...

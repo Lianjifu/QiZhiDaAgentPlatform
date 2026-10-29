@@ -59,12 +59,13 @@ class InMemoryVectors(VectorSearchPort):
         layer: str,
         content: str,
         embedding: list[float],
+        user_id: UUID | None = None,
     ) -> None:
         _ = tenant_id
-        self.items[item_id] = (
-            list(embedding),
-            {"workspace_id": str(workspace_id), "layer": layer, "content": content},
-        )
+        payload = {"workspace_id": str(workspace_id), "layer": layer, "content": content}
+        if user_id is not None:
+            payload["user_id"] = str(user_id)
+        self.items[item_id] = (list(embedding), payload)
 
     async def delete(self, ids: list[UUID]) -> None:
         for item_id in ids:
@@ -77,12 +78,16 @@ class InMemoryVectors(VectorSearchPort):
         workspace_id: UUID,
         query_embedding: list[float],
         top_k: int,
+        user_id: UUID | None = None,
     ) -> list[VectorHit]:
         _ = tenant_id
         qn = math.sqrt(sum(value * value for value in query_embedding)) or 1.0
         scored: list[VectorHit] = []
         for item_id, (vector, payload) in self.items.items():
             if payload["workspace_id"] != str(workspace_id):
+                continue
+            if user_id is not None and payload.get("user_id") != str(user_id):
+                # 对齐 pgvector：`payload->>'user_id'` 为 NULL 时不匹配。
                 continue
             vn = math.sqrt(sum(value * value for value in vector)) or 1.0
             score = sum(a * b for a, b in zip(query_embedding, vector, strict=True)) / (qn * vn)
@@ -124,8 +129,13 @@ class InMemoryCatalog(MemoryCatalogRepository):
     async def get_l2(self, item_id: UUID) -> L2Fact | None:
         return self.l2.get(item_id)
 
-    async def list_l2(self, workspace_id: UUID) -> list[L2Fact]:
-        return [item for item in self.l2.values() if item.workspace_id == workspace_id]
+    async def list_l2(
+        self, workspace_id: UUID, *, user_id: UUID | None = None
+    ) -> list[L2Fact]:
+        items = [item for item in self.l2.values() if item.workspace_id == workspace_id]
+        if user_id is not None:
+            items = [item for item in items if item.user_id == user_id]
+        return items
 
     async def update_l2(self, item: L2Fact) -> None:
         self.l2[item.id] = item

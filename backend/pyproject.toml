@@ -97,7 +97,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**/*.py" = ["S", "B011"]
-"**/migrations/**/*.py" = ["E", "F", "I", "N", "TC003"]
+"**/migrations/**/*.py" = ["E", "F", "I", "N", "TC003", "RUF001", "RUF002", "RUF003"]
 "**/router.py" = ["B008"]  # FastAPI Depends() in defaults is intentional
 "**/events.py" = ["RUF009"]
 "**/_in_memory.py" = ["PYI034"]

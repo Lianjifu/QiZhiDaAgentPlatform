@@ -179,6 +179,7 @@ class SessionGraphRunner:
         messages, knowledge_hits = await self._load_messages(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
+            owner_id=owner_id,
             user_input=user_input,
             history=history,
             agent=agent,
@@ -497,6 +498,7 @@ class SessionGraphRunner:
         *,
         tenant_id: UUID,
         workspace_id: UUID,
+        owner_id: UUID,
         user_input: str,
         history: list[dict[str, Any]],
         agent: CatalogAgent | None,
@@ -519,6 +521,9 @@ class SessionGraphRunner:
                     workspace_id=workspace_id,
                     query=user_input,
                     top_k=8,
+                    # ⚠️ 按当前用户过滤 —— 缺失这一项会把同工作区其他用户的
+                    # 记忆召回进本用户的上下文（X14 跨用户泄漏）。
+                    user_id=owner_id,
                 )
             except Exception:  # noqa: BLE001
                 memories = []

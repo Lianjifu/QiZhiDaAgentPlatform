@@ -880,7 +880,7 @@ ToolRuntimePort
 | `agent_versions.allowed_tools` / `allowed_skills` / `knowledge_package_ids` | **保留**（迁移 0011 已建） | **工具绑定集的落点**（§5.3.1）—— **不需要新列** |
 | `agent_versions.model_id` | **保留** | 版本冻结的模型 |
 | `admin_model_routes` / `admin_model_quotas` | **保留** | 策略路由定义与配额 |
-| `langgraph_checkpoint_*` | **由 Session 迁移 0046 建** | 本方案只使用，不建表 |
+| checkpoint 四表（`checkpoints` / `checkpoint_blobs` / `checkpoint_writes` / `checkpoint_migrations`） | **由 Session 迁移 0046 建** | 本方案只使用，不建表。⚠️ 表名按已安装的 `langgraph-checkpoint-postgres` 3.1.3（**无 `langgraph_` 前缀**）|
 
 ### 7.2 迁移
 
@@ -892,7 +892,7 @@ ToolRuntimePort
 | `session_turns.cost_usd` | **0043** |
 | `session_turns.agent_decision` / `route_decision` / `ingress_seq` | **0046**（Session 方案）|
 | `agent_versions.route_id` / `route_strategy` | **0042** |
-| `langgraph_checkpoint_*` 表 | **0046**（Session 方案） |
+| checkpoint 四表 | **0046**（Session 方案） |
 
 > **唯一的新增依赖**是 `deepagents`（决策 #8）—— 若采纳，需在 `runtimes/agent_runtime/pyproject.toml` 声明并更新 `uv.lock`。
 >
