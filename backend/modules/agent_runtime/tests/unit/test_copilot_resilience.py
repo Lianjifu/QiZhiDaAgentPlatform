@@ -20,7 +20,11 @@ from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
-from _ar_unit_in_memory import InMemoryIdempotencyStore, make_dependencies
+from _ar_unit_in_memory import (
+    InMemoryIdempotencyStore,
+    InMemorySessionJournal,
+    make_dependencies,
+)
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 from qzdap_schema.dtos.turn import ApprovalRequiredChunk
@@ -214,6 +218,7 @@ async def _make_service(
         events=deps["events"],
         graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+        journal=InMemorySessionJournal(),
     )
     tid = TenantId(agent.tenant_id)
     wid = WorkspaceId(agent.workspace_id)
@@ -324,6 +329,7 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
         events=deps["events"],
         graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+        journal=InMemorySessionJournal(),
     )
     detail = await svc.create_session(
         tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
@@ -598,6 +604,7 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
         sessions=deps["sessions"], turns=deps["turns"], messages=messages,
         catalog=_Catalog(agent), events=deps["events"], graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+        journal=InMemorySessionJournal(),
     )
     detail = await svc.create_session(
         tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid

@@ -5,7 +5,11 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 import pytest
-from _ar_unit_in_memory import InMemoryIdempotencyStore, make_dependencies
+from _ar_unit_in_memory import (
+    InMemoryIdempotencyStore,
+    InMemorySessionJournal,
+    make_dependencies,
+)
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_schema.ids import (
     AgentId,
@@ -469,7 +473,7 @@ async def test_copilot_saved_model_early_delta_and_close(selection: str) -> None
     deps = make_dependencies()
     messages = Messages()
     runner = SessionGraphRunner(llm=LLMPortAdapter(deps["llm"], model_service=SavedService()))
-    svc = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=messages, catalog=Catalog(), events=deps["events"], graph=runner, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()))
+    svc = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=messages, catalog=Catalog(), events=deps["events"], graph=runner, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()), journal=InMemorySessionJournal())
     detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
     sid = UUID(detail["id"])
     if selection == "session":
@@ -502,7 +506,7 @@ async def test_legacy_rejects_caller_scope_mismatch_before_saved_invocation(mism
             owner_id=uuid4() if mismatch == "owner" else uid,
             session_id=session.id, user_input="hi", model=str(uuid4()),
         ))
-    copilot = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=None, catalog=None, events=deps["events"], graph=None, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()))
+    copilot = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=None, catalog=None, events=deps["events"], graph=None, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()), journal=InMemorySessionJournal())
     with pytest.raises(SessionNotFound):
         await anext(copilot.stream_turn(
             tenant_id=TenantId(uuid4()) if mismatch == "tenant" else tid,

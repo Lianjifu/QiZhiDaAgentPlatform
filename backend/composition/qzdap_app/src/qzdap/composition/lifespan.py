@@ -325,6 +325,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 idempotency=IdempotencyGuard(
                     PostgresIdempotencyStore(container.session_factory())
                 ),
+                # 新架构的轮次 + 事件日志（双写期）—— 重放的落点（Stage 4b）。
+                journal=container.session_journal(),
             )
 
     async def catalog_evaluation_runner(*, tenant_id, workspace_id, owner_id, agent_id, user_input, agent_version=None):

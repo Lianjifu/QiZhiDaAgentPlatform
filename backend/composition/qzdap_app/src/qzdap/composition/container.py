@@ -811,6 +811,18 @@ class Container:
             ),
         )
 
+    def session_journal(self):
+        """新架构的轮次 + 事件日志 —— ``session_turns`` / ``session_events``。
+
+        **重放的落点**（Gateway Stage 4b）：重复请求命中后，web 入口从这里
+        按 seq 读回上一轮的事件流。
+        """
+        from qzdap.modules.agent_runtime.adapter.persistence.session_journal import (
+            PostgresSessionJournal,
+        )
+
+        return PostgresSessionJournal(self.session_factory())
+
     def gateway(self, *, channel_repo, secret_repo, cipher):
         """Gateway 门面 —— ①→②→③ 的编排 + ④ 的幂等守卫。
 
@@ -867,6 +879,8 @@ class Container:
                 PostgresIdempotencyStore(self.session_factory())
             ),
             capabilities=capabilities_for,
+            # 重放的落点（Stage 4b）—— 重复命中后按 seq 读回上一轮的事件流。
+            events=self.session_journal(),
         )
 
     def channel_result_sink(self):

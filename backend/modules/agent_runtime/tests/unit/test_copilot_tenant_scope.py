@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 import pytest
 from _ar_unit_in_memory import (
     InMemoryIdempotencyStore,
+    InMemorySessionJournal,
     InMemorySessionRepository,
     make_dependencies,
 )
@@ -52,6 +53,7 @@ async def test_listing_sessions_only_returns_the_requested_tenant() -> None:
         events=deps["events"],
         graph=None,  # type: ignore[arg-type]
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+        journal=InMemorySessionJournal(),
     )
 
     listed_a = await svc.list_sessions(tenant_id=tenant_a, owner_id=owner_id)
@@ -82,6 +84,7 @@ async def test_listing_sessions_skips_closed_ones() -> None:
         events=deps["events"],
         graph=None,  # type: ignore[arg-type]
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+        journal=InMemorySessionJournal(),
     )
 
     listed = await svc.list_sessions(tenant_id=tenant_id, owner_id=owner_id)

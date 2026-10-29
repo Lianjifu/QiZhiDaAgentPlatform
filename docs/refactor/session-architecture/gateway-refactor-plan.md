@@ -1,6 +1,7 @@
 # Gateway 层重构方案
 
-> 版本：1.9（2026-10-29：**Stage 4a 两段都已实施** —— 第一段：门面接管 + 出站 sink + 202 降级 + 弃用打点；第二段：**web 入口也走 `Gateway.accept`**（身份与幂等键各只有一个来源）；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4a「实施结果」与附录 C.4 / C.5）
+> 版本：1.10（2026-10-29：**Stage 4b 已实施** —— 无感重放落地：Gateway 侧新增 `gateway/replay.py`（`StoredEvent` / `EventStore` 读端口 / 规范化摘要 `event_digest`）+ `Gateway.replay()`；**连带落地 Session 侧的最小必要**（`session_turns` 轮次双写 + `session_events` 事件落库 + 按 seq 读取端口，迁移 0050）—— 因为 Stage 4b 的硬前置（Session Stage 4「真写真读」）开工时不满足；**202 降级路径整条删除**，重复命中改为**重放上一轮的事件流**（SSE 带 `id:` 游标，支持 `Last-Event-ID` 续传），重放不了才回 409；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4b「实施结果」与附录 C.6）
+> 沿革：v1.9（2026-10-29：**Stage 4a 两段都已实施** —— 第一段：门面接管 + 出站 sink + 202 降级 + 弃用打点；第二段：**web 入口也走 `Gateway.accept`**（身份与幂等键各只有一个来源）；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4a「实施结果」与附录 C.4 / C.5）
 > 沿革：v1.8（2026-10-29：**Stage 4a 第一段已实施** —— `Gateway.accept` 门面（①②③）+ ④ 的三个动作 + 出站 `ResultSink`（编码 + 卡片降级）+ IM 入站/出站接管 + 重复请求的 202 降级路径 + G7/G9/X2 弃用打点；**「切 IM 入口到唯一 turn 实现」被 Session 阻塞，未接管**；详见 §10 Stage 4a「实施结果」与附录 C.4）
 > 沿革：v1.7（2026-10-29：**Stage 3 已实施** —— 归一化收口：`InboundMessage` 成为唯一入站契约（4+1 个 inbound adapter 全部改产它）+ **`ParsedMessage` / `ChannelMessageReceived` / IM 侧进程内 LRU 去重全部删除（G4/G5/G6 已清理）** + 附件收敛为 `AttachmentRef` + 连带修掉「总线按类名路由」与「载荷方法名」两个真实缺陷；详见 §10 Stage 3「实施结果」与附录 C.3）
 > 沿革：v1.6（2026-10-29：**Stage 2 已实施** —— 鉴权收口：`gateway/identity.py`（`IdentityVerifier` 端口 + web JWT / IM HMAC / internal 三种实现）+ **服务账号物化**（`channels.service_account`，迁移 0049，取代硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID`）+ 会话列表**显式租户过滤**；详见 §10 Stage 2「实施结果」与附录 C.2）
@@ -12,7 +13,7 @@
 > 状态：**已定稿**（附录 A 的 9 条决策于 2026-10-29 逐条确认；另有 1 条补充条目 #2b 于同日随一致性评审修订）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：**[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md)** —— 会话完整生命周期的泳道划分与时序，本方案是其中 **Gateway 泳道**的展开
-> 收敛机制：**[`cleanup-ledger.md`](cleanup-ledger.md)** —— 本方案对应条目 **G1–G10**
+> 收敛机制：**[`cleanup-ledger.md`](cleanup-ledger.md)** —— 本方案对应条目 **G1–G11**
 > 硬约束：**最终态只有一个实现**；先上新、后清旧（清理机制见 §0.4 与台账）
 > 方案集导航：落地路线与里程碑见 [`README.md`](README.md) §6 · 系统级验收见 §7 · 外部前置依赖见 §8 · 跨层不变量见 [`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) §6
 
@@ -1064,7 +1065,7 @@ composition
 | 第二套 turn 实现 | 停用（打弃用标记），不立即删 |
 | `dispatch_subscriber.py` | 停用（打弃用标记），不立即删 |
 | **给以上旧路径打点** | `qzdap_legacy_calls_total{entry="..."}`，供清理判定 |
-| **重复请求降级路径** | 命中重复但 `session_events` 未就绪 → 返回 202 + turn_id + `replay_unavailable`（**不静默丢弃**） |
+| **重复请求降级路径** | 命中重复但 `session_events` 未就绪 → 返回 202 + turn_id + `replay_unavailable`（**不静默丢弃**）—— ⚠️ **该路径已在 Stage 4b 整条删除**（现在直接重放事件流） |
 
 **旧代码减少**：无删除，但全部旧路径**进入弃用与观测状态**。
 **验收**：四条入站路径全部经过 `Gateway.accept`；**旧路径的调用打点覆盖率 100%**（每个待清理的旧入口都有 `record_legacy_call("<编号>")`）；新路径流量占比 ≥ 95%；重复请求在降级路径下返回 202 而非报错。
@@ -1112,13 +1113,16 @@ composition
 | **切 IM 入口到唯一 turn 实现** | 被 Session 的「唯一 turn 实现（claim / 幂等 / 取消 / 审批合一）」阻塞（§0.5 的前置依赖表）。IM 的**入站与出站**已接管，**轮次编排**仍是第二套实现 | Session（Stage 3–5b）· 切的动作在 Gateway Stage 4a 的下一段，与 Session Stage 5b 同 PR |
 | **卡片实际下发** | 编码器已产出卡片载荷，但**入站侧还没有「卡片点击 → 审批决策」的回调处理** —— 先发卡片 = 做出一个点了没反应的按钮。本轮一律按「无卡片能力」降级为文本，并把降级记进 `DeliveryOutcome` | Agent Loop / Execution（回调侧）+ 各平台卡片渲染 |
 | **`/v1/sessions*`（路径 C）走门面** | 它走的是**第二套 turn 实现**（无 claim / 幂等 / 取消 / 审批），本轮已加弃用标记 + 打点；「让它走门面」没有意义 —— **它的终态是被删除**（G7/G8，Stage 5） | Gateway Stage 5 |
-| **无感重放** | 依赖 `session_events` 真写真读 | Session Stage 4 → Gateway Stage 4b |
+| **无感重放** | ✅ **Stage 4b 已实施**（2026-10-29）—— 重复命中改为重放事件流，202 降级路径删除 | — |
 
 > **因此本轮的清零判据不成立**：G9 / X2 的打点**仍会有流量**（IM 仍走它们），
 > Stage 5 的「连续 7 天为 0」不可能满足。**先上新、后清旧**的窗口仍然开着。
 
 ### Stage 4b：启用无感重放（Session 就绪后）
 
+> ✅ **已实施（2026-10-29）** —— 产出、验证与**未接管的部分**见本节末尾的
+> 「实施结果」。
+>
 > **开工前置（硬依赖，不豁免）**：Session Stage 4 已完成 —— `session_events` **真写真读**（落库 + 按 seq 读取），且 Session 提供 `EventStore.get_events(turn_id, after_seq)` 读取端口（见 `session-refactor-plan.md` §6）。
 >
 > **本阶段不豁免「不可结转」规则**：Session 台账清零前不得启用无感重放，因为重放的正确性直接依赖 Session 的事件落库语义。
@@ -1131,6 +1135,62 @@ composition
 
 **旧代码减少**：无（能力补齐）。
 **验收**：SSE 断开后带 `Last-Event-ID` 重连 → **重放拼接结果与原流 chunk 序列的 hash 相同**、seq 连续；重放不再走 202 降级路径。
+
+#### Stage 4b 实施结果（2026-10-29）
+
+> ⚠️ **前置依赖的处置（方案偏差，见附录 C.6 的 G-31 / G-32）**：本阶段的硬前置
+> （Session Stage 4「`session_events` 真写真读」）**开工时不满足**。方案写的是
+> 「不豁免」，因此本轮**连带落地 Session 侧的最小必要**，而不是把 Stage 4b
+> 标成「已具备能力」或跳过：
+>
+> - **轮次双写**（`session_turns`）—— 它是 `session_events.turn_id` 的**外键父行**
+>   （C.32：活的轮次写在旧表 `agent_turns`，直接写事件会被外键拒绝）；
+> - **事件落库**（`session_events`，每个 chunk 一行）；
+> - **读取端口**（按 seq 读 + 轮次终态）。
+>
+> **只落重放必需的那部分** —— Session 的 outbox 调度 / 死信 / 保留期仍在
+> Session Stage 4（见本节末「未接管」）。
+
+| 项 | 落地位置 |
+|---|---|
+| **重放契约** | `backend/runtimes/agent_runtime/src/qzdap_agent_runtime/gateway/replay.py` —— `StoredEvent`（`seq` / `event_type` / `payload`）、`EventStore`（**读端口**：`get_events` + `get_turn_status`）、`ReplayResult`（事件 + 轮次状态 → `is_finished`）、`event_digest`（**一致性校验**用的规范化摘要）、`event_from_chunk` |
+| **门面** | `gateway/facade.py` —— `Gateway.events`（可空）+ `Gateway.replay(turn_id, tenant_id, after_seq)`；**没有装配事件存储 → 空结果**（调用方据此降级，不静默丢弃） |
+| **Session 侧最小交付** | `modules/agent_runtime/.../adapter/persistence/session_journal.py` —— `PostgresSessionJournal`（写轮次 / 轮次落终态 / 追加事件 / 按 seq 读 / 标投递）；ORM：`models.py` 的 `SessionTurnORM`（`session_turns`）+ `SessionEventORM`（`session_events`） |
+| **迁移** | `migrations/versions/0050_gateway_replay_events.py` —— `session_turns` 加 `created_at` / `key_strength`；唯一约束 → **只覆盖 strong 且只覆盖在飞轮次**的部分唯一索引（C.34） |
+| **事件落库** | `copilot._publish_chunk` —— 每个 chunk **先落库再投递**（Session §7）；事件序号**在 copilot 这一层统一分配**（轮次内严格递增）并**重新标注 chunk 的 `seq`**（C.33） |
+| **轮次双写** | `copilot._run_turn` —— 旧表 `agent_turns` 照写（双写期），同时写 `session_turns`；轮次终态回写（`succeeded` / `failed` / `cancelled`）；**僵尸接管**（同会话里另一个在飞的同键轮次若已僵了很久 —— 进程死了、状态没落终态 —— 把它落到终态再插新的；阈值与幂等守卫的 `CLAIM_STALE_MINUTES` **同一个来源**；**年轻的撞键行照旧报错**，那是真的重复执行） |
+| **SSE 游标** | `adapter/http/sse.py` —— 每帧带 `id: <seq>`（续传游标，与 `session_events.seq` **同一套编号**）；`sse_frame` / `sse_replay` —— **live 与 replay 共用同一个编码器** |
+| **重复分支** | `adapter/http/session_router.py` —— 命中重复 → **重放上一轮的事件流**（200 + SSE）；`Last-Event-ID` 头 → **只重放它之后**的那几段；**202 降级路径删除**；重放不了 → **409**（C.35） |
+| **装配** | `composition/.../container.py` —— `container.session_journal()`；`web_gateway()` 挂上 `events=`（重放的落点）；`lifespan.py` 把 `journal=` 注入 copilot |
+
+**旧代码减少**：
+- **202 降级路径整条删除** —— SSE 端点的 202 分支、`DuplicateRequestError` 的
+  `replay_unavailable` 字段（决策权回到 HTTP 层：能不能重放由**事件是否存在**
+  决定，不由异常自带标志决定）；
+- **live / replay 两套 SSE 编码合并成一个** `sse_frame`（原来只有 live 的内联拼接）。
+
+**验收结果**：
+- **重放一致性（真库）**：copilot 跑一轮 → 事件真落库 → 门面重放 → **摘要与原流
+  chunk 序列一致**、**seq 连续**（1, 2, 3 …）；摘要用**规范化 JSON**（C.37：
+  JSONB 不保序，比的不能是字节相等）；
+- **重复请求（HTTP 层）**：同一个 `clientRequestId` 再来一次 → **200 + 重放的
+  SSE**，内容与原始流一致；**模型只被调用了一轮**（重复请求不重算）；
+- **`Last-Event-ID`**：带 `Last-Event-ID: 1` → **只重放第 2 段之后**的内容；
+- **重放不了**（这一轮还在跑 / 还没落过事件）→ **409**（不是 202、不是静默丢弃）；
+- **事件仓储（真库）**：轮次 / 事件往返、`after_seq` 续读、**跨租户读不到**
+  （C.36）、**weak 键不互相冲突**、**strong 键不重复起在飞的轮次**、**轮次落
+  终态后同键可再用**（「过期不误杀」不被这层约束反噬）；
+- **迁移 0050** 已在 dev 库跑通（`session_turns` 的两列 + 部分唯一索引）。
+
+#### ⚠️ 本阶段**未接管**的部分（明确记为被阻塞，**不许当成已完成**）
+
+| 未接管项 | 为什么 | 归属 |
+|---|---|---|
+| **IM 入口的无感重放** | 事件落库发生在 **copilot 这条路径**上；IM 的轮次编排仍是**第二套实现**（`use_cases/*`），重复命中的语义由它决定 | Session（Stage 3 / 5b）· 与「切 IM 入口」同 PR |
+| **Session 的 outbox 调度与死信** | `delivery_status` 目前只在轮次**正常收尾**时从 `pending` 标成 `delivered`；「按状态捞待投递 → 重试退避 → 死信」的调度器没有 | Session Stage 4 |
+| **`session_turns` 作为轮次幂等的权威** | 本轮幂等的权威仍是 `session_inbox`（带 TTL 与强弱分层）；`session_turns` 的唯一索引只兜底「同会话不得有两个**在飞的**同键轮次」 | Session Stage 2（双写期结束后再移交） |
+| **切 IM 入口到唯一 turn 实现** | 与 Stage 4a 同一项，仍被 Session 阻塞 | Session（Stage 3–5b） |
+
 
 ### Stage 5：旧实现清理
 
@@ -1414,6 +1474,23 @@ Gateway 域对应的规则：
 > **G-30 的遗留**：web 的租户自证问题**没有**被 Gateway 解决 —— 它只是被**归一**
 > （一处产生 actor）。真正的收口（用 principal 的 tenant 取代客户端头）在 Auth 层，
 > 不在 Gateway 的 Stage 4a。
+
+### C.6 Stage 4b 实施带回的七处修正（v1.9 → v1.10，2026-10-29）
+
+| # | 级别 | 问题 | 修正 | 落点 |
+|---|---|---|---|---|
+| **G-31** | 严重 | **Stage 4b 的硬前置开工时不满足** —— 方案写「Session Stage 4 已完成（`session_events` 真写真读），不豁免」，而实际上 `session_events` **一张行都没有**（全仓无任何写入）。若照方案「跳过 / 记为已具备」，Stage 4b 就是**建而不切** | **连带落地 Session 侧的最小必要**（轮次双写 + 事件落库 + 按 seq 读取端口），并在 §10 明确记为**方案偏差**；**只落重放必需的那部分**（Session 的 outbox 调度 / 死信 / 保留期仍在 Session Stage 4） | §10 Stage 4b / 附录 C.6 |
+| **G-32** | 严重 | **`session_events.turn_id` 有指向 `session_turns.id` 的外键，而活的轮次写在旧表 `agent_turns`** —— 直接写事件会被外键拒绝（`session_events` 也不可能自己造父行） | **先补 `session_turns` 的轮次双写**（旧表照写，新表同步写）—— 事件行的外键父行必须存在；这也正是「连带落地」的技术原因 | §10 Stage 4b / `copilot.py` |
+| **G-33** | 中 | **事件序号不能直接用 chunk 的 `seq`** —— 上游有**两套编号空间**（chunk 序号与消息序号，copilot 的 `ErrorChunk` 用的是后者），且 runner 的合成 chunk 会与下一个 chunk **撞号**。直接拿它当 `session_events` 的主键会撞 `(turn_id, seq)` | **在 copilot 这一层统一分配事件序号**（轮次内严格递增），并**重新标注 chunk 的 `seq`**（客户端不用这个字段；SSE 的 `id:` 与事件序号一致） | §10 Stage 4b / `copilot._publish_chunk` |
+| **G-34** | 中 | **`session_turns` 的唯一约束 `(session_id, idempotency_key)` 与 Gateway 的键阶梯冲突** —— 它覆盖**全部**行：weak 键（内容指纹）会互相抑制（**违反决策 #5**）；而且它是**永久**的，会把 Gateway 的「TTL（24h）到期后当作新消息受理」反噬成约束冲突 | 迁移 0050 把它换成**部分唯一索引**：只覆盖 **strong** 键，且只覆盖**在飞**的轮次（`status IN ('queued','running','waiting')`）。**幂等的权威仍是 `session_inbox`** | 迁移 0050 / §4.6 |
+| **G-35** | 中 | **202 降级路径移除后，「重放不了」需要一个明确的回音** —— §4.5 的表里 web REST 一栏仍写「202 + turn_id」，而 web 只有 SSE 入口 | 重复命中但**没有可重放的事件**（这一轮还在跑 / 还没落过事件）→ **409**（不是 202 —— 202 的语义是「已受理」，会把「还在跑」说成「受理了」）。`DuplicateRequestError.replay_unavailable` 字段随之**删除**（决策权在 HTTP 层：能不能重放由**事件是否存在**决定，不由异常自带标志决定） | §10 Stage 4b / `session_router.py` |
+| **G-36** | 低 | **`session_events` 没有 `tenant_id` 列** —— 事件行的租户归属只能由它的**轮次**决定，而 Session 方案 §9 写的读取端口签名是 `get_events(turn_id, after_seq)`（**不含租户**） | 读取端口**必须 JOIN `session_turns` 并按租户过滤**，签名因此带上 `tenant_id`（**收紧**，不是放宽） | §10 Stage 4b / `gateway/replay.py` |
+| **G-37** | 低 | **JSONB 不保序** —— PostgreSQL 会按「长度 + 字节」重排 JSONB 的键，因此重放出来的字节流与原始字节流**不逐字节相同** | 一致性校验比的是**规范化摘要**（`event_digest`：`sort_keys` 的 JSON + `(seq, event_type)`），而不是字节相等。**JSON 对象的键序本就无关**，客户端 `JSON.parse` 得到的对象完全一致 | §10 Stage 4b / `gateway/replay.py` |
+
+> **G-31 的共同教训**：**「前置依赖」有两种 —— 表格存在 ≠ 数据存在**。
+> `session_events` 的表在迁移 0035 就建好了，但**没有任何一行** —— 从表结构
+> 看不出「真写真读」这件事。因此前置依赖的判据必须是**「有行、且被读」**，
+> 不是「有表」。这也是 §0.5 前置依赖表里 Session Stage 4 那一条的验收口径。
 
 **跨文档同步**（本轮一并改掉的对 Gateway 章节号的引用）：
 

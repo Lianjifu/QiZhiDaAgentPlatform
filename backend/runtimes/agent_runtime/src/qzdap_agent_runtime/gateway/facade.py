@@ -51,6 +51,7 @@ from qzdap_agent_runtime.gateway.normalizer import (
     MessageNormalizer,
     NormalizerContext,
 )
+from qzdap_agent_runtime.gateway.replay import EventStore, ReplayResult
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -151,6 +152,7 @@ class Gateway:
         channels: ChannelDirectoryPort | None = None,
         capabilities: Any = None,
         tolerance_seconds: int = 300,
+        events: EventStore | None = None,
     ) -> None:
         self._identity = identity
         self._normalizers = dict(normalizers)
@@ -158,6 +160,7 @@ class Gateway:
         self._channels = channels
         self._capabilities = capabilities
         self._tolerance = tolerance_seconds
+        self._events = events
 
     # ── ①②③ ───────────────────────────────────────────────────────────
 
@@ -248,6 +251,27 @@ class Gateway:
     async def release(self, decision: IdempotencyDecision) -> None:
         """这一轮**根本没跑起来** —— 键不该被消费，调用方还能用同一个键重试。"""
         await self._idempotency.release(decision)
+
+    # ── 重放（Stage 4b）────────────────────────────────────────────────
+
+    async def replay(
+        self, turn_id: UUID, *, tenant_id: UUID, after_seq: int = 0
+    ) -> ReplayResult:
+        """重放上一轮的事件流 —— **重复请求的正确行为**（§4.5）。
+
+        ``after_seq`` 是客户端带回来的 ``Last-Event-ID``：只重放它**之后**的
+        事件（断线续传的位置）。
+
+        没有装配事件存储（``events is None``）→ 返回空结果 —— 调用方据此
+        降级（「重复请求不是错误，但也没有可重放的流」）。
+        """
+        if self._events is None:
+            return ReplayResult(turn_id=turn_id, status=None, events=[])
+        events = await self._events.get_events(
+            turn_id, tenant_id=tenant_id, after_seq=after_seq
+        )
+        status = await self._events.get_turn_status(turn_id, tenant_id=tenant_id)
+        return ReplayResult(turn_id=turn_id, status=status, events=events)
 
     # ── helpers ────────────────────────────────────────────────────────
 

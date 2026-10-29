@@ -131,6 +131,63 @@ class EventPublisher(ABC):
     ) -> None: ...
 
 
+class SessionJournal(ABC):
+    """新架构的**轮次 + 事件日志**（``session_turns`` / ``session_events``）。
+
+    **双写期**：旧表 ``agent_turns`` 仍在写，新表同步写 —— 旧表的删除在
+    Session Stage 6（§12）。本端口是「轮次 + 事件流」的唯一写入口。
+
+    **事件先落库、再投递**（Session 方案 §7）—— 断线重连要能读到已发出的
+    那一段，重放才有意义（Gateway 方案 §4.5 的硬依赖）。
+    """
+
+    @abstractmethod
+    async def start_turn(
+        self,
+        *,
+        turn_id: UUID,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        session_id: UUID,
+        idempotency_key: str,
+        key_strength: str,
+        agent_version: str,
+        model_version: str,
+        trace_id: str | None = None,
+    ) -> None:
+        """写一行轮次（状态 ``running``）—— 事件行的外键父行。"""
+        ...
+
+    @abstractmethod
+    async def finish_turn(
+        self,
+        *,
+        turn_id: UUID,
+        status: str,
+        error_code: str | None = None,
+        cost_usd: float | None = None,
+    ) -> None:
+        """把轮次落到终态（``succeeded`` / ``failed`` / ``cancelled``）。"""
+        ...
+
+    @abstractmethod
+    async def append_event(
+        self,
+        *,
+        turn_id: UUID,
+        seq: int,
+        event_type: str,
+        payload: dict,
+    ) -> None:
+        """写一条事件 —— 轮次内 ``seq`` 严格递增。"""
+        ...
+
+    @abstractmethod
+    async def mark_delivered(self, *, turn_id: UUID) -> None:
+        """把这一轮还挂着的 ``pending`` 事件标成 ``delivered``。"""
+        ...
+
+
 # ── Forward-compat ports (Protocol stubs; concrete adapters land in P2/P3/P4) ──
 
 

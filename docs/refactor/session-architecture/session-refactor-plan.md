@@ -428,7 +428,9 @@ class SessionManagerPort(Protocol):
 
 > **⚠️ 取值必须小写**：0035 建的 check constraint 是 `delivery_status IN ('pending','delivered','failed','dead_letter')`（**小写**）—— 写 `'PENDING'` 会被 check 约束拒绝，**每个 chunk 的落库都会失败**。
 
-**断线重放**：客户端带 `Last-Event-ID=N` → 从 `session_events` 取 `seq > N` 的未投递事件重放。
+**断线重放**：客户端带 `Last-Event-ID=N` → 从 `session_events` 取 `seq > N` 的事件重放。
+
+> ⚠️ **「未投递」不是重放的过滤条件**（2026-10-29，Gateway 附录 C.6 的 G-36 一族）：`delivery_status` 说的是 **outbox（IM 渠道投递）**的状态；web 的「投递」是把 chunk 交给 SSE 传输，客户端自己就是消费者。Gateway 的重放按 **`seq > N`** 取，**不按 `delivery_status` 过滤** —— 否则「客户端重连补齐自己漏掉的那几段」会取不到（那些段早已被标成 `delivered`）。
 
 **副作用先于投递**：模型结果、工具结果、记忆写入必须在事件入队**之前**提交；投递失败**不回滚** turn，只标 degraded。
 
@@ -475,7 +477,7 @@ class SessionManagerPort(Protocol):
 | **Router → Session** | **两步**：① **只读** `lookup(session_key)` → `SessionRef` 或 `None`（供粘性规则用）② `resolve_or_create(session_key, agent_binding)` → `SessionRef`；随后分配 `ingress_seq` 并**向 Session 请求入队** | **无**（Router 方案 §0.6 / §5）|
 | **Session → Context** | `SessionRef` + **消息序列** + 轮次上下文（审批状态）—— 供组装 | **无** |
 | **Session → Agent Loop** | ⚠️ **只有审批句柄**：审批挂起 / 恢复所需的 `pending_approval` 与 `approval_id`。⚠️ **不含 messages**（消息由 **Context** 装配成 `AssembledContext.messages`）、**不含工具白名单**（工具集来自 **agent 配置的绑定集**，Agent 方案 §5.3.1）| **无** |
-| **Session → Gateway** | **读取端口** `EventStore.get_events(turn_id, after_seq)` → `list[SessionEvent]`（供 Gateway 的 `Last-Event-ID` 无感重放，见 Gateway 方案 §4.5）+ `ResultEvent` 流 | **无** |
+| **Session → Gateway** | **读取端口** `EventStore.get_events(turn_id, tenant_id, after_seq)` → `list[SessionEvent]`（供 Gateway 的 `Last-Event-ID` 无感重放，见 Gateway 方案 §4.5）+ `ResultEvent` 流。⚠️ **`tenant_id` 是必需的**（2026-10-29，Gateway 附录 C.6 的 G-36）—— `session_events` 表**没有 `tenant_id` 列**，事件行的租户归属由它的**轮次**决定 → 实现必须 JOIN `session_turns` 并按租户过滤 | **无** |
 | **Session ← Router** | 执行权由 Session 持有（**`session_turns.status` 的 CAS 是唯一权威**，advisory lock 仅作优化 —— 与 Router 方案 §4.2(c) 同一口径） | **无** |
 
 **与 Router 的分工**（两处容易混）：
@@ -870,7 +872,7 @@ DROP TABLE IF EXISTS checkpoints;
 | Stage 1 | `wait_status` 写入点 | ~20 行 | 同上 | 直接替换 |
 | Stage 2 | 旧表写入点 | — | **双写期**：新旧两套表同时写（迁移期成本翻倍） | 直接替换（读保留用于迁移） |
 | Stage 3 | `copilot.py` 的 turn 编排（**X18**）**停用 + 打点** | 0（删除见 Stage 3b） | 同上 | **停用 + 打点** → 清理窗口 → **Stage 3b 删除**。`runner.py` 的 ReAct 循环（**X17**）**归 Agent 层**（Stage 5 接线 → Stage 7 删），本层不碰 |
-| Stage 4 | 无（事件落库 + outbox） | 0 | **`session_events`：每个 chunk 一行**（一次对话平均 5–20 行）；`outbox_dead_letters` 少量 | — |
+| Stage 4 | 无（事件落库 + outbox） | 0 | **`session_events`：每个 chunk 一行**（一次对话平均 5–20 行）；`outbox_dead_letters` 少量 | ⚠️ **事件落库已随 Gateway Stage 4b 连带落地**（2026-10-29：`session_turns` 轮次双写 + `session_events` 每个 chunk 一行 + 按 seq 的读取端口）；**outbox 调度 / 重试退避 / 死信 / 保留期仍在 Stage 4** |
 | Stage 5 | 审批异常吞噬（`copilot.py` 的 `except Exception: pass`） | ~5 行 | 同上 | **删除**（X7） |
 | Stage 5b | 第二套 turn 实现（`use_cases/run_turn.py` + `run_turn_to_completion.py`） | ~600 行 | 同上 | **删除**（与 Gateway 的 IM 入口切换同 PR · X2 的 IM 侧） |
 | Stage 3b | Copilot 侧旧 turn 编排（`copilot.py` 的 turn 编排 · **X18**） | ~600 行 | 同上 | **删除**（清理窗口 ≥7 天且指标归零后；与 Stage 3 的切换分离，留回退窗口） |

@@ -16,7 +16,11 @@ from collections.abc import AsyncIterator
 from uuid import UUID
 
 import pytest
-from _ar_unit_in_memory import InMemoryIdempotencyStore, make_dependencies
+from _ar_unit_in_memory import (
+    InMemoryIdempotencyStore,
+    InMemorySessionJournal,
+    make_dependencies,
+)
 from opentelemetry import trace as otel_trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -124,6 +128,7 @@ async def _make_service(agent: CatalogAgent, owner_id: UserId):
         events=deps["events"],
         graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+        journal=InMemorySessionJournal(),
     )
     tid = TenantId(agent.tenant_id)
     wid = WorkspaceId(agent.workspace_id)

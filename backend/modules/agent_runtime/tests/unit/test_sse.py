@@ -109,5 +109,22 @@ async def test_sse_stream_keepalive_does_not_break_the_frontend_parser() -> None
         ]
         if not data_lines:
             continue
-        assert block.startswith("event: ")
+        if block.startswith("event: end"):
+            # 结束帧没有 id（后面没有内容了）。
+            continue
+        # ⚠️ 帧以 ``id:`` 开头（断线续传的游标，Gateway §4.5），但 ``event:``
+        # 与 ``data:`` 都必须在 —— 前端按 ``event:`` 分派。
+        assert block.startswith("id: ")
+        assert "event: " in block
         json.loads("".join(line[5:].strip() for line in data_lines))
+
+
+async def test_sse_stream_carries_the_event_id_for_resume() -> None:
+    """每一帧都带 ``id: <seq>`` —— 客户端断线重连时把它当 ``Last-Event-ID``。"""
+
+    out = b""
+    async for piece in sse_stream(_gen()):
+        out += piece
+    decoded = out.decode("utf-8")
+    assert "id: 1\nevent: message\n" in decoded
+    assert "id: 4\nevent: done\n" in decoded

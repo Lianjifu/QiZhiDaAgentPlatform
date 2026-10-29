@@ -7,12 +7,14 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap_agent_runtime.gateway.replay import StoredEvent
 from qzdap_kernel.events import DomainEvent
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 
 from qzdap.modules.agent_runtime.application.ports import (
     EventPublisher,
     LLMPort,
+    SessionJournal,
     SessionRepository,
     TurnRepository,
 )
@@ -175,6 +177,86 @@ class RecordingEventPublisher(EventPublisher):
         trace_id: str | None = None,
     ) -> None:
         self.events.append(event)
+
+
+class InMemorySessionJournal(SessionJournal):
+    """进程内的轮次 + 事件日志 —— 语义对齐 ``PostgresSessionJournal``。
+
+    **真库的验证在集成测试里**（``tests/integration/test_session_journal.py``）；
+    这里只保证单进程内的行为一致（尤其是「事件按 seq 递增、可按 seq 续读」）。
+    """
+
+    def __init__(self) -> None:
+        self.turns: dict[UUID, dict[str, Any]] = {}
+        self.events: dict[UUID, list[StoredEvent]] = {}
+
+    async def start_turn(
+        self,
+        *,
+        turn_id: UUID,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        session_id: UUID,
+        idempotency_key: str,
+        key_strength: str,
+        agent_version: str,
+        model_version: str,
+        trace_id: str | None = None,
+    ) -> None:
+        self.turns[turn_id] = {
+            "tenant_id": tenant_id,
+            "workspace_id": workspace_id,
+            "session_id": session_id,
+            "idempotency_key": idempotency_key,
+            "key_strength": key_strength,
+            "agent_version": agent_version,
+            "model_version": model_version,
+            "status": "running",
+        }
+
+    async def finish_turn(
+        self,
+        *,
+        turn_id: UUID,
+        status: str,
+        error_code: str | None = None,
+        cost_usd: float | None = None,
+    ) -> None:
+        row = self.turns.get(turn_id)
+        if row is not None:
+            row["status"] = status
+            row["error_code"] = error_code
+
+    async def append_event(
+        self,
+        *,
+        turn_id: UUID,
+        seq: int,
+        event_type: str,
+        payload: dict,
+    ) -> None:
+        self.events.setdefault(turn_id, []).append(
+            StoredEvent(seq=seq, event_type=event_type, payload=payload)
+        )
+
+    async def mark_delivered(self, *, turn_id: UUID) -> None:
+        return None
+
+    # ── 读侧（给测试用；生产读在 PostgresSessionJournal 上）──────────────
+
+    async def get_events(
+        self, turn_id: UUID, *, tenant_id: UUID, after_seq: int = 0
+    ) -> list[StoredEvent]:
+        row = self.turns.get(turn_id)
+        if row is None or row["tenant_id"] != tenant_id:
+            return []
+        return [e for e in self.events.get(turn_id, []) if e.seq > after_seq]
+
+    async def get_turn_status(self, turn_id: UUID, *, tenant_id: UUID) -> str | None:
+        row = self.turns.get(turn_id)
+        if row is None or row["tenant_id"] != tenant_id:
+            return None
+        return str(row["status"])
 
 
 def make_dependencies(

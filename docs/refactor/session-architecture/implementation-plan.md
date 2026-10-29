@@ -277,7 +277,7 @@
 > | **数据类 / 旧表 / 旧列 / 从未接线**（无调用入口） | G4 / G5（数据类型）· R3（职责被 Session 接管）· X1 · X1-a · X1-b · X5 · X3（旧列）· X6（旧列）· X4（旧表）· X13 · X15（旧表）· X16 · X7（吞异常的代码模式）· X12（从未接线） | **grep 扫描 + 数据迁移/DROP** |
 > | **修复类** | G10（审批恢复路径的幂等键）· X14（跨用户泄漏） | **测试判定，不进指标** |
 >
-> **C2 的产出是一张 34 行的「条目 → 打点位置 / 判据类型」对照表**（附录 D，覆盖台账 33 条 + X1 的两个子项 X1-a / X1-b），**逐条与台账核对**。验收标准是「**每个可打点条目都有打点，且对照表与台账逐条一致**」—— **不是「33 个 entry 标签全部有值」**（后者对无入口条目既不可达也无意义：一个从未被调用的代码，打点永远不会 inc，Prometheus 的 label 在首次 inc 前根本不出现）。
+> **C2 的产出是一张 36 行的「条目 → 打点位置 / 判据类型」对照表**（附录 D，覆盖台账 34 条 + X1 的两个子项 X1-a / X1-b），**逐条与台账核对**。验收标准是「**每个可打点条目都有打点，且对照表与台账逐条一致**」—— **不是「33 个 entry 标签全部有值」**（后者对无入口条目既不可达也无意义：一个从未被调用的代码，打点永远不会 inc，Prometheus 的 label 在首次 inc 前根本不出现）。
 >
 > **漏一个可打点的入口，那条台账就永远清不掉**（指标永远不为 0）。
 
@@ -330,9 +330,10 @@
 | | G-21 `/v1/sessions*` turn 部分停用 + 打点 | — | **G7 / G8** | 0 | G-19 |
 | | G-22 `dispatch_subscriber.py` 停用 + 打点 | — | **G9** | 0 | G-19 |
 | | G-23 重复请求降级路径 | 命中重复但 `session_events` 未就绪 → 202 + `replay_unavailable`（**不静默丢弃**） | — | 0 | G-19 |
-| Stage 4b · 无感重放 | G-24 `Last-Event-ID` 重放 | 从 `session_events` 按 seq 重放 | — | 0 | **Session Stage 4 完成（硬依赖，不豁免）** |
-| | G-25 降级路径移除 | 重复命中 → 直接重放事件流 | — | 0 | G-24 |
-| | G-26 重放一致性校验 | 重放内容与原始事件流的 seq 对齐 | — | 0 | G-24 |
+| Stage 4b · 无感重放 | **G-24 `Last-Event-ID` 重放** | 从 `session_events` 按 seq 重放 —— `gateway/replay.py`（`StoredEvent` / `EventStore` 读端口 / `event_digest`）+ `Gateway.replay()`；SSE 每帧带 `id: <seq>`（live 与 replay **共用一个编码器**） | — | 0 | **Session Stage 4 完成（硬依赖，不豁免）** |
+| | **G-25 降级路径移除** | 重复命中 → **重放上一轮的事件流**（200 + SSE）；**202 分支与 `replay_unavailable` 字段删除**（台账 **G11 已清理**）；重放不了（这一轮还在跑）→ **409** | **202 降级路径整条删除**（同一语义的两套实现 → 只留重放） | ~15 行 | G-24 |
+| | **G-26 重放一致性校验** | `event_digest`（规范化摘要 —— JSONB 不保序，比的不是字节相等）+ seq 连续；真库集成测试断言「copilot 跑一轮 → 事件落库 → 门面重放 → 摘要与原流一致」 | — | 0 | G-24 |
+| | **G-24b Session 侧最小交付（连带落地）** | ⚠️ **方案偏差**（Gateway 附录 C.6 的 **G-31 / G-32**）：Stage 4b 的硬依赖（Session Stage 4「`session_events` 真写真读」）**开工时不满足** —— 表在、**一行没有**。本轮**连带落地**三件事：① `session_turns` **轮次双写**（它是 `session_events.turn_id` 的外键父行）② `session_events` **事件落库**（每 chunk 一行，**先落库再投递**）③ **按 seq 的读取端口**（JOIN 轮次表按租户过滤）+ 迁移 0050 | — | ~250 行 | **Session Stage 0/2/4 的最小部分**（outbox 调度 / 死信 / 保留期仍在 Session Stage 4） |
 | Stage 5 · 清理 | **G-27 删 `/v1/sessions*`（turn 部分 + 列表别名）** | — | **G7 / G8** | **~280 行** | 归零判据满足 |
 | | **G-28 删 `dispatch_subscriber.py`** | ⚠️ **文件删除归本层**（G9），但**必须与「切 IM 入口」+ Session Stage 5b 同 PR** | **G9** | **~250 行** | 与 **Session S-31 同 PR** |
 | | G-29 删 `recent_request_ids` 残留列 / 孤儿索引 / 废弃常量 | 数据清理 | — | 少量 | G-09 |
@@ -1110,8 +1111,8 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] P-11 **确认 `/v1/sessions*` 是否有仓外消费者**（H5 / C9，需 API owner 拍板）
 - [ ] P-12 CI 加 isolated install 检查（H6 / C10）
 
-### Gateway 层（§3.1）—— **删除 G1–G10**
-- [ ] G-01 `gateway/` 骨架 + `types.py` · G-02 `ErrorCode` 投影表 · **G-02b 错误码收敛（7 个模块内码 → `ErrorCode` 枚举）** · G-03 **迁移 0044**（部分唯一索引 + 合成值约定）· G-04 架构测试 · G-05 打点 G1–G10
+### Gateway 层（§3.1）—— **删除 G1–G11**
+- [ ] G-01 `gateway/` 骨架 + `types.py` · G-02 `ErrorCode` 投影表 · **G-02b 错误码收敛（7 个模块内码 → `ErrorCode` 枚举）** · G-03 **迁移 0044**（部分唯一索引 + 合成值约定）· G-04 架构测试 · G-05 打点 G1–G11
 - [ ] G-06 `IdempotencyStore` · G-07 `Gateway.accept` · G-08 web 入站切过来
 - [ ] G-09 **删 `record_request_id` + `recent_request_ids`** → **G1** · **G-09b 审批恢复路径传幂等键** → **G10** · **G-09c 过期行不当成重复**
 - [ ] G-10 `IdentityVerifier` · G-11 服务账号物化 · G-12 验签迁出 · G-13 `/v1/sessions` 租户校验 · **G-13b `modules/channel` 加 `qzdap-agent-runtime` 依赖 + `uv.lock`**
@@ -1257,7 +1258,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 
 ## 附录 D：打点对照表（C2 的产出 —— **2026-10-29 已实施**）
 
-> **这张表是 C2 的验收物**：34 行（覆盖台账 33 条 + X1 的两个子项 X1-a / X1-b），**逐条与台账核对**。判据类型决定这条目「怎么算清零」。
+> **这张表是 C2 的验收物**：36 行（覆盖台账 34 条 + X1 的两个子项 X1-a / X1-b），**逐条与台账核对**。判据类型决定这条目「怎么算清零」。
 >
 > **判据类型三分法**：
 > - **指标** —— 有旧调用入口，用 `qzdap_legacy_calls_total{entry}` 归零判定；
@@ -1270,13 +1271,14 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 > 原判为「扫描 / 修复」但**确实有调用入口**的条目（G4 / G5 / G10 / R3 / X3 / X5 / X6 /
 > X7 / X15 / X16）也一并打点，**打点只是额外观测，它们的清零判据不变**（扫描 / 测试）。
 > ⚠️ 其中 **G4 / G5 / G6 随旧实现一起删除（2026-10-29 Gateway Stage 3）**，打点一并撤除。
-> ⚠️ **15 行没有打点，且不是遗漏** —— 它们**打不了点**，必须改用替代判据：
+> ⚠️ **17 行没有打点，且不是遗漏** —— 它们**打不了点**，必须改用替代判据：
 > - **7 条「打不了点」**：**R4**（从未接线的 runtime）、**X1 / X1-a / X1-b**（从未接线）、
 >   **X4 / X12 / X13 / X19**（数据类 / 旧表 / 死表）。
 >   **这 7 条不得用「指标为 0」判清零** —— 从未被调用的代码，打点永远不会 inc，
 >   指标恒为 0，**看起来已清零、实则从未被观测**。
-> - **8 条「已不需要打点」**：**G1 / G2 / G3 / G4 / G5 / G6**（旧实现已删除 —— 打点随代码
->   一起撤除）、**G10 / X14**（修复类 —— 判据是回归测试，不进指标）。
+> - **9 条「已不需要打点」**：**G1 / G2 / G3 / G4 / G5 / G6 / G11**（旧实现已删除 —— 打点随
+>   代码一起撤除；G11 = 重复请求的 202 降级路径，2026-10-29 Gateway Stage 4b）、
+>   **G10 / X14**（修复类 —— 判据是回归测试，不进指标）。
 >   **修复完成后继续保留打点，会让指标永远非零、清理判据永远不成立**。
 
 | 台账条目 | 判据类型 | 打点位置（实施后的真实位置） | 扫描规则 id | 备注 |
@@ -1290,6 +1292,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 | G7 `/v1/sessions*` turn | 指标 | `agent_runtime/adapter/http/router.py` `run_turn_stream` | — | |
 | G8 `GET /v1/sessions` | 指标 | `session_router.py` `list_v1` | — | |
 | G9 `dispatch_subscriber.py` | 指标 | `dispatch_subscriber.py` `_handle_event` | — | 与 Session S-32 同 PR 删除 |
+| G11 重复请求的 202 降级路径 | **已清理** | —（**2026-10-29 删除**：SSE 端点的 202 分支 + `DuplicateRequestError.replay_unavailable`；替代物 = 按 seq 的事件流重放） | — | Gateway Stage 4b |
 | G10 审批恢复路径的幂等键 | **修复**（✅ 2026-10-29 已修） | —（**打点已撤除**：修复类不留在指标里） | — | **判据 = 回归测试**：`test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`（连点两次「同意」只执行一次工具） |
 | R1 IM 每消息建会话 | 指标 | `dispatch_subscriber.py` `_run_turn`（建 session 前） | — | |
 | R2 `agentId` 直取 | 指标 | `session_router.py` `create_session` | — | |

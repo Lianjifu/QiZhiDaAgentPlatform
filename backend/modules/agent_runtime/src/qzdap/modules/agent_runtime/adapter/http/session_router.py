@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -23,7 +23,7 @@ from qzdap_observability.tracing import get_tracer
 from qzdap.modules.agent_runtime.adapter.http.dto import (
     InteractiveAnswerRequest,
 )
-from qzdap.modules.agent_runtime.adapter.http.sse import sse_stream
+from qzdap.modules.agent_runtime.adapter.http.sse import sse_replay, sse_stream
 from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
 from qzdap.modules.agent_runtime.domain.errors import DuplicateRequestError
 
@@ -332,18 +332,16 @@ def build_session_router() -> APIRouter:
                 ),
             )
         except DuplicateRequestError as exc:
-            # ⚠️ **重复请求不是错误**（Gateway 方案 §4.5）：命中重复 → 降级为
-            # 「202 + 上次 turn_id + replay_unavailable」。
-            # **不得静默丢弃**（丢掉了客户端就不知道这一轮到底跑没跑）。
-            # 无感重放要等 ``session_events`` 真写真读（Session Stage 4），
-            # 届时由 Gateway Stage 4b 接管。
-            return JSONResponse(
-                status_code=202,
-                content={
-                    "code": exc.code,
-                    "turnId": str(exc.turn_id) if exc.turn_id else None,
-                    "replayUnavailable": exc.replay_unavailable,
-                },
+            # ⚠️ **重复请求不是错误**（Gateway 方案 §4.5）：命中重复 → **重放
+            # 上一轮的事件流**，客户端无感（Stage 4b）。
+            # **202 降级路径已被移除** —— 只有「重放不了」的情况才回错误。
+            return await _replay_duplicate(
+                request,
+                gateway,
+                exc,
+                tenant_id=message.actor.tenant_id,
+                workspace_id=message.actor.workspace_id or x_workspace_id,
+                session_id=session_id,
             )
 
     @router.post("/api/sessions/{session_id}/feedback", status_code=201)
@@ -682,6 +680,39 @@ async def _sse_response(
     而异步生成器每次恢复可能跑在不同的 Context 里, 退出时会抛
     "created in a different Context". 这里全程显式传 context.
     """
+
+    async def make_stream(span_ctx: Any) -> AsyncIterator[bytes]:
+        chunks = build(span_ctx)
+        aiterator = chunks.__aiter__()
+        # 首 chunk 预取 —— 重复请求要在这里就变成一个**响应**（重放），
+        # 而不是「先回 200 再在流里报错」。
+        first = await aiterator.__anext__()
+        return sse_stream(_chain(first, aiterator))
+
+    return await _sse_bytes_response(
+        span,
+        route=route,
+        session_id=session_id,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        make_stream=make_stream,
+    )
+
+
+async def _sse_bytes_response(
+    span: Any,
+    *,
+    route: str,
+    session_id: UUID,
+    tenant_id: UUID,
+    workspace_id: UUID,
+    make_stream: Callable[[Any], Awaitable[AsyncIterator[bytes]]],
+) -> StreamingResponse:
+    """SSE 响应（字节流）+ 一层 ``http.chat.stream`` span.
+
+    **live 与 replay 共用这一个外壳** —— 两者的 span 属性、异常处理、
+    断连语义完全一致。
+    """
     span.set_attribute("http.method", "POST")
     span.set_attribute("http.route", route)
     span.set_attribute("session.id", str(session_id))
@@ -689,9 +720,7 @@ async def _sse_response(
     span.set_attribute("workspace.id", str(workspace_id))
     span_ctx = _trace.set_span_in_context(span)
     try:
-        chunks = build(span_ctx)
-        aiterator = chunks.__aiter__()
-        first = await aiterator.__anext__()
+        stream = await make_stream(span_ctx)
     except Exception as exc:
         span.set_status(_trace.Status(_trace.StatusCode.ERROR))
         span.record_exception(exc)
@@ -700,7 +729,7 @@ async def _sse_response(
 
     async def safe_stream() -> AsyncIterator[bytes]:
         try:
-            async for piece in sse_stream(_chain(first, aiterator)):
+            async for piece in stream:
                 yield piece
         except asyncio.CancelledError:
             # 客户端断开 —— 记一笔, 别让 APM 里看起来像正常结束.
@@ -719,6 +748,86 @@ async def _sse_response(
         safe_stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _last_event_id(request: Request) -> int:
+    """客户端带来的续传位置（``Last-Event-ID``）—— 没有或非法 → 0（从头放）。
+
+    头里的值是**事件的 seq**（与 SSE 的 ``id:`` 同一套编号）—— 重放时
+    只放 ``seq > Last-Event-ID`` 的那些段。
+    """
+    raw = request.headers.get("last-event-id")
+    if not raw:
+        return 0
+    try:
+        return max(int(raw), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+async def _replay_duplicate(
+    request: Request,
+    gateway: Any,
+    exc: DuplicateRequestError,
+    *,
+    tenant_id: UUID,
+    workspace_id: UUID,
+    session_id: UUID,
+) -> Response:
+    """重复命中 → **重放上一轮的事件流**（Gateway 方案 §4.5 / Stage 4b）。
+
+    三种结果：
+
+    - **有事件可重放** → 回一段 SSE（与原始流同形，含 ``id:``）；
+    - **这一轮已结束、但客户端要的那段之后没有新内容** → 回一段只有结束帧
+      的 SSE（客户端据此收尾）；
+    - **这一轮还在跑 / 没有落过事件** → **409**：客户端不能把「还在跑」当成
+      「已经答完了」。
+
+    ⚠️ **不再返回 202**（§10 Stage 4b：降级路径移除）。
+    """
+    turn_id = exc.turn_id
+    if turn_id is None:
+        # 轮次还没拿到 id → 这一轮**还在跑**（键还没被消费）。
+        return _duplicate_conflict(exc)
+
+    result = await gateway.replay(
+        turn_id, tenant_id=tenant_id, after_seq=_last_event_id(request)
+    )
+    if not result.events and not result.is_finished:
+        return _duplicate_conflict(exc)
+
+    span = _tracer.start_span("http.chat.stream")
+    span.set_attribute("replay.turn_id", str(turn_id))
+    span.set_attribute("replay.events", len(result.events))
+
+    async def make_stream(_span_ctx: Any) -> AsyncIterator[bytes]:
+        return sse_replay(result.events)
+
+    return await _sse_bytes_response(
+        span,
+        route="/api/sessions/{session_id}/turns/stream",
+        session_id=session_id,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        make_stream=make_stream,
+    )
+
+
+def _duplicate_conflict(exc: DuplicateRequestError) -> JSONResponse:
+    """重放不了时的回音 —— **409**（不是 202）。
+
+    202 的语义是「已受理，稍后再说」，而这里的事实是「**这一轮还在跑**」，
+    用 202 会让客户端以为请求已经被受理成新的一轮。
+    """
+    return JSONResponse(
+        status_code=409,
+        content={
+            "code": exc.code or "DUPLICATE_REQUEST",
+            "turnId": str(exc.turn_id) if exc.turn_id else None,
+            "replayUnavailable": True,
+        },
     )
 
 

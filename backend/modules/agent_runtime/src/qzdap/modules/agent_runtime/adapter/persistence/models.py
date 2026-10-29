@@ -13,12 +13,14 @@ from uuid import UUID
 
 from qzdap_persistence.base import Base, TenantScopedMixin, make_composite_index
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     text,
@@ -135,4 +137,103 @@ class TurnORM(TenantScopedMixin, Base):
             "status IN ('running','succeeded','failed','denied')",
             name="status_enum",
         ),
+    )
+
+
+class SessionTurnORM(TenantScopedMixin, Base):
+    """新架构的轮次表 —— ``session_turns``（迁移 0035 + 0046 + 0050）。
+
+    ⚠️ **与旧的 ``agent_turns``（:class:`TurnORM`）并存** —— 这是 Session 层
+    「双写期」的形态：旧表仍在写，新表同步写。旧表的删除在 Session Stage 6。
+
+    这张表在 Gateway Stage 4b 里承担两件事：① ``session_events`` 的外键父行；
+    ② 重放时判断「这一轮是否已到终态」。
+    """
+
+    __tablename__ = "session_turns"
+
+    workspace_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), nullable=False, index=True
+    )
+    session_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("agent_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    key_strength: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="strong", server_default=text("'strong'")
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="running", server_default=text("'running'")
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    agent_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    cost_usd: Mapped[float | None] = mapped_column(Numeric(12, 6), nullable=True)
+    expected_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pending_approval: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    ingress_seq: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    route_decision: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    agent_decision: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','running','waiting','succeeded','failed','cancelled')",
+            name="status_enum",
+        ),
+    )
+
+
+class SessionEventORM(Base):
+    """事件流 —— ``session_events``（迁移 0035）。
+
+    ⚠️ **这张表没有 ``tenant_id`` 列**（主键是 ``(turn_id, seq)``）—— 事件行
+    的租户归属由它的**轮次**决定。因此读它必须**按租户过滤**（JOIN
+    ``session_turns``），见 :class:`PostgresSessionJournal`。
+
+    ⚠️ **不继承 ``TenantScopedMixin``** —— 那会凭空多出 ``id`` / ``tenant_id``
+    两个表里没有的列。
+    """
+
+    __tablename__ = "session_events"
+
+    turn_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("session_turns.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    delivery_status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default=text("'pending'")
+    )
+    delivery_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        onupdate=text("now()"),
     )

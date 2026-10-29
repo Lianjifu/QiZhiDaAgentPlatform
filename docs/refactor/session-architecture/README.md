@@ -16,7 +16,7 @@
 |---|---|---|---|
 | 1 | [`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) | **权威基线**：会话完整生命周期的泳道划分与时序。所有层方案的共同上游契约 | **已定稿** |
 | 2 | [`cleanup-ledger.md`](cleanup-ledger.md) | **全局收敛机制**：旧实现台账（弃用标记 → 调用打点 → 指标归零 → 删除 → CI 扫描脚本 → 阶段门禁） | **生效中** |
-| 3 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | Gateway 泳道：Channel Gateway / Auth Identity / Message Normalizer / Idempotency Guard ＋ 入口级限流 | **已定稿（v1.9）· Stage 0–3 已实施 + Stage 4a 两段**（幂等守卫 / 鉴权收口 / 归一化收口 / 门面接管 + 出站 sink + 202 降级 + web 入口接管；**「切 IM 入口」等 Session 的唯一 turn 实现**） |
+| 3 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | Gateway 泳道：Channel Gateway / Auth Identity / Message Normalizer / Idempotency Guard ＋ 入口级限流 | **已定稿（v1.10）· Stage 0–3 + Stage 4a 两段 + Stage 4b 已实施**（幂等守卫 / 鉴权收口 / 归一化收口 / 门面接管 + 出站 sink + web 入口接管 / **无感重放**——重复命中改为重放事件流，202 降级路径删除；**「切 IM 入口」等 Session 的唯一 turn 实现**） |
 | 4 | [`router-refactor-plan.md`](router-refactor-plan.md) | Router 泳道：Strategy（选 agent）+ Session Routing（选会话 + 有序保证） | **已定稿（v1.3）** |
 | 5 | [`session-refactor-plan.md`](session-refactor-plan.md) | Session 泳道：Manager（生命周期）+ State（状态机）+ Thread（多轮线程）+ 唯一 turn 实现 | **已定稿（v1.2）** |
 | 6 | [`context-refactor-plan.md`](context-refactor-plan.md) | Context 泳道：Builder（拼装）+ Compressor（压缩）+ Persistence（manifest 落库） | **已定稿（v1.2）** |
@@ -34,7 +34,7 @@
 
 | 方案 | 决策数 | 已定稿 | 待确认 | 定稿要点 |
 |---|---|---|---|---|
-| Gateway | 9（+ #2b） | **10** | 0 | #1 出站归 ①；#2 `modules/channel` 保持独立模块；#2b `session_inbox` 表归 Session；#3 改造成 **strong 部分唯一索引**；#4 无感重放（未就绪降级 202 + `replay_unavailable`）；#5 weak **不抑制** + 标 `unprotected` + 禁用副作用工具；#6 不迁对象存储；#7 `/v1/sessions*` 只留兼容别名；#8 先上新后清旧；#9 限流硬编码 + 环境变量 |
+| Gateway | 9（+ #2b） | **10** | 0 | #1 出站归 ①；#2 `modules/channel` 保持独立模块；#2b `session_inbox` 表归 Session；#3 改造成 **strong 部分唯一索引**；#4 无感重放（**Stage 4b 已落地**：重复命中 → 重放事件流；202 降级路径删除）；#5 weak **不抑制** + 标 `unprotected` + 禁用副作用工具；#6 不迁对象存储；#7 `/v1/sessions*` 只留兼容别名；#8 先上新后清旧；#9 限流硬编码 + 环境变量 |
 | Router | 10 | **10** | 0 | **#1 S1 严格排队（FIFO）**；**#2 启用新表 `session_*`**；#3 配置落点 `admin_agents.profile`；#4 深度任务判定归 Agent 层；#5 `ingress_seq` 会话行原子自增；#6 审批**不占** FIFO 位；#7 N=5 / T=60 秒；#8 排队开关默认 off；#9 轮次表 CAS 为唯一权威；**#10 Router 只派生 key + 分配 `ingress_seq`，`resolve_or_create` 归 Session**（**边界是「不写会话表」，不禁止读**；粘性规则另需 Session 提供**只读的 `lookup(session_key)` 端口**） |
 | Session | 7 | **7** | 0 | #1 `DELETE /api/sessions/{id}` = **关闭**（删除走治理域）；#2 空闲超时后**复活为新会话**；**#3 废弃 `wait_status`**（用 `current_turn_id` + `session_turns.status` 推导）；#4 审批恢复失败**对用户可见**；**#5 与 Router #2 同值**（启用新表 + 旧表迁数据后 DROP，Stage 6）；#6 审批挂起落 `session_turns.pending_approval`；#7 空闲阈值 30 天可配 |
 | Context | 7 | **7** | 0 | #1 agent prompts **放在 Builder 内**；**#2 统一用 `budget.py:42` 的按语种估算**，旧路径也用它；#3 上下文快照**先不做**；#4 摘要阈值 `window × 0.70`；#5 仍超限抛 `CONTEXT_TOO_LARGE`；#6 manifest **每次模型调用一条**；**#7 给 `ContextCompactedChunk` 补可选 `degraded` 字段**（前端目前不读 chunk 字段 → 补字段向后兼容） |
@@ -113,14 +113,17 @@
 ```
 Session Stage 0(迁移 0046 / saver / 表 DDL 唯一 owner)  →  Session Stage 1(resolve_or_create + lookup 端口)
    →  Session Stage 2(启用新表写入)  →  Session Stage 3(唯一 turn 实现)
-        ├─→  Session Stage 4(session_events 落库)  →  Gateway Stage 4b(无感重放)  →  Gateway Stage 5 / Router Stage 5
+        ├─→  Session Stage 4(session_events 落库)  →  Gateway Stage 4b(无感重放 ✅ 已实施)
+        │      ↑ ⚠️ 4b 的硬依赖开工时不满足 → **连带落地了 Session 侧的最小必要**
+        │        （轮次双写 + 事件落库 + 按 seq 读取端口）—— 见 Gateway 附录 C.6 的 G-31 / G-32
+        │      →  Gateway Stage 5 / Router Stage 5
         ├─→  Router Stage 3(FIFO 有序处理)
         ├─→  Context Stage 1/2（组装与压缩）
         └─→  Memory  Stage 3（Writer 重写）
 
 Session Stage 1(resolve_or_create + lookup)  →  Router Stage 2(会话映射 + 粘性查找)
 Router Stage 0(迁移 0045)  →  Router Stage 1(策略链)
-Gateway Stage 0(迁移 0044)  →  Gateway Stage 1/2/3  →  Gateway Stage 4a(接管，重放降级)
+Gateway Stage 0(迁移 0044)  →  Gateway Stage 1/2/3  →  Gateway Stage 4a(接管)  →  Gateway Stage 4b(无感重放 ✅)
                               ↑ Stage 4a 是豁免 E1：不等 Session 台账清零
 Context Stage 0(迁移 0047，依赖 0046)  →  Context Stage 1/2
 Memory  Stage 0(迁移 0048)  →  Memory  Stage 1(作用域过滤，安全修复，可独立先行)
@@ -132,7 +135,7 @@ Agent  Stage 5(循环)  ←  Session Stage 3(唯一 turn 实现)
 |---|---|---|---|
 | Session Stage 3（唯一 turn 实现） | **Router Stage 3**（FIFO 有序） | 语义 | Router §0.1 + 风险表；**Stage 表缺前置行 → 已补** |
 | Session Stage 1（`resolve_or_create` + **`lookup`** 端口） | **Router Stage 2**（会话映射 + 粘性查找） | 契约 | Router 决策 #10 + Stage 2 前置行 ✅ |
-| Session Stage 4（`session_events` 落库） | **Gateway Stage 4b**（无感重放） | 硬依赖 | Gateway §0.5 + Stage 4b 前置 ✅ |
+| Session Stage 4（`session_events` 落库） | **Gateway Stage 4b**（无感重放） | 硬依赖 | ✅ **已随 Stage 4b 连带落地最小必要**（轮次双写 + 事件落库 + 按 seq 读取端口）；Session 的 outbox 调度 / 死信仍在 Session Stage 4 |
 | Session 迁移 0046（`agent_sessions` / `session_turns` DDL） | Context 迁移 0047 | 物理顺序 | Context §7.2 依赖声明 ✅ |
 | Session Stage 2（新表写入） | Context / Memory 的写入切换 | 数据 | 各自 Stage 表 ✅ |
 | Session Stage 3 | Context Stage 1、Memory Stage 3 | 语义（停用的是旧调用点） | 各自方案 ✅ |
@@ -155,7 +158,7 @@ Agent  Stage 5(循环)  ←  Session Stage 3(唯一 turn 实现)
 | 豁免 | 范围 | 条件 | 为什么必须豁免 |
 |---|---|---|---|
 | **E1** | **Gateway Stage 4a（接管，重放降级）** 可先于 Session 台账清零 | Gateway Stage 0–3 已完成；`session_events` 表已存在（迁移 0035 已建） | Gateway 的接管本身**不依赖** Session 的台账清零，只依赖「重复分支可降级」这一降级路径可用 |
-| **E2** | **Gateway Stage 4b（启用无感重放）** | Session Stage 4 已完成（`session_events` 真写真读） | 这是 E1 的收尾，**不豁免** —— 4b 必须等 Session 就绪 |
+| **E2** | **Gateway Stage 4b（启用无感重放）** | Session Stage 4 已完成（`session_events` 真写真读） | ✅ **已实施（2026-10-29）** —— 硬依赖**未被豁免**，而是**连带落地了 Session 侧的最小必要**（表在、**一行没有** → 补上轮次双写 + 事件落库 + 读取端口）；Gateway 附录 C.6 的 **G-31 / G-32** 记录了这次偏差 |
 
 > **豁免不等于可以先删后补**。E1 只允许「**先接管、重放走降级**」，不允许在 Session 未就绪时宣称「支持无感重放」。Gateway 的对外文档必须写明当前处于 4a 还是 4b 状态。
 
@@ -186,7 +189,7 @@ Agent  Stage 5(循环)  ←  Session Stage 3(唯一 turn 实现)
 | `agent_sessions` | **Session（0046）**：唯一索引 + `wait_status` 处置 | Router（0045）加 `next_ingress_seq` / `last_completed_seq`（排序状态，归 Router） |
 | `session_turns` | **Session（0046）**：`ingress_seq` / `route_decision` / `agent_decision` / `pending_approval` / `cancel_requested` / 状态枚举 | **Router 写 `route_decision`**（会话入口的策略决策）；**Agent 写 `agent_decision`**（每步的专家选择 + 模型/工具取值）—— ⚠️ **两列两写者，不共用** |
 | `session_messages` | **Session（0046）**：`session_seq` / `session_id` | Context 只读 |
-| `session_events` | **Session（0046）** | Gateway 只读（重放） |
+| `session_events` | **Session（0046）** | Gateway **读写**（Stage 4b 连带落地：Session 侧写、Gateway 侧按 seq 读回重放） |
 | `session_inbox` | **Session（会话域）** | Gateway 0044 改约束（幂等语义来自 Gateway） |
 | `session_context_manifests` | **Context（0047）** | 无 |
 | `admin_memory_*` / `session_memory_buffer` | **Memory（0048）** | 无 |

@@ -42,9 +42,9 @@ class DuplicateRequestError(AppError):
     or a network retry, and must not start a second turn.
 
     ⚠️ **重复请求不是错误**（Gateway 方案 §4.5）：命中重复时，正确行为是
-    「重放上一轮事件流」；``session_events`` 真写真读就绪之前（Stage 4b），
-    降级为「**202 + 上次 turn_id + ``replay_unavailable``**」。
-    **不得静默丢弃重复请求。**
+    「**重放上一轮事件流**」（Stage 4b 已接管）—— 上层拿着 ``turn_id`` 去
+    ``session_events`` 按 seq 读回那一段。
+    **不得静默丢弃重复请求**；重放不了（这一轮还在跑）时回 409。
     """
 
     code = "DUPLICATE_REQUEST"
@@ -56,19 +56,13 @@ class DuplicateRequestError(AppError):
         *,
         code: str | None = None,
         turn_id: Any = None,
-        replay_unavailable: bool = True,
     ) -> None:
         super().__init__(
             message or "duplicate request",
             code=code or self.code,
-            details=(
-                {"turn_id": str(turn_id), "replay_unavailable": replay_unavailable}
-                if turn_id is not None
-                else {"replay_unavailable": replay_unavailable}
-            ),
+            details=({"turn_id": str(turn_id)} if turn_id is not None else {}),
         )
         self.turn_id = turn_id
-        self.replay_unavailable = replay_unavailable
 
 
 class SessionBusyError(AppError):

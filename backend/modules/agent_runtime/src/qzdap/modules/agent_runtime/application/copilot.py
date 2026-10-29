@@ -45,6 +45,7 @@ from qzdap.modules.agent_runtime.adapter.persistence.catalog_repositories import
 from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
 from qzdap.modules.agent_runtime.application.ports import (
     EventPublisher,
+    SessionJournal,
     SessionRepository,
     TurnRepository,
 )
@@ -78,6 +79,7 @@ class CopilotSessionService:
         events: EventPublisher,
         graph: SessionGraphRunner,
         idempotency: IdempotencyGuard,
+        journal: SessionJournal,
     ) -> None:
         self._sessions = sessions
         self._turns = turns
@@ -86,6 +88,8 @@ class CopilotSessionService:
         self._events = events
         self._graph = graph
         self._idempotency = idempotency
+        # 新架构的轮次 + 事件日志（双写期）—— 重放的落点（Gateway §4.5）。
+        self._journal = journal
 
     def bind_ports(self, **ports: Any) -> None:
         """Re-bind request-scoped ports (tenant/workspace are per request)."""
@@ -265,12 +269,11 @@ class CopilotSessionService:
         if decision.is_duplicate:
             # 同一个键又来了 —— 双击或网络重试, 不跑第二轮.
             # ⚠️ 带上「上次那一轮的 turn_id」：重复请求**不是错误** —— 上层据此
-            # 降级为「202 + turn_id + replay_unavailable」（§4.5）。
+            # **重放上一轮的事件流**（§4.5 / Stage 4b）。
             raise DuplicateRequestError(
                 f"request {key.value} was already handled",
                 code="DUPLICATE_REQUEST",
                 turn_id=decision.turn_id,
-                replay_unavailable=True,
             )
         claimed = await self._sessions.try_claim(session_id)
         record_legacy_call("R3")  # try_claim 的会话互斥职责
@@ -295,6 +298,7 @@ class CopilotSessionService:
                 route_id=route_id,
                 resume=resume,
                 parent_span_context=parent_span_context,
+                idempotency_key=key,
             ):
                 turn_id = getattr(chunk, "turn_id", None) or turn_id
                 yield chunk
@@ -349,6 +353,7 @@ class CopilotSessionService:
         route_id: ModelId | None = None,
         resume: dict[str, Any] | None = None,
         parent_span_context: Any = None,
+        idempotency_key: IdempotencyKey,
     ) -> AsyncIterator[TurnChunk]:
         session = await self._require_session(tenant_id, session_id)
         if session.workspace_id != workspace_id or session.owner_id != owner_id:
@@ -358,6 +363,10 @@ class CopilotSessionService:
         # 上一轮遗留的停止标记不能影响这一轮.
         await self._sessions.clear_cancel(session_id)
         agent_row = await self._catalog.get_published(session.agent_id)
+        # 这一轮实际用的模型 —— 轮次表要留痕（``session_turns.model_version``）。
+        model_used = model or str(
+            session.metadata.get("model") or agent_row.model or "default"
+        )
         history = await self._messages.list_for_session(session_id)
         hist_msgs = [
             {"role": item["role"], "content": item["content"], "name": item.get("toolName") or None}
@@ -372,6 +381,19 @@ class CopilotSessionService:
             user_input=user_input if not resume else (user_input or "继续"),
         )
         await self._turns.add(turn)
+        # 新表（**双写期**，Session 方案 §12）—— 它同时是 ``session_events``
+        # 的外键父行：事件必须挂在一个已存在的轮次上。
+        await self._journal.start_turn(
+            turn_id=turn.id,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            session_id=session.id,
+            idempotency_key=idempotency_key.value,
+            key_strength=idempotency_key.strength,
+            agent_version=session.agent_version,
+            model_version=model_used,
+            trace_id=current_trace_id(),
+        )
         await self._events.publish(
             turn.raise_started_event(),
             tenant_id=tenant_id,
@@ -411,7 +433,7 @@ class CopilotSessionService:
             user_input=user_input,
             history=hist_msgs,
             agent=agent_row,
-            model=model or str(session.metadata.get("model") or agent_row.model or "default"),
+            model=model_used,
             # Phase 12: 策略路由. 当 route_id 提供时, 优先用它走 Phase 7 select_chain_for_strategy
             route_id=route_id,
             rolling_summary=str(session.metadata.get("rolling_summary") or ""),
@@ -422,6 +444,9 @@ class CopilotSessionService:
             parent_span_context=parent_span_context,
         )
         emitted = False
+        # 事件序号 —— 轮次内严格递增，且与 SSE 的 ``id:`` 一致（客户端断线
+        # 重连时把它作为 ``Last-Event-ID`` 带回来）。
+        event_seq = 1
         last_cancel_check = monotonic()
         try:
             async with aclosing(graph_stream):
@@ -432,6 +457,8 @@ class CopilotSessionService:
                         last_cancel_check = now
                         if await self._sessions.cancel_requested(session_id):
                             raise _TurnCancelled("用户请求停止生成")
+                    chunk = await self._publish_chunk(turn, chunk, seq=event_seq)
+                    event_seq += 1
                     yield chunk
                     if getattr(chunk, "kind", None) == "message":
                         assistant_parts.append(getattr(chunk, "content", "") or "")
@@ -474,14 +501,24 @@ class CopilotSessionService:
                             cost_usd=turn_usage.cost_usd if turn_usage else None,
                         )
                         await self._turns.add(finished)
+                        await self._journal.finish_turn(
+                            turn_id=turn.id,
+                            status="succeeded",
+                            cost_usd=turn_usage.cost_usd if turn_usage else None,
+                        )
+                        await self._journal.mark_delivered(turn_id=turn.id)
         except _TurnCancelled as exc:
             await self._fail_turn(turn, code="TURN_CANCELLED", message=str(exc))
-            yield ErrorChunk(
-                turn_id=turn.id,
-                seq=seq + 1,
-                code="TURN_CANCELLED",
-                message="已停止生成",
-                retriable=True,
+            yield await self._publish_chunk(
+                turn,
+                ErrorChunk(
+                    turn_id=turn.id,
+                    seq=0,
+                    code="TURN_CANCELLED",
+                    message="已停止生成",
+                    retriable=True,
+                ),
+                seq=event_seq,
             )
         except (asyncio.CancelledError, GeneratorExit):
             # 客户端断开 / 请求被取消 (GeneratorExit = 响应体生成器被关闭):
@@ -497,13 +534,38 @@ class CopilotSessionService:
                 # 一个 chunk 都没产出 → 轮次根本没起来. 抛给 HTTP 层, 让状态码
                 # 表达失败 (而不是 200 + error 事件).
                 raise
-            yield ErrorChunk(
-                turn_id=turn.id,
-                seq=seq + 1,
-                code="TURN_FAILED",
-                message=str(exc) or type(exc).__name__,
-                retriable=False,
+            yield await self._publish_chunk(
+                turn,
+                ErrorChunk(
+                    turn_id=turn.id,
+                    seq=0,
+                    code="TURN_FAILED",
+                    message=str(exc) or type(exc).__name__,
+                    retriable=False,
+                ),
+                seq=event_seq,
             )
+
+    async def _publish_chunk(
+        self, turn: Turn, chunk: TurnChunk, *, seq: int
+    ) -> TurnChunk:
+        """把 chunk 落进事件流并重新编号 —— **落库先于投递**（Session §7）。
+
+        事件序号由**这里**统一分配：轮次内严格递增，与 SSE 的 ``id:`` 一致
+        （客户端断线重连时把它作为 ``Last-Event-ID`` 带回来）。
+
+        ⚠️ **重新编号**：上游（graph runner）的 seq 有两套编号空间（chunk 序号
+        与消息序号），还会出现重复 —— 直接拿它当事件主键会撞
+        ``session_events`` 的 ``(turn_id, seq)``。
+        """
+        stamped = chunk.model_copy(update={"seq": seq})
+        await self._journal.append_event(
+            turn_id=turn.id,
+            seq=seq,
+            event_type=str(stamped.kind),
+            payload=stamped.model_dump(mode="json"),
+        )
+        return stamped
 
     async def _fail_turn(
         self, turn: Turn, *, code: str, message: str = ""
@@ -515,6 +577,14 @@ class CopilotSessionService:
             )
         except Exception:  # noqa: BLE001
             _log.exception("failed to persist failed turn turn_id=%s", turn.id)
+        try:
+            await self._journal.finish_turn(
+                turn_id=turn.id,
+                status="cancelled" if code == "TURN_CANCELLED" else "failed",
+                error_code=code,
+            )
+        except Exception:  # noqa: BLE001
+            _log.exception("failed to close session_turns row turn_id=%s", turn.id)
 
     async def decide_approval(
         self,
