@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from qzdap_kernel.events import DomainEvent
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
@@ -70,21 +71,6 @@ class InMemorySessionRepository(SessionRepository):
         if not meta.pop("cancel_requested", None):
             return
         await self.update(session.with_runtime(metadata=meta))
-
-    async def record_request_id(self, session_id: UUID, request_id: str) -> bool:
-        if not request_id:
-            return True
-        session = self._by_id.get(session_id)
-        if session is None:
-            return True
-        meta = dict(session.metadata or {})
-        ids = [str(item) for item in (meta.get("recent_request_ids") or [])]
-        if request_id in ids:
-            return False
-        ids.append(request_id)
-        meta["recent_request_ids"] = ids[-8:]
-        await self.update(session.with_runtime(metadata=meta))
-        return True
 
     async def list_for_owner(
         self, owner_id: UUID, *, limit: int = 50, offset: int = 0
@@ -199,6 +185,114 @@ def make_dependencies(
         ),
         "events": RecordingEventPublisher(),
     }
+
+
+class InMemoryIdempotencyStore:
+    """幂等守卫的测试替身 —— 语义对齐 ``PostgresIdempotencyStore``，只在进程内。
+
+    **并发语义的真实验证在集成测试里**（``tests/integration/test_idempotency_store.py``，
+    真库 + 真并发）；这里只保证单进程内的判定一致。
+    """
+
+    def __init__(self) -> None:
+        self._rows: dict[tuple[Any, Any, Any, str], dict[str, Any]] = {}
+        # weak 行只记录、不查重 —— 单独放一份, 不参与按键查找.
+        self._weak_rows: list[dict[str, Any]] = []
+
+    async def claim(
+        self,
+        scope: Any,
+        key: Any,
+        *,
+        payload_hash: str = "",
+        external_message_id: str | None = None,
+        trace_id: str = "",
+    ) -> Any:
+        from qzdap_agent_runtime.gateway.types import IdempotencyDecision
+
+        k = (scope.tenant_id, scope.workspace_id, scope.channel_id, key.value)
+        row = self._rows.get(k)
+        now = datetime.now(UTC)
+        if row is not None:
+            if row["expires_at"] <= now:
+                row = None  # 过期 → 当作不存在
+            elif row["status"] == "completed":
+                return IdempotencyDecision(
+                    outcome="duplicate",
+                    key_strength=key.strength,
+                    row_id=row["id"],
+                    status=row["status"],
+                    turn_id=row["turn_id"],
+                    expires_at=row["expires_at"],
+                )
+            else:
+                return IdempotencyDecision(
+                    outcome="in_progress",
+                    key_strength=key.strength,
+                    row_id=row["id"],
+                    status=row["status"],
+                    turn_id=row["turn_id"],
+                    expires_at=row["expires_at"],
+                )
+        row = {
+            "id": uuid4(),
+            "status": "claimed",
+            "turn_id": None,
+            "expires_at": key.expires_at,
+        }
+        self._rows[k] = row
+        return IdempotencyDecision(
+            outcome="new",
+            key_strength=key.strength,
+            row_id=row["id"],
+            status="claimed",
+            turn_id=None,
+            expires_at=row["expires_at"],
+        )
+
+    async def record_weak(
+        self,
+        scope: Any,
+        key: Any,
+        *,
+        payload_hash: str = "",
+        trace_id: str = "",
+    ) -> Any:
+        from qzdap_agent_runtime.gateway.types import IdempotencyDecision
+
+        row = {
+            "id": uuid4(),
+            "status": "received",
+            "turn_id": None,
+            "expires_at": key.expires_at,
+        }
+        # weak 永不判重 —— 每次都新落一行, 且不参与按键查找.
+        self._weak_rows.append(row)
+        return IdempotencyDecision(
+            outcome="new",
+            key_strength="weak",
+            row_id=row["id"],
+            status="received",
+            turn_id=None,
+            expires_at=row["expires_at"],
+        )
+
+    async def mark_completed(
+        self, row_id: UUID, *, turn_id: UUID | None = None
+    ) -> None:
+        for row in [*self._rows.values(), *self._weak_rows]:
+            if row["id"] == row_id:
+                row["status"] = "completed"
+                row["turn_id"] = turn_id
+                return
+
+    async def release(self, row_id: UUID) -> None:
+        for k, row in list(self._rows.items()):
+            if row["id"] == row_id:
+                del self._rows[k]
+                return
+        self._weak_rows = [row for row in self._weak_rows if row["id"] != row_id]
+
 
 
 _ = Any  # keep typing import alive for Any in stub annotations

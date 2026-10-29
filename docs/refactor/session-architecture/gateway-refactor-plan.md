@@ -1,6 +1,7 @@
 # Gateway 层重构方案
 
-> 版本：1.4（2026-10-29：**本轮重排** —— §0 按共享模板重写为 §0.1–§0.5；**限流独立成章**（§5）；**数据与表**提前到 §8、**逐文件清单**移到 §9、**边界章**移到 §7；§10.4「外部依赖的现状核实」并入 §1.6
+> 版本：1.5（2026-10-29：**Stage 1 已实施** —— 幂等守卫落地：契约 `qzdap_agent_runtime/gateway/` + 落库 `PostgresIdempotencyStore` + 接线 `copilot.stream_turn` + 审批恢复路径带键（G10 已修复）+ **删除 `record_request_id` / `recent_request_ids`（G1 已清理）**；详见 §10 Stage 1「实施结果」与附录 C.1）
+> 沿革：v1.4（2026-10-29：**本轮重排** —— §0 按共享模板重写为 §0.1–§0.5；**限流独立成章**（§5）；**数据与表**提前到 §8、**逐文件清单**移到 §9、**边界章**移到 §7；§10.4「外部依赖的现状核实」并入 §1.6
 > **v1.4 同时修正**：§0.3「选模型 → Router」**违反 D1**、§10 对照表**把 Session 的删除量记到本层**、附录 A **被引用块截断成两张表**、§3.3 `InboundMessage` **缺 `unprotected` 字段**（正文引用 6 处）、§5「L1 接入层」串用了 Memory 的层名、限流指标名与 §13.2 不一致
 > 沿革：v1.3（2026-10-29：**独立审查后的 15 项修正** —— 错误码收敛、weak 键不抑制的落地、部分唯一索引、过期行清理归属、NOT NULL 列的合成值、依赖方向、前端零使用 `/v1/sessions`、`channel_deliveries` 归属）
 > 适用项目：`QiZhiDaAgentPlatform`
@@ -433,6 +434,18 @@ class IdempotencyKey:
 | ① | 客户端显式 `clientRequestId` | web / api | strong | 24h |
 | ② | 平台原始事件 ID | 飞书 / 企微 / 钉钉 | strong | 7d |
 | ③ | 内容指纹 `sha256(channel+chat+user+text+time_bucket)` | 兜底 | **weak** | 120s |
+| ④ | 审批决策 `approval\|{approval_id}\|{decision}` | 审批恢复（web） | strong | 24h |
+
+> **④ 是 2026-10-29 实施 Stage 1 时补的一档**（台账 **G10**）：审批恢复路径必须带幂等键，
+> 否则「连点两次『同意』」会把工具**再执行一次**。
+>
+> **⚠️ 审批键只能由审批自身的标识派生，不能掺原轮次的键** —— 审批恢复时原轮次的状态
+> 已经推进（`pending_approval` 被清空），原键取不到 → 同一个审批两次派生出的键**不同**
+> → 重复点击挡不住。因此键的构成固定为 `approval|{approval_id}|{decision}`：
+> 同一次审批的重复点击会撞键，**下一次**审批（新的 `approval_id`）不会误伤。
+>
+> ⚠️ `approval_id` 之外的任何东西都不进键：例如把 `clientRequestId` 拼进去会让
+> 「原轮次键 + 审批键」两级判重互相干扰。
 
 > **`time_bucket` 粒度 = 60 秒**（`floor(now / 60s)`）。这个值直接决定误杀概率：60 秒内连发两条内容相同的消息才会撞键。
 
@@ -606,6 +619,14 @@ VALUES (
 ```
 
 > **依赖声明**（决策 #4 已定稿）：本方案把「事件落库 + 重放」作为**前置依赖**。若 Session 层的方案尚未落地，Gateway 的重复分支只能降级为「返回 202 + 上次 turn_id，不重放事件」，并在 `InboundMessage` 上标记 `replay_unavailable`。**不得静默地丢弃重复请求。** 前置依赖清单见 §0.5。
+
+> **Stage 1 的实际行为（2026-10-29 已实施）**：重复命中**仍抛 `DuplicateRequestError`**
+> （前端已对该 code 做「静默忽略」处理，`frontend/web/src/features/user/copilot/CopilotPage.tsx:601`），
+> **不是** 202 + turn_id，也**不是**无感重放。
+>
+> **Stage 1 保证的是硬要求「不重复执行」** —— 重复请求不会跑第二轮（有回归测试与真库并发测试），
+> 且重复命中**有记录**（`session_inbox` 行 + 异常），不是静默丢弃。
+> **无感重放是 Stage 4b 的能力**（依赖 `session_events` 真写真读），不在 Stage 1 的范围内。
 
 ### 4.6 三层键的传递链
 
@@ -884,6 +905,8 @@ composition
 
 ### Stage 1：Idempotency Guard 落地（先做，因为它不依赖其他层）
 
+> ✅ **已实施（2026-10-29）** —— 产出与验证见本节末尾的「实施结果」。
+
 | 动作 | 细节 |
 |---|---|
 | `IdempotencyStore` 端口 + SQL 实现 | **strong / weak 两条 INSERT 路径**（§4.4）：strong 走 `ON CONFLICT (...) WHERE key_strength='strong' DO NOTHING RETURNING`；weak 走不带 arbiter 的普通 INSERT（**永不判重**，决策 #5） |
@@ -900,6 +923,29 @@ composition
 - **过期不误杀**：同一个 `clientRequestId` 在 24h（TTL）后重发 → **当作新消息受理**（不判重复）；
 - **审批不重复执行**：连点两次「同意」→ 工具只执行一次（依赖「审批恢复路径传幂等键」）；
 - **跨进程**：两个 worker 交替请求同一 `clientRequestId` → 只起 1 轮。
+
+#### Stage 1 实施结果（2026-10-29）
+
+| 项 | 落地位置 |
+|---|---|
+| **契约（无框架、无 DB）** | `backend/runtimes/agent_runtime/src/qzdap_agent_runtime/gateway/types.py`（`RawIngress` / `AuthenticatedIngress` / `ActorContext` / `InboundMessage` / `IdempotencyKey` / `IdempotencyDecision`）与 `gateway/idempotency.py`（`IdempotencyStore` 端口 + 键阶梯 + `IdempotencyGuard`） |
+| **落库实现** | `backend/modules/agent_runtime/src/qzdap/modules/agent_runtime/adapter/persistence/idempotency_store.py` —— strong 走 `ON CONFLICT (...) WHERE key_strength='strong' DO NOTHING`，weak 走不带 arbiter 的普通 INSERT（**永不判重**） |
+| **接线** | `copilot.stream_turn` 在抢会话占用**之前**先过 `IdempotencyGuard.accept`；`CopilotSessionService` 新增 `idempotency` 依赖，由 `composition/.../lifespan.py` 装配 `PostgresIdempotencyStore(container.session_factory())` |
+| **审批恢复路径** | `decide_approval` 生成 `approval\|{approval_id}\|{decision}` 的 strong 键（§4.2 的第 ④ 档）→ 台账 **G10 已修复** |
+| **删除（旧代码减少）** | `SessionRepository.record_request_id` 的**协议方法与两处实现**（`repositories.py` / `_in_memory.py`）+ `session.metadata.recent_request_ids` 的全部读写 → 台账 **G1 已清理**；`copilot.stream_turn` 里的 `record_legacy_call("G1")` 打点一并撤除 |
+
+> **⚠️ 抢占用与幂等的先后顺序**（实施时定下的次序，不是随意的）：
+> **先幂等 claim，再抢会话占用**。
+> - 先幂等：同一 `clientRequestId` 并发 10 次 → **只起 1 轮**，其余 9 次判定为「重复」（§10 Stage 1 验收第 1 条）；
+> - 但会话被别的轮次占着而**本轮没跑起来**时，键**必须释放**（`IdempotencyStore.release` 删掉那一行）——
+>   否则调用方用同一个键重试会被误判成「重复」，消息就永远丢了。
+>
+> **验收结果**：
+> - 同键并发 10 次 → 只起 1 轮（真库 + 真并发：`modules/agent_runtime/tests/integration/test_idempotency_store.py::test_the_same_strong_key_concurrently_starts_only_one_turn`）；
+> - weak 不误杀 → 两条相同内容的消息都跑（`::test_a_weak_key_never_suppresses`）；
+> - 过期不误杀 → TTL 之后重发按新消息受理（`::test_an_expired_key_is_treated_as_a_new_message`）；
+> - 审批不重复执行 → 连点两次「同意」工具只执行一次（`modules/agent_runtime/tests/unit/test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`）；
+> - 不同幂等键不按重复处理（`::test_a_different_key_is_not_treated_as_a_duplicate`）。
 
 ### Stage 2：Auth Identity 收口
 
@@ -1193,6 +1239,14 @@ Gateway 域对应的规则：
 | **G-14** | 轻 | **头部写「台账 G1–G9」，但台账实有 G1–G10**（G10 = 审批恢复路径丢失幂等键，Stage 1 就在正文里引用） | 头部改为 G1–G10 | 头部 |
 | **G-15** | 轻 | **旧 §4.3 写「三条设计要点」，实际列了五条** | 改为「五条设计要点」，并补第 5 条（`unprotected` 的语义与兑现点） | §3.3 |
 | **G-16** | 轻 | **`InboundMessage` 的字段数与 Router 方案的引用对不上** —— Router 方案写「17 个字段」，但 dataclass 实际是 **15 个**（补 `unprotected` 后为 **16 个**） | Router 方案改为「**16 个字段**」，并同步新的章节号 | §3.3 / Router 附录 A |
+
+### C.1 Stage 1 实施带回的三处修正（v1.4 → v1.5，2026-10-29）
+
+| # | 级别 | 问题 | 修正 | 落点 |
+|---|---|---|---|---|
+| **G-17** | 严重 | **审批键若掺入原轮次的键就不稳定** —— 审批恢复时原轮次状态已推进（`pending_approval` 被清空），原键取不到 → 同一个审批两次派生出的键**不同** → 连点两次「同意」挡不住（**G10 修不掉**） | 审批键固定为 `approval\|{approval_id}\|{decision}`，**只由审批自身的稳定标识派生**；§4.2 的阶梯补第 ④ 档并写明这条约束 | §4.2 / §4.4 |
+| **G-18** | 中 | **§4.5 说重复命中要「返回 202 + turn_id」，但 Stage 1 没有 REST 重复入口** —— web 只有 SSE；前端已对 `DUPLICATE_REQUEST` 做静默忽略 | Stage 1 的重复分支**沿用 `DuplicateRequestError`**，把「不重复执行」定为硬要求、「无感重放」明确归 Stage 4b（依赖 `session_events`） | §4.5 |
+| **G-19** | 中 | **「先幂等还是先抢会话占用」方案里没定** —— 两个次序的失败模式不同：先抢占用则并发同键会返回「会话忙」而非「重复」；先幂等则会话忙时键被消费，重试会被误判重复 | 定为**先幂等 claim、再抢占用**，并补「本轮没跑起来就释放键」（`IdempotencyStore.release`） | §10 Stage 1 |
 
 **跨文档同步**（本轮一并改掉的对 Gateway 章节号的引用）：
 

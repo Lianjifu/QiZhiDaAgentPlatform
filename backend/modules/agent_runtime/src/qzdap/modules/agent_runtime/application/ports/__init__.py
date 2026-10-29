@@ -73,14 +73,6 @@ class SessionRepository(ABC):
         """Drop a stale cancel flag."""
         return
 
-    async def record_request_id(self, session_id: UUID, request_id: str) -> bool:
-        """Remember a client request id.
-
-        Returns False when the id was already used on this session — the
-        caller must not run the turn again (double click / network retry).
-        """
-        return True
-
 
 class TurnRepository(ABC):
     @abstractmethod

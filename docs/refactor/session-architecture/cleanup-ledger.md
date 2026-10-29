@@ -68,7 +68,7 @@
 
 | # | 旧实现 | 位置 | 替代者 | 状态 | 所属方案 |
 |---|---|---|---|---|---|
-| G1 | `record_request_id` + `session.metadata.recent_request_ids` | `modules/agent_runtime/adapter/persistence/repositories.py:155-170` | `gateway/idempotency.py`（`session_inbox` 原子 claim） | 未开始 | Gateway Stage 1 |
+| G1 | `record_request_id` + `session.metadata.recent_request_ids` | ~~`modules/agent_runtime/adapter/persistence/repositories.py:155-170`~~（**已删**） | `qzdap_agent_runtime/gateway/idempotency.py` + `session_inbox` 原子 claim | **已清理**（2026-10-29：Gateway Stage 1 —— `record_request_id` 的协议方法与实现、`recent_request_ids` 的全部读写**已删除**；`copilot.stream_turn` 改走 `IdempotencyGuard`；替代物 = `session_inbox` 的 strong 键部分唯一索引 + 原子 claim） | Gateway Stage 1 |
 | G2 | IM 验签分支 `_verify_signature` / `_reject` | `modules/channel/application/services.py:195-215` | `gateway/identity.py` | 未开始 | Gateway Stage 2 |
 | G3 | 硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` | `modules/channel/adapter/dispatch/dispatch_subscriber.py:42-46` | 渠道配置登记的服务账号 | 未开始 | Gateway Stage 2 / Router Stage 2 |
 | G4 | `ParsedMessage` 数据类 | `modules/channel/application/ports.py:95-104` | `gateway/types.py` 的 `InboundMessage` | 未开始 | Gateway Stage 3 |
@@ -77,7 +77,7 @@
 | G7 | `/v1/sessions*` 的 turn 部分 | `modules/agent_runtime/adapter/http/router.py:209-280` | 统一会话 API（`/api/sessions*`） | 未开始 | Gateway Stage 4→5 |
 | G8 | `GET /v1/sessions` 列表别名 | `modules/agent_runtime/adapter/http/session_router.py:541-547` | `GET /api/sessions` | 未开始 | Gateway Stage 4→5 |
 | G9 | `dispatch_subscriber.py` 整体 | `modules/channel/adapter/dispatch/dispatch_subscriber.py` | `Gateway.accept` 直连 | 未开始 | Gateway Stage 4→5 |
-| G10 | **审批恢复路径丢失幂等键**：`decide_approval` 调 `stream_turn` 时**不传 `clientRequestId`** → `record_request_id("")` 直接返回 `True` → 幂等被跳过 → 连点两次「同意」工具被**再执行一次** | `modules/agent_runtime/src/qzdap/modules/agent_runtime/application/copilot.py:474-482` | Gateway 生成幂等键 → 随轮次上下文传递 → 恢复时复用同一个键（**幂等键由 Gateway 生成，恢复路径的传递责任在 Gateway**） | 未开始 | **Gateway Stage 1**（幂等键传递）+ **Session Stage 5**（X7 审批吞异常）—— **两侧都要做，只做一边不够** |
+| G10 | **审批恢复路径丢失幂等键**：`decide_approval` 调 `stream_turn` 时**不传 `clientRequestId`** → `record_request_id("")` 直接返回 `True` → 幂等被跳过 → 连点两次「同意」工具被**再执行一次** | ~~`modules/agent_runtime/src/qzdap/modules/agent_runtime/application/copilot.py:474-482`~~（**已修**） | 审批决策带**自己的**幂等键（由 `approval_id` 派生）—— **键只由审批自身的稳定标识派生**，不掺原轮次的键（审批恢复时原轮次状态已推进、原键取不到 → 键会漂移 → 重复点击挡不住） | **已修复**（2026-10-29：Gateway Stage 1 —— `decide_approval` 生成 `approval\|{approval_id}\|{decision}` 的 strong 键；连点两次「同意」第二次被判定为重复，工具只执行一次。**判据是回归测试**：`modules/agent_runtime/tests/unit/test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`） | **Gateway Stage 1**（幂等键传递 ✅）+ **Session Stage 5**（X7 审批吞异常 ⏳）—— **两侧都要做，只做一边不够** |
 
 ### 2.2 Router 域
 
@@ -92,7 +92,7 @@
 
 | # | 旧实现 | 位置 | 替代者 | 状态 | 所属方案 |
 |---|---|---|---|---|---|
-| X1 | **未被接线的 `backend/runtimes/agent_runtime/` 整包**（19 节点图、InMemory 假实现、无任何 import） | `backend/runtimes/agent_runtime/src/qzdap_agent_runtime/` | 各层方案按泳道逐步替换；最终只保留被采用的部件 | **未开始（最高风险项）** | 各层**按需取用部件**；**删除归 Agent Stage 7**（连同 §2.3.2 的平行实现） |
+| X1 | **未被接线的 `backend/runtimes/agent_runtime/` 整包**（19 节点图、InMemory 假实现、无任何 import） —— ⚠️ **2026-10-29 起不再是「整包未接线」**：Gateway 层**按需取用**了其中的 `gateway/` 子包（幂等契约与守卫），生产路径已 import 它；其余部件（19 节点图等）**仍未接线** | `backend/runtimes/agent_runtime/src/qzdap_agent_runtime/` | 各层方案按泳道逐步替换；最终只保留被采用的部件 | **未开始（最高风险项）** | 各层**按需取用部件**；**删除归 Agent Stage 7**（连同 §2.3.2 的平行实现）—— ⚠️ **已被取用的部件不再删**，只删未取用的残留（扫描规则 §3.1 的三条仍成立：盯的是 `graph/nodes.py` / `build_session_graph` / `InMemoryToolExecutor`，与 `gateway/` 无交集） |
 | X2 | 第二套 turn 实现（无 claim / 幂等 / 取消 / 审批） | `modules/agent_runtime/application/use_cases/run_turn.py`、`run_turn_to_completion.py` | `copilot.py` 的唯一 turn 编排（保留其 claim / 幂等 / 取消 / 审批语义） | 未开始 | Session 层（主战场，**Stage 5b 删除**）；Gateway Stage 4a 切 IM 入口时同 PR |
 | X3 | `agent_sessions.graph_state`（续传状态与业务数据混装同列） | `modules/agent_runtime/adapter/persistence/models.py:56-61` | `session_events` / `session_turns` | 未开始 | Session 层 |
 | X4 | `agent_turns` / `agent_session_messages` 表 | `migrations/versions/`（早期） | `session_turns` / `session_messages` | 未开始 | Session 层（Router 决策 #2） |
@@ -334,7 +334,7 @@ def record_legacy_call(entry: str) -> None:
 
 **打点位置**：旧实现的**入口处**（不是内部），保证「旧实现被调用」与「旧实现被调用但走的是别的分支」都能被观测到。
 
-**打点覆盖（2026-10-29 实施）**：33 条中 **26 条已在旧实现的入口处打点** ——
+**打点覆盖（2026-10-29 实施）**：33 条中 **24 条在旧实现的入口处打点** ——
 `record_legacy_call("<编号>")` 落在**入口**（不是内部），保证「旧实现被调用」与
 「旧实现被调用但走了别的分支」都能被观测到。
 
@@ -349,8 +349,13 @@ def record_legacy_call(entry: str) -> None:
 | **X13** `admin_memory_l1` | 数据类（同上） |
 | **X19** 死表 `memory_l2_embeddings` | 数据类；已在迁移 0048 内 DROP |
 | **X14** 跨用户泄漏 | **修复类** —— 判据是回归测试（`modules/memory/tests/unit/test_memory_scope_isolation.py`），不进指标 |
+| **G1** `record_request_id` | **旧实现已删除**（2026-10-29 Gateway Stage 1）—— 打点随代码一起撤除 |
+| **G10** 审批恢复路径丢幂等键 | **修复类** —— 判据是回归测试（`modules/agent_runtime/tests/unit/test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`），不进指标 |
 
-> **这 7 条必须改用替代判据**（扫描 / 测试 / 「无生产调用方」），**不得**用「指标为 0」判清零。
+> **「7 条打不了点」+「3 条已不需要打点」= 10 条**必须改用替代判据（扫描 / 测试 / 删除 /
+> 「无生产调用方」），**不得**用「指标为 0」判清零。
+> **修复完成后继续保留打点，会让指标永远非零、清理判据永远不成立** —— 打点是清理前的
+> 观测手段，不是终态。
 
 **无法用调用次数度量的条目**（如纯数据类、旧表、旧常量）：
 
@@ -440,11 +445,11 @@ def record_legacy_call(entry: str) -> None:
 
 | 状态 | 条目数 | 说明 |
 |---|---|---|
-| 未开始 | 31 | 旧实现仍是唯一生效路径 |
+| 未开始 | 29 | 旧实现仍是唯一生效路径 |
 | 已弃用 | 0 | — |
 | 待清理 | 1 | X19（死表 `memory_l2_embeddings`，迁移 0048 已实现并在 dev 库执行） |
-| 已清理 | 0 | — |
-| **已修复** | 1 | X14（跨用户泄漏 —— 代码 + 迁移 + 回归测试已落地，判据是测试不是指标） |
+| 已清理 | 1 | **G1**（`record_request_id` + `recent_request_ids` —— 2026-10-29 Gateway Stage 1 直接删除，无调用方） |
+| **已修复** | 2 | X14（跨用户泄漏）、**G10**（审批恢复路径丢幂等键）—— 判据是测试不是指标 |
 
 > **打点覆盖率**：33 条中 **26 条已打点**，其余 7 条走替代判据（见 §3.2 的「打点覆盖」表）。
 > **指标本身**（`qzdap_legacy_calls_total` + `record_legacy_call`）已在
@@ -479,7 +484,7 @@ def record_legacy_call(entry: str) -> None:
 
 | 台账条目 | 出现在 | 删除阶段 |
 |---|---|---|
-| G1 | `gateway-refactor-plan.md` §9.2、Stage 1 | Gateway Stage 1（直接删，无调用方） |
+| G1 | `gateway-refactor-plan.md` §9.2、Stage 1 | Gateway Stage 1（直接删，无调用方）—— ✅ **已执行**（2026-10-29） |
 | G2 | `gateway-refactor-plan.md` §9.2、Stage 2 | Gateway Stage 2 |
 | G3 | `gateway-refactor-plan.md` §9.2；`router-refactor-plan.md` §7.2 | Gateway Stage 2 / Router Stage 2 |
 | G4、G5、G6 | `gateway-refactor-plan.md` §9.2、Stage 3 | Gateway Stage 3 |

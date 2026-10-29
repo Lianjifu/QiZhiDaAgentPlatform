@@ -11,6 +11,15 @@ from time import monotonic
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap_agent_runtime.gateway.idempotency import (
+    IdempotencyGuard,
+    InboxScope,
+    approval_key,
+    client_request_key,
+    payload_fingerprint_key,
+    payload_hash_of,
+)
+from qzdap_agent_runtime.gateway.types import ChannelType, IdempotencyKey
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_observability.metrics import record_legacy_call
 from qzdap_schema.dtos.turn import (
@@ -69,6 +78,7 @@ class CopilotSessionService:
         catalog: AgentCatalogService,
         events: EventPublisher,
         graph: SessionGraphRunner,
+        idempotency: IdempotencyGuard,
     ) -> None:
         self._sessions = sessions
         self._turns = turns
@@ -76,6 +86,7 @@ class CopilotSessionService:
         self._catalog = catalog
         self._events = events
         self._graph = graph
+        self._idempotency = idempotency
 
     def bind_ports(self, **ports: Any) -> None:
         """Re-bind request-scoped ports (tenant/workspace are per request)."""
@@ -212,6 +223,8 @@ class CopilotSessionService:
         route_id: ModelId | None = None,
         resume: dict[str, Any] | None = None,
         client_request_id: str = "",
+        channel: ChannelType = ChannelType.WEB,
+        idempotency_key: IdempotencyKey | None = None,
         parent_span_context: Any = None,
     ) -> AsyncIterator[TurnChunk]:
         """Run one turn, holding an exclusive claim on the session.
@@ -219,30 +232,50 @@ class CopilotSessionService:
         Two turns on the same session would interleave their messages and
         race on the message sequence number, so the second one is rejected
         with ``SESSION_BUSY`` instead.
+
+        幂等在**抢占用之前**：同一个键重复到达（双击 / 网络重试）不会跑第二轮；
+        而因会话被占导致本轮没跑起来时，键会被释放，调用方仍可用同一个键重试。
         """
         # 先校验会话存在且未关闭, 再抢占用 —— 否则「会话不存在」会被误报成
         # 「会话忙」.
         # 收敛打点：旧实现被调用 = 「旧路径还在服役」的**可观测事实**。
         record_legacy_call("X18")  # copilot.py 的 turn 编排
         await self._require_session(tenant_id, session_id)
+        key = idempotency_key or self._select_key(
+            client_request_id=client_request_id,
+            channel=channel,
+            session_id=session_id,
+            owner_id=owner_id,
+            user_input=user_input,
+        )
+        scope = InboxScope.for_web(
+            tenant_id=tenant_id, workspace_id=workspace_id, channel=channel
+        )
+        decision = await self._idempotency.accept(
+            scope,
+            key,
+            payload_hash=payload_hash_of(str(session_id), user_input),
+            trace_id=current_trace_id() or "",
+        )
+        if decision.is_duplicate:
+            # 同一个键又来了 —— 双击或网络重试, 不跑第二轮.
+            raise DuplicateRequestError(
+                f"request {key.value} was already handled",
+                code="DUPLICATE_REQUEST",
+            )
         claimed = await self._sessions.try_claim(session_id)
         record_legacy_call("R3")  # try_claim 的会话互斥职责
         if not claimed:
+            # 这一轮根本没跑起来 → 键不能被消费, 否则调用方用同一个键重试
+            # 会被误判成重复请求.
+            with contextlib.suppress(Exception):
+                await self._idempotency.release(decision)
             raise SessionBusyError(
                 f"session {session_id} already has a turn in flight",
                 code="SESSION_BUSY",
             )
+        turn_id: UUID | None = None
         try:
-            record_legacy_call("G1")  # record_request_id + recent_request_ids
-            fresh = await self._sessions.record_request_id(
-                session_id, client_request_id
-            )
-            if not fresh:
-                # 同一个 clientRequestId 又来了 —— 双击或网络重试, 不跑第二轮.
-                raise DuplicateRequestError(
-                    f"request {client_request_id} was already handled",
-                    code="DUPLICATE_REQUEST",
-                )
             async for chunk in self._run_turn(
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
@@ -254,10 +287,43 @@ class CopilotSessionService:
                 resume=resume,
                 parent_span_context=parent_span_context,
             ):
+                turn_id = getattr(chunk, "turn_id", None) or turn_id
                 yield chunk
         finally:
             with contextlib.suppress(Exception):
+                await asyncio.shield(
+                    self._idempotency.complete(decision, turn_id=turn_id)
+                )
+            with contextlib.suppress(Exception):
                 await asyncio.shield(self._sessions.release(session_id))
+
+    def _select_key(
+        self,
+        *,
+        client_request_id: str,
+        channel: ChannelType,
+        session_id: UUID,
+        owner_id: UUID,
+        user_input: str,
+    ) -> IdempotencyKey:
+        """幂等键的阶梯（Gateway 方案 §4.2）。
+
+        ① 客户端显式 ``clientRequestId`` —— strong；
+        ② 平台原始事件 ID —— IM 渠道用（web 走不到这里）；
+        ③ 内容指纹 —— **weak**，只记录不抑制（决策 #5）。
+        """
+        if client_request_id:
+            return client_request_key(client_request_id)
+        _log.warning(
+            "inbound_without_client_request_id session_id=%s — 幂等降级为 weak（不抑制）",
+            session_id,
+        )
+        return payload_fingerprint_key(
+            channel=str(channel),
+            chat_id=str(session_id),
+            user_id=str(owner_id),
+            text=user_input,
+        )
 
     async def _run_turn(
         self,
@@ -477,9 +543,10 @@ class CopilotSessionService:
             except Exception:  # noqa: BLE001
                 pass
         pending["decision"] = "approved" if approved else "denied"
-        # 审批恢复路径不传 clientRequestId → 幂等被跳过 → 连点两次「同意」
-        # 工具会被再执行一次（台账 G10）。
-        record_legacy_call("G10")
+        # 审批恢复路径必须带幂等键 —— 键由 approval_id 派生：同一次审批的重复
+        # 点击会撞键（连点两次「同意」只执行一次工具，台账 G10），而下一次
+        # 审批（新的 approval_id）不会误伤.
+        key = approval_key(str(approval_id), str(pending["decision"]))
         async for chunk in self.stream_turn(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -487,6 +554,7 @@ class CopilotSessionService:
             session_id=session_id,
             user_input="继续",
             resume={"pending_approval": pending, "decision": pending["decision"], "messages": (session.graph_state or {}).get("messages")},
+            idempotency_key=key,
             parent_span_context=parent_span_context,
         ):
             yield chunk

@@ -55,6 +55,10 @@ qzdap-embedding-runtime = { workspace = true }
 qzdap-sandbox-runtime = { workspace = true }
 qzdap-identity = { workspace = true }
 qzdap-agent-runtime = { workspace = true }
+# ⚠️ 名字陷阱：`qzdap-agent-runtime` = modules/agent_runtime（旧 Copilot 实现），
+# `qzdap-agent-runtime-runtime` = runtimes/agent_runtime（LangGraph 新 runtime，
+# Gateway 层契约 `qzdap_agent_runtime.gateway` 住在这里）。
+qzdap-agent-runtime-runtime = { workspace = true }
 qzdap-tool = { workspace = true }
 qzdap-skill = { workspace = true }
 qzdap-memory = { workspace = true }

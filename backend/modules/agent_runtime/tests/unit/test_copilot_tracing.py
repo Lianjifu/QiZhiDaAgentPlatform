@@ -16,11 +16,12 @@ from collections.abc import AsyncIterator
 from uuid import UUID
 
 import pytest
-from _ar_unit_in_memory import make_dependencies
+from _ar_unit_in_memory import InMemoryIdempotencyStore, make_dependencies
 from opentelemetry import trace as otel_trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 
@@ -119,6 +120,7 @@ async def _make_service(agent: CatalogAgent, owner_id: UserId):
         catalog=_Catalog(agent),
         events=deps["events"],
         graph=runner,
+        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
     )
     tid = TenantId(agent.tenant_id)
     wid = WorkspaceId(agent.workspace_id)

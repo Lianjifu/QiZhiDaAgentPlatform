@@ -11,6 +11,8 @@ dependencies = [
     "qzdap-messaging",
     "qzdap-llm",
     "qzdap-observability",
+    # Gateway 层契约（qzdap_agent_runtime.gateway）—— 幂等键与判定结果类型.
+    "qzdap-agent-runtime-runtime",
     "fastapi>=0.115.0",
     "pydantic>=2.9",
     "httpx>=0.28.0",

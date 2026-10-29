@@ -1263,20 +1263,23 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 > - **修复** —— 修复类条目（如 X14），用测试判定，**不进指标**。
 >
 > ✅ **实施状态（2026-10-29）**：指标与 `record_legacy_call` / `record_new_call` 已落地
-> （`libs/observability/src/qzdap_observability/metrics.py`，有单测）。**26 条已在旧实现的
+> （`libs/observability/src/qzdap_observability/metrics.py`，有单测）。**24 条在旧实现的
 > 入口处打点**（下表「打点位置」列非空者）—— 比原骨架多打了 10 条：原判为「扫描 / 修复」
 > 但**确实有调用入口**的条目（G4 / G5 / G10 / R3 / X3 / X5 / X6 / X7 / X15 / X16）也一并打点，
 > **打点只是额外观测，它们的清零判据不变**（扫描 / 测试）。
 >
-> ⚠️ **7 条没有打点，且不是遗漏** —— 它们**打不了点**，必须改用替代判据：
-> **R4**（从未接线的 runtime）、**X1 / X1-a / X1-b**（从未接线）、
-> **X4 / X12 / X13 / X19**（数据类 / 旧表 / 死表）。
-> **这 7 条不得用「指标为 0」判清零** —— 从未被调用的代码，打点永远不会 inc，
-> 指标恒为 0，**看起来已清零、实则从未被观测**。
+> ⚠️ **10 条没有打点，且不是遗漏** —— 它们**打不了点**，必须改用替代判据：
+> - **7 条「打不了点」**：**R4**（从未接线的 runtime）、**X1 / X1-a / X1-b**（从未接线）、
+>   **X4 / X12 / X13 / X19**（数据类 / 旧表 / 死表）。
+>   **这 7 条不得用「指标为 0」判清零** —— 从未被调用的代码，打点永远不会 inc，
+>   指标恒为 0，**看起来已清零、实则从未被观测**。
+> - **3 条「已不需要打点」**：**G1**（旧实现已删除 —— 打点随代码一起撤除）、
+>   **G10 / X14**（修复类 —— 判据是回归测试，不进指标）。
+>   **修复完成后继续保留打点，会让指标永远非零、清理判据永远不成立**。
 
 | 台账条目 | 判据类型 | 打点位置（实施后的真实位置） | 扫描规则 id | 备注 |
 |---|---|---|---|---|
-| G1 `record_request_id` | 指标 | `copilot.py` `stream_turn`（`record_request_id` 调用前） | — | 与 G6 同批 |
+| G1 `record_request_id` | **已清理** | —（**2026-10-29 删除**：协议方法 + 两处实现 + `recent_request_ids` 读写 + 打点一并撤除） | — | 替代物 = `session_inbox` 原子 claim；Gateway Stage 1 |
 | G2 `_verify_signature` | 指标 | `channel/application/services.py`（`_verify_signature` 调用前） | — | |
 | G3 硬编码身份常量 | 指标 | `channel/adapter/dispatch/dispatch_subscriber.py` `_run_turn` | — | |
 | G4 `ParsedMessage` | 指标 | 四个 inbound adapter 的 `parse_webhook` 入口 | `G4` | 原判「扫描」——**有调用入口，已打点** |
@@ -1285,7 +1288,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 | G7 `/v1/sessions*` turn | 指标 | `agent_runtime/adapter/http/router.py` `run_turn_stream` | — | |
 | G8 `GET /v1/sessions` | 指标 | `session_router.py` `list_v1` | — | |
 | G9 `dispatch_subscriber.py` | 指标 | `dispatch_subscriber.py` `_handle_event` | — | 与 Session S-32 同 PR 删除 |
-| G10 审批恢复路径的幂等键 | **修复**（+ 打点） | `copilot.py` `decide_approval`（恢复路径） | — | **清零靠测试**（连点两次「同意」只执行一次工具）；打点只作观测 |
+| G10 审批恢复路径的幂等键 | **修复**（✅ 2026-10-29 已修） | —（**打点已撤除**：修复类不留在指标里） | — | **判据 = 回归测试**：`test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`（连点两次「同意」只执行一次工具） |
 | R1 IM 每消息建会话 | 指标 | `dispatch_subscriber.py` `_run_turn`（建 session 前） | — | |
 | R2 `agentId` 直取 | 指标 | `session_router.py` `create_session` | — | |
 | R3 `try_claim` 的会话互斥职责 | **扫描**（+ 打点） | `copilot.py` `stream_turn`、`repositories.py` `try_claim` | `R3` | ⚠️ **owner 是 Session**；清零判据 = Session 的 CAS 接管后本层无残留调用方 |
@@ -1312,9 +1315,9 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 | X18 `copilot.py` turn 编排 | 指标 | `copilot.py` `stream_turn` | `X18` | 判据 = 语义迁入 `turn_runner.py` **且** 指标归零 ≥7 天 **且** 扫描零命中（Stage 3b） |
 | X19 `memory_l2_embeddings` 死表 | **扫描** | — | `X19` | 判据 = 表已 DROP（Memory Stage 0，迁移 0048 内） |
 
-> **34 行里 26 行有打点**（G1–G10 · R1 · R2 · R3 · X2 · X3 · X5 · X6 · X7 · X8 · X9 · X10 · X11 · X15 · X16 · X17 · X18），
-> **8 行靠替代判据**（R4 · X1 · X1-a · X1-b · X4 · X12 · X13 · X19 —— 从未接线 / 数据类），
-> **其中 2 行同时是修复类**（G10 / X14 —— 清零靠测试）。
+> **34 行里 24 行有打点**（G2–G9 · R1 · R2 · R3 · X2 · X3 · X5 · X6 · X7 · X8 · X9 · X10 · X11 · X15 · X16 · X17 · X18），
+> **10 行靠替代判据**（G1 已清理 · R4 · X1 · X1-a · X1-b · X4 · X12 · X13 · X19 —— 已删除 / 从未接线 / 数据类），
+> **其中 3 行同时是修复类**（G1 已清理 · G10 / X14 —— 清零靠测试或删除）。
 >
 > **「指标」类条目既打点也扫描**：调用入口归零（`qzdap_legacy_calls_total{entry}` = 0 ≥7 天）**且** 残留符号 grep 零命中 —— 两者都满足才算清零。
 

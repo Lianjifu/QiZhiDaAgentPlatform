@@ -253,10 +253,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 KnowledgeServiceAdapter,
             )
             from qzdap.modules.agent_runtime.adapter.memory import MemoryServiceAdapter
+            from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
+                PostgresIdempotencyStore,
+            )
             from qzdap.modules.agent_runtime.adapter.sandbox import (
                 SandboxRuntimeAdapter,
             )
             from qzdap.modules.agent_runtime.adapter.skills import SkillServiceAdapter
+            from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
             from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
             knowledge_factory = getattr(app.state, "knowledge_service_factory", None)
@@ -313,6 +317,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 catalog=catalog,
                 events=AgentRuntimeEventPublisher(container.bus()),
                 graph=graph,
+                # 幂等守卫自持事务 —— claim 必须在轮次开始前落库, 否则并发
+                # 的第二个请求看不到它, 两轮都会起.
+                idempotency=IdempotencyGuard(
+                    PostgresIdempotencyStore(container.session_factory())
+                ),
             )
 
     async def catalog_evaluation_runner(*, tenant_id, workspace_id, owner_id, agent_id, user_input, agent_version=None):

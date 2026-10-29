@@ -16,6 +16,8 @@ dependencies = [
     "qzdap-vault",
     "qzdap-identity",
     "qzdap-agent-runtime",
+    # Gateway 层契约 —— 幂等守卫的装配.
+    "qzdap-agent-runtime-runtime",
     "qzdap-tool",
     "qzdap-skill",
     "qzdap-orchestration",

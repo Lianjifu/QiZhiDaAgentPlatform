@@ -158,23 +158,6 @@ class SqlSessionRepository(SessionRepository):
         await self.update(session.with_runtime(metadata=meta))
         await self._s.commit()
 
-    async def record_request_id(self, session_id: UUID, request_id: str) -> bool:
-        """Remember a client request id; False when it was already used."""
-        if not request_id:
-            return True
-        session = await self.get(session_id)
-        if session is None:
-            return True
-        meta = dict(session.metadata or {})
-        ids = [str(item) for item in (meta.get("recent_request_ids") or [])]
-        if request_id in ids:
-            return False
-        ids.append(request_id)
-        meta["recent_request_ids"] = ids[-8:]
-        await self.update(session.with_runtime(metadata=meta))
-        await self._s.commit()
-        return True
-
     async def list_for_owner(
         self, owner_id: UUID, *, limit: int = 50, offset: int = 0
     ) -> list[Session]:

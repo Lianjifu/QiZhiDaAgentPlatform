@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
-from _ar_unit_in_memory import make_dependencies
+from _ar_unit_in_memory import InMemoryIdempotencyStore, make_dependencies
+from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
+from qzdap_schema.dtos.turn import ApprovalRequiredChunk
 from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 
 from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
@@ -151,6 +154,35 @@ class _BoomToolPort:
         return []
 
 
+class _ScriptedLLM:
+    """按脚本逐次产出 —— 审批场景需要「先要工具、后给回答」。"""
+
+    def __init__(self, steps: list[dict]) -> None:
+        self._steps = list(steps)
+        self.calls = 0
+
+    async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
+        idx = min(self.calls, len(self._steps) - 1)
+        self.calls += 1
+        step = self._steps[idx]
+        if step.get("delta"):
+            yield LLMChunk(model=req.model, delta=str(step["delta"]))
+        if step.get("tool_calls"):
+            yield LLMChunk(
+                model=req.model, delta="", tool_calls=list(step["tool_calls"])
+            )
+        yield LLMChunk(
+            model=req.model,
+            delta="",
+            finish_reason="stop",
+            usage=Usage(input_tokens=1, output_tokens=1),
+        )
+
+    async def synthetic_chunks(self, user_input, *, turn_id):
+        return []
+
+
+
 class _CatalogToolPort:
     def __init__(self, tools: list[dict]) -> None:
         self._tools = tools
@@ -181,6 +213,7 @@ async def _make_service(
         catalog=_Catalog(agent),
         events=deps["events"],
         graph=runner,
+        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
     )
     tid = TenantId(agent.tenant_id)
     wid = WorkspaceId(agent.workspace_id)
@@ -290,6 +323,7 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
         catalog=_Catalog(agent),
         events=deps["events"],
         graph=runner,
+        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
     )
     detail = await svc.create_session(
         tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
@@ -563,6 +597,7 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
     svc = CopilotSessionService(
         sessions=deps["sessions"], turns=deps["turns"], messages=messages,
         catalog=_Catalog(agent), events=deps["events"], graph=runner,
+        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
     )
     detail = await svc.create_session(
         tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
@@ -578,3 +613,129 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
     assert usage, "usage chunk missing"
     # FakeLLM: input 3 / output 2 tokens; price 2.0 / 4.0 per 1K
     assert usage[-1].cost_usd == round(3 / 1000 * 2.0 + 2 / 1000 * 4.0, 6)
+@pytest.mark.asyncio
+async def test_double_clicking_approve_executes_the_tool_only_once() -> None:
+    """台账 G10 —— 连点两次「同意」, 工具只能被执行一次。
+
+    审批恢复路径必须带幂等键：键由 ``approval_id`` 派生，因此同一次审批的
+    重复点击会撞键，而下一次审批（新的 approval_id）不受影响。
+    """
+    tid, wid, uid, aid = _owners()
+    agent = CatalogAgent.create(
+        id=aid,
+        tenant_id=tid,
+        workspace_id=wid,
+        name="t",
+        category="test",
+        owner="test",
+        model="default",
+    )
+    # 目录工具只有在 agent 显式列出时才会进白名单 —— 白名单决定要不要确认.
+    agent = replace(agent, tools=[{"name": "danger_tool", "enabled": True}])
+    llm = _ScriptedLLM(
+        [
+            {
+                "tool_calls": [
+                    {
+                        "id": str(uuid4()),
+                        "name": "danger_tool",
+                        "arguments": {"path": "/"},
+                    }
+                ]
+            },
+            {"delta": "已执行。"},
+        ]
+    )
+    tool_port = _CatalogToolPort(
+        [
+            {
+                "name": "danger_tool",
+                "description": "高风险操作",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+                "risk": "high",
+                "needConfirm": True,
+            }
+        ]
+    )
+    svc, _deps, sid, *_ = await _make_service(
+        llm=llm, agent=agent, owner_id=uid, tool_port=tool_port
+    )
+
+    chunks = [
+        chunk
+        async for chunk in svc.stream_turn(
+            tenant_id=tid,
+            workspace_id=wid,
+            owner_id=uid,
+            session_id=UUID(sid),
+            user_input="清理磁盘",
+            client_request_id="req-1",
+        )
+    ]
+    approvals = [c for c in chunks if isinstance(c, ApprovalRequiredChunk)]
+    assert approvals, [getattr(c, "kind", None) for c in chunks]
+    approval_id = approvals[0].approval_id
+
+    async def approve() -> list:
+        return [
+            chunk
+            async for chunk in svc.decide_approval(
+                tenant_id=tid,
+                workspace_id=wid,
+                owner_id=uid,
+                session_id=UUID(sid),
+                approval_id=approval_id,
+                approved=True,
+                approval_service=None,
+            )
+        ]
+
+    first = await approve()
+    assert any(getattr(c, "kind", None) == "tool_result" for c in first)
+    assert len(tool_port.invoked) == 1
+
+    # 连点第二次「同意」—— 必须被幂等挡下, 工具不得再执行.
+    with pytest.raises(DuplicateRequestError):
+        await approve()
+    assert len(tool_port.invoked) == 1
+
+
+@pytest.mark.asyncio
+async def test_two_identical_messages_without_a_client_request_id_both_run() -> None:
+    """决策 #5 —— weak 键不抑制：连发两条「好的」必须两轮都跑。
+
+    没有 ``clientRequestId`` 时降级为内容指纹（weak）：指纹会撞，但 weak **只记录、
+    不判重** —— 否则用户连发两条相同内容的消息会被静默吃掉一条。
+    """
+    tid, wid, uid, aid = _owners()
+    agent = CatalogAgent.create(
+        id=aid,
+        tenant_id=tid,
+        workspace_id=wid,
+        name="t",
+        category="test",
+        owner="test",
+        model="default",
+    )
+    svc, _deps, sid, *_ = await _make_service(llm=_RecordingLLM(), agent=agent, owner_id=uid)
+
+    async def send() -> list:
+        return [
+            chunk
+            async for chunk in svc.stream_turn(
+                tenant_id=tid,
+                workspace_id=wid,
+                owner_id=uid,
+                session_id=UUID(sid),
+                user_input="好的",
+            )
+        ]
+
+    first = await send()
+    second = await send()
+    assert first[-1].kind == "done"
+    assert second[-1].kind == "done"
