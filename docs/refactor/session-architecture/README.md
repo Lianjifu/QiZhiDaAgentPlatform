@@ -16,7 +16,7 @@
 |---|---|---|---|
 | 1 | [`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) | **权威基线**：会话完整生命周期的泳道划分与时序。所有层方案的共同上游契约 | **已定稿** |
 | 2 | [`cleanup-ledger.md`](cleanup-ledger.md) | **全局收敛机制**：旧实现台账（弃用标记 → 调用打点 → 指标归零 → 删除 → CI 扫描脚本 → 阶段门禁） | **生效中** |
-| 3 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | Gateway 泳道：Channel Gateway / Auth Identity / Message Normalizer / Idempotency Guard | **已定稿** |
+| 3 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | Gateway 泳道：Channel Gateway / Auth Identity / Message Normalizer / Idempotency Guard ＋ 入口级限流 | **已定稿（v1.4）** |
 | 4 | [`router-refactor-plan.md`](router-refactor-plan.md) | Router 泳道：Strategy（选 agent）+ Session Routing（选会话 + 有序保证） | **已评审（v1.2）** |
 | 5 | [`session-refactor-plan.md`](session-refactor-plan.md) | Session 泳道：Manager（生命周期）+ State（状态机）+ Thread（多轮线程）+ 唯一 turn 实现 | **已评审（v1.1）** |
 | 6 | [`context-refactor-plan.md`](context-refactor-plan.md) | Context 泳道：Builder（拼装）+ Compressor（压缩）+ Persistence（manifest 落库） | 待评审 |
@@ -34,7 +34,7 @@
 
 | 方案 | 决策数 | 已定稿 | 待确认 | 未定稿的关键项 |
 |---|---|---|---|---|
-| Gateway | 9（+ #2b） | 9 | 0 | **#5 的落地方式已补记**（2026-10-29 审查）：「weak 不抑制」不能只写在文档里 —— §5.4 的原子 claim 若让 weak 键也参与唯一约束，两条相同内容的消息会互相冲突 → **直接违反 #5**。落地 = §5.3 的**部分唯一索引**（`WHERE key_strength='strong'`）+ §5.4 的 **strong / weak 两条 INSERT 路径** |
+| Gateway | 9（+ #2b） | 9 | 0 | **#5 的落地方式已补记**（2026-10-29 审查）：「weak 不抑制」不能只写在文档里 —— §4.4 的原子 claim 若让 weak 键也参与唯一约束，两条相同内容的消息会互相冲突 → **直接违反 #5**。落地 = §4.3 的**部分唯一索引**（`WHERE key_strength='strong'`）+ §4.4 的 **strong / weak 两条 INSERT 路径** |
 | Router | 10 | 0 | 10 | #1 并发语义（排队 / 拒绝）；**#2 表选择（新表 `session_*` vs 旧表 `agent_*`）—— 全部方案的前置决策**；#7 排队上限/超时；**#10 会话实例由谁创建（Router 只派生 key，Session 负责 `resolve_or_create`）** —— ⚠️ 2026-10-29 审查补充：**决策 #10 的边界是「不写会话表」，不禁止读**；且粘性规则需要 Session 提供**只读的 `lookup(session_key)` 端口**（`resolve_or_create` 需要 `agent_binding` 入参 → 鸡生蛋） |
 | Session | 7 | 0 | 7 | **#5 表选择必须与 Router #2 同值**，否则两层落在两套表上；#3 `wait_status` 是否废弃 |
 | Context | 7 | 0 | 7 | **#2 token 估算口径**（2026-10-29 审查改写：新 runtime **已经是**按语种估算，真问题是**新旧两条路径口径不一致**）；#1 agent prompts 拼装位置；**#7 `context_compacted` 的 `degraded` 字段**（前端目前不读 chunk 字段 → 补字段向后兼容） |
@@ -132,7 +132,7 @@ Agent  Stage 5(循环)  ←  Session Stage 3(唯一 turn 实现)
 |---|---|---|---|
 | Session Stage 3（唯一 turn 实现） | **Router Stage 3**（FIFO 有序） | 语义 | Router §0.1 + 风险表；**Stage 表缺前置行 → 已补** |
 | Session Stage 1（`resolve_or_create` + **`lookup`** 端口） | **Router Stage 2**（会话映射 + 粘性查找） | 契约 | Router 决策 #10 + Stage 2 前置行 ✅ |
-| Session Stage 4（`session_events` 落库） | **Gateway Stage 4b**（无感重放） | 硬依赖 | Gateway §0.1 + Stage 4b 前置 ✅ |
+| Session Stage 4（`session_events` 落库） | **Gateway Stage 4b**（无感重放） | 硬依赖 | Gateway §0.5 + Stage 4b 前置 ✅ |
 | Session 迁移 0046（`agent_sessions` / `session_turns` DDL） | Context 迁移 0047 | 物理顺序 | Context §7.2 依赖声明 ✅ |
 | Session Stage 2（新表写入） | Context / Memory 的写入切换 | 数据 | 各自 Stage 表 ✅ |
 | Session Stage 3 | Context Stage 1、Memory Stage 3 | 语义（停用的是旧调用点） | 各自方案 ✅ |
@@ -145,8 +145,8 @@ Agent  Stage 5(循环)  ←  Session Stage 3(唯一 turn 实现)
 | **Agent Stage 5 的 A-26**（`_run_turn_inner` 改接新 Builder / Writer） | **Context Stage 4**（停用 `_load_messages` / 四套模板 / `compact.py`）、**Memory Stage 7**（删 `_remember`） | **语义（删除顺序自底向上）** | 实施方案 §3.6 A-26 ✅ |
 | **Session Stage 5b**（删 `use_cases/run_turn.py`） | **Context Stage 5**（删 `adapter/llm/prompts.py` —— `run_turn.py` import 那四个函数） | **语义** | 实施方案 §3.3 S-33 ✅ |
 | **`ErrorCode` 码收敛**（跨模块） | **Gateway Stage 0**（`ERROR_PROJECTION` 投影表建在枚举之上） | 契约 | 实施方案 §3.1 G-02b ✅ |
-| **`modules/channel` 新增 `qzdap-agent-runtime` 依赖** | **Gateway Stage 2**（验签迁出后，channel 的 webhook 端点调 `Gateway.accept`） | 依赖 | Gateway 方案 §7.2.1 ✅ |
-| **Session 的 sweeper 第四类清扫**（`session_inbox` 过期行） | **Gateway Stage 1**（幂等 TTL 依赖它 —— 不清理则 TTL 之后持续误杀） | 数据 | Gateway 方案 §5.3.1 ✅ |
+| **`modules/channel` 新增 `qzdap-agent-runtime` 依赖** | **Gateway Stage 2**（验签迁出后，channel 的 webhook 端点调 `Gateway.accept`） | 依赖 | Gateway 方案 §9.2.1 ✅ |
+| **Session 的 sweeper 第四类清扫**（`session_inbox` 过期行） | **Gateway Stage 1**（幂等 TTL 依赖它 —— 不清理则 TTL 之后持续误杀） | 数据 | Gateway 方案 §4.3.1 ✅ |
 
 ### 3.3.1 豁免表（唯一的例外）
 
@@ -179,7 +179,7 @@ Agent  Stage 5(循环)  ←  Session Stage 3(唯一 turn 实现)
 | 表 | DDL owner | 其他方案 |
 |---|---|---|
 | `agent_sessions` | **Session（0046）**：唯一索引 + `wait_status` 处置 | Router（0045）加 `next_ingress_seq` / `last_completed_seq`（排序状态，归 Router） |
-| `session_turns` | **Session（0046）**：`ingress_seq` / `route_decision` / `pending_approval` / `cancel_requested` / 状态枚举 | Router 只引用列；Agent 只写 `cost_usd` / `route_decision` |
+| `session_turns` | **Session（0046）**：`ingress_seq` / `route_decision` / `agent_decision` / `pending_approval` / `cancel_requested` / 状态枚举 | **Router 写 `route_decision`**（会话入口的策略决策）；**Agent 写 `agent_decision`**（每步的专家选择 + 模型/工具取值）—— ⚠️ **两列两写者，不共用** |
 | `session_messages` | **Session（0046）**：`session_seq` / `session_id` | Context 只读 |
 | `session_events` | **Session（0046）** | Gateway 只读（重放） |
 | `session_inbox` | **Session（会话域）** | Gateway 0044 改约束（幂等语义来自 Gateway） |
@@ -198,7 +198,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 
 > **建议：把「表选择」作为唯一的前置决策先定。** 推荐值：**启用新表 `session_turns` / `session_messages` / `session_events`**（迁移 0035 已建、零生产数据），旧表 `agent_turns` / `agent_session_messages` 双写 → 对账 → 切读 → 停旧写 → DROP。
 >
-> **状态：⏳ 待用户拍板（2026-10-29 尚未确认）**。本方案集**内部已按推荐值对齐** —— Router 决策 #2 与 Session 决策 #5 都写「启用新表 + 旧表迁数据后废弃」，废弃动作在 **Session Stage 6**，迁移归 **Session（0046）**，Gateway 方案 §9 已同步为「迁数据后废弃」。
+> **状态：⏳ 待用户拍板（2026-10-29 尚未确认）**。本方案集**内部已按推荐值对齐** —— Router 决策 #2 与 Session 决策 #5 都写「启用新表 + 旧表迁数据后废弃」，废弃动作在 **Session Stage 6**，迁移归 **Session（0046）**，Gateway 方案 §8 已同步为「迁数据后废弃」。
 >
 > **但这不等于「已定稿」** —— 两个方案附录 A 里它仍在「待确认」列表中（README §2 的决策状态汇总同步反映）。**在用户明确拍板前，不得把这两条标记为已定稿**，否则会重演「文档写了就当定了」的毛病。
 
@@ -256,7 +256,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 
 | 章节 | 内容 | 六份是否齐备 |
 |---|---|---|
-| §0 | 定位与范围（基线位置 / 子件 / 明确不做 / 收敛规则） | ✅ |
+| §0 | 定位与范围（基线位置 / 子件 / 明确不做 / 收敛规则 / 前置依赖） | ✅ |
 | §1 | 现状盘点（逐条标注文件与行号） | ✅ |
 | §2 | 目标架构 | ✅ |
 | §3–§5 | 各子件设计 | ✅ |
@@ -269,12 +269,15 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 | §12（Gateway 为 §13） | 治理与可观测性落点 | ✅ |
 | 附录 A | 待确认的决策 | ✅ |
 | 附录 B | 现状 → 目标 文件对照速查 | ✅ |
+| 附录 C | 本轮重排 / 审查修正记录（问题 → 修正 → 落点） | ✅（**六份都有**） |
+
+> **Gateway 的章节偏移（v1.4 重排后）**：Gateway 的子件设计是 **§3–§6**（统一标准数据 / 幂等与去重 / 限流 / 出站），因此它从 §7 起整体后移一位 —— **§7 边界 · §8 数据与表 · §9 逐文件与删除清单 · §10 实施阶段 · §11 验收 · §12 风险 · §13 治理**。引用 Gateway 的章节时按这张偏移表换算。
 
 > **两条可机械校验的性质**（2026-10-29 全量核对通过）：
-> 1. **每条决策在正文都有锚点** —— 附录 A 的每一行，正文里都有对应的「决策 #N」引用（否则改了决策不知道该改哪一节）。六份方案合计 **51 行**（50 条编号决策 + Gateway 的补充条目 #2b），锚点覆盖率 100%。
+> 1. **每条决策在正文都有锚点** —— 附录 A 的每一行，正文里都有对应的「决策 #N」引用（否则改了决策不知道该改哪一节）。六份方案合计 **54 条**（53 条编号决策 + Gateway 的补充条目 #2b），锚点覆盖率 100%。
 > 2. **每个 Stage 都有「旧代码减少」栏** —— 六份方案的全部 Stage 均已包含。
 
-> **Gateway 的 §10.4「外部依赖的现状核实」**是唯一的额外章节（记录对 `qzdap_llm` / `qzdap_schema` / `qzdap_persistence` 等外部包的依赖核实结果）。
+> **Gateway 的 §1.6「外部依赖的现状核实」**是唯一的额外章节（记录对 `qzdap_llm` / `qzdap_schema` / `qzdap_persistence` 等外部包的依赖核实结果）—— 它归在「现状盘点」下，因为它核的是**现状**而不是验收项。
 
 ---
 
@@ -289,7 +292,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
   Memory Stage 1  作用域过滤修复（工作区内跨用户泄漏）      ← 最高优先级，完全独立
   Gateway Stage 0–3  契约 / 幂等 / 鉴权 / 归一化            ← 不依赖任何下游
   Router Stage 0    契约 / 配置                            ← Router Stage 1 依赖 Gateway Stage 1
-  Agent Stage 0–3  端口 / 模型适配 / 工具路由 / 执行落库      ← Agent Stage 2 需要 Gateway 决策 #5 的 `unprotected` 语义
+  Agent Stage 0–3  端口 / 模型适配 / 工具绑定 / 执行落库      ← Agent Stage 2 需要 Gateway 决策 #5 的 `unprotected` 语义
   Session Stage 0  迁移 0046                              ← 关键路径的起点
   Context Stage 0  迁移 0047                              ← 物理上必须等 0046 落地
 
@@ -300,7 +303,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 
 主线 ③（Session 之后的收敛）
   Router Stage 2/3/4/5   （依赖 Session 1 / 3）
-  Agent Stage 4          专家选择 + 配置取值接线（模型/工具取自 agent 配置；依赖 Session 0 的 `route_decision` 列）
+  Agent Stage 4          专家选择 + 配置取值接线（模型/工具取自 agent 配置；依赖 Session 0 的 `agent_decision` 列）
   Agent Stage 5          循环 + **A-26：旧循环改接新 Builder / Writer**（依赖 Session 3）
   Context Stage 1–3      组装 / 压缩 / 持久化（**只新建，不动调用点**）
   Context Stage 4–5      停用 + 删（依赖 **Agent A-26** 与 **Session 5b**）
@@ -326,7 +329,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 
 - **全局关键路径**：Session Stage 0 → 1 → 2 → 3 → 4 → Gateway Stage 4b → 5。**Session Stage 3（唯一 turn 实现）是整条链的咽喉** —— 它之前，四条下游支线全部堵住。
 - **可并行度**：M0 阶段有**六条线**，其中 **五条可同时开工**（Gateway 0–3、Router 0、Agent 0–3、Memory 0–1、Session 0）。只有 **Context Stage 0 被 0046 的物理顺序卡住**（0047 依赖 0046 的 `agent_sessions` 变更）。
-- **注意 Agent Stage 4 的位置**：它虽然**不需要** Session 的 turn 实现，但需要 Session 迁移 0046 建出的 `session_turns.route_decision` 列 —— 所以它卡在**迁移**上，不是卡在**语义**上。
+- **注意 Agent Stage 4 的位置**：它虽然**不需要** Session 的 turn 实现，但需要 Session 迁移 0046 建出的 `session_turns.agent_decision` 列 —— 所以它卡在**迁移**上，不是卡在**语义**上。
 - **最容易被低估的**：Session Stage 3 的工作量（旧路径 647 行 `copilot.py` + 915 行 `runner.py` 的语义合并 + 审批加固）。它不是「写代码」，是**在两套漂移的语义里挑出对的那套并统一**。
 - **⚠️ 删除顺序是自底向上的，拆开就会断**：旧路径的调用链是
   `copilot.py (X18) → runner._run_turn_inner (X17) → _load_messages (X8) / _remember (X11)`，以及 `use_cases/run_turn.py (X2) → adapter/llm/prompts.py (X10)`。

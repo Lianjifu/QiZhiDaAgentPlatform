@@ -1,13 +1,13 @@
 # Router 层重构方案
 
-> 版本：1.2（2026-10-29：**独立审查后的 15 项修正** —— `try_claim` 的顺序职责更正、架构测试规则白名单化、粘性规则的两步流程、`last_completed_seq` 的兜底路径、互斥原语口径统一、错误码收敛、扫描规则补全、迁移回滚口径）
+> 版本：1.3（2026-10-29：**独立审查后的 15 项修正** —— `try_claim` 的顺序职责更正、架构测试规则白名单化、粘性规则的两步流程、`last_completed_seq` 的兜底路径、互斥原语口径统一、错误码收敛、扫描规则补全、迁移回滚口径 —— **+ 按 D1 重排骨架**：新增 §0.2 前提、§5.1 改两轴对照、删 `model_hint`、附录 C 记重排）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**待评审**（附录 A 的 10 条决策待确认；#1 并发语义、#2 表选择、#10 会话创建归属会直接决定 Session 层方案的形态）
+> 状态：**待评审**（附录 A 的 10 条决策待确认；#1 并发语义、#2 表选择、#10 会话创建归属会直接决定 Session 层方案的形态）—— **v1.3 已按 Agent 决策 #4 重排骨架**（见附录 C 的 D1 行）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) —— 本方案实现其中 **Router 泳道**
 > 兄弟方案：[`gateway-refactor-plan.md`](gateway-refactor-plan.md)（已定稿）
 > 收敛机制：[`cleanup-ledger.md`](cleanup-ledger.md) —— 本方案对应条目 **R1–R4**
-> 硬约束：**最终态只有一个实现**；先上新、后清旧（清理机制见 §0.4 与台账）
+> 硬约束：**最终态只有一个实现**；先上新、后清旧（清理机制见 §0.5 与台账）
 > 方案集导航：落地路线与里程碑见 [`README.md`](README.md) §6 · 系统级验收见 §7 · 外部前置依赖见 §8 · 跨层不变量见 [`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) §6
 
 ---
@@ -20,7 +20,19 @@
 用户/渠道 → Gateway ──标准消息──▶ Router ──路由到会话──▶ Session ──▶ Context ──▶ …
 ```
 
-### 0.2 两个子职责（按需求定义）
+### 0.2 本层的前提：入口一次、每步一次、配置轴不归本层
+
+**读这一节就够理解 Router 层了** —— 三句话：
+
+| # | 前提 | 含义 |
+|---|---|---|
+| 1 | **Router 的选择只有一次** —— 在**会话入口**（收到第一条消息时）| 选哪个 agent、路由到哪个会话。它决定的是**整个会话**的绑定 |
+| 2 | **每步的选择归 Agent 层** —— ⑧ Agent Router 在循环内每步选**专家 Agent** | 两者的层级不同、互不替代（§5.1 有对照表）|
+| 3 | **模型与工具不在本层，也不在任何一层的「选择」里** | 它们由管理员在 **agent 配置**里绑定，运行时**查表取值**（Agent 决策 #4）。⚠️ **本层不产出任何模型 / 工具信号** |
+
+> **两条轴**（Agent 层方案 §0.2）：**执行轴**（每步推理）与**配置轴**（管理员配置 → agent 绑定 → 运行时取值）。Router 位于**执行轴的入口一次**，**完全不在配置轴上** —— 这就是为什么它不选模型、不选工具。
+
+### 0.3 两个子职责（按需求定义）
 
 | 子件 | 职责 | 回答的问题 |
 |---|---|---|
@@ -31,7 +43,7 @@
 
 > **处理单元** = (目标 agent, 目标会话实例, 入站序号)
 
-### 0.3 Router 明确不做
+### 0.4 Router 明确不做
 
 | 不做 | 归属 |
 |---|---|
@@ -39,11 +51,12 @@
 | 建会话 / 起轮次 / 执行 / 落库 | Session |
 | 组装上下文、压缩、摘要 | Context |
 | 召回与写入记忆 | Memory |
-| **模型 / 工具的取值**（⚠️ **不是选择** —— 管理员在 agent 配置里绑定，运行时查表；Agent 决策 #4） | **Agent 层 Execution**（见 §5.1，这是最易混的一处） |
+| **模型 / 工具的绑定与取值**（⚠️ **不是选择** —— 管理员在 agent 配置里绑定，运行时查表；Agent 决策 #4） | **Agent 层 Execution**（见 §5.1，这是最易混的一处） |
+| **产出模型 / 工具偏好信号** | ❌ **本层不产出** —— D1 之后没有「运行时挑模型 / 挑工具」这件事，任何「模型偏好」字段都没有消费方 |
 | 判任务类型是否「深度任务」 | **Agent 层**（需要完整上下文，见 §5.2） |
 | **会话级配额**（每会话并发轮次上限、租户级会话数上限） | ✅ **属本层**（§12.1）—— 但**只读**会话表，不写（与决策 #10 一致） |
 
-### 0.4 实现收敛规则：最终态只有一个实现
+### 0.5 实现收敛规则：最终态只有一个实现
 
 **最终态**：任一职责在全仓只有一套实现承接。**推进方式**：先上新、后清旧——新实现接管并稳定运行后删除旧实现。
 
@@ -53,7 +66,7 @@
 >
 > **代价要认**：清理完成后旧实现不复存在，回退需重新上线旧版本。
 
-### 0.5 前置依赖清单（**本方案的哪些阶段被别的方案挡住**）
+### 0.6 前置依赖清单（**本方案的哪些阶段被别的方案挡住**）
 
 | 本方案阶段 | 前置 | 前置归属 | 阻塞性质 | 不满足时 |
 |---|---|---|---|---|
@@ -67,7 +80,7 @@
 
 > **Stage 3 是本方案唯一被硬阻塞的阶段**。Session 层方案未落地「唯一 turn 实现」之前，Router 的 FIFO 排队没有意义 —— 因为另一条路径（渠道 / 子代理 / 评测）仍然可以绕过队列并发执行。**这与 2026-10-15 那次的失败是同一个形状：只建一半。**
 
-### 0.6 排队语义的前端契约（**破坏性变更，必须有契约与开关**）
+### 0.7 排队语义的前端契约（**破坏性变更，必须有契约与开关**）
 
 「并发消息从『拒绝 409』改为『排队』」是**前端可见的行为变更**：
 
@@ -171,8 +184,8 @@ InboundMessage（来自 Gateway）
           2c. 调 Session 的 resolve_or_create(session_key, agent_binding) → SessionRef
           2d. 分配会话内单调序号 ingress_seq（原子）
           2e. 入队（status=queued）
-          输出：SessionAssignment{session_id, agent_id, ingress_seq,
-                                predecessor_seq, queue_position}
+          输出：SessionAssignment{session_ref, agent_id, agent_version,
+                                ingress_seq, predecessor_seq, queue_position}
    │
    ▼
 Session（执行）
@@ -180,7 +193,7 @@ Session（执行）
 
 **⚠️ 为什么 Strategy 不能完全排在 Session Routing 之前**（2026-10-29 审查修正）：
 
-决策链的**规则 1「会话粘性」需要「目标会话已存在」这个事实**，而 Gateway 的 `InboundMessage` **不含会话绑定字段**（Gateway 方案 §4.3 的 17 个字段里没有）。若 Strategy 完全先执行，它**拿不到既有绑定** —— 规则 1 无法实现。
+决策链的**规则 1「会话粘性」需要「目标会话已存在」这个事实**，而 Gateway 的 `InboundMessage` **不含会话绑定字段**（Gateway 方案 §3.3 的 16 个字段里没有）。若 Strategy 完全先执行，它**拿不到既有绑定** —— 规则 1 无法实现。
 
 **正确的流程是两步**：
 
@@ -191,7 +204,9 @@ Session（执行）
 | 3 | Strategy：命中则走粘性；未命中则走完整规则链 | Router | 粘性与规则链共用同一个 `RouteDecision` 出口 |
 | 4 | `resolve_or_create(session_key, agent_binding)` | **Session** | 决策 #10：会话创建只有一处 |
 
-> **决策 #10 的边界澄清**：「Router 不直接写会话表」**约束的是写，不是读**。Router 读 `agent_sessions`（lookup、数会话数配额、读 `last_completed_seq`）是允许的 —— 架构测试规则 1 禁的是**写生命周期字段**（见 §10.2）。
+> **决策 #10 的边界澄清**：「Router 不直接写会话表」**约束的是写，不是读**。Router 读 `agent_sessions` 是允许的 —— 架构测试规则 1 禁的是**写生命周期字段**（见 §10.2）。
+>
+> **⚠️ 但读路径只有一条**：**既有会话绑定的读取一律经 Session 的 `lookup` 端口**（§9）—— Router 直接读 `agent_sessions` **仅限**两件事：`next_ingress_seq` 的分配与 `last_completed_seq` 的读取。**不得另开一条直接读绑定的路径**（否则粘性规则与 §10.2 规则 1 的扫描口径都判不清）。
 >
 > **Session 必须提供 `lookup` 端口** —— 原方案只定义了 `resolve_or_create`，而它需要 `agent_binding` 作为**入参**，用粘性去喂它就成了鸡生蛋。`lookup` 是只读的、可单独实现的、不创建任何东西。已同步登记到 [`session-refactor-plan.md`](session-refactor-plan.md)。
 
@@ -225,7 +240,6 @@ class RouteDecision:
     confidence: float                 # 0..1
     reason: str                       # 人类可读原因
     candidates: tuple[AgentCandidate, ...]   # 落选候选 + 各自得分
-    model_hint: str | None = None     # 给 Agent Router 的模型偏好（不强制）
     source: Literal["sticky", "explicit", "business_line", "user_tag", "fallback"]
 ```
 
@@ -240,8 +254,8 @@ class RouteDecision:
 | 业务线 | `admin_agents.category` | 已是业务线语义 |
 | 用户可见范围 | `admin_agents.visible_scope` | 已是「部门」语义 |
 | 标签 | `admin_agents.tags` | 已有 |
-| 扩展配置（策略偏好、模型偏好、场景） | `admin_agents.profile`（JSONB） | 已存在，无需 DDL |
-| 默认 agent / 业务线→agent 映射 | `profile` 或工作区级配置 | 见 §6.3 的决策点 |
+| 扩展配置（策略偏好、场景） | `admin_agents.profile`（JSONB） | 已存在，无需 DDL。⚠️ **不含模型偏好** —— 模型由 agent 配置绑定（D1）|
+| 默认 agent / 业务线→agent 映射 | `profile` 或工作区级配置 | 见 §6.4 的决策点 |
 
 > **不新建策略表**是刻意的：策略是**agent 的属性**，不是独立实体。新建 `routing_rules` 表会带来「策略与 agent 两套真相」——正是我们要消灭的那类重复。
 
@@ -421,20 +435,26 @@ AND 该会话当前没有正在执行的 turn
 
 ## 5. 四个必须澄清的边界
 
-### 5.1 Strategy 选 agent ≠ Agent 层的模型 / 工具取值
+### 5.1 Router 选 agent ≠ Agent Router 选专家
 
-> **决策 #4**：**深度任务判定与模型链解析不在本层**，归 **Agent 层**。理由：本层在**会话入口**执行，那时还没有上下文（消息数、工具数、意图都拿不到），无法判定深度任务。
+> **Router 决策 #4**：**深度任务判定与模型链解析不在本层**，归 **Agent 层**。理由：本层在**会话入口**执行，那时还没有上下文（消息数、工具数、意图都拿不到），无法判定深度任务。
 
-| | Router.Strategy | Agent 层（基线图） |
+| | **⑤ Router.Strategy** | **⑧ Agent Router** |
 |---|---|---|
-| 时机 | **入站时**（拿到标准消息后立刻） | **Agent Loop 内**，每一步推理之后 |
-| 决定 | **哪个 agent**（处理单元） | **哪个专家 Agent**（⑧） |
-| 依据 | 业务线、用户标签、显式指定、会话粘性 | 推理意图、专家目录 |
-| 上下文依赖 | **不需要**完整上下文 | 需要 |
+| 轴 | 执行轴 · **会话入口一次** | 执行轴 · **每步一次** |
+| 选什么 | **会话绑定的 agent**（处理单元） | **本步的专家 Agent** |
+| 结果 | **会话绑定**（冻结到 agent 版本，会话内不变） | **本步的专家**（每步可变） |
+| 依据 | 会话粘性 > 显式指定 > 业务线(category) > 用户标签 > 兜底 | 推理意图 + 专家目录 |
+| 上下文依赖 | **不需要**完整上下文 | 需要（每步的上下文） |
+| 模型 / 工具 | **不涉及** —— 配置轴，管理员在 agent 配置里绑定 | **不涉及** —— 随选中专家的配置取值（Agent 方案 §5.2.1 / §5.3.1） |
 
-> **⚠️ 模型 / 工具不在这一列里** —— Agent 决策 #4 已定：模型与工具由**管理员在 agent 配置里绑定**，运行时**查表取值**（Agent 层 Execution），**不是运行时挑**。所以本层的对照只到「选专家」为止。
+> **⚠️ 模型 / 工具不在这两列里** —— Agent 决策 #4 已定：模型与工具由**管理员在 agent 配置里绑定**，运行时**查表取值**（Agent 层 Execution），**不是运行时挑**。所以本层的对照只到「选专家」为止。
+>
+> **两者不冲突的原因**：Router 选的是**整个会话跟谁聊**（一次决定，全程有效）；Agent Router 选的是**这一步交给哪个专家**（每步可变）。专家切换**不改变会话绑定**（Agent 方案 §4.1 规则 4）。
 
-> **推论**：v3.1 里放在 `route` 节点的「模型策略链选择」与「深度任务判定」**不属于本层**，应归 Agent 层。Router 层最多给一个 `model_hint`（偏好，不强制）。
+> **推论**：v3.1 里放在 `route` 节点的「模型策略链选择」与「深度任务判定」**不属于本层**，应归 Agent 层。
+>
+> **⚠️ 本层不产出任何模型 / 工具信号** —— D1 之后「给下游一个模型偏好」在语义上不存在（模型在配置轴上由管理员绑定，运行时只查表）。所以 `RouteDecision` **没有 `model_hint` 字段**。
 
 ### 5.2 `deep_task` 判定不在 Strategy
 
@@ -487,9 +507,9 @@ v3.1 §5.5 的启用规则依赖「消息数 > 20」「工具数 > 5」等**完�
 
 新表多了幂等键、乐观并发、agent 版本冻结、成本——**这些正是 Router 与 Session 需要的字段**（旧表没有）。
 
-> **决策 #2**：启用新表 `session_turns` / `session_messages` / `session_events`，旧表 `agent_turns` / `agent_session_messages` 在切换时**迁数据后废弃**。理由：新表是 Gateway 方案 §9 已定的目标形态，两层用同一套表才不产生第二套真相。
+> **决策 #2**：启用新表 `session_turns` / `session_messages` / `session_events`，旧表 `agent_turns` / `agent_session_messages` 在切换时**迁数据后废弃**。理由：新表是 Gateway 方案 §8 已定的目标形态，两层用同一套表才不产生第二套真相。
 >
-> 影响：`agent_sessions` 是否也换成新表？Gateway 方案 §9 已定「`agent_sessions` 保留」。本方案沿用 `agent_sessions` 作为会话主表，只在其上加列。
+> 影响：`agent_sessions` 是否也换成新表？Gateway 方案 §8 已定「`agent_sessions` 保留」。本方案沿用 `agent_sessions` 作为会话主表，只在其上加列。
 
 ### 6.2 Router 需要的状态落点
 
@@ -499,7 +519,7 @@ v3.1 §5.5 的启用规则依赖「消息数 > 20」「工具数 > 5」等**完�
 | 会话内入站序号 | `agent_sessions.next_ingress_seq`（**新增列**） | `Integer NOT NULL DEFAULT 0` |
 | 最后完成轮次的序号 | `agent_sessions.last_completed_seq`（**新增列**） | `Integer NOT NULL DEFAULT 0`；权威值在 `session_turns`，本列是冗余快照。**一致性由同事务更新保证**；万一落后，放行判定走 §4.2(c) 的兜底路径（以权威值为准 + 修复 + 告警） |
 | 排队中的消息 | `session_turns`（`status='queued'` + `ingress_seq`） | 启用新表；**DDL 归 Session（0046）**，本方案只引用 |
-| 路由决策留痕 | `session_turns` 的 `route_decision`（JSONB） | 记录 `RouteDecision`；**DDL 归 Session（0046）** |
+| 路由决策留痕 | `session_turns` 的 `route_decision`（JSONB） | 记录 `RouteDecision`；**DDL 归 Session（0046）**；⚠️ **本层是这一列的唯一写者** —— Agent 层的专家选择写**另一列** `agent_decision`（见 Agent 方案 §4.1），两者语义不同、不可共用一列 |
 | 用户属性 | `identity` 的 `User.metadata` + 新增 `UserDirectoryPort` | 结构化字段待补（§1.5） |
 
 ### 6.3 迁移草案（0045）
@@ -588,7 +608,7 @@ ALTER TABLE agent_sessions
 
 | 文件 | 内容 |
 |---|---|
-| `types.py` | `RouteDecision` / `AgentTarget` / `AgentCandidate` / `SessionAssignment` |
+| `types.py` | `RouteDecision`（§3.2 给了完整定义）/ `AgentTarget` / `AgentCandidate` / `SessionAssignment`（形状以 §9 的边界表为准）|
 | `strategy.py` | `Strategy` Protocol + 规则链实现 + `RouteDecision` 留痕 |
 | `session_key.py`（⚠️ **不叫 `session_router.py`** —— 那个名字已被既有的 `modules/agent_runtime/adapter/http/session_router.py` 占用，它是 **HTTP 路由**不是会话路由，同名必然混淆） | 会话 key 派生 · 映射与创建 · `ingress_seq` 分配 · 入队 |
 | `sequencer.py` | `SessionSequencer` Protocol + FIFO 放行判定 + advisory lock 端口 |
@@ -601,7 +621,7 @@ ALTER TABLE agent_sessions
 | `modules/agent_runtime/adapter/http/session_router.py:162` `agentId` 直取 | `router/strategy.py` | 改为「显式指定」规则，优先级 2 |
 | `modules/agent_runtime/adapter/persistence/repositories.py:85-108` `try_claim` | 拆成 Router（FIFO）+ Session（执行权） | 改造 |
 | `runtimes/.../channels/gateway.py` `build_session_key` | `router/session_key.py` | 改为哈希版 |
-| `runtimes/.../graph/routing.py:91` `classify_task_kind_heuristic` | `agent_router`（**不属本层**） | ⚠️ **该文件从未接线**（`runtimes/agent_runtime/` 全仓零生产引用）→ **「迁出」是伪动作**。它是 **Agent 层**的删除范围（台账 X1），本层**不碰**，Router 只在自己的 `types.py` 里留 `model_hint` 字段 |
+| `runtimes/.../graph/routing.py:91` `classify_task_kind_heuristic` | `agent_router`（**不属本层**） | ⚠️ **该文件从未接线**（`runtimes/agent_runtime/` 全仓零生产引用）→ **「迁出」是伪动作**。它是 **Agent 层**的删除范围（台账 X1），本层**不碰** |
 
 ### 7.3 保留但改造
 
@@ -653,7 +673,7 @@ ALTER TABLE agent_sessions
 | 动作 | 细节 |
 |---|---|
 | 规则链实现 | 粘性 > 显式 > 业务线 > 用户标签 > 兜底 |
-| `RouteDecision` 留痕 | 写入 `session_turns.route_decision` |
+| `RouteDecision` 留痕 | 写入 `session_turns.route_decision`（**本层唯一写者**；Agent 写 `agent_decision`，不共用本列） |
 | web 建会话改走 Strategy | `session_router.py:162` → Strategy |
 
 **旧代码减少**：`agentId` 直取逻辑收进 Strategy 规则。
@@ -666,6 +686,7 @@ ALTER TABLE agent_sessions
 | 动作 | 细节 |
 |---|---|
 | 会话 key 派生 | 本层职责：tenant+workspace+channel+chat+user → sha256 |
+| **只读 `lookup(session_key)`** | **调 Session 的 `lookup` 端口**（不是直接查表）→ `SessionRef` 或 `None`。⚠️ **这是粘性规则的唯一依据来源**（§3.1 规则 1）—— 没有它，「命中 → 走粘性」无法实现 |
 | 会话创建/复用 | **调 Session 的 `resolve_or_create`**（不再自建）；绑定 Strategy 选出的 agent |
 | `ingress_seq` 分配 + 入队 | 新增列 + `session_turns.status='queued'` |
 | **删除** IM 临时 session 创建 | `dispatch_subscriber.py:175-186` |
@@ -680,6 +701,7 @@ ALTER TABLE agent_sessions
 | 动作 | 细节 |
 |---|---|
 | FIFO 放行判定 | `ingress_seq == last_completed_seq + 1` |
+| **FIFO 兜底路径** | ⚠️ `last_completed_seq` 是 `agent_sessions` 上的**冗余快照**，可能落后于权威值（`session_turns`）→ **以权威值为准放行**，并修复快照 + 计数告警（§6.2 的兜底口径）|
 | 会话级互斥 | **轮次表 CAS 为主**（`session_turns.status`）；advisory lock 仅作优化（决策 #9） |
 | 审批中断不占执行位 | 轮次状态机区分 `waiting` 与 `running`（`waiting_approval` 是**会话级**状态，见 §4.3） |
 | 并发语义切换 | 从「拒绝 SESSION_BUSY」改为「排队」 |
@@ -725,11 +747,14 @@ ALTER TABLE agent_sessions
 
 | 阶段 | 删除/替换 | 量级 | 旧路径状态 |
 |---|---|---|---|
+| Stage 0 | 无（纯新增：契约 + 迁移 0045） | 0 | — |
 | Stage 1 | `agentId` 直取 | ~10 行 | 直接替换（无残留调用方） |
 | Stage 2 | IM 临时 session 创建 + 硬编码 agent | ~40 行 | 直接替换 |
 | Stage 3 | **无**（旧路径无顺序机制，FIFO 全新建） | 0 | — |
 | Stage 4 | — | 0 | **停用 + 打点**（进入清理窗口） |
-| Stage 5 | `build_session_key` + `catalog.py` 展示映射 | **~90 行** | 删除（台账清零）。`dispatch_subscriber.py`、第二套 turn 实现、**`try_claim`（R3）** 均**不在本层删除** |
+| Stage 5 | `build_session_key` + `catalog.py` 展示映射 | **~60 行** | 删除（台账清零）。`dispatch_subscriber.py`、第二套 turn 实现、**`try_claim`（R3）** 均**不在本层删除** |
+
+> **全层合计约 110 行**（10 + 40 + 60）。⚠️ **不含 `try_claim`** —— 旧路径**从来没有顺序机制**（§5.4 的更正），`try_claim` 的互斥职责归 **Session（R3）**，本层不删。
 
 ---
 
@@ -880,7 +905,7 @@ def test_router_layer_has_no_framework_imports():
 | # | 决策 | 本方案建议 | 备选 | 影响 |
 |---|---|---|---|---|
 | 1 | 并发消息语义 | **S1 严格排队**（FIFO） | S2 拒绝（现状）/ S3 合并 | 前端契约、用户体验、工作量 |
-| 2 | 表选择 | **启用新表** `session_turns` / `session_messages`，旧 `agent_turns` / `agent_session_messages` 迁数据后废弃 | 沿用旧表（缺幂等键/revision/版本冻结字段） | 与 Gateway 方案 §9 一致性 |
+| 2 | 表选择 | **启用新表** `session_turns` / `session_messages`，旧 `agent_turns` / `agent_session_messages` 迁数据后废弃 | 沿用旧表（缺幂等键/revision/版本冻结字段） | 与 Gateway 方案 §8 一致性 |
 | 3 | 默认 agent / 业务线映射的配置落点 | **`admin_agents.profile`**（不新建策略表） | 工作区级配置 / 新建 `routing_rules` 表 | 配置模型 |
 | 4 | 深度任务判定与模型链解析 | **不在本层**，归 Agent 层 | 放 Strategy（但入站拿不到上下文） | 与基线图的一致性 |
 | 5 | `ingress_seq` 分配方式 | **会话行原子自增**（`next_ingress_seq` 列） | 全局序列 / 分布式锁 | 跨 worker 正确性 |
@@ -889,6 +914,26 @@ def test_router_layer_has_no_framework_imports():
 | 8 | 排队语义的开关 | **`QZDAP_ROUTER_QUEUE_ENABLED` 默认 off**，前端先兼容再开 | 无开关直接切（不可回滚） | 回滚成本 |
 | 9 | 会话级互斥的原语 | **轮次表 CAS 为唯一权威**（`session_turns.status`）；advisory lock 仅作优化，**不用 `_xact_` 变体** | 纯 advisory lock（事务提交即失效） | 并发正确性 |
 | 10 | 会话实例由谁创建 | **Router 只派生 `session_key` + 分配 `ingress_seq`；`resolve_or_create` 由 Session 执行**（R1） | R2 Router 自己查建会话（两处都能建 → 第二套真相） | 会话创建逻辑的唯一性、层间依赖顺序 |
+
+---
+
+## 附录 C：2026-10-29 审查修正记录
+
+> 本方案 v1.2 → **v1.3** 的全部修正。**每条都对着 `backend/` 的代码与迁移核实过**。
+
+| # | 级别 | 问题 | 修正 | 落点 |
+|---|---|---|---|---|
+| **D1** | 设计 | **骨架与 Agent 决策 #4 不自洽**：D1 取消了 Model Router / Tool Router 之后，本方案 §5.1 的对照表仍按「Strategy 选 agent ≠ Agent Router 选模型 / 工具」建立 —— 而**模型 / 工具已不是任何一层的「选择」** | **按两条轴重排**：新增 **§0.2 本层的前提**（入口一次 / 每步一次 / 配置轴不归本层）作为全篇前提；**§5.1 改为「⑤ Router.Strategy vs ⑧ Agent Router」两轴对照**（模型 / 工具两行均标「不涉及」）；§0.4 补一行「本层不产出模型 / 工具信号」；**删除 `RouteDecision.model_hint` 字段**（D1 后无消费方）| §0.2 / §0.3 / §0.4 / §3.2 / §3.3 / §5.1 / §7.3 / 附录 A |
+| **D2** | 严重 | **`route_decision` 一列两写者**：Router 写 `RouteDecision`（会话入口策略决策），Agent 层也写同一列（每步专家选择）→ **后写覆盖先写**，Router 的可解释性留痕被冲掉 | **拆成两列**：0046 建 `route_decision`（**Router 唯一写者**）与 `agent_decision`（**Agent 写**）；同步 §6.2 / Stage 1 / 边界表 | §6.2 / §8 Stage 1 / Session §7.2 / Agent §4.1 / README §3.3.2 |
+| **D3** | 严重 | **§8 Stage 2 缺 `lookup` 工作项**：§3.1 规则 1（会话粘性）与 §2 的两步流程都以「拿到既有会话绑定」为前提，但 Stage 2 表里只有 key 派生 / `resolve_or_create` / 入队 —— **照此施工，粘性规则无法实现** | Stage 2 补「只读 `lookup(session_key)`」行，并标注它是粘性规则的**唯一依据来源** | §8 Stage 2 |
+| **D4** | 严重 | **§8 Stage 3 缺 FIFO 兜底路径**：§6.2 明确 `last_completed_seq` 是**冗余快照**，可能落后于 `session_turns` 的权威值，但 Stage 3 表里没有兜底动作 | Stage 3 补「FIFO 兜底路径」行（以权威值为准放行 + 修复快照 + 计数告警）| §8 Stage 3 / §6.2 |
+| **D5** | 中 | **读路径两条并存**：§2 写「Router 读 `agent_sessions`（lookup…）是允许的」，而 §3.1 / §9 又规定 lookup 经 **Session 端口** → 两条读路径并存，§10.2 规则 1 的扫描口径判不清 | §2 明确「**既有会话绑定的读取一律经 Session 的 `lookup` 端口**；直接读表仅限 `next_ingress_seq` 分配与 `last_completed_seq` 读取」| §2 / §9 / §10.2 |
+| **D6** | 中 | **旧代码减少三处对不上**：§8 对照表 Stage 5 写 ~90 行；实施方案 R-22 ~30 + R-24 ~30 = 60；实施方案汇总又写「约 130 行」并把 **`try_claim` 顺序职责 20 行**算进来 —— 但 §5.4 已更正「旧路径从来没有顺序机制」，`try_claim` 归 Session | 对照表 Stage 5 改 **~60 行**；全层合计 **~110 行**；实施方案汇总去掉 `try_claim` 20 行 | §8 对照表 / 实施方案 §3.2 |
+| **D7** | 中 | **`SessionAssignment` 形状三处不一致**：§2 图写 `session_id`（缺 `agent_version`），§9 写 `session_ref` + `agent_version` | 统一为 §9 的形状（`session_ref` / `agent_id` / `agent_version` / `ingress_seq` / `predecessor_seq` / `queue_position`）；§2 图同步 | §2 / §9 / 基线 §4 |
+| **D8** | 中 | **悬空引用**：§3.3 写「见 §6.3 的决策点」，但 §6.3 是「迁移草案（0045）」，配置落点在 **§6.4** | 改指 §6.4 | §3.3 |
+| **D9** | 中 | **决策 #4 同号不同义**：§5.1 的「决策 #4」指本方案附录 A 的 #4，而同节又提到「Agent 决策 #4」—— 同号两义 | 本方案内的指称一律写「**Router 决策 #4**」 | §5.1 / §6.1 |
+
+> **同步改动**：`session-refactor-plan.md`（0046 建 `agent_decision` 列 / §7.1 表终态 / §7.2 回滚）、`agent-refactor-plan.md`（§4.1 规则 3 / §7.1 / §9 Stage 4 改写 `agent_decision`）、`session-lifecycle-sequence.md`（§4 契约表补两列的写者）、`implementation-plan.md`（A-24 / R-08 / S-02 / 依赖表）、`README.md`（§3.3.2 表归属）。
 
 ---
 

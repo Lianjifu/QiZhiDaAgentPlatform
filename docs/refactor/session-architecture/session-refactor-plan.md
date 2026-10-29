@@ -1,8 +1,8 @@
 # Session 层重构方案
 
-> 版本：1.1（审查修正后）
+> 版本：1.2（审查修正后 + 按审查结论重排骨架）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**已评审**（15 条审查问题已修正，逐条见附录 C；附录 A 的 7 条决策待确认）
+> 状态：**已评审**（15 条审查问题已修正 + **本轮重排**，逐条见附录 C；附录 A 的 7 条决策待确认）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) —— 本方案实现其中 **Session 泳道**
 > 收敛机制：[`cleanup-ledger.md`](cleanup-ledger.md) —— 本方案对应条目 **X2、X3、X4、X6、X7、X18**
@@ -21,13 +21,16 @@ Router ──路由到会话──▶ Session ──构建上下文──▶ Con
              └────更新会话状态─┘
 ```
 
-### 0.2 三个子件
+### 0.2 三个子件 + 一个执行器
 
 | 子件 | 职责 | 回答的问题 |
 |---|---|---|
 | **Manager** | 会话创建、销毁、超时管理 | 这个会话**从哪来、什么时候消失、什么时候被判死** |
 | **State** | 会话状态机（进行中 / 等待用户 / 已结束） | 会话**现在处于什么状态、允许什么转移** |
 | **Thread** | 多轮对话的线程管理，支持并发会话 | 一个会话里的**多轮**怎么串起来、多个会话怎么并行 |
+| **turn 执行器**（§9） | **唯一**的一套 turn 编排：claim · 幂等 · 取消 · 审批中断恢复 | 这一轮**由谁执行、按什么顺序** |
+
+> **为什么执行器单独成章**：它是**本层最大的一块工作量**，也是**全局唯一 turn 实现** —— 多个 Agent 方案（Agent Loop / Execution）都依赖它。埋在「Thread」里会让依赖关系看不出来。
 
 ### 0.3 Session 明确不做
 
@@ -157,8 +160,9 @@ pending["decision"] = "approved" if approved else "denied"
 | outbox 投递状态机（8 次重试、指数退避+jitter、死信） | `runtimes/.../outbox/__init__.py` | ✅ 逻辑真，**未接线** |
 | `Last-Event-ID` 重放语义 | `runtimes/.../result/sink.py:54-86` | ✅ 内存实现 |
 
-> **注意**：表中最后一行是**反例**（同步 saver），不计入「可复用资产」。
 | `PostgresSaver.from_conn_string` | `runtimes/.../graph/builder.py:144-175` | ⚠️ **反例，不算可复用资产** —— 它是**同步版** saver，在全异步仓库里会阻塞事件循环（§5.3）；只能作为「同步版长什么样」的参照，**不得复用** |
+
+> **注意**：表中最后一行是**反例**（同步 saver），不计入「可复用资产」。
 
 ---
 
@@ -235,7 +239,7 @@ class SessionManagerPort(Protocol):
 
 > **为什么索引归 Session 而非 Router**：Router 只**派生** `session_key`，**不建会话**（**Router 决策 #10**）。唯一索引保护的是「同一外部会话不会被建出两个会话」——这是**会话创建**的正确性，属会话域。
 
-**幂等键与轮次幂等**：`session_turns` 的 `idempotency_key` + 唯一约束 `(session_id, idempotency_key)` —— 同一 `clientRequestId` 重复到达 → 唯一约束冲突 → 读回既有 turn（Gateway 幂等的第二道防线，见 Gateway 方案 §5.6 三层键传递链）。
+**幂等键与轮次幂等**：`session_turns` 的 `idempotency_key` + 唯一约束 `(session_id, idempotency_key)` —— 同一 `clientRequestId` 重复到达 → 唯一约束冲突 → 读回既有 turn（Gateway 幂等的第二道防线，见 Gateway 方案 §4.6 三层键传递链）。
 
 ### 3.2 销毁
 
@@ -260,9 +264,9 @@ class SessionManagerPort(Protocol):
 | **会话空闲** | 会话最后活动后无新消息 | 30 天（可配） | `close`（reason=`idle_timeout`） | ❌ 无 |
 | **幂等键过期** ⚠️ **新增** | `session_inbox` 里 `expires_at < now()` 的行 | 按行（24h / 7d / 120s 三档，Gateway 写入时定） | **删除该行**（单批 ≤1000 行） | ❌ 无 —— ⚠️ **不清理会导致 Gateway 的幂等在 TTL 之后持续误杀** |
 
-> **第四类是 Gateway 方案的硬依赖**（2026-10-29 审查发现）：`session_inbox` 的表归属是 Session（[Gateway 方案](gateway-refactor-plan.md) §9），唯一约束不含 `expires_at` —— **过期行留在表里，同一个键重发时仍会命中冲突**。Gateway 侧的 claim 分支有「过期即当作不存在」作为第二道保险，但**表会无限膨胀**，所以必须有人定期删。
+> **第四类是 Gateway 方案的硬依赖**（2026-10-29 审查发现）：`session_inbox` 的表归属是 Session（[Gateway 方案](gateway-refactor-plan.md) §8），唯一约束不含 `expires_at` —— **过期行留在表里，同一个键重发时仍会命中冲突**。Gateway 侧的 claim 分支有「过期即当作不存在」作为第二道保险，但**表会无限膨胀**，所以必须有人定期删。
 >
-> **归属**：本层负责删（表归本层）；Gateway 只负责**写入时把 `expires_at` 定对**（三档 TTL 由幂等键的来源决定，见 Gateway 方案 §5.2）。**两侧都要做，只做一边不够。**
+> **归属**：本层负责删（表归本层）；Gateway 只负责**写入时把 `expires_at` 定对**（三档 TTL 由幂等键的来源决定，见 Gateway 方案 §4.2）。**两侧都要做，只做一边不够。**
 
 **清扫器的归属**：Session 层提供 `SweepReport` 与清扫逻辑；**调度由 composition 启动定时任务**（与 outbox worker 同类）。现状 outbox worker 有实现但未接线——**两个清扫任务一起接线**。
 
@@ -299,7 +303,7 @@ class SessionManagerPort(Protocol):
 | `open` | `running` | 轮次开始执行 | 该会话无其他 `running` 轮次 |
 | `running` | `open` | 轮次结束（成功/失败/取消） | 存在 `current_turn_id` 指向的终态轮次 |
 | `running` | `waiting_approval` | 工具审批挂起 | 审批已落 `session_turns.pending_approval` |
-| `waiting_approval` | `running` | 审批恢复执行 | 审批校验通过（见 §5.6） |
+| `waiting_approval` | `running` | 审批恢复执行 | 审批校验通过（见 §8） |
 | `waiting_approval` | `open` | 审批拒绝 / 审批过期 | — |
 | `open` / `running` / `waiting_approval` | `cancelled` | 用户取消 | — |
 | `open` / `running` / `waiting_approval` | `closed` | 关闭 / 归档 / 空闲超时 | — |
@@ -381,7 +385,7 @@ class SessionManagerPort(Protocol):
 - **回退路径**：checkpoint 缺失或损坏 → 从 `session_messages` 重建（会话的规范真相是消息序列，不是 checkpoint）；
 - **禁止**把 checkpoint 只放在进程内存——重启即丢。
 
-### 5.4 唯一 turn 实现（本层最大的工作量）
+### 6. 唯一 turn 实现（执行器 · 本层最大的工作量）
 
 **合并两套为一套**，保留 Copilot 版的治理语义：
 
@@ -398,15 +402,15 @@ class SessionManagerPort(Protocol):
 
 | 能力 | Copilot 版 | use_cases 版 | 合并后 |
 |---|---|---|---|
-| 会话执行权互斥 | ✅ `try_claim`（**仅互斥，无顺序语义**，见 §8.2） | ❌ | ✅ **轮次表 CAS 是唯一权威**；advisory lock 仅作优化 |
+| 会话执行权互斥 | ✅ `try_claim`（**仅互斥，无顺序语义**，见 §11.2） | ❌ | ✅ **轮次表 CAS 是唯一权威**；advisory lock 仅作优化 |
 | 轮次幂等 | ⚠️ metadata 存 8 个 id | ❌ | ✅ `session_turns.idempotency_key` 唯一约束 |
 | 取消 | ✅ 跨进程 | ❌ | ✅ 独立列 `cancel_requested` |
-| 审批中断/恢复 | ⚠️ 校验被吞 | ❌ | ✅ 见 §5.6 |
+| 审批中断/恢复 | ⚠️ 校验被吞 | ❌ | ✅ 见 §8 |
 | chunk 语义 | ✅ 完整 | ⚠️ 简化 | ✅ 取 Copilot 版 |
-| 事件产出 | ❌ 不落库 | ❌ | ✅ 落 `session_events`（§5.5） |
+| 事件产出 | ❌ 不落库 | ❌ | ✅ 落 `session_events`（§7） |
 | 成本归属 | ✅ `_price_of` | ❌ | ✅ 写 `session_turns.cost_usd` |
 
-### 5.5 事件落库与 outbox（Gateway 重放的硬交付）
+### 7. 事件落库与 outbox（Gateway 重放的硬交付）
 
 **每个 chunk 先落库，再投递**：
 
@@ -414,7 +418,7 @@ class SessionManagerPort(Protocol):
 产出 chunk
    → 写 session_events (turn_id, seq, event_type, payload, delivery_status='pending')
    → 提交
-   → dispatcher 调度投递（**编码与渠道投递归 Gateway**，见 §6.1；本层只负责调度、重试与死信）
+   → dispatcher 调度投递（**编码与渠道投递归 Gateway**，见 §9.1；本层只负责调度、重试与死信）
    → 更新 delivery_status = delivered / failed（+ delivery_attempts）
    → 超过 MAX_DELIVERY_ATTEMPTS=8 → outbox_dead_letters
 ```
@@ -429,7 +433,7 @@ class SessionManagerPort(Protocol):
 
 > **这是 Gateway 方案决策 #4「无感重放」的落地依赖**。没有它，Gateway 的重复请求只能返回 202 + turn_id。
 
-### 5.6 审批中断与恢复（安全加固）
+### 8. 审批中断与恢复（安全加固）
 
 **目标**：审批的挂起与决策**全部落库**，恢复时**逐项校验**，异常**不吞**。
 
@@ -454,7 +458,7 @@ class SessionManagerPort(Protocol):
 
 **并去掉 `except Exception: pass`** —— 审批失败必须变成用户可见的错误（`ErrorChunk`），而不是静默放行。
 
-**审批重复点击**：恢复时幂等键必须参与（§5.4 轮次幂等），同一个 `(session_id, tool_call_id, request_hash)` 复用同一 approval ID，不重复执行工具。
+**审批重复点击**：恢复时幂等键必须参与（§6 轮次幂等），同一个 `(session_id, tool_call_id, request_hash)` 复用同一 approval ID，不重复执行工具。
 
 > **决策 #4**：审批恢复失败时的错误**对用户可见**（推荐，`ErrorChunk` + 明确错误码），还是**静默降级为「工具未执行」并继续本轮**？
 >
@@ -462,15 +466,16 @@ class SessionManagerPort(Protocol):
 
 ---
 
-## 6. 与相邻层的边界
+## 9. 与相邻层的边界
 
-| 方向 | 契约 |
-|---|---|
-| Router → Session | **两步**：① `lookup(session_key) → SessionRef \| None`（只读，供粘性规则用）② `resolve_or_create(identity, agent_binding) → SessionRef`；`start_turn` 入参含 `ingress_seq` |
-| Session → Agent Loop | `AgentRequest`（含 messages、工具白名单、审批上下文） |
-| Session → Gateway | **读取端口** `EventStore.get_events(turn_id, after_seq)` → `list[SessionEvent]`（供 Gateway 的 `Last-Event-ID` 无感重放，见 Gateway 方案 §5.5）+ `ResultEvent` 流 |
-| Session → Context | `SessionRef` + 消息序列（供组装） |
-| Session ← Router | 执行权由 Session 持有（**`session_turns.status` 的 CAS 是唯一权威**，advisory lock 仅作优化 —— 与 Router 方案 §4.2(c) 同一口径） |
+| 方向 | 契约 | 它欠本层的 |
+|---|---|---|
+| **Gateway → Session** | `IdempotencyStore` 实现（`session_inbox` 表，**表归本层**）+ `InboundMessage.idempotency.value` → `session_turns.idempotency_key` | **无**（Gateway 方案 §7 已同步）|
+| **Router → Session** | **两步**：① **只读** `lookup(session_key)` → `SessionRef` 或 `None`（供粘性规则用）② `resolve_or_create(session_key, agent_binding)` → `SessionRef`；随后分配 `ingress_seq` 并**向 Session 请求入队** | **无**（Router 方案 §0.6 / §5）|
+| **Session → Context** | `SessionRef` + **消息序列** + 轮次上下文（审批状态）—— 供组装 | **无** |
+| **Session → Agent Loop** | ⚠️ **只有审批句柄**：审批挂起 / 恢复所需的 `pending_approval` 与 `approval_id`。⚠️ **不含 messages**（消息由 **Context** 装配成 `AssembledContext.messages`）、**不含工具白名单**（工具集来自 **agent 配置的绑定集**，Agent 方案 §5.3.1）| **无** |
+| **Session → Gateway** | **读取端口** `EventStore.get_events(turn_id, after_seq)` → `list[SessionEvent]`（供 Gateway 的 `Last-Event-ID` 无感重放，见 Gateway 方案 §4.5）+ `ResultEvent` 流 | **无** |
+| **Session ← Router** | 执行权由 Session 持有（**`session_turns.status` 的 CAS 是唯一权威**，advisory lock 仅作优化 —— 与 Router 方案 §4.2(c) 同一口径） | **无** |
 
 **与 Router 的分工**（两处容易混）：
 
@@ -480,7 +485,7 @@ class SessionManagerPort(Protocol):
 | 「消息什么时候轮到」 | ✅ `ingress_seq` + FIFO 判定 | 提供轮次表 |
 | 「能不能执行」 | ❌ | ✅ 执行权（**CAS 是唯一权威**，advisory lock 仅作优化） |
 
-### 6.1 出站投递的分工（与 Gateway 决策 #1 对齐）
+### 9.1 出站投递的分工（与 Gateway 决策 #1 对齐）
 
 Gateway 决策 #1 把「**出站编码 + 渠道投递**」归 **Gateway 的 ① Channel Gateway**。因此本层的 outbox 职责被收窄为：
 
@@ -491,18 +496,20 @@ Gateway 决策 #1 把「**出站编码 + 渠道投递**」归 **Gateway 的 ① 
 | **编码成渠道消息格式**（卡片 / 纯文本降级 / 附件） | **Gateway**（`ResultSink`） |
 | **实际投递到渠道** | **Gateway**（`ChannelGateway.emit`） |
 
-> Session 交付给 Gateway 的是**结构化事件**（`ResultEvent`），不是渠道报文。Gateway 负责把 `ResultEvent` 编成渠道格式并投递；投递结果（成功 / 失败 / 重试）**回传给 Session** 由其更新 `delivery_status`。这与 Gateway 方案 §6「出站：统一编码与投递」是同一件事的两面。
+> Session 交付给 Gateway 的是**结构化事件**（`ResultEvent`），不是渠道报文。Gateway 负责把 `ResultEvent` 编成渠道格式并投递。
+>
+> ⚠️ **投递状态由 Session 自持，不依赖 Gateway 回传** —— Gateway 方案只承诺「只读 `session_events`」，**没有 `emit_result` 回执契约**。Session 的 `delivery_status` 由**本层的 dispatcher** 在投递尝试后自行更新；若将来要让 Gateway 回传投递结果，需要**在 Gateway 方案 §6 补一条契约**，而不是在本层假设它存在。
 
 ---
 
-## 7. 数据与表
+## 10. 数据与表
 
-### 7.1 表终态
+### 10.1 表终态
 
 | 表 | 处置 | 说明 |
 |---|---|---|
 | `agent_sessions` | **保留**（会话主表） | 删 `wait_status`；`graph_state` 迁移后废弃 |
-| `session_turns` | **启用**（**决策 #5**：与 Router 决策 #2 同值） | 加 `pending_approval`、`ingress_seq`（0046 已含）、`cancel_requested`、`route_decision` |
+| `session_turns` | **启用**（**决策 #5**：与 Router 决策 #2 同值） | 加 `pending_approval`、`ingress_seq`（0046 已含）、`cancel_requested`、`route_decision`（**Router 写**）、`agent_decision`（**Agent 写**） |
 | `session_messages` | **启用** | 加 `session_seq` |
 | `session_events` | **启用** | Gateway 重放的落点 |
 | `outbox_dead_letters` | **启用** | 投递死信 |
@@ -510,7 +517,7 @@ Gateway 决策 #1 把「**出站编码 + 渠道投递**」归 **Gateway 的 ① 
 | `agent_session_messages` | **迁数据后废弃** | 缺会话内序号 |
 | `langgraph_checkpoints` / `langgraph_store` | **启用** | Postgres saver |
 
-### 7.2 迁移草案（0046）
+### 10.2 迁移草案（0046）
 
 ```sql
 -- migrations/versions/0046_session_runtime.py
@@ -533,12 +540,19 @@ CREATE UNIQUE INDEX uq_agent_sessions_channel_key
 --    （迁移 0046 与 Stage 6 分离，避免「迁移即删列」无法回滚）
 
 -- 2) session_turns：审批挂起 + 取消标记 + 路由留痕 + 入站序号
---    （ingress_seq / route_decision 的**唯一 owner 是本迁移**，Router 方案 0045 只引用不建）
+--    （ingress_seq / route_decision / agent_decision 的**唯一 owner 是本迁移**，
+--     Router 方案 0045 只引用不建）
+--
+--    ⚠️ route_decision 与 agent_decision **是两个列、两个写者**（唯一 owner 规则）：
+--       · route_decision  → Router 写（会话入口的策略决策，可解释性）
+--       · agent_decision  → Agent 层写（每步的专家选择 + 模型/工具取值结果）
+--      两者语义不同、写入时刻不同，共用一列会互相覆盖。
 ALTER TABLE session_turns
     ADD COLUMN pending_approval  JSONB,
     ADD COLUMN cancel_requested  Boolean NOT NULL DEFAULT false,
     ADD COLUMN ingress_seq       Integer,
-    ADD COLUMN route_decision    JSONB;
+    ADD COLUMN route_decision    JSONB,
+    ADD COLUMN agent_decision    JSONB;
 
 CREATE UNIQUE INDEX uq_session_turns_session_ingress
     ON session_turns (session_id, ingress_seq)
@@ -588,11 +602,11 @@ CREATE UNIQUE INDEX uq_session_messages_session_seq
 
 > **索引去重**：本层**不新增** `session_events` 的索引 —— 0035 的 PK 已覆盖 `(turn_id, seq)`，`ix_session_events_pending` 已覆盖待投递扫描。
 
-> **`session_messages.session_id` 需要回填**：从 `session_turns.session_id` 回填，再建唯一索引 —— **顺序不能颠倒**（先 `SET NOT NULL` 会因非空表报错）。回填 SQL 见 §7.2 第 3 步。
+> **`session_messages.session_id` 需要回填**：从 `session_turns.session_id` 回填，再建唯一索引 —— **顺序不能颠倒**（先 `SET NOT NULL` 会因非空表报错）。回填 SQL 见 §10.2 第 3 步。
 >
 > **前提**：0035 建表后该表**当前无生产写入**，所以现库上回填是空操作；但迁移**不能依赖这个前提** —— 按上面三步写，将来在有数据的库上跑也安全。
 
-### 7.2.1 0046 的回滚
+### 10.2.1 0046 的回滚
 
 0046 是**纯新增**（列 + 索引 + 1 组 checkpoint 表），但有**两处不可逆点**必须显式处理：
 
@@ -608,6 +622,7 @@ DROP INDEX IF EXISTS uq_agent_sessions_channel_key;
 -- 2) 删新增的列
 ALTER TABLE session_turns
     DROP COLUMN IF EXISTS route_decision,
+    DROP COLUMN IF EXISTS agent_decision,
     DROP COLUMN IF EXISTS ingress_seq,
     DROP COLUMN IF EXISTS cancel_requested,
     DROP COLUMN IF EXISTS pending_approval;
@@ -631,14 +646,14 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 
 > **⚠️ 回滚会丢数据**：
 > - `session_messages.session_id` / `session_seq` 是**回填出来的**（从 `session_turns.session_id` 与消息顺序推导），删列即丢；回滚后消息顺序要重新从 `session_messages` 的 `(turn_id, seq)` 推导 —— **可恢复**。
-> - `session_turns.route_decision` 是路由留痕，删列即丢 —— **不可恢复**，但它只用于审计，不影响主链路。
+> - `session_turns.route_decision`（Router 写）与 `session_turns.agent_decision`（Agent 写）是路由留痕，删列即丢 —— **不可恢复**，但它们只用于审计，不影响主链路。
 > - `session_turns.pending_approval` 是**审批挂起态**。回滚时若还有轮次停在 `waiting`，这些审批记录会丢 → **恢复后这些轮次无法再恢复执行**。因此回滚前必须先让挂起的轮次跑完或显式取消。
 >
 > **`wait_status` 不在回滚范围内**：Stage 0 只**停止写入**、保留列；物理 DROP 在 Stage 6 的独立迁移里。因此 0046 回滚后 `wait_status` 列仍在（值已停更），**旧代码仍可读**（读到旧值）—— 这正是「先停写、后删列」的设计意图。
 >
 > **`langgraph_checkpoint_*` 表**：若用 saver 的 `setup()` 运行期建表，删除前必须先停 saver 的连接。
 
-### 7.3 `graph_state` 的拆分去向
+### 10.3 `graph_state` 的拆分去向
 
 | 原 `graph_state` 内容 | 新落点 |
 |---|---|
@@ -656,9 +671,9 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 
 ---
 
-## 8. 逐文件改造与删除清单
+## 11. 逐文件改造与删除清单
 
-### 8.1 新增（`backend/runtimes/agent_runtime/src/qzdap_agent_runtime/session/`）
+### 11.1 新增（`backend/runtimes/agent_runtime/src/qzdap_agent_runtime/session/`）
 
 | 文件 | 内容 |
 |---|---|
@@ -669,7 +684,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 | `sweeper.py` | **四类**超时清扫 + `SweepReport`（轮次 / 审批 / 会话空闲 / **`session_inbox` 幂等键过期**） |
 | `outbox.py` | 事件落库 + dispatcher 接线（复用 `runtimes/.../outbox/`） |
 
-### 8.2 迁移
+### 11.2 迁移
 
 | 旧位置 | 迁到 | 动作 |
 |---|---|---|
@@ -682,7 +697,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 | `domain/entities.py` `Session.with_runtime` / `graph_state` | `session/state.py` | 改造 |
 | `modules/governance/.../approval_service.py` `expire_if_due` | 接到 sweeper | **启用**（现在无调用者） |
 
-### 8.3 保留但改造
+### 11.3 保留但改造
 
 | 文件 | 改造点 |
 |---|---|
@@ -691,7 +706,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 | `adapter/http/session_router.py` | 降级为 HTTP 薄壳 |
 | `composition/.../lifespan.py` | 装配 SessionManager / sweeper / outbox worker / Postgres saver |
 
-### 8.4 删除清单（**按 Stage 执行**）
+### 11.4 删除清单（**按 Stage 执行**）
 
 > **「停用」≠「删除」** —— 每个删除项都必须落在**具体的 Stage** 上，不能停在「已弃用」。
 > **唯一 owner 规则**：一个旧实现只由一个方案负责删除；别人的条目（如 G1）不在本表出现。
@@ -704,14 +719,14 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 | **Stage 6** | 重复状态字段 | `agent_sessions.wait_status` 列 | X6 |
 | **Stage 6** | 混装状态列 | `agent_sessions.graph_state`（迁移期双写后废弃） | X3 |
 | **Stage 6** | 旧表 | `agent_turns`、`agent_session_messages`（迁数据后 DROP） | X4 |
-| **Stage 6** | 冗余索引 | `ix_agent_sessions_channel_session_key`（若 §7.2 的 grep 确认它已无独立用途） | — |
+| **Stage 6** | 冗余索引 | `ix_agent_sessions_channel_session_key`（若 §10.2 的 grep 确认它已无独立用途） | — |
 | **Stage 6** | 孤儿索引 / 废弃常量 | | — |
 
-> **X18 为什么单独落在 Stage 3b**：Stage 3 切完 web/api 入口后，`copilot.py` 的 turn 编排**已无调用方**，但它仍是一份**可被误接回去的第二实现**（~600 行）。删除必须发生在具体的 Stage 上，否则 X18 会永远停在「已弃用」。见 §9 Stage 3b。
+> **X18 为什么单独落在 Stage 3b**：Stage 3 切完 web/api 入口后，`copilot.py` 的 turn 编排**已无调用方**，但它仍是一份**可被误接回去的第二实现**（~600 行）。删除必须发生在具体的 Stage 上，否则 X18 会永远停在「已弃用」。见 §12 Stage 3b。
 
 ---
 
-## 9. 实施阶段
+## 12. 实施阶段
 
 > 每阶段验收都含「**旧代码减少了什么**」。
 
@@ -720,7 +735,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 | 动作 | 细节 |
 |---|---|
 | 建 `session/` 骨架 + `state.py` | 状态机定义 + 转移校验 |
-| 迁移 0046 | 加 `pending_approval` / `cancel_requested` / `ingress_seq` / `route_decision`（L2）；`session_messages` 加 `session_seq` / `session_id`（L3）；`session_turns.status` 枚举加 `queued`（先 DROP `session_turns_status_enum` 再重建）；建 `langgraph_checkpoint_*` 表；**`wait_status` 仅停止写入，列保留到 Stage 6 再 DROP** |
+| 迁移 0046 | 加 `pending_approval` / `cancel_requested` / `ingress_seq` / `route_decision`（**Router 写**）/ `agent_decision`（**Agent 写**）（L2）；`session_messages` 加 `session_seq` / `session_id`（L3）；`session_turns.status` 枚举加 `queued`（先 DROP `session_turns_status_enum` 再重建）；建 `langgraph_checkpoint_*` 表；**`wait_status` 仅停止写入，列保留到 Stage 6 再 DROP** |
 | `session_messages.session_id` 回填 | 从 `session_turns` 回填后建唯一索引 |
 | `ErrorCode` 补 `APPROVER_MUST_DIFFER` | `libs/schema/.../errors.py` |
 | **Async** Postgres saver 接线 | **`AsyncPostgresSaver`**（`langgraph.checkpoint.postgres.aio`）接进 lifespan。⚠️ **不能用 `PostgresSaver.from_conn_string`** —— 那是**同步版**，会在全异步仓库里阻塞事件循环（§5.3） |
@@ -738,7 +753,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 | `resolve_or_create` | 外部会话 → 会话实例；并发创建靠唯一约束 |
 | `close` / `archive` | 复用现有语义 |
 | sweeper 骨架 + 僵尸轮次接管 | 复用 `CLAIM_STALE_MINUTES` 经验 |
-| **sweeper 补第四类清扫** | 删 `session_inbox` 中 `expires_at < now()` 的行（单批 ≤1000）—— **Gateway 的幂等 TTL 依赖它**（Gateway 方案 §5.3.1） |
+| **sweeper 补第四类清扫** | 删 `session_inbox` 中 `expires_at < now()` 的行（单批 ≤1000）—— **Gateway 的幂等 TTL 依赖它**（Gateway 方案 §4.3.1） |
 | **删除** `try_claim` 的 `wait_status` 分支 | 改用轮次表 CAS |
 
 **旧代码减少**：`wait_status` 写入点归零。
@@ -765,7 +780,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 | 取消 | 独立列 `cancel_requested` + 轮询（保留现有跨进程机制） |
 | 成本归属 | 写 `session_turns.cost_usd` |
 | **切换 web/api 入口** → 新 `turn_runner` | `session_router.py` 的 turn 部分改走新实现 |
-| **停用 + 打点** `copilot.py` 的 turn 编排 | 台账 **X18**（Copilot 侧）→ 已弃用；**它已无调用方**。注意：X2 只指 IM 侧的第二套 turn 实现（`use_cases/run_turn*.py`）。⚠️ **本 Stage 只停用、不删** —— 删除落在 **Stage 3b**（§8.4） |
+| **停用 + 打点** `copilot.py` 的 turn 编排 | 台账 **X18**（Copilot 侧）→ 已弃用；**它已无调用方**。注意：X2 只指 IM 侧的第二套 turn 实现（`use_cases/run_turn*.py`）。⚠️ **本 Stage 只停用、不删** —— 删除落在 **Stage 3b**（§11.4） |
 | **停用 + 打点** `use_cases/run_turn*.py` | 台账 X2（IM 侧）→ 已弃用。⚠️ **但 IM 渠道仍在调它** —— 只有 Stage 5b 切了 IM 入口才真能删 |
 
 **旧代码减少**：**本 Stage 不删行** —— X18 与 X2 都只「停用 + 打点」；**X18 的删除在 Stage 3b**（7 天清理窗口后），**X2 的删除在 Stage 5b**（与 Gateway 的 IM 入口切换同 PR）。旧路径**变小**：web/api 的旧编排不再被任何入口调用（**存活实现只剩一套**，代码行数待 Stage 3b / 5b 兑现）。
@@ -785,7 +800,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 | 更新台账 | **X18 → 已清理** |
 
 **旧代码减少**：**~600 行**（`copilot.py` 647 行减去 HTTP 薄壳后的剩余）—— **X18 的终结点**。
-**验收**：全仓 `grep` 无旧 turn 编排符号；`copilot.py` 只剩 HTTP 薄壳（≤120 行）；台账 X18 → 已清理；CI 扫描规则「X18」启用（§10.3）。
+**验收**：全仓 `grep` 无旧 turn 编排符号；`copilot.py` 只剩 HTTP 薄壳（≤120 行）；台账 X18 → 已清理；CI 扫描规则「X18」启用（§13.3）。
 
 ### Stage 4：事件落库与 outbox
 
@@ -806,7 +821,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 | 动作 | 细节 |
 |---|---|
 | 审批挂起落库 | `session_turns.pending_approval` |
-| 恢复校验清单 | 5 项校验（§5.6） |
+| 恢复校验清单 | 5 项校验（§8） |
 | **删除** `except Exception: pass` | 审批失败 → `ErrorChunk` + 明确错误码 |
 | 审批自动过期 | `expire_if_due()` 接入 sweeper |
 | 审批幂等 | 同 `(session_id, tool_call_id, request_hash)` 复用 approval ID |
@@ -844,7 +859,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 | 更新台账状态 | **X2 / X3 / X4 / X6 / X7** → 已清理 |
 | 更新现状文档 | `docs/copilot-chat-module-architecture.md` |
 
-**旧代码减少**：§8.4 删除清单**归零** —— `wait_status` 列 + `graph_state` 列 + `agent_turns` / `agent_session_messages` 两张旧表，**合计约 300 行 + 2 表 + 2 列**（第二套 turn 实现的 ~600 行已在 Stage 5b 删除）。
+**旧代码减少**：§11.4 删除清单**归零** —— `wait_status` 列 + `graph_state` 列 + `agent_turns` / `agent_session_messages` 两张旧表，**合计约 300 行 + 2 表 + 2 列**（第二套 turn 实现的 ~600 行已在 Stage 5b 删除）。
 **验收**：台账本层条目全部「已清理」；扫描脚本无命中。
 
 ### 阶段与「旧代码减少」对照
@@ -867,12 +882,12 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 
 ---
 
-## 10. 验收标准
+## 13. 验收标准
 
 > **本层在系统级验收中的责任**：
 > 本层负责系统级验收的 **#3（重复消息只跑一次）的轮次侧 · #4（同会话严格有序）的互斥侧 · #5（审批中断可恢复）的挂起侧**（完整清单见 [`README.md`](README.md) §7）。
 
-### 10.1 功能验收
+### 13.1 功能验收
 
 1. **状态机**：全部合法转移可用、全部非法转移报错（会话 + 轮次）；
 2. **唯一实现**：全仓只有一套 turn 编排（CI 扫描脚本把关）；
@@ -889,7 +904,7 @@ DROP TABLE IF EXISTS langgraph_checkpoint_writes_v2;
 
 ---
 
-### 10.2 架构测试
+### 13.2 架构测试
 
 ```python
 # tests/architecture/test_session_boundary.py
@@ -910,7 +925,7 @@ def test_session_layer_has_no_framework_imports():
 | 2 | **状态机是唯一的状态写入点** | 关键字扫描：`session_turns.status` 的**裸赋值**（`SET status =` / `status =`）只允许出现在 `session/state.py`；其他位置必须调用状态机暴露的转换函数。**放行 CAS（`queued → running`）是状态机的入口**：其 SQL 由 `session/state.py` 的 `claim_turn()` 实现，`turn_runner` 只调用该函数 —— 否则 §4.4 / Router §4.2(c) 的放行判定会被本规则误杀 |
 | 3 | **不使用同步 saver** | import 扫描：`langgraph.checkpoint.postgres`（同步）**禁止**出现，只允许 `langgraph.checkpoint.postgres.aio` |
 
-### 10.3 「没有第二套实现」的扫描
+### 13.3 「没有第二套实现」的扫描
 
 **扫描脚本的唯一来源是 [`cleanup-ledger.md`](cleanup-ledger.md) §3.1**，本层不另写一份。Session 域对应的规则：
 
@@ -926,7 +941,7 @@ def test_session_layer_has_no_framework_imports():
 
 ---
 
-## 11. 风险
+## 14. 风险
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
@@ -935,9 +950,9 @@ def test_session_layer_has_no_framework_imports():
 | **审批语义变更**（不再吞异常） | 原本「静默放行」的场景开始报错 | 属**修复而非破坏**；前端已有 `ErrorChunk` 通道；需在灰度期观察 `APPROVAL_EXPIRED` 计数 |
 | **事件落库增加写入量** | 每轮多 N 次写 | 与轮次写入同事务；批量投递；必要时按 `delivery_status` 归档 |
 | **checkerpointer 引入外部依赖** | 迁移失败 → 图不可用 | 保留「从 `session_messages` 重建」的回退路径 |
-| **与 Gateway / Router 的阶段耦合** | 本层 Stage 4 未完成 → Gateway 重放不可用 | 已在 §0 与 README 记录依赖顺序 |
+| **与 Gateway / Router 的阶段耦合** | 本层 Stage 4 未完成 → Gateway 重放不可用 | 已在 §0.5 与 README 记录依赖顺序 |
 
-### 11.1 回退
+### 14.1 回退
 
 | 时点 | 回退方式 | 代价 |
 |---|---|---|
@@ -955,9 +970,9 @@ def test_session_layer_has_no_framework_imports():
 > **因此 Stage 6 必须满足两个条件才能执行**：① 台账 **X3 / X4 / X6** 全部「已清理」且指标归零（**X2 与 X7 已在 Stage 3 / Stage 5 提前清理**）；② 备份已完成并验证过可恢复。**「测试环境验证过」不算**。
 ---
 
-## 12. 治理与可观测性落点
+## 15. 治理与可观测性落点
 
-### 12.1 治理落点（Governance）
+### 15.1 治理落点（Governance）
 
 | 本层步骤 | 闸门 | 拒绝 / 降级时的行为 |
 |---|---|---|
@@ -969,7 +984,7 @@ def test_session_layer_has_no_framework_imports():
 
 > **本层不拥有的治理**：消息级限流（Gateway）、工具执行审批的**语义判定**（Governance 决策）、记忆可见范围（Memory）。
 
-### 12.2 可观测性指标（Observability）
+### 15.2 可观测性指标（Observability）
 
 指标名进 `qzdap_*` 命名空间，实现落在 `backend/libs/observability/src/qzdap_observability/metrics.py`。
 
@@ -994,7 +1009,7 @@ def test_session_layer_has_no_framework_imports():
 | `session.event.persist` | `session.turn` | `event_type`, `seq` |
 | `session.outbox.deliver` | `session.event.persist` | `event_type`, `attempt`, `outcome` |
 
-### 12.3 审计
+### 15.3 审计
 
 | 事件 | 何时写 | 内容 |
 |---|---|---|
@@ -1045,20 +1060,36 @@ def test_session_layer_has_no_framework_imports():
 
 | # | 级别 | 问题 | 修正 | 落点 |
 |---|---|---|---|---|
-| **S1** | 严重 | `delivery_status='PENDING'`（大写）与 0035 的 check constraint（**小写**）冲突 → 每个 chunk 落库都失败 | 改为小写，并加显式告警 | §5.5 |
-| **S2** | 严重 | `ADD COLUMN session_id UUID NOT NULL` 在非空表上**直接报错** | 改三步式：可空列 → 回填 → `SET NOT NULL`，并加孤儿检查 | §7.2 第 3 步 |
-| **S3** | 严重 | `ix_session_events_turn_seq` 与 0035 的 PK `(turn_id, seq)` **完全重复**（写放大） | 删除该索引；说明待投递扫描用 `ix_session_events_pending` | §7.2 第 4 步 |
-| **S4** | 严重 | 把 `try_claim` 说成「拆：顺序 → Router、执行权 → Session」 —— 实测它**只有互斥**，`modules/` 里 `ingress_seq` 零命中 | 改为「只管执行权」；顺序是 Router 的**新建**能力 | §8.2 / 附录 B |
-| **S5** | 严重 | X18（`copilot.py` 的 turn 编排）**没有删除落点** → 会永远停在「已弃用」 | 新增 **Stage 3b**（清理窗口 ≥7 天 + 指标归零后删除）；§8.4 改为「按 Stage 执行」 | §8.4 / §9 Stage 3b |
+| **S1** | 严重 | `delivery_status='PENDING'`（大写）与 0035 的 check constraint（**小写**）冲突 → 每个 chunk 落库都失败 | 改为小写，并加显式告警 | §7 |
+| **S2** | 严重 | `ADD COLUMN session_id UUID NOT NULL` 在非空表上**直接报错** | 改三步式：可空列 → 回填 → `SET NOT NULL`，并加孤儿检查 | §10.2 第 3 步 |
+| **S3** | 严重 | `ix_session_events_turn_seq` 与 0035 的 PK `(turn_id, seq)` **完全重复**（写放大） | 删除该索引；说明待投递扫描用 `ix_session_events_pending` | §10.2 第 4 步 |
+| **S4** | 严重 | 把 `try_claim` 说成「拆：顺序 → Router、执行权 → Session」 —— 实测它**只有互斥**，`modules/` 里 `ingress_seq` 零命中 | 改为「只管执行权」；顺序是 Router 的**新建**能力 | §11.2 / 附录 B |
+| **S5** | 严重 | X18（`copilot.py` 的 turn 编排）**没有删除落点** → 会永远停在「已弃用」 | 新增 **Stage 3b**（清理窗口 ≥7 天 + 指标归零后删除）；§11.4 改为「按 Stage 执行」 | §11.4 / §12 Stage 3b |
 | **M1** | 中 | 复活语义矛盾：§4.2 有 `closed → open`，§3.4 却是「新建会话」 | **`closed` 定为终态**，复活 = 创建侧行为（新建会话），删掉 `closed → open` | §4.2 / §3.4 |
-| **M2** | 中 | 架构测试规则 2（「`status` 赋值只能在 `state.py`」）会误杀 §4.4 / Router §4.2(c) 的放行 CAS | 改为「**裸赋值**只能在 `state.py`；放行 CAS 是状态机入口（`claim_turn()`）」 | §10.2 |
-| **M3** | 中 | 执行权口径与 Router 方案相反（advisory lock + CAS ↔ CAS 是唯一权威） | 统一为「**CAS 是唯一权威**，advisory lock 仅作优化」 | §6 / §5.4 |
-| **M4** | 中 | 验收第 8 项只列三类超时（sweeper 已是四类） | 补上 `session_inbox` 幂等键过期 | §10.1 |
-| **M5** | 中 | `runner.py` 行数写 915，实测 **914**（三处） | 全部改为 914 | §1.1 / §8.2 / 附录 B |
-| **M6** | 中 | 0035 的普通索引 `ix_agent_sessions_channel_session_key` 与新部分唯一索引**前导列不同**，非等价 | 加 grep 前置判断：有独立用途则保留，无则 0046 DROP / Stage 6 清理 | §7.2 第 4b 步 / Stage 6 |
+| **M2** | 中 | 架构测试规则 2（「`status` 赋值只能在 `state.py`」）会误杀 §4.4 / Router §4.2(c) 的放行 CAS | 改为「**裸赋值**只能在 `state.py`；放行 CAS 是状态机入口（`claim_turn()`）」 | §13.2 |
+| **M3** | 中 | 执行权口径与 Router 方案相反（advisory lock + CAS ↔ CAS 是唯一权威） | 统一为「**CAS 是唯一权威**，advisory lock 仅作优化」 | §9 / §6 |
+| **M4** | 中 | 验收第 8 项只列三类超时（sweeper 已是四类） | 补上 `session_inbox` 幂等键过期 | §13.1 |
+| **M5** | 中 | `runner.py` 行数写 915，实测 **914**（三处） | 全部改为 914 | §1.1 / §11.2 / 附录 B |
+| **M6** | 中 | 0035 的普通索引 `ix_agent_sessions_channel_session_key` 与新部分唯一索引**前导列不同**，非等价 | 加 grep 前置判断：有独立用途则保留，无则 0046 DROP / Stage 6 清理 | §10.2 第 4b 步 / Stage 6 |
 | **L1** | 轻 | 代码块行号 `copilot.py:457-471` 偏早（`try` 在 464） | 改为 `464-471` | §1.2 |
 | **L2** | 轻 | 把同步 `PostgresSaver.from_conn_string` 列为「可复用资产」，而 §5.3 说不能用 | 改标为**反例**，不计入资产 | §1.9 |
-| **L3** | 轻 | §8.2 把 Gateway 的 **G1** 放进 Session 的删除清单 | 改为「**owner 是 Gateway**；本层只保证无残留调用方」 | §8.2 |
-| **L4** | 轻 | §10.3 扫描规则表缺 X18 | 补上，并区分启用时点（X18 → Stage 3b，其余 → Stage 6） | §10.3 |
+| **L3** | 轻 | §11.2 把 Gateway 的 **G1** 放进 Session 的删除清单 | 改为「**owner 是 Gateway**；本层只保证无残留调用方」 | §11.2 |
+| **L4** | 轻 | §13.3 扫描规则表缺 X18 | 补上，并区分启用时点（X18 → Stage 3b，其余 → Stage 6） | §13.3 |
 
-> **同步改动**：`implementation-plan.md` §3.3 / 附录 A / B、`cleanup-ledger.md`（X18 的停用与删除两列）、`README.md` §2 / §3.3 / §6.
+> **同步改动**：`implementation-plan.md` §3.3 / 附录 A / B、`cleanup-ledger.md`（X18 的停用与删除两列）、`README.md` §2 / §3.3 / §9.
+
+### 本轮（v1.1 → v1.2）骨架重排
+
+| # | 级别 | 问题 | 修正 | 落点 |
+|---|---|---|---|---|
+| **D1** | 严重 | **§5「Thread」实际承载了 §2 架构图里的第四个盒子** ——「唯一 turn 实现」「事件落库」「审批恢复」都埋在 Thread 章下，而它们是**全局关键路径**上被四个下游依赖的东西 | **§5.4–§5.6 提升为独立章**（§6 唯一 turn 实现 / §7 事件落库与 outbox / §8 审批中断与恢复），后续章顺延；§0.2 补第四子件「turn 执行器」；§2 架构图的「关键分工」同步 | §0.2 / §2 / §5 / §6 / §7 / §8 / §9–§15 |
+| **D2** | 严重 | **`route_decision` 一列两写者**：Router 写 `RouteDecision`（会话入口策略决策），Agent 层也写同一列（每步专家选择）→ **后写覆盖先写**，Router 的可解释性留痕被冲掉 | **拆成两列**：0046 建 `route_decision`（**Router 唯一写者**）与 `agent_decision`（**Agent 写**） | §10.1 / §10.2 / §10.2.1 |
+| **D3** | 严重 | **§9 边界表缺 `Gateway → Session` 行**，且冒出**悬空契约 `start_turn`**（`SessionManagerPort` 里没有这个方法，全文无定义） | 补 Gateway 行；`start_turn` 换成已定义的 `lookup` + `resolve_or_create` 两步 | §9 |
+| **D4** | 严重 | **§9 的 `Session → Agent Loop` 契约与 Agent 决策 #4 冲突**：写着「含 messages、工具白名单」，但消息由 Context 装配、工具集来自 **agent 配置的绑定集** | 该行收窄为「**只有审批句柄**」，并在表里注明消息与工具的真实来源 | §9 |
+| **D5** | 严重 | **§10.1 表终态漏 `session_inbox`** —— 该表归本层（Gateway 决策 #2b），且本层负责 sweeper 的第四类清扫 | §10.1 补一行，写明「**DDL 在 Gateway 0044，语义在本层**」| §10.1 |
+| **D6** | 中 | **§9.1 假设 Gateway 会回传投递结果**，但 Gateway 方案**没有这条契约**（它只承诺「只读 `session_events`」）| 改为「**投递状态由 Session 自持**」；若要 Gateway 回传，需**先在 Gateway 方案补契约** | §9.1 |
+| **D7** | 中 | **缺 §0.5 前置与下游依赖清单** —— §14 风险表写「已在 §0 与 README 记录依赖顺序」，但 §0 没有依赖表；而 Session 实际**阻塞四个下游**（Router 3 / Memory 3 / Agent 5 / Context 4）| 新增 §0.5：上游前置表 + **下游阻塞表** | §0.5 / §14 风险表 |
+| **D8** | 轻 | **§1.9 的表格被段落截断** —— 「反例」那一行掉到引用块之后，Markdown 渲染成独立表 | 把该行移回表体，引用块移到表后 | §1.9 |
+| **D9** | 轻 | **章节号顺延后，多处内部引用错位**（§5.3/§5.4/§5.5 等）| 逐条对照旧编号改正（§5.3 checkpoint 未变；§5.4→§6；§5.5→§7；§5.6→§8）| 全篇 |
+
+> **同步改动**：`router-refactor-plan.md`（§6.2 / Stage 1 声明唯一写者）、`agent-refactor-plan.md`（§4.1 / §7.1 / Stage 4 改写 `agent_decision`）、`session-lifecycle-sequence.md`（§4 契约表补两列写者）、`implementation-plan.md`（A-24 / R-08 / S-02）、`README.md`（§3.3.2 表归属）。

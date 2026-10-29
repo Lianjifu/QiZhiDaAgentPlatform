@@ -1,11 +1,11 @@
 # Memory 层重构方案
 
-> 版本：1.3（审查修正后；按**使用面**切分为「会话记忆面 / 记忆管理面」两个平面，各自分层）
+> 版本：1.4（审查修正后；按**使用面**切分为「会话记忆面 / 记忆管理面」两个平面，各自分层 —— **+ 本轮重排**：代码层改名 A1/A2/A3·S1/S2、§2.6 加「正文节」索引列）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**已评审**（19 条审查问题已修正，逐条见附录 C；附录 A 的 12 条决策待确认）
+> 状态：**已评审**（19 条审查问题已修正 + **本轮重排**，逐条见附录 C；附录 A 的 12 条决策待确认）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) —— 本方案实现其中 **Memory 泳道**
-> 收敛机制：[`cleanup-ledger.md`](cleanup-ledger.md) —— 本方案对应条目 **X11–X16**
+> 收敛机制：[`cleanup-ledger.md`](cleanup-ledger.md) —— 本方案对应条目 **X11–X16** + **X19**（死表 `memory_l2_embeddings`，Stage 0 迁移内 DROP）
 > 硬约束：**最终态只有一个实现**；先上新、后清旧
 > 方案集导航：落地路线与里程碑见 [`README.md`](README.md) §6 · 系统级验收见 §7 · 外部前置依赖见 §8 · 跨层不变量见 [`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) §6
 
@@ -34,18 +34,34 @@ Memory 域在代码里实际承担 **10 项能力**。它们不是三个子件�
 
 | # | 能力 | **平面** | 层（平面内） | 数据面 | 运行时 | 管理侧 | 现状判定 |
 |---|---|---|---|---|---|---|---|
-| **C1** | **写入沉淀** | **A**（自动）/ **B**（人工） | A:L2+L3　B:B2+B3 | L1 / L2 | `MemoryService.write` | — | ⚠️ 每轮无条件写，无抽取、无去重、无敏感过滤 |
-| **C2** | **检索召回** | **A** | A:L2+L3 | L1 / L2 / L3 | `MemoryService.recall` | — | 🔴 无用户隔离、全量扫描 |
-| **C3** | **分层与提升** | **A**（自动）/ **B**（审核） | A:L3　B:B2 | L1→L2→L3 | write 时自动记 L1→L2 | `/api/admin/memory/promotions` | ⚠️ L2→L3 只有布尔位，无流程 |
-| **C4** | **保留与淘汰** | **A**（sweeper 驱动） | A:L3 | `admin_memory_policies` | **无执行者** | 策略 CRUD | 🔴 策略写了，没人执行 → 只增不减 |
-| **C5** | **向量化** | **A**（共享存储） | A:L2　共享:L4 | `memory_l2_embeddings` | `MemoryService._embed_item` | — | ⚠️ **只有 L2 有向量**，L3 只能关键词 |
-| **C6** | **策略绑定**（agent ↔ 记忆策略 / L3 条目） | **B** 写 / **A** 读 | B:B2　A:L3 | `admin_agents.memory_policy` | **完全不消费** | `/policies/{label}/agents`、`/l3/{id}/agents` | 🔴 管理端能看，运行时读不到 |
-| **C7** | **使用统计与趋势** | **共享**（A 写 / B 读） | 共享:L5 | `hits` / `hits_trend` / `usage_history` / `hit_rate` | **不更新** | `/api/admin/memory/trend` | 🔴 全是静态值 |
+| **C1** | **写入沉淀** | **A**（自动）/ **B**（人工） | A:A2+A3　B:B2+B3 | L1 / L2 | `MemoryService.write` | — | ⚠️ 每轮无条件写，无抽取、无去重、无敏感过滤 |
+| **C2** | **检索召回** | **A** | A:A2+A3 | L1 / L2 / L3 | `MemoryService.recall` | — | 🔴 无用户隔离、全量扫描 |
+| **C3** | **分层与提升** | **A**（自动）/ **B**（审核） | A:A3　B:B2 | L1→L2→L3 | write 时自动记 L1→L2 | `/api/admin/memory/promotions` | ⚠️ L2→L3 只有布尔位，无流程 |
+| **C4** | **保留与淘汰** | **A**（sweeper 驱动） | A:A3 | `admin_memory_policies` | **无执行者** | 策略 CRUD | 🔴 策略写了，没人执行 → 只增不减 |
+| **C5** | **向量化** | **A**（共享存储） | A:A2　共享:S1 | `memory_l2_embeddings` | `MemoryService._embed_item` | — | ⚠️ **只有 L2 有向量**，L3 只能关键词 |
+| **C6** | **策略绑定**（agent ↔ 记忆策略 / L3 条目） | **B** 写 / **A** 读 | B:B2　A:A3 | `admin_agents.memory_policy` | **完全不消费** | `/policies/{label}/agents`、`/l3/{id}/agents` | 🔴 管理端能看，运行时读不到 |
+| **C7** | **使用统计与趋势** | **共享**（A 写 / B 读） | 共享:S2 | `hits` / `hits_trend` / `usage_history` / `hit_rate` | **不更新** | `/api/admin/memory/trend` | 🔴 全是静态值 |
 | **C8** | **管理目录 CRUD** | **B** | B:B1+B2 | 全部五张表 | — | **18** 个端点 | ✅ 完整 |
-| **C9** | **数据治理**（删除 / 导出） | **共享**（横跨两面） | 共享:L5 | 全部 | — | 治理域 `data_subject` | ⚠️ 记忆表未纳入删除范围 |
-| **C10** | **降级与健康** | **A** | A:L1（贯穿各层） | — | 写入侧有、读取侧无 | — | ⚠️ 只覆盖一半 |
+| **C9** | **数据治理**（删除 / 导出） | **共享**（横跨两面） | 共享:S2 | 全部 | — | 治理域 `data_subject` | ⚠️ 记忆表未纳入删除范围 |
+| **C10** | **降级与健康** | **A** | A:A1（贯穿各层） | — | 写入侧有、读取侧无 | — | ⚠️ 只覆盖一半 |
 
-**代码单元（子件）与能力面的关系**：本层落地为 5 个代码单元 —— `retrieval`（C2）、`writer`（C1）、`lifecycle`（C3 + C4）、`vectorize`（C5）、`governance`（C7 + C9）—— 而 **C6 策略绑定**与 **C8 管理目录**是**跨单元的读侧能力**，需要在本层显式接线。
+> **⚠️ 两套「L」不要混**（本层最容易读错的地方）：
+> - **数据层**（存储分层）：**L1**（会话 buffer，决策 #5 后退役）/ **L2**（用户级事实）/ **L3**（工作区知识）—— 出现在**表名、字段、指标**里（`admin_memory_l1` / `L2Fact` / `l3EntryIds`）
+> - **代码层**（平面内分层）：**A1** 接入 / **A2** 编排 / **A3** 策略（平面 A），**B1/B2/B3**（平面 B），**S1** 存储 / **S2** 支撑（共享）—— 出现在**架构分层、文件归属、依赖规则**里
+>
+> 早期版本两边都叫 L1/L2/L3 → 同一张图里混用「L2 编排」与「L2 事实」。**代码层已全部改名为 A1/A2/A3 · S1/S2**；数据层保持 L1/L2/L3。
+
+**代码单元（子件）与能力面的关系**：本层落地为 **8 个代码单元**（§10.1 的逐文件清单是权威）—— 平面 A：`retrieval`（C2）、`writer`（C1）、`vectorize`（C5）、`scope`/`ranking`/`extraction`/`redaction`/`confidence`/`promotion`/`eviction`/`policy`（A3 策略层）—— 而 **C6 策略绑定**与 **C8 管理目录**是**跨单元的读侧能力**，需要在本层显式接线。
+
+### 0.4 实现收敛规则
+
+**最终态只有一个实现**；**先上新、后清旧**。清理机制由 [`cleanup-ledger.md`](cleanup-ledger.md) 统一管理（弃用标记 → 调用打点 → 指标归零 → 删除 → CI 扫描脚本 → 阶段门禁）。
+
+本方案涉及台账条目 **X11**（`_remember`）、**X12**（`layered.py`）、**X13**（`admin_memory_l1`）、**X14**（跨用户泄漏，**修复类**不是删除类）、**X15**（`admin_memory_l3`）、**X16**（`MemoryService` 单类）、**X19**（死表 `memory_l2_embeddings`）。
+
+**本层的收敛形态**：与其它层不同 —— **本层要拆的是一个类，不是接管一条路径**。`MemoryService` 同时提供运行时的 `recall/write` 与管理侧的 `list_*/trend`，两者**必须分开**（§2.2 规则 6）→ Stage 0 先拆类（纯重构，旧代码减少 0），运行时调用点在 Stage 3 才切走，管理侧留在平面 B。
+
+**唯一 owner**：X11 的**停用**在 **Agent Stage 5 的 A-26**（旧循环改接新 Writer）之后 —— 那是本层的**前置**，不是本层的 Stage；X11 的**删除**归 Memory Stage 7。
 
 ### 0.3 Memory 明确不做
 
@@ -363,11 +379,13 @@ flowchart TB
 
 ### 2.3 平面 A（会话记忆面）的内部分层
 
+> 代码层用 **A1/A2/A3** 命名（**不是**数据层的 L1/L2/L3 —— 见 §0.2 的命名说明）。
+
 | 层 | 职责 | 本层**不做** | 代码单元 |
 |---|---|---|---|
-| **L1 接入** | 解析作用域（tenant/workspace/user/session）、统一降级包装（**C10**）、翻译领域异常 | 不做检索算法、不做策略判断 | `gateway.py` |
-| **L2 编排** | 检索七步、写入五步、向量异步补写与删除同步（**C1 / C2 / C5**） | 不含阈值 / 规则常量 | `retrieval.py` / `writer.py` / `vectorize.py` |
-| **L3 策略** | 作用域、阈值与 top-k、abstain、去重、抽取、敏感闸门、置信度、提升、淘汰、agent 策略绑定（**C3 / C4 / C6**） | **不碰 DB / 向量库**（策略必须能脱库单测） | `scope.py` / `ranking.py` / `extraction.py` / `redaction.py` / `confidence.py` / `promotion.py` / `eviction.py` / `policy.py` |
+| **A1 接入** | 解析作用域（tenant/workspace/user/session）、统一降级包装（**C10**）、翻译领域异常 | 不做检索算法、不做策略判断 | `gateway.py` |
+| **A2 编排** | 检索七步、写入五步、向量异步补写与删除同步（**C1 / C2 / C5**） | 不含阈值 / 规则常量 | `retrieval.py` / `writer.py` / `vectorize.py` |
+| **A3 策略** | 作用域、阈值与 top-k、abstain、去重、抽取、敏感闸门、置信度、提升、淘汰、agent 策略绑定（**C3 / C4 / C6**） | **不碰 DB / 向量库**（策略必须能脱库单测） | `scope.py` / `ranking.py` / `extraction.py` / `redaction.py` / `confidence.py` / `promotion.py` / `eviction.py` / `policy.py` |
 
 ### 2.4 平面 B（记忆管理面）的内部分层
 
@@ -381,26 +399,28 @@ flowchart TB
 
 | 层 | 职责 | 归属 |
 |---|---|---|
-| **L4 存储** | 表与向量的读写、embedding 调用、统计字段落库（**C5**） | 共享（A 写、B 写） |
-| **L5 支撑** | 使用统计聚合与趋势（**C7**）、数据治理删除与导出（**C9**） | A 写统计、B 读统计；治理横跨两面 |
+| **S1 存储** | 表与向量的读写、embedding 调用、统计字段落库（**C5**） | 共享（A 写、B 写） |
+| **S2 支撑** | 使用统计聚合与趋势（**C7**）、数据治理删除与导出（**C9**） | A 写统计、B 读统计；治理横跨两面 |
 
-### 2.6 十项能力的平面归属（唯一归属）
+### 2.6 十项能力的平面归属（**唯一归属 + 正文索引**）
 
-| 层 | 能力 | 该层做什么 | 跨平面协作点 |
-|---|---|---|---|
-| L1 | **C10** 降级与健康 | 捕获 provider / 存储故障 → 降级为词法召回或跳过写入，置 `recall_degraded` / `write_degraded` | 无 |
-| L2 | **C2** 检索召回 | 编排七步流水线，产出 `RecallHit` | 向 L3 索取作用域与阈值；向 L4 取数；向 L5 写统计 |
-| L2 | **C1** 写入沉淀（自动路径） | 编排写入流水线 | 向 L3 抽取 / 脱敏 / 定置信度；向 L4 落库 |
-| L2 | **C5** 向量化 | 编排「落库后异步补向量」「删除时同步删向量」 | L4 提供 embedding 与 pgvector 客户端 |
-| L3 | **C3** 分层与提升（自动路径） | 自动提升规则 | 触发时机由 L2 的写入流水线决定；人工审核路径在 B2 |
-| L3 | **C4** 保留与淘汰 | 淘汰规则（TTL / max_items / storage_mb / LRU） | 触发时机由 sweeper 驱动，仍走 L2 的写入路径 |
-| L3 | **C6** 策略绑定 | 解析 `enabled` / `scope` / `policyLabel` / `l3EntryIds` | **配置来自 B2**（单向只读） |
-| L4 | **C5** 向量化（存储侧） | embedding 调用与向量读写 | 共享 |
-| L5 | **C7** 使用统计与趋势 | 统计更新与趋势聚合 | A 写、B 读 |
-| B1/B2 | **C8** 管理目录 CRUD | **18** 个管理端点 | 与 A 共享 L4 |
-| B2 | **C3** 分层与提升（人工路径） | 审核提升、人工编辑 | 人工编辑走 B3，**不走 A 的写入流水线** |
-| B3 | **C1** 写入沉淀（人工路径） | 人工编辑的脱敏 / 去重 / 版本化 | **敏感闸门与 A 共用同一套** |
-| L5 | **C9** 数据治理 | 删除 / 导出 provider | 横跨两面 + 向量 |
+> 这张表是**两件事的索引**：① 每项能力**归哪个代码层**（唯一归属）；② 它**在正文的哪一节**（§3–§7）。**正文按能力分章、架构按平面分层，两套轴靠这张表对齐** —— 没有「正文节」列就无从查起。
+
+| 代码层 | 能力 | 该层做什么 | **正文节** | 跨平面协作点 |
+|---|---|---|---|---|
+| A1 | **C10** 降级与健康 | 捕获 provider / 存储故障 → 降级为词法召回或跳过写入，置 `recall_degraded` / `write_degraded` | **§3.6** | 无 |
+| A2 | **C2** 检索召回 | 编排七步流水线，产出 `RecallHit` | **§3.1–§3.5** | 向 A3 索取作用域与阈值；向 S1 取数；向 S2 写统计 |
+| A2 | **C1** 写入沉淀（自动路径） | 编排写入流水线 | **§4.1–§4.6** | 向 A3 抽取 / 脱敏 / 定置信度；向 S1 落库 |
+| A2 | **C5** 向量化 | 编排「落库后异步补向量」「删除时同步删向量」 | **§5.4** | S1 提供 embedding 与 pgvector 客户端 |
+| A3 | **C3** 分层与提升（自动路径） | 自动提升规则 | **§5.1 / §5.2** | 触发时机由 A2 的写入流水线决定；人工审核路径在 B2 |
+| A3 | **C4** 保留与淘汰 | 淘汰规则（TTL / max_items / storage_mb / LRU） | **§6** | 触发时机由 sweeper 驱动，仍走 A2 的写入路径 |
+| A3 | **C6** 策略绑定 | 解析 `enabled` / `scope` / `policyLabel` / `l3EntryIds` | **§7.1** | **配置来自 B2**（单向只读） |
+| S1 | **C5** 向量化（存储侧） | embedding 调用与向量读写 | **§5.4** | 共享 |
+| S2 | **C7** 使用统计与趋势 | 统计更新与趋势聚合 | **§7.2** | A 写、B 读 |
+| B1/B2 | **C8** 管理目录 CRUD | **18** 个管理端点 | **§7.3** | 与 A 共享 S1 |
+| B2 | **C3** 分层与提升（人工路径） | 审核提升、人工编辑 | **§7.1 / Stage 6b** | 人工编辑走 B3，**不走 A 的写入流水线** |
+| B3 | **C1** 写入沉淀（人工路径） | 人工编辑的脱敏 / 去重 / 版本化 | **§7.1 / Stage 6b** | **敏感闸门与 A 共用同一套** |
+| S2 | **C9** 数据治理 | 删除 / 导出 provider | **§7.4** | 横跨两面 + 向量 |
 
 ### 2.6.1 `RecallHit` 契约终态
 
@@ -455,17 +475,17 @@ Context
 
 ```
 Agent Loop
-  → L1: 解析作用域 + 降级包装
-  → L2: 写入流水线
-       ├─ L3: 敏感信息闸门（不通过 → 拒绝 + 审计）
-       ├─ L3: 事实抽取规则
-       ├─ L3: 置信度分级（低于阈值 → 只留 STM）
-       ├─ L3: 去重规则（content_hash → 更新而非插入）
-       ├─ L3: agent 策略绑定（enabled / scope → 决定存储层）
-       ├─ L4: 落库 L1/L2（含来源 turn_id）
-       └─ L2: 异步补向量（不阻塞对话）
-  → L5: 更新使用统计与 usage_history
-  → L1: 返回（含 write_degraded）
+  → A1: 解析作用域 + 降级包装
+  → A2: 写入流水线
+       ├─ A3: 敏感信息闸门（不通过 → 拒绝 + 审计）
+       ├─ A3: 事实抽取规则
+       ├─ A3: 置信度分级（低于阈值 → 只留 STM）
+       ├─ A3: 去重规则（content_hash → 更新而非插入）
+       ├─ A3: agent 策略绑定（enabled / scope → 决定存储层）
+       ├─ S1: 落库 L1/L2（数据层，含来源 turn_id）
+       └─ A2: 异步补向量（不阻塞对话）
+  → S2: 更新使用统计与 usage_history
+  → A1: 返回（含 write_degraded）
 ```
 
 **提升与淘汰**不是独立路径：它们**复用写路径**，只是触发源不同（提升 ← 抽取结果达标；淘汰 ← sweeper）。
@@ -936,18 +956,18 @@ ALTER TABLE admin_memory_policies
 
 | 层 | 文件 | 内容 | 对应能力 |
 |---|---|---|---|
-| **L1 接入** | `gateway.py` | 门面：解析作用域、包装降级、翻译领域异常 | C10 |
-| **L2 编排** | `retrieval.py` | 检索七步流水线 | C2 |
-| **L2 编排** | `writer.py` | 写入五步流水线（自动沉淀） | C1 |
-| **L2 编排** | `vectorize.py` | 异步补向量 / 删除同步向量 | C5 |
-| **L3 策略** | `scope.py` | 作用域规则（tenant → workspace → user → session） | C2 / C1 |
-| **L3 策略** | `ranking.py` | 融合排序、阈值、top-k、abstain、去重规则 | C2 |
-| **L3 策略** | `extraction.py` | `FactExtractor` Protocol + 规则实现 | C1 |
-| **L3 策略** | `redaction.py` | **敏感信息闸门（与平面 B 共用同一实现）** | C1 |
-| **L3 策略** | `confidence.py` | 置信度分级 | C1 |
-| **L3 策略** | `promotion.py` | 提升规则（自动路径） | C3 |
-| **L3 策略** | `eviction.py` | 淘汰规则 | C4 |
-| **L3 策略** | `policy.py` | agent 策略绑定解析（`enabled`/`scope`/`policyLabel`/`l3EntryIds`） | C6 |
+| **A1 接入** | `gateway.py` | 门面：解析作用域、包装降级、翻译领域异常 | C10 |
+| **A2 编排** | `retrieval.py` | 检索七步流水线 | C2 |
+| **A2 编排** | `writer.py` | 写入五步流水线（自动沉淀） | C1 |
+| **A2 编排** | `vectorize.py` | 异步补向量 / 删除同步向量 | C5 |
+| **A3 策略** | `scope.py` | 作用域规则（tenant → workspace → user → session） | C2 / C1 |
+| **A3 策略** | `ranking.py` | 融合排序、阈值、top-k、abstain、去重规则 | C2 |
+| **A3 策略** | `extraction.py` | `FactExtractor` Protocol + 规则实现 | C1 |
+| **A3 策略** | `redaction.py` | **敏感信息闸门（与平面 B 共用同一实现）** | C1 |
+| **A3 策略** | `confidence.py` | 置信度分级 | C1 |
+| **A3 策略** | `promotion.py` | 提升规则（自动路径） | C3 |
+| **A3 策略** | `eviction.py` | 淘汰规则 | C4 |
+| **A3 策略** | `policy.py` | agent 策略绑定解析（`enabled`/`scope`/`policyLabel`/`l3EntryIds`） | C6 |
 
 **平面 B · 记忆管理面**（`modules/memory/`，保留在管理模块内）
 
@@ -961,11 +981,11 @@ ALTER TABLE admin_memory_policies
 
 | 层 | 文件 | 内容 | 对应能力 |
 |---|---|---|---|
-| **L4 存储** | `adapter/persistence/*`（留在 `modules/memory`） | 表仓储、pgvector、embedding 客户端 | C5 |
-| **L5 支撑** | `application/statistics.py` | 使用统计更新与趋势聚合（A 写 / B 读） | C7 |
-| **L5 支撑** | `application/governance.py` | `data_subject` 删除 / 导出 provider | C9 |
+| **S1 存储** | `adapter/persistence/*`（留在 `modules/memory`） | 表仓储、pgvector、embedding 客户端 | C5 |
+| **S2 支撑** | `application/statistics.py` | 使用统计更新与趋势聚合（A 写 / B 读） | C7 |
+| **S2 支撑** | `application/governance.py` | `data_subject` 删除 / 导出 provider | C9 |
 
-> **L3 策略层必须无 IO**（§2.8 规则 3）—— 它的每个文件都是纯函数 / 纯规则实现，可脱库单测。这是把「用户隔离」「阈值」「敏感过滤」变成可验证代码的关键。
+> **A3 策略层必须无 IO**（§2.8 规则 3）—— 它的每个文件都是纯函数 / 纯规则实现，可脱库单测。这是把「用户隔离」「阈值」「敏感过滤」变成可验证代码的关键。
 >
 > **平面 B 的服务类必须从 `MemoryService` 拆出**（**§2.2 规则 6** —— §2.8 是架构测试清单，不是规则出处）：`MemoryService` 现在同时提供 `recall/write` 与 `list_*/trend`，拆分后运行时的 `recall/write` 移到平面 A，管理查询留在平面 B。
 
@@ -1150,7 +1170,7 @@ ALTER TABLE admin_memory_policies
 
 | 阶段 | 删除/替换 | 旧代码减少（行） | **新写入量（估算）** | 旧路径状态 |
 |---|---|---|---|---|
-| Stage 0 | 拆分 `MemoryService`（单类 → 两服务类） | ~0（纯重构） | L2 补 6 列 + `session_memory_buffer` 新表 | X16 → 已弃用 |
+| Stage 0 | 拆分 `MemoryService`（单类 → 两服务类） | ~0（纯重构） | **L2 补 8 列**（`user_id` / `content_hash` / `content_hash_version` / `source_turn_id` / `last_used_at` / `used_count` / `confidence_source` / `version`）+ `session_memory_buffer` 新表 | X16 → 已弃用 |
 | Stage 1 | 无（安全修复） | 0 | 0 | — |
 | Stage 2 | C2 检索重写（替换全量扫描） | ~120 行 | 统计字段更新（每次召回一行） | **不停用**（`layered.py` 从未接线，删除在 Stage 7） |
 | Stage 3 | `runner._remember`（30 行） | 0（**只实现新 Writer，不停用旧写入点**） | 每轮 1 行写入（去重后实际更少） | **不停用**（停用与删除在 Agent A-26 之后 / Stage 7） |
@@ -1241,14 +1261,14 @@ def test_memory_layer_has_no_framework_imports():
             assert mod not in _imports_of(path), f"{path} 引入了 {mod}"
 ```
 
-另加本层特有的**分层规则**（直接来自 §2.8，可逐条写成断言）：
+另加本层特有的**分层规则**（**第 1–5 条直接来自 §2.8，可逐条写成断言；第 6 条是本层特有的安全要求，§2.8 里没有对应项**）：
 
 | # | 规则 | 检查方式 |
 |---|---|---|
 | 1 | **平面 A 不得 import 平面 B** | import 扫描：`memory/admin*` 不得出现在 `memory/retrieval.py` / `writer.py` / `vectorize.py` |
-| 2 | **L3 策略层不得有 IO** | import 扫描（不得 import sqlalchemy / pgvector / httpx） |
-| 3 | **B3 与 L3 的敏感闸门共用同一实现** | 实现同一函数的断言（防两套脱敏规则漂移） |
-| 4 | **L4 存储层不得含业务规则** | 关键字扫描（阈值 / top-k / 置信度常量） |
+| 2 | **A3 策略层不得有 IO** | import 扫描（不得 import sqlalchemy / pgvector / httpx） |
+| 3 | **B3 与 A3 的敏感闸门共用同一实现** | 实现同一函数的断言（防两套脱敏规则漂移） |
+| 4 | **S1 存储层不得含业务规则** | 关键字扫描（阈值 / top-k / 置信度常量） |
 | 5 | **平面 B 的管理操作不得进入对话主路径** | 主路径调用图检查 |
 | 6 | **作用域过滤必须下推到 SQL** | 集成测试：用户 A 的召回结果不含用户 B 的记忆（租户 / 工作区 / 用户三层各一条） |
 
@@ -1279,9 +1299,9 @@ def test_memory_layer_has_no_framework_imports():
 | **决策 #1（L3 vs knowledge）影响面大** | 可能牵动 knowledge 模块与前端 | 决策集中在 Stage 0 前定；迁移期两侧读同一份数据，避免切换窗口 |
 | **抽取召回率低**（规则起步） | 记忆写得少 | 先保「用户显式要求」这条高价值路径；LLM 抽取后置 |
 | **敏感信息闸门误判** | 漏拦或误拦 | 规则 + 可配置白名单；拦截事件进审计供人工复核 |
-| **淘汰器误删有价值的记忆** | 长期记忆丢失 | 淘汰先标状态（`expired`/`retired`）不物理删；物理删只走治理流程 |
+| **淘汰器误删有价值的记忆** | 长期记忆丢失 | ⚠️ **不引入 `expired` / `retired` 状态** —— §9.1.1 与 §10.3 已定：**淘汰即物理删除**（`admin_memory_l2` / `admin_memory_l3` 的 TTL 与 `max_items` 策略），状态枚举里**不加**新值，避免同一张表出现「已淘汰但还在」的第三种真相。**删除前先备份**（Stage 6 的备份恢复演练是前置）|
 | **策略绑定接线可能改变现有行为** | 已有 agent 的记忆行为变化 | Stage 4 单独发布；先用只读模式观察，再启用 |
-| **与 Context 层召回契约耦合** | 两层同时改 | `LayeredMemory` / `RecallHit` 契约保持不变（已存在），只扩字段 |
+| **与 Context 层召回契约耦合** | 两层同时改 | ⚠️ **`RecallHit` 不是「保持不变」** —— §2.6.1 已定终态：`RecallHit` **扩 `ref_id` / `version` / `scope` / `used_count`**，`layer` 的取值**统一用 `stm`**（不用 `l1`，避免同一指标里新旧取值并存）。**扩字段由 Memory Stage 0 交付**，Context Stage 1 才能消费 |
 | **写入量下降影响「记忆感」** | 用户觉得 agent 不记得事了 | 用「用户显式要求」路径保证确定性；抽取覆盖率做指标 |
 
 ### 13.1 回退
@@ -1312,7 +1332,7 @@ def test_memory_layer_has_no_framework_imports():
 |---|---|---|---|
 | **A 会话记忆面** | 检索召回 | 用户 / 工作区可见范围过滤 | 过滤在**检索入口**完成（带 `owner_id` / `workspace_id` 条件），不是返回后再过滤 |
 | **A** | 写入 | 敏感内容脱敏 + 容量上限 | 脱敏失败 → 拒绝写入并计数；容量超限 → 拒绝（不静默丢弃） |
-| **A** | 提升（L1→L2） | 提升策略约束（条目数、TTL） | 超限 → 拒绝提升，写明原因 |
+| **A** | 提升（**STM→L2**） | 提升策略约束（条目数、TTL） | 超限 → 拒绝提升，写明原因 |
 | **B 记忆管理面** | 策略变更 | 管理侧权限 + 二次确认 | 无权限 → `FORBIDDEN`；**不落任何数据变更** |
 | **B** | 手动编辑 L2 条目 | 必须走与自动写入**相同的脱敏与去重** | 跳过 → 拒绝（现状 admin `PATCH /l2/{id}` 绕过脱敏，见 §1 现状缺陷） |
 | **B** | 淘汰执行 | 淘汰策略（TTL / max_items） | 无可淘汰项 → 标记「无可淘汰」，**不静默失败** |
@@ -1330,7 +1350,7 @@ def test_memory_layer_has_no_framework_imports():
 | `qzdap_memory_recall_hits` | Histogram | `level` | 单次召回命中条数分布 |
 | `qzdap_memory_write_total` | Counter | `plane`, `level`, `outcome` | 写入次数（`outcome`：`ok` / `rejected` / `failed`） |
 | `qzdap_memory_write_rejected_total` | Counter | `plane`, `level`, `reason` | 写入被拒数（`reason`：`redaction` / `capacity` / `policy`） |
-| `qzdap_memory_promotion_total` | Counter | `outcome` | L1→L2 提升数 |
+| `qzdap_memory_promotion_total` | Counter | `outcome` | **STM→L2** 提升数（⚠️ 不用 L1→L2 —— L1 表按决策 #5 退役） |
 | `qzdap_memory_eviction_total` | Counter | `level`, `reason` | 淘汰数（`reason`：`ttl` / `max_items` / `manual`） |
 | `qzdap_memory_policy_executor_missing` | Gauge | — | **本层新建**（代码里目前不存在）：恒为 1 表示淘汰执行器缺失（现状 `admin_memory_policies` 无执行器，见 §1） |
 | `qzdap_legacy_calls_total` | Counter | `entry` | 旧实现调用计数（标签 `entry` 为台账编号） |
@@ -1395,7 +1415,7 @@ def test_memory_layer_has_no_framework_imports():
 | `runtimes/.../memory/layered.py`（317 行） | **删除**（逻辑反转） |
 | `runtimes/.../graph/nodes.py` `remember` 节点 | **删除**（逻辑反转） |
 | `runtimes/.../ports.py` `LayeredMemory` / `RecallHit` | 契约扩字段：`scope` / `used_count` / `ref_id` / `version` |
-| （新增）`runtimes/.../memory/` | retrieval / writer / lifecycle / vectorize / policy / extraction / redaction |
+| （新增）`runtimes/.../memory/` | retrieval / writer / vectorize / scope / ranking / extraction / redaction / confidence / promotion / eviction / policy（§10.1 逐文件清单为准）|
 | （新增）`session_memory_buffer` 表 | STM 缓冲 |
 
 ---

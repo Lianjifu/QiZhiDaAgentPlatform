@@ -316,7 +316,7 @@
 | | G-11 服务账号物化 | IM 的 actor 从渠道配置读 | — | 0 | G-10 |
 | | G-12 验签迁出 | `channel/application/services.py` → `gateway/identity.py` | — | 0 | G-10 |
 | | G-13 补 `/v1/sessions` 租户校验 | 或随 Stage 4a 直接删该路由 | — | 0 | G-10 |
-| | **G-13b `modules/channel` 加 `qzdap-agent-runtime` 依赖** | Gateway 方案 §7.2.1 的依赖方向变更 —— webhook 端点要调 `Gateway.accept`。**必须同步更新 `uv.lock`** | — | 0 | **横切 H6**（锁文件） |
+| | **G-13b `modules/channel` 加 `qzdap-agent-runtime` 依赖** | Gateway 方案 §9.2.1 的依赖方向变更 —— webhook 端点要调 `Gateway.accept`。**必须同步更新 `uv.lock`** | — | 0 | **横切 H6**（锁文件） |
 | | **G-14 删验签分支 + 硬编码身份常量** | — | **G2 / G3**（关注点 #5） | **~60 行** | G-12 |
 | Stage 3 · Message Normalizer | G-15 4 个 inbound adapter 改产 `InboundMessage` | 补 tenant / workspace / channel / trace / attachments | — | 0 | Stage 0 |
 | | G-16 附件统一 | `AttachmentRef` + `AttachmentStoragePort` | — | 0 | G-15 |
@@ -380,7 +380,7 @@
 | | R-05 `ErrorCode` 加 `QUEUE_FULL` / `QUEUE_TIMEOUT` | `libs/schema/.../errors.py` + `_HTTP_STATUS` 映射 | — | 0 | 决策 #7 |
 | | R-06 打点本层旧入口 | `record_legacy_call("R1".."R4")` ×4 | — | 0 | 前置 C2 |
 | Stage 1 · Strategy | R-07 规则链实现 | 粘性 > 显式 > 业务线 > 用户标签 > 兜底 | — | 0 | Stage 0 |
-| | R-08 `RouteDecision` 留痕 | 写入 `session_turns.route_decision` | — | 0 | R-07 |
+| | R-08 `RouteDecision` 留痕 | 写入 `session_turns.route_decision`（**本层唯一写者**）| — | 0 | R-07 |
 | | **R-09 web 建会话改走 Strategy** | `session_router.py:162` → Strategy | **R2**（关注点 #6） | **~10 行** | R-08 |
 | Stage 2 · Session Routing | R-10 会话 key 派生 | tenant+workspace+channel+chat+user → sha256 | — | 0 | — |
 | | **R-10b 查既有会话（只读）** | 调 Session 的 `lookup(session_key)` → 既有绑定 → **粘性规则的依据**（Gateway 的 `InboundMessage` 不含会话绑定，粘性必须先查） | — | 0 | **Session Stage 1（硬）** |
@@ -440,7 +440,7 @@
 | Stage | 工作项 | 产出 / 落点 | **删除的旧实现**（台账 / 关注点） | **旧代码减少** | 依赖 |
 |---|---|---|---|---|---|
 | Stage 0 · 契约与迁移 | S-01 建 `session/` 骨架 + `state.py` | 状态机定义 + 转移校验 | — | 0 | — |
-| | S-02 **迁移 0046** | `pending_approval` / `cancel_requested` / `ingress_seq` / `route_decision`；`session_messages` 加 `session_seq`/`session_id`；`session_turns.status` 加 `queued`（先 DROP enum 再重建）；建 `langgraph_checkpoint_*` 表 | — | 0 | 决策 #5 |
+| | S-02 **迁移 0046** | `pending_approval` / `cancel_requested` / `ingress_seq` / `route_decision`（**Router 写**）/ `agent_decision`（**Agent 写**）；`session_messages` 加 `session_seq`/`session_id`；`session_turns.status` 加 `queued`（先 DROP enum 再重建）；建 `langgraph_checkpoint_*` 表 | — | 0 | 决策 #5 |
 | | S-03 `session_messages.session_id` 回填 | 从 `session_turns` 回填后建唯一索引 | — | 0 | S-02 |
 | | S-04 `ErrorCode` 加 `APPROVER_MUST_DIFFER` | `libs/schema/.../errors.py` | — | 0 | — |
 | | S-05 **`AsyncPostgresSaver` 接线** | `langgraph.checkpoint.postgres.aio` 接进 lifespan | — | 0 | S-01 |
@@ -450,7 +450,7 @@
 | | **S-08b `lookup`（只读）** | `session_key` → 既有会话 + 其 agent 绑定；**不创建、不写表**、失败返回 `None`。Router 粘性规则（决策链规则 1）的依据 —— 没有它就是鸡生蛋（`resolve_or_create` 需要 `agent_binding` 入参） | — | 0 | Stage 0 |
 | | S-09 `close` / `archive` | 复用现有语义 | — | 0 | S-08 |
 | | S-10 sweeper 骨架 + 僵尸轮次接管 | 复用 `CLAIM_STALE_MINUTES` 经验 | — | 0 | S-08 |
-| | **S-10b sweeper 第四类清扫** | 删 `session_inbox` 中 `expires_at < now()` 的行（单批 ≤1000）—— **Gateway 幂等 TTL 依赖它**（Gateway 方案 §5.3.1）；不清理则 Gateway 在 TTL 之后持续误杀 | — | 0 | S-10 · **Gateway Stage 0 的迁移 0044** |
+| | **S-10b sweeper 第四类清扫** | 删 `session_inbox` 中 `expires_at < now()` 的行（单批 ≤1000）—— **Gateway 幂等 TTL 依赖它**（Gateway 方案 §4.3.1）；不清理则 Gateway 在 TTL 之后持续误杀 | — | 0 | S-10 · **Gateway Stage 0 的迁移 0044** |
 | | **S-11 删 `try_claim` 的 `wait_status` 分支** | 改用轮次表 CAS | — | **~20 行** | S-08 |
 | Stage 2 · Thread | S-12 轮次序列 `ingress_seq` | 与 Router 合并（DDL 归 0046，本层拥有） | — | 0 | S-02 |
 | | S-13 消息序列 `session_seq` | 会话内单调 | — | 0 | S-02 |
@@ -558,7 +558,7 @@
 | | C-19 `rolling_summary` 读写迁移 | **新写入**改到新列（旧写入点在 `copilot.py:379-380` 与 `runner.py`，等 Stage 4 停用旧循环后才归零） | — | 0 | C-02 |
 | | C-20 交付前落库 | 保证「模型已回答」时 manifest 一定存在 | — | 0 | C-18 |
 | Stage 4 · 接线与端到端 | C-21 Agent Loop 调 Context | 替换「自己拼 messages」 | — | 0 | **Agent Stage 5** |
-| | C-22 召回失败的 degraded 标记 | `recall_degraded` 传到前端（键已在 Gateway §7.0 登记）；⚠️ **前端目前零消费 `flags`** → 需一个前端工作项（Stage 4） | — | 0 | C-08 |
+| | C-22 召回失败的 degraded 标记 | `recall_degraded` 传到前端（键已在 Gateway §9.0 登记）；⚠️ **前端目前零消费 `flags`** → 需一个前端工作项（Stage 4） | — | 0 | C-08 |
 | | C-23 端到端回归 | 长会话、混合中英文、召回为空、摘要模型故障 | — | 0 | C-21 |
 | | **C-24 停用 + 打点 `_load_messages` / 四套模板 / `compact.py`** | **前置（硬）= Agent Stage 5 的 A-26 已完成** —— 旧循环 `_run_turn_inner` 已改接 `context/builder.py` + `memory/writer.py`，这三个旧实现才真正没有调用方 | **X8 / X9 / X10 → 已弃用**（关注点 #9、#10、#11） | — | C-21 · **Agent A-26** |
 | | C-25 Agent Loop 内自拼 messages 分支停用 + 打点 | ⚠️ **删除归 Agent Stage 7（X17）**，本层只停用 + 确认无残留调用方 | — | — | C-21 |
@@ -647,7 +647,7 @@
 | | M-33 `trend()` 改真实统计 | — | — | 0 | M-31 |
 | | M-34 接入 sweeper 调度 | 与 Session 层清扫器**同批调度** | — | 0 | M-32 |
 | | M-35 **淘汰执行器** | `admin_memory_policies` 的 TTL / max_items **首次有执行者** | — | 0 | M-34 |
-| Stage 6b · 平面 B 落地 | M-36 B1 管理接口 | 20 个管理端点收敛到 `MemoryAdminService` | — | 0 | Stage 0 |
+| Stage 6b · 平面 B 落地 | M-36 B1 管理接口 | **18** 个管理端点收敛到 `MemoryAdminService` | — | 0 | Stage 0 |
 | | M-37 B2 管理服务 | 审核提升、人工编辑、配置发布与生效 | — | 0 | M-36 |
 | | M-38 B3 管理策略 | 管理侧独立的脱敏 / 去重 / 版本化（**敏感闸门与 A 共用同一实现**） | — | 0 | M-37 |
 | | M-39 **C9 治理 provider** | 删除 / 导出：清理 L1/L2/L3 表 + 向量 + `session_memory_buffer` | — | 0 | M-36 |
@@ -677,7 +677,7 @@
 
 **回退点**：Stage 0–6b 旧实现仍在场，回退 = revert。**Stage 7 之后不可逆**（L1 / L3 两张表退役后，旧数据只能从备份恢复）。
 
-**本层负责的台账条目**：**X11 · X12 · X13 · X14（修复） · X15 · X16**（唯一 owner）。
+**本层负责的台账条目**：**X11 · X12 · X13 · X14（修复） · X15 · X16 · X19**（唯一 owner）。⚠️ **X19**（死表 `memory_l2_embeddings`）在 **Stage 0 的迁移 0048 内**就 DROP 掉了，不在 Stage 7。
 
 **本层特有风险**：
 
@@ -701,7 +701,7 @@
 > **两条轴**（Agent 层方案 §0.2）：**执行轴**（每步推理：循环 → 选专家 → 执行）与**配置轴**（管理员配置 → agent 绑定 → 运行时取值）。**模型与工具在配置轴上，不在执行轴上** —— 所以 ⑧ 只剩「选专家」一路，模型 / 工具的**取值**落在 ⑨ Execution。
 
 **前置**：
-- **Agent Stage 4 开工前**：**Session 迁移 0046 已落地**（`session_turns.route_decision` 列存在）—— 本阶段只依赖**表结构**，不依赖 Session 的 turn 实现；
+- **Agent Stage 4 开工前**：**Session 迁移 0046 已落地**（`session_turns.agent_decision` 列存在）—— 本阶段只依赖**表结构**，不依赖 Session 的 turn 实现；
 - **Agent Stage 5 开工前**：**Session Stage 3（唯一 turn 实现）已完成**（硬依赖）—— Agent Loop 是跑在一轮之内的循环，没有唯一的 turn 编排，两边都会认为自己该管这件事；
 - **Agent Stage 6 开工前**：**Stage 1 已完成**（`QZDAPChatModel` 可用）+ 决策 #8 已拍板；
 - Agent 决策 #1 / #2 / #5 / #6 在 Stage 0 前拍完。
@@ -732,7 +732,7 @@
 | Stage 4 · 专家 Agent 选择 + 配置取值 | A-21 `AgentRouter` | 选专家 Agent；无专家 → 落回会话绑定 | — | 0 | **Session 0046 已落** |
 | | A-22 **模型解析接线** | 把**选中专家**的 `model_id` / `route_id` 交给 Execution 的模型解析（Agent 层方案 §5.2.1）→ 构造 `QZDAPChatModel`（**查表，不是决策** —— 决策 #4） | — | 0 | A-21 |
 | | A-23 **工具绑定接线** | 把**选中专家**的绑定集交给 Execution 的工具绑定（Agent 层方案 §5.3.1）→ 统一成 `BaseTool` + 治理过滤 | — | 0 | A-21 |
-| | A-24 路由留痕 | 专家选择 + 模型 / 工具的**取值结果**写进 `session_turns.route_decision`（**记「用了什么」，不记「为什么挑了它」**） | — | 0 | A-21 · 0046 已落 |
+| | A-24 路由留痕 | 专家选择 + 模型 / 工具的**取值结果**写进 `session_turns.agent_decision`（**记「用了什么」，不记「为什么挑了它」**）。⚠️ **不写 `route_decision`** —— 那是 Router 的列（会话入口策略决策），**两列两写者** | — | 0 | A-21 · 0046 已落 |
 | Stage 5 · 循环与终止 | A-25 `AgentLoopRunner` + `Evaluator` | Reason → Observe → Evaluate；**六个终止条件的单一判定点** | — | 0 | **Session Stage 3（硬）** |
 | | **A-26 把 `_run_turn_inner` 改接新 Builder / Writer** | ⚠️ **旧循环的最后一次改造**：`runner.py:179` 的 `_load_messages` 与 `runner.py:467` 的 `_remember` 换成对 `context/builder.py` + `memory/writer.py` 的调用。**这一步做完，X8 / X10 / X11 才真正无调用方**，Context Stage 4 与 Memory Stage 7 才能删 | — | 0 | A-25 · **Context Stage 1–3 + Memory Stage 3** |
 | | A-27 端到端回归 | 简单问答 / 多工具 / 工具失败 / 审批挂起恢复 / 取消 / 超预算 / 专家路由 | — | 0 | A-26 |
@@ -757,7 +757,7 @@
 1. **存在一条端到端测试跑完整个循环**（不是逐节点单测）—— 2026-10-15 那次失败的直接教训；六个终止条件各有一条测试；
 2. 同一 `idempotency_key` 在**两个 worker** 上并发调用 → **只执行一次**；`tool_executions` 有真实行；同键不同参数 → 明确错误；
 3. actor 是真实用户；取不到 actor → **拒绝执行工具**；`unprotected` 轮次**不产生任何副作用工具调用**；
-4. **专家选择有独立测试**；模型与工具**取自 agent 配置**（代码里没有运行时「挑」的逻辑 —— 决策 #4）；`route_decision` 完整留痕；**专家切换不改变会话绑定**；**专家切换后模型 / 工具随之换成新专家配置里的那些**（§4.2）；
+4. **专家选择有独立测试**；模型与工具**取自 agent 配置**（代码里没有运行时「挑」的逻辑 —— 决策 #4）；`agent_decision` 完整留痕、**不碰 Router 的 `route_decision`**；**专家切换不改变会话绑定**；**专家切换后模型 / 工具随之换成新专家配置里的那些**（§4.2）；
 5. 成本落到 `session_turns.cost_usd`（**0035 建的列**）；
 6. **`QZDAPChatModel` 是 `langchain_core.BaseChatModel` 的实例**，能被 LangGraph 节点作为 `model` 接受（Deep Agents 的硬前置）；
 7. **生产包里零 `InMemory*` 类**（CI 规则 6）；**平行 `*Event` 已删**，前端契约只剩 `TurnChunk` 一套；
@@ -814,7 +814,7 @@ Global 前置(A/B/C)
 | Session Stage 3 | **Context Stage 4**（接线） | 语义 | §3.4 C-21 |
 | Session Stage 4（`session_events` 落库） | **Gateway Stage 4b**（无感重放） | 硬依赖 | §3.1 G-24 |
 | Session 迁移 0046 | **Context 迁移 0047** | 物理顺序 | §3.4 C-02 |
-| Session 迁移 0046 | **Agent Stage 4**（`route_decision` 列） | 物理顺序 | §3.6 A-21 |
+| Session 迁移 0046 | **Agent Stage 4**（`agent_decision` 列） | 物理顺序 | §3.6 A-21 |
 | Gateway Stage 0–3 | **Gateway Stage 4a** | 顺序 | §3.1 G-18 |
 | Gateway Stage 4a | **Session Stage 5b**（同 PR） | **原子** | §3.1 G-20 / §3.3 S-32 |
 | Memory Stage 2（C2 Retrieval） | **Context Stage 1**（Builder 召回发起） | 语义 | §3.4 C-08 |
@@ -1107,7 +1107,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] P-11 **确认 `/v1/sessions*` 是否有仓外消费者**（H5 / C9，需 API owner 拍板）
 - [ ] P-12 CI 加 isolated install 检查（H6 / C10）
 
-### Gateway 层（§3.1）—— **删除 G1–G9**
+### Gateway 层（§3.1）—— **删除 G1–G10**
 - [ ] G-01 `gateway/` 骨架 + `types.py` · G-02 `ErrorCode` 投影表 · **G-02b 错误码收敛（7 个模块内码 → `ErrorCode` 枚举）** · G-03 **迁移 0044**（部分唯一索引 + 合成值约定）· G-04 架构测试 · G-05 打点 G1–G10
 - [ ] G-06 `IdempotencyStore` · G-07 `Gateway.accept` · G-08 web 入站切过来
 - [ ] G-09 **删 `record_request_id` + `recent_request_ids`** → **G1** · **G-09b 审批恢复路径传幂等键** → **G10** · **G-09c 过期行不当成重复**
@@ -1161,7 +1161,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] C-30 删 `metadata['rolling_summary']` 残留 · C-31 启用扫描脚本 Context 段 · C-32 更新台账 + 现状文档
 
 ### Memory 层（§3.5）—— **删除 X11 / X12 / X13 / X15 / X16，修复 X14**
-- [ ] M-01 **拆分 `MemoryService`** → **X16 拆分**（含 6 个管理写方法）· M-02 `memory/` 骨架 + 端口 · M-03 **迁移 0048**（含 **DROP 死表 X19**）· **M-03b 写入侧持久化 `owner_id`** · M-04 `RecallHit` 扩字段 + 生产返回改用 `RecallHit` · M-05 打点 X11–X16
+- [ ] M-01 **拆分 `MemoryService`** → **X16 拆分**（含 6 个管理写方法）· M-02 `memory/` 骨架 + 端口 · M-03 **迁移 0048**（含 **DROP 死表 X19**）· **M-03b 写入侧持久化 `owner_id`** · M-04 `RecallHit` 扩字段 + 生产返回改用 `RecallHit` · M-05 打点 X11–X16 · **X19 死表在 M-03 内已 DROP**
 - [ ] M-06 L2 `user_id` 过滤 · M-07 向量 payload 过滤 · M-08 历史向量回填 · M-09 L3 `visible_scope` ACL → **X14 修复完成即「已弃用」**
 - [ ] M-10 向量优先 + 词法兜底 · M-11 候选集 `top_k×4` · M-12 去重/阈值/abstain · M-13 provenance · M-14 C10 降级 · M-15 **确认 `layered.py` 从未接线**（**无停用阶段**）→ **X12**
 - [ ] M-16 `FactExtractor` · M-17 `Redactor` · M-18 幂等 · M-19 置信度 · M-20 来源追溯
@@ -1300,7 +1300,9 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 | X18 `copilot.py` turn 编排 | 指标 | `copilot.py` 的 turn 编排入口（`stream_turn` / `_run_turn` / `decide_approval`） | `X18` | 判据 = 语义迁入 `turn_runner.py` **且** 指标归零 ≥7 天 **且** 扫描零命中（Stage 3b） |
 | X19 `memory_l2_embeddings` 死表 | **扫描** | — | `X19` | 判据 = 表已 DROP（Memory Stage 0） |
 
-> **34 行里只有 17 行是「指标」类**（G1 / G2 / G3 / G6 / G7+G8 / G9 / R1 / R2 / R4 / X2 / X8 / X9 / X10 / X11 / X17 / X18 —— **这些都有旧调用入口，可打点归零**），**15 行靠扫描**（G4 / G5 / R3 / X1 / X1-a / X1-b / X3 / X4 / X5 / X6 / X7 / X12 / X13 / X15 / X16 / X19），**2 行是修复类**（X14 跨用户泄漏、G10 审批恢复路径的幂等键 —— **不进指标**，用测试判定）。
+> **33 行里只有 16 行是「指标」类**（G1 / G2 / G3 / G6 / G7+G8 / G9 / R1 / R2 / R4 / X2 / X8 / X9 / X10 / X11 / X17 / X18 —— **这些都有旧调用入口，可打点归零**），**15 行靠扫描**（G4 / G5 / R3 / X1 / X1-a / X1-b / X3 / X4 / X5 / X6 / X7 / X12 / X13 / X15 / X16 / X19），**2 行是修复类**（X14 跨用户泄漏、G10 审批恢复路径的幂等键 —— **不进指标**，用测试判定）。
+>
+> ⚠️ **计数口径**：表里是 **32 行**，但代表 **33 个台账条目** —— G7+G8 合成一行、X1-a / X1-b 合成 X1 一行（**行数 32，条目数 33**）。本段的「33 行」指**条目数**。
 >
 > **把这张表做全了，「33 个 entry 全部有值」这个不可达的判据才变成可达。**
 

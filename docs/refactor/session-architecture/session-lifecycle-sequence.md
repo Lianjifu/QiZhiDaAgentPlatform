@@ -54,7 +54,7 @@ sequenceDiagram
     G-->>U: 渠道回包
 ```
 
-> **相对原始时序图的三处补充**（2026-10-29）：① Gateway 内部四步展开（对齐 `gateway-refactor-plan.md` §4）；② 补上**幂等去重**这一步（原本只在正文提过、图上没有）；③ 补 **Knowledge** 泳道（Memory 决策 #1 定 L3 退役后，知识检索不再经 Memory）。
+> **相对原始时序图的三处补充**（2026-10-29）：① Gateway 内部四步展开（对齐 `gateway-refactor-plan.md` §2）；② 补上**幂等去重**这一步（原本只在正文提过、图上没有）；③ 补 **Knowledge** 泳道（Memory 决策 #1 定 L3 退役后，知识检索不再经 Memory）。
 >
 > **Knowledge 不是本方案集的一层** —— 它是既有的 `modules/knowledge` 模块，出现在图上是为了说明「知识检索**不经过 Memory**」。
 
@@ -104,7 +104,7 @@ sequenceDiagram
 | 1 | gateway → router → session → context → memory → **agent**（六层） | **Agent Loop / Agent Router / Execution** 三段 | 各层方案文档的命名与边界；Agent 相关的工作量要按三段拆 |
 | 2 | 会话 key（`build_session_key`）由 Session 派生 | **Router** 负责「路由到会话」，即外部会话标识 → 目标会话的解析归 Router | Gateway 只负责规范化 `external_chat_id`，**不做会话 key 派生** |
 | 3 | 记忆写入由 Session 在收尾触发 | **Agent Loop** 在 Observe/Evaluate 后写入 | Memory 方案的写入时机；Agent Loop 需要持 `MemoryPort` |
-| 4 | Gateway 含「鉴权 + 归一化 + 幂等」 | 同上，**四步已在 §1 的时序图中展开**（含幂等去重） | Gateway 方案 §4 的四部分与基线图一一对应 |
+| 4 | Gateway 含「鉴权 + 归一化 + 幂等」 | 同上，**四步已在 §1 的时序图中展开**（含幂等去重） | Gateway 方案 §2 的四部分与基线图一一对应 |
 | 5 | 知识与记忆混为一谈（L3 当知识用） | **拆开**：L3 退役，知识归 `modules/knowledge`；知识检索**不经过 Memory** | Memory 决策 #1；基线图补 **Knowledge** 泳道 |
 
 ---
@@ -143,7 +143,7 @@ Router（标准消息）
 | 1 | 入站 | `RawIngress` | `trace_id`（最早建立）、`channel_type`、原始 body | 渠道 → Gateway ① |
 | 2 | 鉴权后 | `AuthenticatedIngress` | `actor`（租户/工作区/用户/信任级别）、`trust`、`auth_method` | Gateway ② → ③ |
 | 3 | 归一化后 | `InboundMessage` | `text`、`attachments`、`idempotency`、`explicit_agent_id`、`payload_hash` | Gateway ③ → ④ → Router |
-| 4 | 路由后 | `SessionAssignment` | `session_ref`、`agent_id`、`agent_version`、`ingress_seq`、`route_decision` | Router → Session |
+| 4 | 路由后 | `SessionAssignment` | `session_ref`、`agent_id`、`agent_version`、`ingress_seq`、`route_decision`（**Router 写**）、`agent_decision`（**Agent 写**）| Router → Session |
 | 5 | 轮次建立 | `session_turns` 行 | `idempotency_key`、`status`（`queued`→`running`）、`pending_approval`、`cost_usd` | Session → （各层） |
 | 6 | 上下文 | `AssembledContext` | `messages: list[{role, content}]`、`manifest`、`degraded_flags`、`tokens_estimated` | Context → Agent Loop |
 | 7 | 召回结果 | `list[RecallHit]` | `layer`、`content`、`score`、`ref_id`、`version`、`scope` | Memory / Knowledge → Context |

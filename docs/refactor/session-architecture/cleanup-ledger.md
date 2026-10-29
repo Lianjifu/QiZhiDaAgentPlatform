@@ -458,16 +458,16 @@ def record_legacy_call(entry: str) -> None:
 
 | 台账条目 | 出现在 | 删除阶段 |
 |---|---|---|
-| G1 | `gateway-refactor-plan.md` §7.2、Stage 1 | Gateway Stage 1（直接删，无调用方） |
-| G2 | `gateway-refactor-plan.md` §7.2、Stage 2 | Gateway Stage 2 |
-| G3 | `gateway-refactor-plan.md` §7.2；`router-refactor-plan.md` §7.2 | Gateway Stage 2 / Router Stage 2 |
-| G4、G5、G6 | `gateway-refactor-plan.md` §7.2、Stage 3 | Gateway Stage 3 |
-| G7、G8、G9 | `gateway-refactor-plan.md` §7.4、Stage 4 | Gateway Stage 5 |
+| G1 | `gateway-refactor-plan.md` §9.2、Stage 1 | Gateway Stage 1（直接删，无调用方） |
+| G2 | `gateway-refactor-plan.md` §9.2、Stage 2 | Gateway Stage 2 |
+| G3 | `gateway-refactor-plan.md` §9.2；`router-refactor-plan.md` §7.2 | Gateway Stage 2 / Router Stage 2 |
+| G4、G5、G6 | `gateway-refactor-plan.md` §9.2、Stage 3 | Gateway Stage 3 |
+| G7、G8、G9 | `gateway-refactor-plan.md` §9.4、Stage 4 | Gateway Stage 5 |
 | R1 | `router-refactor-plan.md` §7.2、§7.4 | Router Stage 2（**行为替换**；文件删除归 Gateway G9） |
 | R2 | `router-refactor-plan.md` §7.2 | Router **Stage 1**（`agentId` 直取 → 策略链） |
 | R3 | `router-refactor-plan.md` §7.4 | ⚠️ **owner 是 Session**（`try_claim` 的**互斥**职责 → `session_turns.status` 的 CAS；**它没有顺序职责**，旧路径从未有过序号机制 —— Router 的 FIFO 是全新建） |
 | R4 | `router-refactor-plan.md` §7.4 | Router Stage 5（删 `build_session_key`） |
-| X2 | `gateway-refactor-plan.md` §7.4（配合）；`session-refactor-plan.md` §8 | Session Stage 3（停用）→ **Stage 5b（删除，与 Gateway 的 IM 入口切换同 PR）** |
+| X2 | `gateway-refactor-plan.md` §9.4（配合）；`session-refactor-plan.md` §8 | Session Stage 3（停用）→ **Stage 5b（删除，与 Gateway 的 IM 入口切换同 PR）** |
 | X3、X6 | `session-refactor-plan.md` §7.3、§8 | Session Stage 6 |
 | X4 | `session-refactor-plan.md` §7.1；Router 决策 #2 | Session Stage 6 |
 | X7 | `session-refactor-plan.md` §5.6 | Session Stage 5 |

@@ -599,7 +599,7 @@ ToolMessage(content=..., tool_call_id=..., name=..., status="success" | "error")
 |---|---|
 | 1 | **专家 Agent 是 agent 的一种 role**，复用 `agent_versions`（不新建表）。⚠️ **role 的落点**：`agent_versions` **没有 role / category 列** → 落在**模板的 `metadata` JSONB**（`category` / `tags`，见 `domain/catalog.py` 的 `apply_patch` 映射）→ **不需要新列、不需要新表**；只有当「同一模板的不同版本要扮演不同专家」时才需要版本级列（那时才要迁移） |
 | 2 | **没有专家可路由时 → 落回会话绑定的 agent**（不是报错） |
-| 3 | 路由决策**必须留痕**（写进 `session_turns.route_decision` JSONB，Session 迁移 0046 已建列） |
+| 3 | 路由决策**必须留痕**（写进 `session_turns.agent_decision` JSONB，Session 迁移 0046 已建列 —— ⚠️ **不是 `route_decision`**，那一列归 Router 写；两列语义不同、写入时刻不同，共用一列会互相覆盖）|
 | 4 | **专家切换不改变会话绑定** —— 会话仍属于原 agent（否则历史上下文的解释方式会突变） |
 | 5 | 专家 Agent 的工具集 = **专家自己配置里的绑定集**（§5.3.1）—— 专家本来就是一份 agent 配置，不存在「会话绑定 agent 的集合 ∩ 某个子集」 |
 
@@ -875,7 +875,7 @@ ToolRuntimePort
 | `tool_executions` | **启用（开始写入）** | 幂等的唯一权威。**列已在 0035 建齐，不需要新迁移** |
 | `tool_calls` | **保留**（`modules/tool` 在用） | 工具域的调用明细，用 `tool_call_id` 与 `tool_executions` 关联 |
 | `session_turns.cost_usd` | **启用**（迁移 0043 已建） | 本层写入 |
-| `session_turns.route_decision` | **启用**（迁移 0046 已建） | 路由留痕：**选了哪个专家** + **解析出的模型 / 工具集**（**记「用了什么」，不记「为什么挑了它」**） |
+| `session_turns.agent_decision` | **启用**（迁移 0046 已建） | 本层的路由留痕：**选了哪个专家** + **解析出的模型 / 工具集**（**记「用了什么」，不记「为什么挑了它」**）。⚠️ **不写 `route_decision`** —— 那一列的唯一写者是 Router（会话入口的策略决策）|
 | `agent_versions.route_id` / `route_strategy` | **保留**（迁移 0042 已建） | 模型解析的落点（`route_id` → `admin_model_routes`，迁移 0025）。⚠️ **不再扩展 `route_strategy` 的取值** —— 决策 #4 取消运行时策略路由后，**跨模块前置一并作废** |
 | `agent_versions.allowed_tools` / `allowed_skills` / `knowledge_package_ids` | **保留**（迁移 0011 已建） | **工具绑定集的落点**（§5.3.1）—— **不需要新列** |
 | `agent_versions.model_id` | **保留** | 版本冻结的模型 |
@@ -890,7 +890,7 @@ ToolRuntimePort
 |---|---|
 | `tool_executions` 的列 + `idempotency_key` 唯一约束 | **0035**（已建，零代码引用） |
 | `session_turns.cost_usd` | **0043** |
-| `session_turns.route_decision` / `ingress_seq` | **0046**（Session 方案） |
+| `session_turns.agent_decision` / `route_decision` / `ingress_seq` | **0046**（Session 方案）|
 | `agent_versions.route_id` / `route_strategy` | **0042** |
 | `langgraph_checkpoint_*` 表 | **0046**（Session 方案） |
 
@@ -1035,7 +1035,7 @@ ToolRuntimePort
 
 ### Stage 4：专家 Agent 选择 + 配置取值接线
 
-> **开工前置**：**Session 迁移 0046 已落地**（`session_turns.route_decision` 列存在 —— 路由留痕要写它）。本阶段**不依赖** Session 的 turn 实现，只依赖**表结构**。
+> **开工前置**：**Session 迁移 0046 已落地**（`session_turns.agent_decision` 列存在 —— 本层的路由留痕要写它）。本阶段**不依赖** Session 的 turn 实现，只依赖**表结构**。
 >
 > **⚠️ 本阶段不再是「三路路由」**：按决策 #4，模型与工具**不是运行时选择** —— 本阶段做的是「**从 agent 配置把模型与工具解析出来**」，并把它们**接到选中的专家**上。
 
@@ -1044,10 +1044,11 @@ ToolRuntimePort
 | `AgentRouter` | 选专家 Agent；无专家 → 落回会话绑定 |
 | **模型解析接线** | 把**选中专家**的 `model_id` / `route_id` 交给 Execution 的模型解析（§5.2.1）→ 构造 `QZDAPChatModel` 实例（**查表，不是决策** —— 决策 #4） |
 | **工具绑定接线** | 把**选中专家**的绑定集交给 Execution 的工具绑定（§5.3.1）→ 统一成 `BaseTool` + 治理过滤 |
-| 路由留痕 | 专家选择 + 模型 / 工具的**解析结果**写进 `session_turns.route_decision`（**记「用了什么」，不记「为什么挑了它」**） |
+| 路由留痕 | 专家选择 + 模型 / 工具的**解析结果**写进 `session_turns.agent_decision`（**记「用了什么」，不记「为什么挑了它」**）。⚠️ **不写 `route_decision`**（Router 的列）|
+| **每步留痕（追加式）** | 每一步的专家选择**同时**作为审计事件写进 `session_events`（`event_type = agent.expert.selected`，见 §12.3）—— `agent_decision` 是**轮次级快照**（最后一个专家），完整历史在事件流里 |
 
 **旧代码减少**：`adapter/llm/__init__.py` 的 6 个散装参数收敛为一个端口调用。
-**验收**：**专家选择有独立测试**；模型与工具的**取值**结果 == agent 配置里绑定的那些（**代码里没有运行时「挑」的逻辑** —— 决策 #4）；`route_decision` 完整留痕；**专家切换不改变会话绑定**。
+**验收**：**专家选择有独立测试**；模型与工具的**取值**结果 == agent 配置里绑定的那些（**代码里没有运行时「挑」的逻辑** —— 决策 #4）；`agent_decision` 完整留痕、**不碰 `route_decision`**；**专家切换不改变会话绑定**。
 
 ### Stage 5：循环与终止条件
 
@@ -1130,7 +1131,7 @@ ToolRuntimePort
 9. **六个终止条件**：各有独立测试（步数 / 成本 / 上下文超限 / 取消 / 审批挂起 / 工具连续失败）；
 10. **端到端循环测试**：**存在一条跑完整个 Reason→Observe→Evaluate 的测试**；
 11. **专家路由正确**：本步路由到专家 Agent，但**会话绑定不变**；
-12. **模型取自 agent 配置**：本次推理用的模型 == agent 配置里绑定的那个（`model_id` / `route_id` 的解析结果）；**代码里没有运行时「挑模型」的逻辑**；`route_decision` 留痕完整；
+12. **模型取自 agent 配置**：本次推理用的模型 == agent 配置里绑定的那个（`model_id` / `route_id` 的解析结果）；**代码里没有运行时「挑模型」的逻辑**；`agent_decision` 留痕完整；
 13. **工具集取自 agent 配置**：暴露给模型的工具 == agent 绑定的 `allowed_tools` / `allowed_skills`（减去治理过滤掉的）；**不是运行时挑的**；
 14. **工具三来源统一**：tool / mcp / skill 对模型是同一种 `BaseTool`；**admin 注册的 OpenAPI / MCP 工具有真实 schema**；
 15. **成本归属**：`session_turns.cost_usd` 有真实值；
@@ -1341,7 +1342,7 @@ def test_agent_layers_have_no_framework_imports():
 | # | 级别 | 问题 | 修正 | 落点 |
 |---|---|---|---|---|
 | **D1** | 设计 | **⑧ Agent Router 段与平台的实际配置模型冲突**：模型由管理员配置、绑定在 agent 配置上；工具（tool/mcp/skill）同样先配置、再在 agent 配置里绑定；知识/流程同理 → **本层不需要 Model Router**，也不需要「Tool Router 的选择」 | 取消 Model Router 与「工具选择」；模型改为**解析（查表）**、工具改为**绑定集读取 + 治理过滤**；本层的「路由」只剩**专家 Agent 选择**；连带取消 `balanced` 分流、`route_strategy` 新取值、`qzdap_model_routing_total` 指标 | §0.1 / §0.3 / §2.2 / §2.4 / §4.0 / §5.2.1 / §5.3.1 / §7.1 / §7.2 / §8.1 / §9 Stage 4 / §10.1 / §12.2 / 附录 A #4 / 实施方案 §3.6 |
-| **D2** | 设计 | **v1.1 的骨架与 D1 不自洽**：D1 取消了 Model Router / Tool Router 之后，「三段 + 三路路由」的骨架还留在 §4/§5/§6/§12 —— 章节名仍叫「智能路由层」，§6 的契约里仍写着 `ModelSelection` / `ToolSelection`，§12.2 仍有 `tier` / `strategy` 这类**已被取消的路由维度** | **按「两条轴」重排**：新增 **§0.2 两条轴（执行轴 / 配置轴）** 作为全篇前提；**§4 收敛为「只选专家」**（新增 §4.2「专家配置即绑定来源」）；**模型解析移到 §5.2.1、工具绑定移到 §5.3.1**（与各自的执行侧合并）；§6 契约去掉 `ModelSelection` / `ToolSelection`；§8.1 的 `tool_binding.py` 移到 `execution/`、新增 `model_binding.py`；`ToolRouterPort` 更名 `ToolBindingPort`；§12.2 的 span 改为 `execution.model_resolve` / `execution.tool_bind` | §0.2 / §0.3 / §4 / §5.2 / §5.3 / §6 / §7.1 / §8.1 / §9 Stage 0 / §10.1 / §12.1 / §12.2 / 附录 A #5 / 附录 B / 实施方案 §3.6 / 基线 §2
+| **D2** | 设计 | **v1.1 的骨架与 D1 不自洽**：D1 取消了 Model Router / Tool Router 之后，「三段 + 三路路由」的骨架还留在 §4/§5/§6/§12 —— 章节名仍叫「智能路由层」，§6 的契约里仍写着 `ModelSelection` / `ToolSelection`，§12.2 仍有 `tier` / `strategy` 这类**已被取消的路由维度** | **按「两条轴」重排**：新增 **§0.2 两条轴（执行轴 / 配置轴）** 作为全篇前提；**§4 收敛为「只选专家」**（新增 §4.2「专家配置即绑定来源」）；**模型解析移到 §5.2.1、工具绑定移到 §5.3.1**（与各自的执行侧合并）；§6 契约去掉 `ModelSelection` / `ToolSelection`；§8.1 的 `tool_binding.py` 移到 `execution/`、新增 `model_binding.py`；`ToolRouterPort` 更名 `ToolBindingPort`；§12.2 的 span 改为 `execution.model_resolve` / `execution.tool_bind` | §0.2 / §0.3 / §4 / §5.2 / §5.3 / §6 / §7.1 / §8.1 / §9 Stage 0 / §10.1 / §12.1 / §12.2 / 附录 A #5 / 附录 B / 实施方案 §3.6 / 基线 §2 |
 | **S1** | 严重 | Stage 1 删 `chat_model.py` 的 `stream_chat` 会**当场打断还在服役的旧路径**（`runner.py:36/281` web 路径 + `use_cases/run_turn.py:49/249` IM 路径都 import 它） | Stage 1 改为「只迁入不删」；删除前置 = **Agent Stage 5 的 A-26** + **Session Stage 5b** 都完成 → 删除落在 Stage 7 | §8.4 / §9 Stage 1 / §9 Stage 7 / 附录 B / 实施方案 A-09 |
 | **S2** | 严重 | **X5 有两个 owner**：台账 §5.4 说 Session Stage 3，实施方案 A-36/附录 B 说 Agent Stage 7，层方案 §8.4 同一行里两者并存 | 统一为 **Agent Stage 7（与 X17 同批）** —— `runner.py:44` import 它 → 必须活到旧 runner 退役；台账 §5.4 同步 | §8.4 / §9 Stage 7 / 台账 §5.4 / 实施方案 A-36 |
 | **S3** | 严重 | `persist_result` 被算成第 6 个空壳 —— 它其实有真实逻辑（用量记账 + 成本归属 + 异步评测，`nodes.py:1060`） | 空壳数 6 → **5**；并在台账 §2.3.1 改正（行号 1041 → 1060） | §1.2 / 台账 §2.3.1 |

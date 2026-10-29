@@ -1,8 +1,8 @@
 # Context 层重构方案
 
-> 版本：1.1（审查修正后）
+> 版本：1.2（审查修正后 + 按审查结论重排骨架）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**已评审**（17 条审查问题已修正，逐条见附录 C；附录 A 的 7 条决策待确认）
+> 状态：**已评审**（17 条审查问题已修正 + **本轮重排**，逐条见附录 C；附录 A 的 7 条决策待确认）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) —— 本方案实现其中 **Context 泳道**
 > 收敛机制：[`cleanup-ledger.md`](cleanup-ledger.md) —— 本方案对应条目 **X8、X9、X10**
@@ -25,7 +25,18 @@ Session ──构建上下文──▶ Context ──检索相关记忆──▶
 
 **注意基线图上的方向**：**Context 主动向 Memory 发起检索**（不是 Memory 推给 Context）。Context 是「召回的发起方与组装方」，Memory 是「记忆的存取方」。
 
-### 0.2 三个子件
+### 0.2 本层的前提：三个子件不是流水线
+
+**读这一节就够理解 Context 层了**：
+
+| # | 前提 | 含义 |
+|---|---|---|
+| 1 | **三个子件不是流水线** | Builder → Compressor → Persistence 看着像串行，**其实不是** —— 压缩是装配的**条件分支**（装得下就不压），而**压缩的结果要回到装配里**。§2 的图必须按这个读 |
+| 2 | **Context 是召回的发起方** | 记忆与知识**由 Context 主动发起检索**，Memory 只提供存取 —— **不是 Memory 推给 Context**（基线图方向）|
+| 3 | **Context 只装配、不判权** | 可见范围、模型与工具的取值**都不归本层**（§0.3）—— 检索侧的可见范围归 Memory，模型与工具归 Agent 层 Execution |
+| 4 | **本层的收敛形态与别层不同** | 旧实现**还在服役**（旧循环仍调 `runner._load_messages` 与 `adapter/graph/compact.py`）→ Stage 1–3 **只新建、不动调用点**，「旧代码减少」是 0；停用推迟到 Stage 4，删除归 Agent 层 |
+
+### 0.2.1 三个子件
 
 | 子件 | 职责 | 回答的问题 |
 |---|---|---|
@@ -41,7 +52,16 @@ Session ──构建上下文──▶ Context ──检索相关记忆──▶
 | 选 agent / 路由 / 消息排序 | Router |
 | 会话生命周期、轮次状态、事件落库 | Session |
 | **记忆与知识的存取**（Context 只发起召回、只消费结果） | Memory / Knowledge |
-| 推理、**模型与工具的取值**、实际执行 | Agent Loop / Agent Router / Execution |
+| 推理、**模型与工具的取值**、实际执行 | **Agent Loop**（循环）/ **Agent Router**（只选专家）/ **Execution**（取值与执行）|
+
+### 0.4 实现收敛规则
+
+**最终态只有一个实现**；**先上新、后清旧**。清理机制由 [`cleanup-ledger.md`](cleanup-ledger.md) 统一管理（弃用标记 → 调用打点 → 指标归零 → 删除 → CI 扫描脚本 → 阶段门禁）。
+
+本方案涉及台账条目 **X8**（`_load_messages`）、**X9**（`compact.py`）、**X10**（四套 prompt 模板）。
+
+**本层的收敛形态**：与其它层不同 —— Context 的旧实现**大部分还在服役**（旧循环仍调 `runner._load_messages` 与 `adapter/graph/compact.py`），所以本层的 Stage 1–3 **只新建、不动调用点**（这就是为什么那三个 Stage 的「旧代码减少」是 0）。
+
 
 > **一句话**：Context 管的是「**这一轮给模型看什么、装不下时怎么裁、事后能查**」。
 
@@ -173,6 +193,8 @@ except Exception:  # noqa: BLE001
 ---
 
 ## 2. 目标架构
+
+> ⚠️ **三个子件不是流水线**（§0.2 前提 1）：图上虽然画成 Builder → Compressor → Persistence，但**压缩是装配的条件分支**（装得下就不压），**且压缩的结果要回到装配里** —— Compressor 的输出是 Builder 的输入，不是它的下游。Persistence 则确实是旁路（只写不读回）。
 
 ```
                     ┌──────────────────────────────────────────┐
@@ -331,7 +353,7 @@ tokens_estimated > budget(= context_window × 0.70)
 
 > 这条来自 v3.1 §17 验收标准：「上下文压缩保留决策、数字、承诺、未完成事项和来源 ID」。
 
-### 4.3 必须修掉的四个缺陷（§1.3）
+### 4.3 必须修掉的六个缺陷（§1.3 四处 + §1.4.1 两处）
 
 | # | 缺陷 | 修复 |
 |---|---|---|
@@ -424,9 +446,9 @@ tokens_estimated > budget(= context_window × 0.70)
 | 标记 | 承载 | 前端行为 |
 |---|---|---|
 | `compaction_degraded` | `context_compacted` chunk 的 `degraded` 字段（**本层新增**，§4.5） | 折叠为「已压缩」提示，不展示细节 |
-| `recall_degraded` | `ResultEvent.flags`（Gateway §7.0 已定义 `recall_degraded` / `compaction_degraded` / `interactive_degraded` 三键） | 提示「未使用历史记忆」，**不暴露内部原因** |
+| `recall_degraded` | `ResultEvent.flags`（Gateway §9.0 已定义 `recall_degraded` / `compaction_degraded` / `interactive_degraded` 三键） | 提示「未使用历史记忆」，**不暴露内部原因** |
 
-> **约束**：`ResultEvent.flags` 的键集合由 **Gateway 层定义**（见 `gateway-refactor-plan.md` §7.0），Context 只允许使用已定义的键，**不得新增未登记的 flag**。新增 flag 必须先改 Gateway 的契约表，否则前端会收到未知键而静默忽略。
+> **约束**：`ResultEvent.flags` 的键集合由 **Gateway 层定义**（见 `gateway-refactor-plan.md` §9.0），Context 只允许使用已定义的键，**不得新增未登记的 flag**。新增 flag 必须先改 Gateway 的契约表，否则前端会收到未知键而静默忽略。
 
 > **⚠️ 前端目前根本不消费 `flags`**：全前端源码对 `flags` / `recall_degraded` / `compaction_degraded` **零命中**（`CopilotPage.tsx:489` 只按 `kind` 提示「上下文已压缩」）。
 > 所以「字段落地」与「用户看得见」是**两件事** —— 后端把 flag 放进 SSE 只是第一步；**前端消费是独立工作项**（§9 Stage 4）。
@@ -443,7 +465,8 @@ tokens_estimated > budget(= context_window × 0.70)
 
 | 方向 | 契约 |
 |---|---|
-| Session → Context | **消息序列**：`session_messages` 按 `(session_id, session_seq)` 排序（`session_seq` 是 Session 迁移 0046 新增的会话内单调序号）；轮次上下文（工具白名单、审批状态） |
+| **Gateway → Context** | `AttachmentRef.text_preview`（附件的文本预览）+ `actor`（租户 / 工作区 / 用户上下文）—— Gateway 方案 §7 的边界表已列 |
+| **Session → Context** | **消息序列**：`session_messages` 按 `(session_id, session_seq)` 排序（`session_seq` 是 Session 迁移 0046 新增的会话内单调序号）；轮次上下文（**审批状态**）。⚠️ **不含工具白名单** —— 工具集来自 **agent 配置的绑定集**（Agent 方案 §5.3.1），不来自 Session |
 | Context → Memory | **主动发起** `recall_memory(...)` → `list[RecallHit]`（基线图方向）。**Memory 不管知识** |
 | Context → Knowledge | **主动发起** `KnowledgePort.search(...)` → 知识片段。**知识召回不经过 Memory**（Memory 决策 #1：L3 退役，知识统一归 `modules/knowledge`） |
 | Context → Agent Loop | `AssembledContext.messages`（`[{role, content}]`，**可直接喂 LLM**） |
@@ -570,7 +593,8 @@ UPDATE agent_sessions
 | `adapter/graph/runner.py:495-566` `_load_messages` | `context/builder.py` | **作为实现基础迁入**（它是正确的） |
 | `adapter/llm/prompts.py` 四套模板 | `context/prompts.py` 单段式 | 合并（§3.4） |
 | 旧路径 `compact.py`（**53 行**） | `context/compressor.py` | **删除**（纯字符截断）—— ⚠️ 它的**工具结果清洗 / 首个 system 保留 / 摘要累加**三项行为要复刻（§1.4.1） |
-| `runtimes/.../context/budget.py` `ContextAssembler` | `context/builder.py` | 重写（修 §1.2 三处硬伤） |
+| `runtimes/.../context/budget.py` `ContextAssembler` | `context/builder.py` | 重写（修 §1.2 的 **①–③** 三处硬伤；第 ④ 处是**新 runtime 的 `nodes.py` 节点**，见下一行）|
+| `runtimes/.../graph/nodes.py` 的 `assemble_context` 节点 | `context/builder.py` | **改写**（新 runtime 侧的第 ④ 处硬伤：`ctx.messages` 整体写回 state，未接 Builder）。⚠️ 该文件在 Agent Stage 7 整体删除 —— **本层只改接线，不删文件** |
 | `runtimes/.../context/budget.py` `Compactor` | `context/compressor.py` | 重写（修 §1.3 四处缺陷） |
 | `runtimes/.../context/budget.py` `estimate_tokens` | `context/tokens.py` | 替换为按语种估算 |
 | `runner.py:214-218` `ContextCompactedChunk(tokens_before=0)` | `context/compressor.py` | 修复 token 计数 |
@@ -650,7 +674,7 @@ UPDATE agent_sessions
 | `rolling_summary` 读写迁移 | 从 `metadata` 迁到新列 |
 | 交付前落库 | 保证「模型已回答」时 manifest 一定存在 |
 
-**旧代码减少**：**新写入全部改到 `rolling_summary` 列**。⚠️ **旧写入点还归不了零** —— 它们在 `copilot.py:379-380` 与 `runner.py`（Session / Agent 的文件），要等旧循环退役（Stage 4 停用 + Agent A-26）才归零；本层只保证**新链路不再写 `metadata`**。
+**旧代码减少**：**行数减少 0**（本 Stage 只搬写入点）—— **写入点迁移**：`metadata['rolling_summary']` → 新列（旧写入点在 `copilot.py:379-380` 与 `runner.py`，**等 Stage 4 停用旧循环后才归零**）。⚠️ **旧写入点还归不了零** —— 它们在 `copilot.py:379-380` 与 `runner.py`（Session / Agent 的文件），要等旧循环退役（Stage 4 停用 + Agent A-26）才归零；本层只保证**新链路不再写 `metadata`**。
 **验收**：任一轮都能查出它的每次模型调用的上下文组成与淘汰原因。
 
 ### Stage 4：接线与端到端
@@ -658,7 +682,7 @@ UPDATE agent_sessions
 | 动作 | 细节 |
 |---|---|
 | Agent Loop 调 Context | 替换「自己拼 messages」的逻辑 |
-| 召回失败的 degraded 标记 | `recall_degraded` 传到前端（走 `ResultEvent.flags`，键已在 Gateway §7.0 登记） |
+| 召回失败的 degraded 标记 | `recall_degraded` 传到前端（走 `ResultEvent.flags`，键已在 Gateway §9.0 登记） |
 | 端到端回归 | 长会话、混合中英文、召回为空、摘要模型故障 |
 | **前端消费降级标记** | ⚠️ 前端目前**零消费** `flags`（§5.3.1）→ 需要一个前端工作项：读 `context_compacted.degraded` 与 `ResultEvent.flags`，把「未使用历史记忆」提示出来 |
 
@@ -695,7 +719,7 @@ UPDATE agent_sessions
 | Stage 1 | `runner._load_messages`（70 行） | 0（**只新建，不动调用点**） | manifest 行 = 模型调用次数 × 轮次 | **不停用**（停用在 Stage 4） |
 | Stage 2 | `adapter/graph/compact.py`（**53 行**） | 0（**只新建，不动调用点**） | 同上 | **不停用**（停用在 Stage 4） |
 | Stage 3 | 无（新增 `session_context_manifests` 写入） | 0 | 同上 | — |
-| Stage 4 | `_load_messages` + 四套模板 + `compact.py` + Agent Loop 内自拼 messages 的分支 | ~200 行 | 同上 | **停用 + 打点**（前置 = Agent A-26）；**删除归 Agent 层 X17** |
+| Stage 4 | `_load_messages` + 四套模板 + `compact.py` + Agent Loop 内自拼 messages 的分支 | **0**（**只停用 + 打点，不删**）| 同上 | **停用 + 打点**（前置 = Agent A-26）；**删除归 Agent 层 X17（~250 行）** |
 | Stage 5 | 上述 + 四套 prompt 模板 + `budget.py` + `metadata['rolling_summary']` 读写点 | ~570 行 | 同上（不再新增） | **删除**（台账清零） |
 
 > **新写入量的量级对照**：`session_context_manifests` 的行数 = **模型调用总次数**（不是消息数、不是轮次数）。ReAct 深度 3 的轮次 ≈ 3 行。粗估：单租户日均 1 万轮、平均深度 2.5 → ≈ 2.5 万行/天、每行约 2–8 KB JSONB → **约 50–200 MB/天**。这是本层**最大的新增存储成本**，缓解手段见 §11 风险表（保留期策略 / 只存摘要指纹）。
@@ -895,3 +919,19 @@ def test_context_layer_has_no_framework_imports():
 | **L4** | 轻 | Stage 0 验收「与 tiktoken 偏差 < 15%」测的是**已经正确**的实现；tiktoken 未声明为测试依赖 | 改为「新旧两条路径口径差异 < 10%」，tiktoken 仅作测试期对照 | §9 Stage 0 |
 
 > **同步改动**：`implementation-plan.md`（§1.2 关注点 #9–#11 / §1.5 / §1.6 / §3.4 / §4.3 附录 A）、`cleanup-ledger.md`（§5.4 X8 / X9 / X10 的停用阶段）、`README.md`（依赖与里程碑表述）。
+
+### 本轮（v1.1 → v1.2）骨架重排
+
+| # | 级别 | 问题 | 修正 | 落点 |
+|---|---|---|---|---|
+| **D1** | 严重 | **§0 缺「实现收敛规则」小节** —— 其余五层都有（Router §0.4 / Session §0.4 / Agent §0.5），README §5.1 的结构表也声称六份齐备；本层只在文档头一行提了「最终态只有一个实现」，**台账归属与「不可结转」在 §0 拿不到** | 新增 **§0.4 实现收敛规则**：台账条目 X8 / X9 / X10 + **本层特有的收敛形态**（旧实现还在服役 → Stage 1–3 只新建不动调用点，「旧代码减少」为 0；停用推迟到 Stage 4，删除归 Agent 层）| §0.4 |
+| **D2** | 严重 | **§9 对照表把 Agent 的删除量记到本层头上** —— Stage 4 写「~200 行」，但该 Stage 只做停用 + 打点，**删除归 Agent 层 X17**；且 200 既不是本层的量、也不是台账口径（X17 是 ~250 行）| Stage 4「旧代码减少」改为 **0（只停用 + 打点）**，并注明删除量归 Agent X17 | §9 对照表 |
+| **D3** | 中 | **§4.3 标题说「四个缺陷（§1.3）」，表里是六行** —— 其中 5、6 来自 §1.4.1 而非 §1.3 | 标题改为「**必须修掉的六个缺陷（§1.3 四处 + §1.4.1 两处）**」 | §4.3 |
+| **D4** | 中 | **§8.2 迁移清单缺 `nodes.py` 那一行** —— 附录 C 的 S5 声称「迁移清单加入 nodes.py 的该节点」，但 §8.2 里没有；而第 ④ 处硬伤正是在那个节点上 | §8.2 补 `nodes.py` 的 `assemble_context` 行（**改写**，并注明该文件在 Agent Stage 7 整体删除，本层只改接线）| §8.2 |
+| **D5** | 中 | **§6 边界表缺 `Gateway → Context` 行** —— 而 §3.1 优先级 3 要装「渠道 / 附件上下文」，其源头就是 Gateway 的 `InboundMessage` / `AttachmentRef` | §6 补 Gateway 行 | §6 |
+| **D6** | 中 | **「工具白名单」归属三处不一** —— §3.1 说 Context 自己装、§6 说 Session 给、而 Agent §5.3.1 说来自 **agent 配置的绑定集** | §6 改为「**不含工具白名单**」并注明真实来源；§0.3 的「不做」表同步 | §3.1 / §6 |
+| **D7** | 中 | **§0.3 把「模型与工具的取值」归给 Agent Router** —— 与 Agent v1.2 的新骨架（取值归 ⑨ Execution）冲突，且与本文 §12.1 自相矛盾 | §0.3 改为「**Agent Loop**（循环）/ **Agent Router**（只选专家）/ **Execution**（取值与执行）」| §0.3 |
+| **D8** | 中 | **§2 目标架构图与紧随其后的文字矛盾** —— 图把三个子件画成单向串行无回边，而正文说「压缩是装配的条件分支、结果要回到装配里」 | §2 图上加「不是流水线」说明；**新增 §0.2 前提小节**（四条前提）作为全篇前提 | §0.2 / §2 |
+| **D9** | 轻 | **§9 Stage 3 的「旧代码减少」口径与对照表不一致** —— 正文写「新写入全部改到新列」，对照表写 0 | 正文改为「**行数减少 0；写入点迁移**」，并注明旧写入点等 Stage 4 才归零 | §9 Stage 3 |
+
+> **同步改动**：`README.md`（文档表状态、§5.1 结构表补 §0.4 收敛规则）、`implementation-plan.md`（§3.4 的 Stage 表与退出判据）。
