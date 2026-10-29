@@ -54,14 +54,19 @@ async def _create_session(
     workspace: str,
     agent_id: str,
 ) -> str:
+    """建会话 —— ``POST /api/sessions``。
+
+    旧的 ``/v1/agents/{aid}/sessions`` 随 Gateway Stage 5 删除(台账 G7);
+    会话 API 的唯一入口是 ``/api/sessions*``。
+    """
     resp = await client.post(
-        f"{base}/v1/agents/{agent_id}/sessions",
+        f"{base}/api/sessions",
         headers={
             "Authorization": f"Bearer {token}",
             "X-Tenant-Id": tenant,
             "X-Workspace-Id": workspace,
         },
-        json={"agent_version": "1.0.0"},
+        json={"agentId": agent_id},
     )
     resp.raise_for_status()
     return resp.json()["id"]
@@ -89,7 +94,7 @@ async def _one_turn(
     try:
         async with client.stream(
             "POST",
-            f"{base}/v1/sessions/{session_id}/turn/stream",
+            f"{base}/api/sessions/{session_id}/turns/stream",
             headers=headers,
             json={"content": content},
             timeout=30.0,
@@ -121,11 +126,17 @@ async def _run(args: argparse.Namespace) -> list[Sample]:
 
     limits = httpx.Limits(max_keepalive_connections=args.concurrency * 2)
     async with httpx.AsyncClient(limits=limits) as client:
-        session_id = await _create_session(client, base, token, tenant, workspace, agent_id)
         sem = asyncio.Semaphore(args.concurrency)
 
         async def worker() -> list[Sample]:
             out: list[Sample] = []
+            # 每个 worker 一个会话 —— `/api/sessions*` 的会话有**独占占用**
+            # (try_claim): 同一个会话上并发跑轮次会被拒(SESSION_BUSY)。
+            # 旧路径(`/v1/sessions*`, 第二套 turn 实现)没有这个约束,
+            # 因此并发压测的语义从「同会话并发」变成「多会话并发」。
+            session_id = await _create_session(
+                client, base, token, tenant, workspace, agent_id
+            )
             for _ in range(args.turns):
                 async with sem:
                     out.append(

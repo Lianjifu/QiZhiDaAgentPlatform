@@ -1,6 +1,7 @@
 # Gateway 层重构方案
 
-> 版本：1.10（2026-10-29：**Stage 4b 已实施** —— 无感重放落地：Gateway 侧新增 `gateway/replay.py`（`StoredEvent` / `EventStore` 读端口 / 规范化摘要 `event_digest`）+ `Gateway.replay()`；**连带落地 Session 侧的最小必要**（`session_turns` 轮次双写 + `session_events` 事件落库 + 按 seq 读取端口，迁移 0050）—— 因为 Stage 4b 的硬前置（Session Stage 4「真写真读」）开工时不满足；**202 降级路径整条删除**，重复命中改为**重放上一轮的事件流**（SSE 带 `id:` 游标，支持 `Last-Event-ID` 续传），重放不了才回 409；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4b「实施结果」与附录 C.6）
+> 版本：1.11（2026-10-29：**Stage 5 已实施（部分）** —— 旧的 `/v1/sessions*` **整段删除**（台账 **G7 / G8**；P-11 确认无仓外消费者 → 兼容保留期归零）+ `recent_request_ids` 残留数据清零 + 孤儿索引删除 + 「没有第二套实现」扫描脚本**进 CI** + §11.2 的架构测试落地；**G9（`dispatch_subscriber.py`）与 X2（第二套 turn 实现）仍未接管** —— 必须与 Session Stage 5b 原子切换；详见 §10 Stage 5「实施结果」与附录 C.7）
+> 沿革：v1.10（2026-10-29：**Stage 4b 已实施** —— 无感重放落地：Gateway 侧新增 `gateway/replay.py`（`StoredEvent` / `EventStore` 读端口 / 规范化摘要 `event_digest`）+ `Gateway.replay()`；**连带落地 Session 侧的最小必要**（`session_turns` 轮次双写 + `session_events` 事件落库 + 按 seq 读取端口，迁移 0050）—— 因为 Stage 4b 的硬前置（Session Stage 4「真写真读」）开工时不满足；**202 降级路径整条删除**，重复命中改为**重放上一轮的事件流**（SSE 带 `id:` 游标，支持 `Last-Event-ID` 续传），重放不了才回 409；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4b「实施结果」与附录 C.6）
 > 沿革：v1.9（2026-10-29：**Stage 4a 两段都已实施** —— 第一段：门面接管 + 出站 sink + 202 降级 + 弃用打点；第二段：**web 入口也走 `Gateway.accept`**（身份与幂等键各只有一个来源）；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4a「实施结果」与附录 C.4 / C.5）
 > 沿革：v1.8（2026-10-29：**Stage 4a 第一段已实施** —— `Gateway.accept` 门面（①②③）+ ④ 的三个动作 + 出站 `ResultSink`（编码 + 卡片降级）+ IM 入站/出站接管 + 重复请求的 202 降级路径 + G7/G9/X2 弃用打点；**「切 IM 入口到唯一 turn 实现」被 Session 阻塞，未接管**；详见 §10 Stage 4a「实施结果」与附录 C.4）
 > 沿革：v1.7（2026-10-29：**Stage 3 已实施** —— 归一化收口：`InboundMessage` 成为唯一入站契约（4+1 个 inbound adapter 全部改产它）+ **`ParsedMessage` / `ChannelMessageReceived` / IM 侧进程内 LRU 去重全部删除（G4/G5/G6 已清理）** + 附件收敛为 `AttachmentRef` + 连带修掉「总线按类名路由」与「载荷方法名」两个真实缺陷；详见 §10 Stage 3「实施结果」与附录 C.3）
@@ -1194,21 +1195,63 @@ composition
 
 ### Stage 5：旧实现清理
 
+> ✅ **已实施（2026-10-29）** —— 产出、验证与**未接管的部分**见本节末尾的
+> 「实施结果」。
+>
 > **进入条件（硬性）**：连续运行 **≥ 7 天** + 新路径流量占比 **≥ 95%** + `qzdap_legacy_calls_total{entry="…"}` 窗口内**累计为 0** + 窗口内无相关生产事故。指标未归零 → 不许进入本阶段，先查为什么还有人在调。
+>
+> ⚠️ **本轮的进入条件只满足了一半**（偏差 G-38）：打点是 Stage 4a（2026-10-29）
+> 才加的，**观察窗口只有几个小时**，凑不出「连续 7 天」。因此本轮**不把 Stage 5
+> 标成「全部完成」**，而是**逐条判定**：能证明「无人调用」的当场删，**证明不了的
+> 明确记为未接管**。
 
 | 动作 | 细节 |
 |---|---|
-| 删 `/v1/sessions*` 的 turn 部分 | |
+| 删 `/v1/sessions*` 的 turn 部分 | ✅ **整段删**（不只是 turn 部分 —— P-11 确认无仓外消费者，兼容保留期归零，偏差 G-39） |
 | **配合** Session Stage 5b：删第二套 turn 实现 | ⚠️ **本层不删**（台账 X2 的唯一 owner 是 Session）。本阶段只做「确认无残留调用方」，删除动作在 Session Stage 5b（与本层的「切 IM 入口」同 PR）—— 否则会与 Session 的删除 PR 互相冲突 |
-| 删 `dispatch_subscriber.py` | ⚠️ **文件删除归本层（台账 G9）**，但**必须与「切 IM 入口」+ Session Stage 5b（删 `use_cases/*`）同一个 PR** |
-| 删 `agent_sessions.metadata.recent_request_ids` 残留列 | 数据清理 |
-| 删孤儿索引 / 废弃常量 | |
-| 全仓扫描「第二实现」 | §11.3 的扫描脚本，**进 CI** |
-| 更新 `cleanup-ledger.md` 状态 | 全部标记「已清理」 |
-| 更新 `docs/copilot-chat-module-architecture.md` | 现状文档必须同步 |
+| 删 `dispatch_subscriber.py` | ⚠️ **文件删除归本层（台账 G9）**，但**必须与「切 IM 入口」+ Session Stage 5b（删 `use_cases/*`）同一个 PR** → **本轮未接管** |
+| 删 `agent_sessions.metadata.recent_request_ids` 残留列 | ✅ 迁移 0051（它是 **JSONB 里的键**，不是一列 —— 偏差 G-43） |
+| 删孤儿索引 / 废弃常量 | ✅ `session_events` 的 `turn_id` 单列索引（与主键完全重复 —— 偏差 G-44） |
+| 全仓扫描「第二实现」 | ✅ `backend/scripts/check_no_legacy_impl.sh` + **进 CI**（偏差 G-41 / G-42） |
+| 更新 `cleanup-ledger.md` 状态 | ✅ G7 / G8 → **已清理**；G9 → **未接管**（附理由与归属） |
+| 更新 `docs/copilot-chat-module-architecture.md` | ✅ 现状文档已同步 |
 
-**旧代码减少**：§9.4 删除清单**归零**。
+**旧代码减少**：§9.4 删除清单**归零**（除被 Session 阻塞的两项）。
 **验收**：§11 的全部检查项通过；台账本层全部条目为「已清理」。
+
+#### Stage 5 实施结果（2026-10-29）
+
+| 项 | 落地位置 |
+|---|---|
+| **删除的旧 API** | `modules/agent_runtime/.../adapter/http/router.py` —— **整个文件删除**（4 个 `/v1` 路由 + 它们专用的依赖装配）；`adapter/http/mappers.py` **整个删除**（`session_to_dto` / `turn_to_dto` 只服务旧路由）；`adapter/http/dto.py` 只留 `InteractiveAnswerRequest`（其余 4 个 DTO 是旧 API 的形状）；`session_router.py` 的 `GET /v1/sessions`（台账 **G8**）删除；`composition/main.py` 的路由挂载删除 |
+| **仓内调用方同步** | `tests/perf/bench_turn_latency.py` → 改走 `/api/sessions*`（并把「同一会话并发」改成「每 worker 一个会话」—— `/api` 的会话有**独占占用**）；`tests/perf/README.md` 同步；`modules/agent_runtime/tests/integration/test_router.py` **删除** → 新写 `test_session_api.py`（14 条用例承接原覆盖：create / get / delete / turn + 头校验 + 404/400 + 首 chunk 延迟） |
+| **数据清理** | 迁移 `0051_gateway_cleanup.py` —— `agent_sessions.metadata` 里的 `recent_request_ids` 键清零（它是 **JSONB 的键**，不是列，G-43） |
+| **孤儿索引** | 同一迁移：`session_events` 的 `turn_id` 单列索引 **DROP**（主键 `(turn_id, seq)` 已覆盖同样的查询 ✓ 只增写放大，G-44） |
+| **扫描脚本** | `backend/scripts/check_no_legacy_impl.sh` —— 规则表来自台账 §3.1（**唯一来源** ✓）；`--stage G` 按段启用、`--self-test` 自检；**已启用的 Gateway 段规则 8 条**（G1×2 / G2 / G3 / G4 / G5 / G6 / G7+G8）✓；G9 及其余层的规则**状态 off**（旧实现还在场 ✓） |
+| **进 CI** | `.github/workflows/backend.yml` 新增 `legacy-scan` job（跑扫描 + 跑自检 ✓） |
+| **架构测试** | `backend/tests/architecture/test_gateway_boundary.py` —— §11.2 的 import 禁令（**收窄后的真规则**，G-40）；`backend/tests/architecture/test_single_implementation.py` —— 台账 §3.1.2 的「单实现守卫」（窗口已关闭的关注点：新实现存在 + 旧实现不存在 ✓；生产包不得有基线之外的 `InMemory*` ✓） |
+
+**旧代码减少**：
+- **旧会话 API 整段消失** —— `/v1/sessions*` 的 4 个路由 + 4 个 DTO + 2 个 mapper + 挂载；
+- `GET /v1/sessions` 列表别名（G8）消失；
+- 幂等的残留数据（`metadata.recent_request_ids`）清零；
+- 一个孤儿索引消失；
+- 旧路由的集成测试文件删除（**覆盖没有跟着路由一起消失** —— 迁到了 `/api` 的新测试文件 ✓）。
+
+**验收结果**：
+- **扫描脚本**：8 条启用规则全绿 ✓；自检 4 项全绿（干净目录通过 / 脏目录失败 / 注释行不算命中 / ERE 分支可匹配 ✓）；
+- **架构测试**：10 条全绿 ✓（含 1 条**已知豁免**的「不许陈旧豁免」检查 ✓）；
+- **测试**：全量 1545 passed / 80 skipped（4 个 Redis 错误为既有 ✓）；
+- **迁移 0051**：已在 dev 库跑通 ✓（孤儿索引已消失 ✓、残留键计数为 0 ✓）。
+
+#### ⚠️ 本阶段**未接管**的部分（明确记为被阻塞，**不许当成已完成**）
+
+| 未接管项 | 为什么 | 归属 |
+|---|---|---|
+| **删 `dispatch_subscriber.py`（G9）** | 必须与「切 IM 入口」+ Session Stage 5b（删 `use_cases/*`）**同一个 PR** —— 台账 §3.4 的「必须原子切换」条目。而「切 IM 入口」被 Session 的「唯一 turn 实现」阻塞 | Session（Stage 3–5b）· 同一个 PR |
+| **删第二套 turn 实现（X2）** | **唯一 owner 是 Session**（台账 §3.4 的唯一 owner 规则）；本层只做了「确认无残留调用方」—— HTTP 入口已删，**只剩 IM 入口**一个调用方 | Session Stage 5b |
+| **G8 的兼容保留期** | ✅ **已归零**（P-11 确认无仓外消费者）—— 不是未接管 | — |
+| **指标归零判据（≥7 天）** | 打点 2026-10-29 才上线，观察窗口不足 7 天 —— **本轮的删除依据是「引用关系」（代码 + 前端 + 仓内调用方），不是指标**（G-38） | 下一轮窗口满足后复核 |
 
 ### 阶段与「旧代码减少」对照表
 
@@ -1491,6 +1534,23 @@ Gateway 域对应的规则：
 > `session_events` 的表在迁移 0035 就建好了，但**没有任何一行** —— 从表结构
 > 看不出「真写真读」这件事。因此前置依赖的判据必须是**「有行、且被读」**，
 > 不是「有表」。这也是 §0.5 前置依赖表里 Session Stage 4 那一条的验收口径。
+
+### C.7 Stage 5 实施带回的七处修正（v1.10 → v1.11，2026-10-29）
+
+| # | 级别 | 问题 | 修正 | 落点 |
+|---|---|---|---|---|
+| **G-38** | 严重 | **Stage 5 的进入条件（硬性）不满足** —— 「连续运行 ≥ 7 天 + 指标窗口内累计为 0」凑不出来：打点是 Stage 4a（2026-10-29）才加的，**观察窗口只有几个小时**。照字面执行就是「不许进入本阶段」，照惯例执行就是「假装条件满足了」 | **不把 Stage 5 标成「全部完成」**，而是**逐条判定**：能证明「无人调用」的当场删（前端零引用 ✓ + 仓内只有测试/脚本/文档 ✓ + 引用关系可查 ✓），**证明不了的明确记为未接管**（G9 / X2 ✓）。本轮的删除依据是**引用关系**，不是指标 —— 并在文档里写明这一点 | §10 Stage 5 |
+| **G-39** | 中 | **P-11 的答案改变了 G8 的保留期** —— 方案（决策 #7）写「CRUD 别名保留 ≥7 天」，但 API owner 确认**无仓外调用方** → 保留期归零 → 不只 turn 部分，**整个 `/v1/sessions*` 一次删完** | 按「无仓外消费者」执行（删 4 个路由 + 4 个 DTO + 2 个 mapper + 挂载 ✓） | §10 Stage 5 |
+| **G-40** | 中 | **§11.2 的架构测试与当前代码不符** —— ① `SCAN_DIRS` 含整个 `backend/runtimes`，但那里的 `embedding_runtime` / `sandbox_runtime` 是**独立的 FastAPI 服务**（自带 app/routes ✓），引框架是它们的本职；② 第二条规则（「Gateway 之外的任何模块不得 import `gateway.types` 以外的内部模块」）**与 Stage 4a 的实现直接矛盾** —— adapters 要 import 门面的契约才能实现端口 ✓ | 收窄成**可执行的真规则**：受检目录 = `runtimes/agent_runtime/src` + 各模块的 `application/` ✓；「不得反向依赖」改成**「Gateway 不得 import `qzdap.modules.*`」** ✓；再加一条「Gateway 无框架依赖」✓；已知违规进**豁免表**（且豁免**不许陈旧** ✓） | `tests/architecture/test_gateway_boundary.py` |
+| **G-41** | 中 | **§11.3 的扫描脚本需要「启用状态」** —— 台账 §3.1 的规则表里，G9 属于 Gateway 段，但**旧实现还在场**（被 Session 阻塞 ✓）。按段启用 → CI 必红 → 「永远红的检查必然被绕过」（台账自己的警告 ✓） | 规则表加**状态列**（`on` / `off` ✓）与**阶段过滤**（`--stage G` ✓）；脚本报告「启用 N 条 / 跳过 M 条」✓ —— **「没启用」必须可见**，否则它与「已清理」分不清 | `scripts/check_no_legacy_impl.sh` |
+| **G-42** | 低 | **规则表的分隔符不能用 `|`** —— pattern 里可能有 ERE 分支（`SYSTEM_USER_ID|SYSTEM_AGENT_ID` ✓）→ 用 `|` 分隔会把一条规则拆成多列，**「规则没生效」被误读成「扫描通过」** | 分隔符改 `;` ✓ + **从右往左**解析 ✓ + 列数不对**响亮失败**（退出码 2 ✓，不是「通过」） | 同上 |
+| **G-43** | 低 | **「残留列」的说法不准** —— `recent_request_ids` 是 **`agent_sessions.metadata` JSONB 里的一个键**，不是一列 | 清理语句用 `metadata - 'recent_request_ids'` ✓ | 迁移 0051 |
+| **G-44** | 低 | **`session_events` 的 `turn_id` 单列索引是孤儿** —— 主键是 `(turn_id, seq)`，按 `turn_id` 的查询能直接用主键索引的最左前缀，这个单列索引只增加写放大（每个 chunk 多写一棵树） | 迁移 0051 一并 **DROP** ✓（Session 方案 §10.2 已判定它冗余 ✓） | 迁移 0051 |
+
+> **G-38 的共同教训**：**「进入条件」有两种 —— 能测的（指标）与不能测的（引用关系）**。
+> 指标窗口需要时间，引用关系不需要。本轮选了**能当场证明的那一种**（谁还在调用
+> 这个旧实现），并把**证明不了的部分**明确留成「未接管」—— **既没有假装条件
+> 满足，也没有因为条件不满足就什么都不做**。
 
 **跨文档同步**（本轮一并改掉的对 Gateway 章节号的引用）：
 

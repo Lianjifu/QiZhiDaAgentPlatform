@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Annotated
 
+from fastapi import Depends, FastAPI
+from fastapi.responses import JSONResponse
 from qzdap_auth.dependencies import (
     AuthenticatedPrincipal,
     require_authenticated,
@@ -15,8 +17,6 @@ from qzdap_http.middleware import build_default_middleware_chain
 from qzdap_http.rate_limit import RateLimitPolicy
 from qzdap_persistence.tenant_guard import install_tenant_loader
 from qzdap_vault.actor import ActorContext
-from fastapi import Depends, FastAPI
-from fastapi.responses import JSONResponse
 
 from qzdap.composition.container import Container
 from qzdap.composition.lifespan import lifespan
@@ -68,11 +68,8 @@ def create_app() -> FastAPI:
     app.include_router(build_account_router())
 
     # Agent runtime module
-    from qzdap.modules.agent_runtime.adapter.http.router import (
-        build_router as agent_runtime_router,
-    )
-
-    app.include_router(agent_runtime_router())
+    # ⚠️ 旧的 `/v1/sessions*` 路由已删除（Gateway Stage 5，台账 G7 / G8）——
+    # 会话 API 的唯一入口是 `session_router` 的 `/api/sessions*`。
     from qzdap.modules.agent_runtime.adapter.http.catalog_router import (
         build_catalog_router as agent_catalog_router,
     )

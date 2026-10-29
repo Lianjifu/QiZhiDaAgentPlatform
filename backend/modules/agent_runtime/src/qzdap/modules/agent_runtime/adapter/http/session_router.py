@@ -606,18 +606,9 @@ def build_session_router() -> APIRouter:
             headers={"Content-Disposition": f'attachment; filename="{artifact_id}.md"'},
         )
 
-    @router.get("/v1/sessions")
-    async def list_v1(
-        request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
-    ) -> list[dict[str, Any]]:
-        record_legacy_call("G8")  # GET /v1/sessions 列表别名
-        # 租户是**必填**：列表查询必须显式按租户过滤（§10 Stage 2）。
-        return await svc.list_sessions(
-            tenant_id=x_tenant_id, owner_id=_owner_id(request, x_user_id)
-        )
+    # ⚠️ **旧的 `GET /v1/sessions` 列表别名已删除**（Gateway Stage 5，台账 G8）——
+    # API owner 已确认**无仓外调用方**（方案 §9.4 的前置 P-11）→ 兼容保留期归零。
+    # 会话列表的唯一入口是 `GET /api/sessions`。
 
     return router
 

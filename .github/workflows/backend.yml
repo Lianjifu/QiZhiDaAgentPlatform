@@ -48,6 +48,22 @@ jobs:
       - run: uv sync --all-extras
       - run: make import-lint
 
+  legacy-scan:
+    name: Legacy scan (no second implementation)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Scan for legacy implementations
+        run: bash scripts/check_no_legacy_impl.sh
+      - name: Self-test the scanner
+        run: bash scripts/check_no_legacy_impl.sh --self-test
+
   type-check:
     name: Type-check (mypy strict)
     runs-on: ubuntu-latest

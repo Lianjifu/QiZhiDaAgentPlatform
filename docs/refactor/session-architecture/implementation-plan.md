@@ -334,11 +334,12 @@
 | | **G-25 降级路径移除** | 重复命中 → **重放上一轮的事件流**（200 + SSE）；**202 分支与 `replay_unavailable` 字段删除**（台账 **G11 已清理**）；重放不了（这一轮还在跑）→ **409** | **202 降级路径整条删除**（同一语义的两套实现 → 只留重放） | ~15 行 | G-24 |
 | | **G-26 重放一致性校验** | `event_digest`（规范化摘要 —— JSONB 不保序，比的不是字节相等）+ seq 连续；真库集成测试断言「copilot 跑一轮 → 事件落库 → 门面重放 → 摘要与原流一致」 | — | 0 | G-24 |
 | | **G-24b Session 侧最小交付（连带落地）** | ⚠️ **方案偏差**（Gateway 附录 C.6 的 **G-31 / G-32**）：Stage 4b 的硬依赖（Session Stage 4「`session_events` 真写真读」）**开工时不满足** —— 表在、**一行没有**。本轮**连带落地**三件事：① `session_turns` **轮次双写**（它是 `session_events.turn_id` 的外键父行）② `session_events` **事件落库**（每 chunk 一行，**先落库再投递**）③ **按 seq 的读取端口**（JOIN 轮次表按租户过滤）+ 迁移 0050 | — | ~250 行 | **Session Stage 0/2/4 的最小部分**（outbox 调度 / 死信 / 保留期仍在 Session Stage 4） |
-| Stage 5 · 清理 | **G-27 删 `/v1/sessions*`（turn 部分 + 列表别名）** | — | **G7 / G8** | **~280 行** | 归零判据满足 |
+| Stage 5 · 清理 | **G-27 删 `/v1/sessions*`（turn 部分 + 列表别名）** | ✅ **已执行**（2026-10-29）：**整个 `adapter/http/router.py` + `mappers.py` 删除**、4 个 DTO 删除、`GET /v1/sessions` 别名删除、`composition/main.py` 挂载删除；仓内调用方（perf 脚本 / 集成测试）同步迁到 `/api` | **G7 / G8** | **~280 行** | ⚠️ 依据是**引用关系**（P-11 确认无仓外消费者），不是指标（偏差 G-38 / G-39） |
 | | **G-28 删 `dispatch_subscriber.py`** | ⚠️ **文件删除归本层**（G9），但**必须与「切 IM 入口」+ Session Stage 5b 同 PR** | **G9** | **~250 行** | 与 **Session S-31 同 PR** |
-| | G-29 删 `recent_request_ids` 残留列 / 孤儿索引 / 废弃常量 | 数据清理 | — | 少量 | G-09 |
-| | G-30 启用扫描脚本 Gateway 段 | 进 CI（唯一来源：台账 §3.1） | — | 0 | G-27 |
-| | G-31 更新台账 + 现状文档 | `docs/copilot-chat-module-architecture.md` | — | 0 | G-30 |
+| | G-29 删 `recent_request_ids` 残留列 / 孤儿索引 / 废弃常量 | ✅ **已执行**（2026-10-29）：迁移 **0051**（`metadata - 'recent_request_ids'` + DROP `session_events` 的 `turn_id` 单列索引）—— ⚠️ 它是 **JSONB 里的键**不是列（G-43） | — | 少量 | G-09 |
+| | G-30 启用扫描脚本 Gateway 段 | ✅ **已执行**（2026-10-29）：`backend/scripts/check_no_legacy_impl.sh`（规则表唯一来源 = 台账 §3.1 ✓）+ `.github/workflows/backend.yml` 的 `legacy-scan` job；**8 条 Gateway 规则启用**（G9 仍 off —— 旧实现还在场 ✓） | — | 0 | G-27 |
+| | G-31 更新台账 + 现状文档 | ✅ **已执行**（2026-10-29）：台账（G7 / G8 → 已清理 ✓）+ `docs/copilot-chat-module-architecture.md`（API 表 + 缺陷 #9 ✓）+ 根 `README.md`（API 列表 ✓） | — | 0 | G-30 |
+| | **G-31b 架构测试（§11.2）** | ✅ **已执行**（2026-10-29）：`backend/tests/architecture/test_gateway_boundary.py`（import 禁令 + Gateway 不反向依赖 ✓）+ `test_single_implementation.py`（单实现守卫 + `InMemory*` 基线 ✓）。⚠️ 方案的 `SCAN_DIRS` 含整个 `backend/runtimes`（那里有**独立的 FastAPI 服务** ✓）→ 收窄（G-40） | — | 0 | G-27 |
 
 **退出判据**（本层完成 = 里程碑 **M0** 的一部分 + 本层清零）：
 1. 五种入口经 `Gateway.accept` 后，除 `channel_type` / `raw_metadata` 外字段完全一致（参数化测试）；
@@ -1289,8 +1290,8 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 | G4 `ParsedMessage` | **已清理** | —（**2026-10-29 删除**：数据类 + 协议 `InboundAdapter` + 4 个适配器的 `parse_webhook`，打点一并撤除） | `G4` | 替代物 = `InboundMessage`；Gateway Stage 3 |
 | G5 `ChannelMessageReceived` | **已清理** | —（**2026-10-29 删除**：事件类 + 发布端打点一并撤除；**入站消息本身就是总线事件**） | `G5` | 替代物 = `InboundMessage`；Gateway Stage 3 |
 | G6 IM 进程内 LRU | **已清理** | —（**2026-10-29 删除**：`OrderedDict` LRU + `_message_key` + `_evict_dedup`，打点一并撤除） | `G6` | 替代物 = `session_inbox` 原子 claim；Gateway Stage 3 |
-| G7 `/v1/sessions*` turn | 指标 | `agent_runtime/adapter/http/router.py` `run_turn_stream` | — | |
-| G8 `GET /v1/sessions` | 指标 | `session_router.py` `list_v1` | — | |
+| G7 `/v1/sessions*` turn | **已清理** | —（**2026-10-29 删除**：整个 `adapter/http/router.py`；打点一并撤除） | — | Gateway Stage 5 |
+| G8 `GET /v1/sessions` | **已清理** | —（**2026-10-29 删除**：别名路由；打点一并撤除） | — | Gateway Stage 5 |
 | G9 `dispatch_subscriber.py` | 指标 | `dispatch_subscriber.py` `_handle_event` | — | 与 Session S-32 同 PR 删除 |
 | G11 重复请求的 202 降级路径 | **已清理** | —（**2026-10-29 删除**：SSE 端点的 202 分支 + `DuplicateRequestError.replay_unavailable`；替代物 = 按 seq 的事件流重放） | — | Gateway Stage 4b |
 | G10 审批恢复路径的幂等键 | **修复**（✅ 2026-10-29 已修） | —（**打点已撤除**：修复类不留在指标里） | — | **判据 = 回归测试**：`test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`（连点两次「同意」只执行一次工具） |

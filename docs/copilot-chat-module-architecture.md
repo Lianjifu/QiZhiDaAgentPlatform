@@ -349,14 +349,14 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 | POST | `/api/sessions/{id}/interactive/answer` | `{call_id, action, payload}` | `{accepted, call_id, action}` (202) | `session_router.py:454` |
 | POST | `/api/sessions/{id}/plans/{pid}/approve\|deny` | — | `{ok, plan_id, decision}` | `session_router.py:341/354` |
 | GET | `/api/artifacts/{aid}/content` | — | 文件流 | `session_router.py:550` |
-| POST | `/v1/agents/{aid}/sessions` | `{agent_version?, metadata?}` | `SessionResponse` (201) | `adapter/http/router.py:143` |
-| GET | `/v1/sessions/{sid}` | — | `SessionResponse` | `adapter/http/router.py:172` |
-| POST | `/v1/sessions/{sid}/close` | — | 204 | `adapter/http/router.py:192` |
-| POST | `/v1/sessions/{sid}/turn/stream` | `RunTurnRequest` | SSE | `adapter/http/router.py:209` |
 
 所有 `/api/*` 路由要求请求头 `X-Tenant-Id`、`X-Workspace-Id`；`X-User-Id` 可选，缺省时回落到 `_owner_id(request, x_user_id)` 从认证上下文解析。
 
-> `/api/*`（Copilot 页面用）与 `/v1/*`（通用会话 API）是**两套并行的路由**，前者走 `CopilotSessionService`，后者走 `AgentRuntimeService`。二者的 chunk 集合与语义不完全一致，见 [§5.3](#53-sse-事件契约)。
+> ⚠️ **旧的 `/v1/sessions*` 已删除**（Gateway Stage 5，台账 **G7 / G8**）—— API owner 已确认
+> **无仓外调用方**（Gateway 方案 §9.4 的前置 **P-11**）→ 兼容保留期归零。
+> 会话 API 的**唯一入口**是 `/api/sessions*`（走 `CopilotSessionService`）。
+> 通用会话 API 原本走的 `AgentRuntimeService`（第二套 turn 实现，台账 **X2**）只剩
+> IM 入口一个调用方，随 Session Stage 5b 删除。
 
 ### 5.2 会话对象结构
 
@@ -514,7 +514,7 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 | 6 | ⚠️ 仍未修 | `session_router.py:550-566` | 从 `/tmp/qzdap-mock-artifacts` 读文件，非数据库存储 |
 | 7 | 审批人 / 请求人 ID 是常量 | `copilot.py:461`、`runner.py:658` | ✅ 已修：请求人与审批人都是真实用户 |
 | 8 | `UsageChunk.cost_usd` 恒 0 | `runner.py:264` / `runner.py:486` | ✅ 已修：按 `admin_models.price_in/price_out` 计价，成本落 `agent_turns.cost_usd` |
-| 9 | ⚠️ 仍未修 | `session_router.py` / `adapter/http/router.py` | `/api/*` 与 `/v1/*` 两套并行路由，同一能力两套契约，chunk 集合与语义不一致；README 提到的同步 `POST /v1/sessions/{id}/turns` 在代码中**不存在** |
+| 9 | ✅ 已修（2026-10-29，Gateway Stage 5） | `adapter/http/router.py`（**已删**） | `/api/*` 与 `/v1/*` 两套并行路由 —— **旧的 `/v1/sessions*` 整段删除**（台账 **G7 / G8**；API owner 确认无仓外调用方）；会话 API 只剩 `/api/sessions*` 一套契约。README 提到的同步 `POST /v1/sessions/{id}/turns` 在代码中**从来不存在**，已一并删掉那条说明 |
 | 10 | README 声称「8 种 SSE 事件」 | `README.md:79` | 实际 `ChunkKind` 有 16 种；前端原处理 14 种（含 `error`），`skill_invocation` 与 `usage` 无消费方 ✅ 已修：两者现在都有 UI |
 | 11 | 真实召回路径不下发 `knowledge_search` chunk | `runner.py:900` | ✅ 已修：真实召回路径现在也下发 `knowledge_search` chunk（`runner.py:188`） |
 
@@ -615,7 +615,7 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 
 **P0-2　中途失败对用户不可见，且 turn 永久卡在「执行中」** ✅ 已修复（见 §11.2）
 
-Copilot 路径**从不产出 `ErrorChunk`**——`ErrorChunk` 只在 `/v1` 路径的 `application/use_cases/run_turn.py` 产生。而 `/api/sessions/{id}/turns/stream` 的第一个 chunk 是预取的（`session_router.py:298`），所以：
+Copilot 路径**从不产出 `ErrorChunk`**——`ErrorChunk` 只在第二套 turn 实现（`application/use_cases/run_turn.py`，台账 **X2**，现只剩 IM 入口一个调用方）里产生。而 `/api/sessions/{id}/turns/stream` 的第一个 chunk 是预取的（`session_router.py:298`），所以：
 
 - 首 chunk 之前的错误（session 不存在、agent 未发布）→ 变成 HTTP 错误，用户看得到；
 - **首 chunk 之后的错误**（LLM 中途报错、工具抛异常、沙箱不可用）→ 响应已经以 200 开始，流静默结束。前端 `CopilotPage.tsx` 的 `error` 分支永远不触发，`streamCopilotTurn` 正常返回，用户看到的是一段**被截断的回答，且没有任何错误提示**。

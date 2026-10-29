@@ -9,9 +9,14 @@ asyncio + httpx scripts for measuring the two primary latency SLIs:
 
 ## bench_turn_latency
 
-Drives a real `/v1/sessions/{sid}/turn/stream` call under configurable
+Drives a real `/api/sessions/{sid}/turns/stream` call under configurable
 concurrency, prints P50/P95/P99 + QPS + failure rate. Exits non-zero
 if P95 > threshold or failure rate > 1%.
+
+> ⚠️ 旧的 `/v1/sessions*` 路径随 Gateway Stage 5 删除（台账 G7 / G8）——
+> 会话 API 的唯一入口是 `/api/sessions*`。
+> **每个并发 worker 一个会话** —— `/api` 的会话有独占占用（try_claim），
+> 同一会话并发跑轮次会被拒（SESSION_BUSY）。
 
 ### Setup
 

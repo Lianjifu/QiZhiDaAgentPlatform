@@ -161,6 +161,12 @@ class FakeLLM(LLMPort):
             ),
         )
 
+    async def synthetic_chunks(
+        self, user_input: str, *, turn_id: UUID
+    ) -> list[dict]:
+        """LLM 侧通道（plan / artifact / workflow 事件）—— 真 LLM 默认空。"""
+        return []
+
 
 class RecordingEventPublisher(EventPublisher):
     """Records published events for assertions."""

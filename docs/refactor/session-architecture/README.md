@@ -16,7 +16,7 @@
 |---|---|---|---|
 | 1 | [`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) | **权威基线**：会话完整生命周期的泳道划分与时序。所有层方案的共同上游契约 | **已定稿** |
 | 2 | [`cleanup-ledger.md`](cleanup-ledger.md) | **全局收敛机制**：旧实现台账（弃用标记 → 调用打点 → 指标归零 → 删除 → CI 扫描脚本 → 阶段门禁） | **生效中** |
-| 3 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | Gateway 泳道：Channel Gateway / Auth Identity / Message Normalizer / Idempotency Guard ＋ 入口级限流 | **已定稿（v1.10）· Stage 0–3 + Stage 4a 两段 + Stage 4b 已实施**（幂等守卫 / 鉴权收口 / 归一化收口 / 门面接管 + 出站 sink + web 入口接管 / **无感重放**——重复命中改为重放事件流，202 降级路径删除；**「切 IM 入口」等 Session 的唯一 turn 实现**） |
+| 3 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | Gateway 泳道：Channel Gateway / Auth Identity / Message Normalizer / Idempotency Guard ＋ 入口级限流 | **已定稿（v1.11）· Stage 0–3 + Stage 4a 两段 + Stage 4b + Stage 5（部分）已实施**（幂等守卫 / 鉴权收口 / 归一化收口 / 门面接管 + 出站 sink + web 入口接管 / 无感重放 / **旧 `/v1/sessions*` 整段删除 + 扫描脚本进 CI + 架构测试**；**G9 与 X2 仍未接管** —— 必须与 Session Stage 5b 原子切换） |
 | 4 | [`router-refactor-plan.md`](router-refactor-plan.md) | Router 泳道：Strategy（选 agent）+ Session Routing（选会话 + 有序保证） | **已定稿（v1.3）** |
 | 5 | [`session-refactor-plan.md`](session-refactor-plan.md) | Session 泳道：Manager（生命周期）+ State（状态机）+ Thread（多轮线程）+ 唯一 turn 实现 | **已定稿（v1.2）** |
 | 6 | [`context-refactor-plan.md`](context-refactor-plan.md) | Context 泳道：Builder（拼装）+ Compressor（压缩）+ Persistence（manifest 落库） | **已定稿（v1.2）** |
@@ -123,7 +123,9 @@ Session Stage 0(迁移 0046 / saver / 表 DDL 唯一 owner)  →  Session Stage 
 
 Session Stage 1(resolve_or_create + lookup)  →  Router Stage 2(会话映射 + 粘性查找)
 Router Stage 0(迁移 0045)  →  Router Stage 1(策略链)
-Gateway Stage 0(迁移 0044)  →  Gateway Stage 1/2/3  →  Gateway Stage 4a(接管)  →  Gateway Stage 4b(无感重放 ✅)
+Gateway Stage 0(迁移 0044)  →  Gateway Stage 1/2/3  →  Gateway Stage 4a(接管)  →  Gateway Stage 4b(无感重放 ✅)  →  Gateway Stage 5(清理 ✅ 部分)
+                              ↑ ⚠️ Stage 5 的「删 dispatch_subscriber + 删第二套 turn 实现」**未接管** ——
+                                必须与 Session Stage 5b 同一个 PR（台账 §3.4 的原子切换）
                               ↑ Stage 4a 是豁免 E1：不等 Session 台账清零
 Context Stage 0(迁移 0047，依赖 0046)  →  Context Stage 1/2
 Memory  Stage 0(迁移 0048)  →  Memory  Stage 1(作用域过滤，安全修复，可独立先行)

@@ -282,9 +282,9 @@ graph TB
 
 #### ① agent_runtime — 流式对话引擎
 
-- `POST /v1/sessions/{id}/turns` — 同步阻塞,返回完整 turn
-- `POST /v1/sessions/{id}/turn/stream` — SSE 流式,8 种 chunk
-- 内部用 `RunTurnUseCase` (生成器) + `RunTurnCompletionUseCase` (排空到终结 chunk)
+- `POST /api/sessions/{id}/turns/stream` — SSE 流式,17 种 chunk（`ChunkKind`）
+- 轮次编排走 `CopilotSessionService`（claim / 幂等 / 取消 / 审批 合一）
+- ⚠️ 旧的 `/v1/sessions*` 与第二套 turn 实现（`RunTurnUseCase` / `RunTurnCompletionUseCase`）已删除或待删：前者 2026-10-29 整段删除，后者只剩 IM 入口一个调用方，随 Session Stage 5b 删除
 - 工具调用走 `_finish_pending` 通路,支持高风险工具审批 (ApprovalRequiredChunk)
 - 多智能体协同:父 agent 调 `delegate_to_agent` → `DelegateSubagentUseCase` 创建 sub_session + 嵌套深度校验 + 同步跑
 
