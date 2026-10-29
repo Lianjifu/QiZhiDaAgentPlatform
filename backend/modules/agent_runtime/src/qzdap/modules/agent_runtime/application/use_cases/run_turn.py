@@ -21,6 +21,12 @@ Lifecycle:
 
 First-chunk latency budget: < 1000 ms. Achieved by yielding each chunk
 as soon as the LLM produces it (no aggregation, no buffering).
+⚠️ **已弃用（Gateway 方案 §10 Stage 4a）** —— 这是**第二套 turn 实现**（台账
+**X2**）：它没有 claim / 幂等 / 取消 / 审批的语义，与唯一实现
+（``copilot.py`` 的 turn 编排）长期漂移。**唯一 owner 是 Session**（台账 X2），
+本层只做「弃用 + 打点」，**删除在 Session Stage 5b**（与「切 IM 入口」同 PR）——
+在此之前**不得**有新调用方接进来。
+
 """
 
 from __future__ import annotations

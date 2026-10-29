@@ -16,7 +16,10 @@ from qzdap.modules.channel.adapter.dispatch.dispatch_subscriber import (
     INBOUND_MESSAGE_EVENT,
     ChannelDispatchSubscriber,
 )
+from qzdap.modules.channel.adapter.outbound.result_sink import ChannelResultSink
+from qzdap_agent_runtime.gateway.facade import Gateway
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard, InboxScope
+from qzdap_agent_runtime.gateway.identity import HmacWebhookVerifier
 from qzdap_agent_runtime.gateway.types import (
     ActorContext,
     ChannelType,
@@ -222,13 +225,20 @@ def _make_subscriber(
     factory = _FakeAgentRuntimeFactory(rt)
     session = _FakeSession(uuid4())
     store = _FakeStore()
+    # ①②③ 的门面 —— 消费方只用它的 ④（claim / complete / release）。
+    gateway = Gateway(
+        channels=None,
+        identity=HmacWebhookVerifier(),
+        normalizers={},
+        idempotency=IdempotencyGuard(store),
+    )
     subscriber = ChannelDispatchSubscriber(
         channel_repository=repo,
         agent_runtime_factory=factory,
-        outbound_registry_getter=lambda: outbound or {},
+        sink=ChannelResultSink(outbound_registry=outbound or {}),
         clock=None,
         open_session=lambda: _CtxMgr(session),
-        idempotency=IdempotencyGuard(store),
+        gateway=gateway,
     )
     return subscriber, bus, repo, rt, store
 

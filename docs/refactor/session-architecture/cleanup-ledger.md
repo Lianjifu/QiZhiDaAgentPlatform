@@ -74,9 +74,9 @@
 | G4 | `ParsedMessage` 数据类 | ~~`modules/channel/application/ports.py:95-104`~~（**已删**） | `gateway/types.py` 的 `InboundMessage` | **已清理**（2026-10-29：Gateway Stage 3 —— 数据类、协议 `InboundAdapter` 与 4 个适配器的 `parse_webhook` **全部删除**；适配器改为实现 Gateway ③ 的 `MessageNormalizer.normalize()`，产出标准 `InboundMessage`） | Gateway Stage 3 |
 | G5 | `ChannelMessageReceived` 事件（缺 `external_message_id` / `trace_id`） | ~~`modules/channel/domain/events.py:27-46`~~（**已删**） | `InboundMessage` + `session_inbox` | **已清理**（2026-10-29：Gateway Stage 3 —— 事件类**已删除**，入站消息本身（`InboundMessage`）就是总线事件；补上 `external_message_id` / `trace_id` / `payload_hash`。⚠️ 连带修掉两个真实缺陷：**总线按类名路由**，旧实现按 dotted 的 `TOPIC` 订阅 → 这条 IM 链路**从未被触发过**；事件定义了 `to_payload()` 而 `EventEnvelope.wrap` 只认 `_as_payload_dict()` → 载荷退化成 `{"value": "<repr>"}`。审计侧的事件名同步改为 `InboundMessage`） | Gateway Stage 3 |
 | G6 | IM 进程内 LRU 去重 | ~~`modules/channel/adapter/dispatch/dispatch_subscriber.py:43-44,113-125,253-260`~~（**已删**） | `session_inbox` 原子 claim | **已清理**（2026-10-29：Gateway Stage 3 —— `OrderedDict` LRU、`_message_key`、`_evict_dedup` **全部删除**；IM 派发改为先走 ④ 的 `session_inbox` 原子 claim（跨进程可见 + 有 TTL），轮次失败时 **release**（键不该被消费）） | Gateway Stage 3 |
-| G7 | `/v1/sessions*` 的 turn 部分 | `modules/agent_runtime/adapter/http/router.py:209-280` | 统一会话 API（`/api/sessions*`） | 未开始 | Gateway Stage 4→5 |
+| G7 | `/v1/sessions*` 的 turn 部分 | `modules/agent_runtime/adapter/http/router.py:209-280` | 统一会话 API（`/api/sessions*`） | **已弃用**（2026-10-29：Gateway Stage 4a —— 加弃用标记 + `record_legacy_call("G7")` 打点；**前端零使用 `/v1/sessions*`**（已核实），流量已在 `/api/sessions*`。删除在 Gateway Stage 5，与 Session Stage 5b 同 PR） | Gateway Stage 4→5 |
 | G8 | `GET /v1/sessions` 列表别名 | `modules/agent_runtime/adapter/http/session_router.py:541-547` | `GET /api/sessions` | 未开始 | Gateway Stage 4→5 |
-| G9 | `dispatch_subscriber.py` 整体 | `modules/channel/adapter/dispatch/dispatch_subscriber.py` | `Gateway.accept` 直连 | 未开始 | Gateway Stage 4→5 |
+| G9 | `dispatch_subscriber.py` 整体 | `modules/channel/adapter/dispatch/dispatch_subscriber.py` | `Gateway.accept` 直连 | **已弃用**（2026-10-29：Gateway Stage 4a —— 加弃用标记 + `record_legacy_call("G9")` 打点。⚠️ **它仍是 IM 的现行入口**（Stage 4a 的「切 IM 入口」被 Session 的「唯一 turn 实现」阻塞，见 Gateway 方案 §0.5）→ **打点仍会有流量**，Stage 5 的清零判据在切完之前不可能满足） | Gateway Stage 4→5 |
 | G10 | **审批恢复路径丢失幂等键**：`decide_approval` 调 `stream_turn` 时**不传 `clientRequestId`** → `record_request_id("")` 直接返回 `True` → 幂等被跳过 → 连点两次「同意」工具被**再执行一次** | ~~`modules/agent_runtime/src/qzdap/modules/agent_runtime/application/copilot.py:474-482`~~（**已修**） | 审批决策带**自己的**幂等键（由 `approval_id` 派生）—— **键只由审批自身的稳定标识派生**，不掺原轮次的键（审批恢复时原轮次状态已推进、原键取不到 → 键会漂移 → 重复点击挡不住） | **已修复**（2026-10-29：Gateway Stage 1 —— `decide_approval` 生成 `approval\|{approval_id}\|{decision}` 的 strong 键；连点两次「同意」第二次被判定为重复，工具只执行一次。**判据是回归测试**：`modules/agent_runtime/tests/unit/test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`） | **Gateway Stage 1**（幂等键传递 ✅）+ **Session Stage 5**（X7 审批吞异常 ⏳）—— **两侧都要做，只做一边不够** |
 
 ### 2.2 Router 域
@@ -93,7 +93,7 @@
 | # | 旧实现 | 位置 | 替代者 | 状态 | 所属方案 |
 |---|---|---|---|---|---|
 | X1 | **未被接线的 `backend/runtimes/agent_runtime/` 整包**（19 节点图、InMemory 假实现、无任何 import） —— ⚠️ **2026-10-29 起不再是「整包未接线」**：Gateway 层**按需取用**了其中的 `gateway/` 子包（幂等契约与守卫），生产路径已 import 它；其余部件（19 节点图等）**仍未接线** | `backend/runtimes/agent_runtime/src/qzdap_agent_runtime/` | 各层方案按泳道逐步替换；最终只保留被采用的部件 | **未开始（最高风险项）** | 各层**按需取用部件**；**删除归 Agent Stage 7**（连同 §2.3.2 的平行实现）—— ⚠️ **已被取用的部件不再删**，只删未取用的残留（扫描规则 §3.1 的三条仍成立：盯的是 `graph/nodes.py` / `build_session_graph` / `InMemoryToolExecutor`，与 `gateway/` 无交集） |
-| X2 | 第二套 turn 实现（无 claim / 幂等 / 取消 / 审批） | `modules/agent_runtime/application/use_cases/run_turn.py`、`run_turn_to_completion.py` | `copilot.py` 的唯一 turn 编排（保留其 claim / 幂等 / 取消 / 审批语义） | 未开始 | Session 层（主战场，**Stage 5b 删除**）；Gateway Stage 4a 切 IM 入口时同 PR |
+| X2 | 第二套 turn 实现（无 claim / 幂等 / 取消 / 审批） | `modules/agent_runtime/application/use_cases/run_turn.py`、`run_turn_to_completion.py` | `copilot.py` 的唯一 turn 编排（保留其 claim / 幂等 / 取消 / 审批语义） | **已弃用**（2026-10-29：Gateway Stage 4a —— 两个用例加弃用标记；调用点 `dispatch_subscriber` 打 `record_legacy_call("X2")`。⚠️ **IM 仍走它**（切 IM 入口被 Session 的「唯一 turn 实现」阻塞）→ 打点仍会有流量） | Session 层（主战场，**Stage 5b 删除**）；Gateway Stage 4a 切 IM 入口时同 PR |
 | X3 | `agent_sessions.graph_state`（续传状态与业务数据混装同列） | `modules/agent_runtime/adapter/persistence/models.py:56-61` | `session_events` / `session_turns` | 未开始 | Session 层 |
 | X4 | `agent_turns` / `agent_session_messages` 表 | `migrations/versions/`（早期） | `session_turns` / `session_messages` | 未开始 | Session 层（Router 决策 #2） |
 | X5 | 占位图 `compile_loop_graph`（节点全是 `_passthrough_*`） | `modules/agent_runtime/adapter/graph/loop.py:63-69`、`runner.py:92` | Agent Loop 方案的真实图 | 未开始 | Agent 层（Stage 7） |
@@ -454,8 +454,8 @@ def record_legacy_call(entry: str) -> None:
 
 | 状态 | 条目数 | 说明 |
 |---|---|---|
-| 未开始 | 24 | 旧实现仍是唯一生效路径 |
-| 已弃用 | 0 | — |
+| 未开始 | 21 | 旧实现仍是唯一生效路径 |
+| 已弃用 | 3 | **G7**（`/v1/sessions*` 的 turn 部分）、**G9**（`dispatch_subscriber.py`）、**X2**（第二套 turn 实现）—— 均已加弃用标记 + 调用打点（Gateway Stage 4a）。⚠️ **G9 / X2 的打点仍会有流量**（IM 仍走它们），Stage 5 的清零判据在切完之前不可能满足 |
 | 待清理 | 1 | X19（死表 `memory_l2_embeddings`，迁移 0048 已实现并在 dev 库执行） |
 | 已清理 | 6 | **G1**（`record_request_id` + `recent_request_ids` —— Gateway Stage 1 直接删除）、**G2**（渠道内的 `_verify_signature` —— Gateway Stage 2 迁到 `gateway/identity.py`）、**G3**（硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` —— Gateway Stage 2 改为渠道登记的服务账号）、**G4**（`ParsedMessage` 数据类 —— Gateway Stage 3 由 `InboundMessage` 取代）、**G5**（`ChannelMessageReceived` 事件 —— Gateway Stage 3 由 `InboundMessage` 取代，连带修掉「按 dotted topic 订阅」与「`to_payload` 从未被调用」两个真实缺陷）、**G6**（IM 进程内 LRU 去重 —— Gateway Stage 3 由 `session_inbox` 原子 claim 取代） |
 | **已修复** | 2 | X14（跨用户泄漏）、**G10**（审批恢复路径丢幂等键）—— 判据是测试不是指标 |

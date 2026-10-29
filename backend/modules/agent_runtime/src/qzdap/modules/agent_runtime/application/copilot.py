@@ -265,9 +265,13 @@ class CopilotSessionService:
         )
         if decision.is_duplicate:
             # 同一个键又来了 —— 双击或网络重试, 不跑第二轮.
+            # ⚠️ 带上「上次那一轮的 turn_id」：重复请求**不是错误** —— 上层据此
+            # 降级为「202 + turn_id + replay_unavailable」（§4.5）。
             raise DuplicateRequestError(
                 f"request {key.value} was already handled",
                 code="DUPLICATE_REQUEST",
+                turn_id=decision.turn_id,
+                replay_unavailable=True,
             )
         claimed = await self._sessions.try_claim(session_id)
         record_legacy_call("R3")  # try_claim 的会话互斥职责

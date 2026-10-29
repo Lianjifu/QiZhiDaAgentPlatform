@@ -33,6 +33,7 @@ from _channel_in_memory import (  # type: ignore[import-not-found]
     SequenceIds,
 )
 
+from qzdap.modules.channel.adapter.gateway import ChannelDirectoryAdapter
 from qzdap.modules.channel.application.ports import (
     OutboundAdapter,
     WebhookSecretCipher,
@@ -61,6 +62,9 @@ from qzdap.modules.channel.domain.value_objects import (
     ChannelStatus,
     DeliveryStatus,
 )
+from qzdap_agent_runtime.gateway.facade import Gateway
+from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
+from qzdap_agent_runtime.gateway.identity import HmacWebhookVerifier
 from qzdap_agent_runtime.gateway.types import (
     ChannelType,
     InboundMessage,
@@ -139,6 +143,22 @@ class RecordingOutbound(OutboundAdapter):
         return self.return_id
 
 
+class _NoopIdempotencyStore:
+    """④ 的空实现 —— 渠道服务这一层**不 claim**（claim 由开始轮次的一方发起）。"""
+
+    async def claim(self, scope, key, *, payload_hash="", external_message_id=None, trace_id=""):  # type: ignore[no-untyped-def]
+        raise AssertionError("webhook path must not claim (claim belongs to the turn owner)")
+
+    async def record_weak(self, scope, key, *, payload_hash="", trace_id=""):  # type: ignore[no-untyped-def]
+        raise AssertionError("webhook path must not claim")
+
+    async def mark_completed(self, row_id, *, turn_id=None) -> None:  # type: ignore[no-untyped-def]
+        return None
+
+    async def release(self, row_id) -> None:  # type: ignore[no-untyped-def]
+        return None
+
+
 def _make_service(
     *,
     publisher=None,
@@ -156,13 +176,27 @@ def _make_service(
     delivery_repo = InMemoryDeliveryRepo()
     secret_repo = InMemorySecretRepo()
     pub = publisher if publisher is not None else CollectingPublisher()
+    the_clock = clock or FixedClock()
+    the_cipher = cipher or NoopCipher()
+    # ①②③ 的编排住在 Gateway 门面里（§10 Stage 4a）—— 与生产装配同一条路径。
+    gateway = Gateway(
+        channels=ChannelDirectoryAdapter(
+            channel_repo=channel_repo,
+            secret_repo=secret_repo,
+            cipher=the_cipher,
+        ),
+        identity=HmacWebhookVerifier(clock=the_clock),
+        normalizers={ChannelType.WEB: EchoInbound()},
+        idempotency=IdempotencyGuard(_NoopIdempotencyStore()),
+    )
     svc = ChannelService(
         channel_repo=channel_repo,
         delivery_repo=delivery_repo,
         secret_repo=secret_repo,
-        cipher=cipher or NoopCipher(),
-        clock=clock or FixedClock(),
+        cipher=the_cipher,
+        clock=the_clock,
         ids=SequenceIds(),
+        gateway=gateway,
         publisher=pub,
         default_timestamp_tolerance_seconds=tolerance or DEFAULT_TIMESTAMP_TOLERANCE_SECONDS,
     )
@@ -320,7 +354,6 @@ async def test_handle_webhook_happy_path() -> None:
             "X-Webhook-Timestamp": str(ts),
             "X-Webhook-Signature": f"sha256={sig}",
         },
-        inbound_registry={ChannelType.WEB: EchoInbound()},
     )
     assert delivery.status is DeliveryStatus.PENDING
     assert delivery.payload_summary["text"] == "hello"
@@ -357,7 +390,6 @@ async def test_handle_webhook_rejects_bad_signature() -> None:
                 "X-Webhook-Timestamp": str(ts),
                 "X-Webhook-Signature": "sha256=deadbeef",
             },
-            inbound_registry={ChannelType.WEB: EchoInbound()},
         )
     # publisher recorded the reject event
     topics = [t for t, _ in publisher.events]
@@ -389,7 +421,6 @@ async def test_handle_webhook_rejects_timestamp_skew() -> None:
                 "X-Webhook-Timestamp": str(skew_ts),
                 "X-Webhook-Signature": f"sha256={sig}",
             },
-            inbound_registry={ChannelType.WEB: EchoInbound()},
         )
 
 
@@ -413,7 +444,6 @@ async def test_handle_webhook_rejects_missing_headers() -> None:
             channel_id=ch.id,
             body=body,
             headers={},
-            inbound_registry={ChannelType.WEB: EchoInbound()},
         )
 
 
@@ -447,7 +477,6 @@ async def test_handle_webhook_rejects_disabled_channel() -> None:
                 "X-Webhook-Timestamp": str(ts),
                 "X-Webhook-Signature": f"sha256={sig}",
             },
-            inbound_registry={ChannelType.WEB: EchoInbound()},
         )
 
 
@@ -460,7 +489,6 @@ async def test_handle_webhook_unknown_channel() -> None:
             channel_id=ChannelId(uuid4()),
             body=b"{}",
             headers={},
-            inbound_registry={ChannelType.WEB: EchoInbound()},
         )
 
 
@@ -625,7 +653,6 @@ async def test_a_forged_signature_is_rejected_with_an_audit_event_and_trace_id()
                 "X-Webhook-Timestamp": str(ts),
                 "X-Webhook-Signature": "sha256=deadbeef",
             },
-            inbound_registry={ChannelType.WEB: EchoInbound()},
             trace_id="trace-forged",
         )
     rejected = [
@@ -661,7 +688,6 @@ async def test_an_expired_timestamp_is_rejected_with_an_audit_event_and_trace_id
                 "X-Webhook-Timestamp": str(skew_ts),
                 "X-Webhook-Signature": f"sha256={sig}",
             },
-            inbound_registry={ChannelType.WEB: EchoInbound()},
             trace_id="trace-skew",
         )
     rejected = [
@@ -714,7 +740,6 @@ async def test_a_signature_replayed_across_tenants_is_rejected() -> None:
                 "X-Webhook-Timestamp": str(ts),
                 "X-Webhook-Signature": f"sha256={sig_a}",
             },
-            inbound_registry={ChannelType.WEB: EchoInbound()},
             trace_id="trace-replay",
         )
     # 打到 A 自己的渠道上，同样的签名是有效的 —— 证明拒绝原因是「密钥不同」，
@@ -727,7 +752,6 @@ async def test_a_signature_replayed_across_tenants_is_rejected() -> None:
             "X-Webhook-Timestamp": str(ts),
             "X-Webhook-Signature": f"sha256={sig_a}",
         },
-        inbound_registry={ChannelType.WEB: EchoInbound()},
     )
     assert delivery.status is DeliveryStatus.PENDING
     rejected = [
@@ -740,7 +764,7 @@ async def test_a_signature_replayed_across_tenants_is_rejected() -> None:
 @pytest.mark.asyncio
 async def test_the_channel_service_account_is_handed_to_the_identity_verifier() -> None:
     """服务账号随渠道配置进入验签 —— IM 的 actor 由此物化（§3.2）。"""
-    svc, _channel_repo, _delivery_repo, _, _publisher = _make_service()
+    svc, _channel_repo, _delivery_repo, _, publisher = _make_service()
     tenant = TenantId(uuid4())
     account = {
         "user_id": str(uuid4()),
@@ -761,22 +785,22 @@ async def test_the_channel_service_account_is_handed_to_the_identity_verifier() 
     body = b'{"text":"hello"}'
     ts = int(svc.clock.now().timestamp())
     sig = _sign(b"secret", ts, body)
-    identity = await svc._verify_identity(
+    await svc.handle_webhook(
         tenant_id=tenant,
-        channel=ch,
+        channel_id=ch.id,
         body=body,
         headers={
             "X-Webhook-Timestamp": str(ts),
             "X-Webhook-Signature": f"sha256={sig}",
         },
-        secret=b"secret",
-        tolerance_seconds=300,
         trace_id="trace-ok",
     )
-    assert identity.actor is not None
-    assert str(identity.actor.actor_id) == account["user_id"]
-    assert identity.actor.actor_kind == "service_account"
-    assert identity.trust.value == "verified_hmac"
+    # 渠道登记的服务账号 → 标准入站消息里的 actor（§3.2）。
+    published = [payload for topic, payload in publisher.events if topic == "InboundMessage"]
+    assert published, publisher.events
+    assert published[-1]["actor"]["actor_id"] == account["user_id"]
+    assert published[-1]["actor"]["actor_kind"] == "service_account"
+    assert published[-1]["trace_id"] == "trace-ok"
 
 
 # ── Stage 3 验收：标准入站消息 + 服务账号缺失 ─────────────────────────────
@@ -811,7 +835,6 @@ async def test_a_channel_without_a_service_account_is_refused() -> None:
                 "X-Webhook-Timestamp": str(ts),
                 "X-Webhook-Signature": f"sha256={sig}",
             },
-            inbound_registry={ChannelType.WEB: EchoInbound()},
             trace_id="trace-no-account",
         )
     rejected = [

@@ -1039,27 +1039,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ar_factory = getattr(app.state, "agent_runtime_factory", None)
     channel_service_obj = getattr(app.state, "channel_service", None)
     if channel_service_obj is not None and ar_factory is not None:
-        from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
-            PostgresIdempotencyStore,
-        )
         from qzdap.modules.channel.adapter.dispatch.dispatch_subscriber import (
             ChannelDispatchSubscriber,
         )
-        from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 
         dispatch = ChannelDispatchSubscriber(
             channel_repository=channel_service_obj.channel_repo,
             agent_runtime_factory=ar_factory,
-            outbound_registry_getter=lambda: (
-                getattr(app.state, "channel_outbound_registry", {}) or {}
-            ),
+            # 出站 —— 统一编码 + 投递（Gateway ① 的出站，§6）。
+            sink=container.channel_result_sink(),
             clock=container.clock(),
             open_session=container.session_factory().maker,
-            # ④ 幂等守卫 —— IM 侧的去重**跨进程**且有 TTL；
-            # 旧的进程内 LRU 已删除（Gateway 方案 §10 Stage 3）。
-            idempotency=IdempotencyGuard(
-                PostgresIdempotencyStore(container.session_factory())
-            ),
+            # ①②③ 与 ④ 的门面 —— 与渠道服务**共用同一个**（§10 Stage 4a）。
+            gateway=channel_service_obj.gateway,
         )
         await dispatch.install(bus)
         app.state.channel_dispatch_subscriber = dispatch

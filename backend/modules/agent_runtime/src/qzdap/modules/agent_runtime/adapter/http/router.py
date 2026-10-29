@@ -216,6 +216,10 @@ def build_router() -> APIRouter:
         request: Request = ...,  # type: ignore[assignment]
         svc: AgentRuntimeService = Depends(agent_runtime_dependency),  # noqa: B008
     ) -> StreamingResponse:
+        # ⚠️ **已弃用（Gateway 方案 §10 Stage 4a，台账 G7）** —— 统一会话 API 是
+        # ``/api/sessions*``；``/v1/sessions*`` 的 turn 部分走的是**第二套 turn
+        # 实现**（无 claim / 幂等 / 取消 / 审批）。本层只做「弃用 + 打点」，
+        # **删除在 Gateway Stage 5**（与 Session Stage 5b 同 PR）。
         record_legacy_call("G7")  # /v1/sessions* 的 turn 部分
         from qzdap.modules.agent_runtime.application.use_cases.run_turn import (
             RunTurnUseCase,

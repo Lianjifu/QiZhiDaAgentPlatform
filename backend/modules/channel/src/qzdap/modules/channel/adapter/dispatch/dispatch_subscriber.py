@@ -18,6 +18,13 @@ back through the outbound adapter registered for the channel's
 * failures: logged and swallowed; never re-raised (the bus logs
   handler exceptions but we still log a domain-level summary here).
 
+⚠️ **已弃用（Gateway 方案 §10 Stage 4a，台账 G9）** —— 渠道入站应当**直接**
+进 ``Gateway.accept``，不再经过「总线 → 订阅者 → 临时会话」这一跳。
+**本文件是本层的删除对象**（Stage 5），但**必须与「切 IM 入口」+ Session
+Stage 5b（删 ``use_cases/*``）同一个 PR** —— 否则 IM 断。
+本轮已把它改成「消费标准入站消息 + 走 ④ 的 claim + 走出站 sink」，
+**旧路径仍在服役**（``record_legacy_call("G9")`` 就是这个事实的观测）。
+
 ⚠️ **``unprotected`` 目前只记录不生效** —— 决策 #5 的兑现点（剔除副作用工具）在
 Agent Loop / Execution（Gateway 方案 §0.5 的前置依赖）。IM 的三个平台都带消息 id
 → **strong 键** → 实际暴露面只有「注册成渠道的 web / api 且没给消息 id」。
@@ -28,23 +35,20 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
-from qzdap_agent_runtime.gateway.idempotency import (
-    SENTINEL_WORKSPACE_ID,
-    IdempotencyGuard,
-    InboxScope,
-)
+from qzdap_agent_runtime.gateway.channels import capabilities_for
 from qzdap_agent_runtime.gateway.identity import ServiceAccount
+from qzdap_agent_runtime.gateway.outbound import OutboundTarget, ResultSink
 from qzdap_agent_runtime.gateway.types import InboundMessage
+from qzdap_agent_runtime.result.events import MessageEvent
 from qzdap_observability.metrics import record_legacy_call
 
 if TYPE_CHECKING:
     from uuid import UUID
 
-    from qzdap.modules.channel.application.ports import (
-        ChannelRepository,
-        OutboundAdapter,
-    )
+    from qzdap.modules.channel.application.ports import ChannelRepository
+    from qzdap_agent_runtime.gateway.facade import Gateway
 
 _log = logging.getLogger("qzdap.channel.dispatch")
 
@@ -69,19 +73,19 @@ class ChannelDispatchSubscriber:
         *,
         channel_repository: ChannelRepository,
         agent_runtime_factory: Any,
-        outbound_registry_getter: Any,
+        sink: ResultSink,
         clock: Any,
         open_session: Any,
-        idempotency: IdempotencyGuard,
+        gateway: Gateway,
         model: str = DEFAULT_MODEL,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         self._channels = channel_repository
         self._ar_factory = agent_runtime_factory
-        self._outbound_getter = outbound_registry_getter
+        self._sink = sink
         self._clock = clock
         self._open_session = open_session
-        self._idempotency = idempotency
+        self._gateway = gateway
         self._model = model
         self._timeout = timeout_seconds
 
@@ -151,21 +155,9 @@ class ChannelDispatchSubscriber:
 
         # ④ Idempotency Guard：**先 claim 再起轮次** —— 同一平台消息投递两次
         # 只能起一轮。旧的进程内 LRU 已被这一步取代（跨进程可见 + 有过期）。
-        decision = await self._idempotency.accept(
-            InboxScope(
-                tenant_id=tenant_id,
-                workspace_id=(
-                    channel.workspace_id
-                    or message.actor.workspace_id
-                    or SENTINEL_WORKSPACE_ID
-                ),
-                channel_id=str(channel_id),
-            ),
-            message.idempotency,
-            payload_hash=message.payload_hash,
-            external_message_id=message.external_message_id,
-            trace_id=message.trace_id,
-        )
+        # ⚠️ **claim 在消费方发起**（不是门口）：只有开始轮次的一方知道这一轮
+        # 跑没跑起来，失败时才能 release 掉这把键（§10 Stage 4a）。
+        decision = await self._gateway.claim(message)
         if decision.is_duplicate:
             _log.info(
                 "channel dispatch duplicate; skipping turn",
@@ -184,7 +176,7 @@ class ChannelDispatchSubscriber:
         except Exception:
             # 这一轮**根本没跑起来** → 键不该被消费（④ 的 release），
             # 否则平台重投时会被判成重复而永远丢掉。
-            await self._idempotency.release(decision)
+            await self._gateway.release(decision)
             _log.exception(
                 "channel dispatch turn failed",
                 extra={
@@ -194,7 +186,7 @@ class ChannelDispatchSubscriber:
             )
             return
 
-        await self._idempotency.complete(decision, turn_id=turn_id)
+        await self._gateway.complete(decision, turn_id=turn_id)
 
         if not final_message:
             return
@@ -262,43 +254,36 @@ class ChannelDispatchSubscriber:
         text: str,
         turn_id: UUID | None,
     ) -> None:
-        registry = self._outbound_getter()
-        if registry is None:
-            return
-        # Outbound adapters are keyed by ChannelType. Match by string
-        # value so the subscriber stays decoupled from the ChannelType
-        # definition site.
-        adapter: OutboundAdapter | None = None
-        for key, candidate in registry.items():
-            if str(key) == str(channel_type) or (
-                getattr(key, "value", None) == channel_type
-            ):
-                adapter = candidate
-                break
-        if adapter is None:
-            _log.info(
-                "no outbound adapter for channel_type=%s; reply dropped",
-                channel_type,
-                extra={
-                    "channel_id": str(message.channel_id),
-                    "tenant_id": str(message.actor.tenant_id),
-                },
-            )
-            return
-        try:
-            metadata: dict[str, str] = {
-                "channel_id": str(message.channel_id),
-            }
-            if turn_id is not None:
-                metadata["turn_id"] = str(turn_id)
-            await adapter.send_reply(
+        """出站 —— **走统一编码 + 投递**（Gateway ① 的出站，§6）。
+
+        旧的实现是「按 channel_type 找适配器 → 直接发纯文本」；现在消息先变成
+        标准结果事件，再由编码器按**渠道能力**决定怎么表达（卡片 / 降级文本），
+        投递结果（含降级留痕）由 sink 记账。
+        """
+        metadata: dict[str, str] = {"channel_id": str(message.channel_id)}
+        if turn_id is not None:
+            metadata["turn_id"] = str(turn_id)
+        event = MessageEvent(
+            turn_id=str(turn_id or message.trace_id or "im-turn"),
+            seq=0,
+            event_id=str(uuid4()),
+            trace_id=message.trace_id or None,
+            delta=text,
+        )
+        outcome = await self._sink.deliver(
+            event,
+            target=OutboundTarget(
+                channel_type=channel_type,
                 external_chat_id=message.external_chat_id,
-                text=text,
+                capabilities=capabilities_for(channel_type),
                 metadata=metadata,
-            )
-        except Exception:  # pragma: no cover - defensive
-            _log.exception(
-                "outbound send_reply failed",
+            ),
+        )
+        if not outcome.ok:
+            _log.warning(
+                "im reply not delivered: status=%s error=%s",
+                outcome.status,
+                outcome.error,
                 extra={"channel_id": str(message.channel_id)},
             )
 

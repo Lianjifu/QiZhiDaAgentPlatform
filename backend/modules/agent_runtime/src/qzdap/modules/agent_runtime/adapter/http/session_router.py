@@ -11,20 +11,17 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from opentelemetry import trace as _trace
 from qzdap_observability.metrics import record_legacy_call
 from qzdap_observability.tracing import get_tracer
 
 from qzdap.modules.agent_runtime.adapter.http.dto import (
-    CreateSessionRequest,
     InteractiveAnswerRequest,
-    RunTurnRequest,
-    SessionResponse,
-    TurnResponse,
 )
 from qzdap.modules.agent_runtime.adapter.http.sse import sse_stream
 from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+from qzdap.modules.agent_runtime.domain.errors import DuplicateRequestError
 
 _tracer = get_tracer("qzdap.agent_runtime")
 
@@ -242,7 +239,7 @@ def build_session_router() -> APIRouter:
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
         svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
-    ) -> StreamingResponse:
+    ) -> Response:  # 重复请求走 202 降级路径（不是流）
         content = str(body.get("content") or body.get("message") or "").strip()
         if not content:
             raise HTTPException(status_code=400, detail="content is required")
@@ -279,25 +276,40 @@ def build_session_router() -> APIRouter:
                     "phase12_route_id_parse_failed: %s", exc
                 )
         # 整个 HTTP 请求一个 span —— 它是 agent.turn 的父 span.
-        return await _sse_response(
-            _tracer.start_span("http.chat.stream"),
-            route="/api/sessions/{session_id}/turns/stream",
-            session_id=session_id,
-            tenant_id=x_tenant_id,
-            workspace_id=x_workspace_id,
-            build=lambda span_ctx: svc.stream_turn(
+        try:
+            return await _sse_response(
+                _tracer.start_span("http.chat.stream"),
+                route="/api/sessions/{session_id}/turns/stream",
+                session_id=session_id,
                 tenant_id=x_tenant_id,
                 workspace_id=x_workspace_id,
-                owner_id=_owner_id(request, x_user_id),
-                session_id=session_id,
-                user_input=content,
-                model=body.get("model"),
-                route_id=route_id_uuid,
-                # 幂等: 前端每次发送带一个唯一 id, 重复到达时不跑第二轮.
-                client_request_id=str(body.get("clientRequestId") or ""),
-                parent_span_context=span_ctx,
-            ),
-        )
+                build=lambda span_ctx: svc.stream_turn(
+                    tenant_id=x_tenant_id,
+                    workspace_id=x_workspace_id,
+                    owner_id=_owner_id(request, x_user_id),
+                    session_id=session_id,
+                    user_input=content,
+                    model=body.get("model"),
+                    route_id=route_id_uuid,
+                    # 幂等: 前端每次发送带一个唯一 id, 重复到达时不跑第二轮.
+                    client_request_id=str(body.get("clientRequestId") or ""),
+                    parent_span_context=span_ctx,
+                ),
+            )
+        except DuplicateRequestError as exc:
+            # ⚠️ **重复请求不是错误**（Gateway 方案 §4.5）：命中重复 → 降级为
+            # 「202 + 上次 turn_id + replay_unavailable」。
+            # **不得静默丢弃**（丢掉了客户端就不知道这一轮到底跑没跑）。
+            # 无感重放要等 ``session_events`` 真写真读（Session Stage 4），
+            # 届时由 Gateway Stage 4b 接管。
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "code": exc.code,
+                    "turnId": str(exc.turn_id) if exc.turn_id else None,
+                    "replayUnavailable": exc.replay_unavailable,
+                },
+            )
 
     @router.post("/api/sessions/{session_id}/feedback", status_code=201)
     async def submit_feedback(

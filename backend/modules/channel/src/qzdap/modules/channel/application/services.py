@@ -39,20 +39,17 @@ from qzdap.modules.channel.domain.events import (
 )
 from qzdap.modules.channel.domain.value_objects import ChannelStatus, DeliveryStatus
 from qzdap_agent_runtime.gateway.channels import capabilities_for
+from qzdap_agent_runtime.gateway.facade import (
+    Gateway,
+    GatewayChannelNotFound,
+    GatewayNormalizerMissing,
+)
 from qzdap_agent_runtime.gateway.identity import (
     REASON_SERVICE_ACCOUNT_MISSING,
     REASON_TIMESTAMP_SKEW,
-    HmacWebhookVerifier,
-    Identity,
     IdentityRejected,
-    IdentityRequest,
-    IdentityVerifier,
-    ServiceAccount,
 )
-from qzdap_agent_runtime.gateway.normalizer import (
-    MessageNormalizer,
-    NormalizerContext,
-)
+from qzdap_agent_runtime.gateway.types import RawIngress
 from qzdap_kernel.contextvars import current_trace_id
 
 if TYPE_CHECKING:
@@ -82,11 +79,11 @@ class ChannelService:
     cipher: WebhookSecretCipher
     clock: ClockPort
     ids: IdGeneratorPort
+    # Gateway 门面 —— ①→②→③ 的编排（查渠道 / 验签 / 归一化）。
+    # ⚠️ Stage 4a 起，本层**不再自己串**这三段（§10 Stage 4a 的接管）。
+    gateway: Gateway
     publisher: ChannelEventPublisher | None = None
     default_timestamp_tolerance_seconds: int = DEFAULT_TIMESTAMP_TOLERANCE_SECONDS
-    # ② Auth Identity —— 验签实现住在 gateway/identity.py（§10 Stage 2）。
-    # 留空则用默认的 HMAC 验签器（本层的 clock 决定时间戳容差）。
-    identity: IdentityVerifier | None = None
 
     # ── Registration / admin ────────────────────────────────────────────────
 
@@ -167,16 +164,17 @@ class ChannelService:
         channel_id: ChannelId,
         body: bytes,
         headers: dict[str, str],
-        inbound_registry: dict[ChannelType, MessageNormalizer],
         tolerance_seconds: int | None = None,
         trace_id: str = "",
     ) -> ChannelDelivery:
-        """Verify signature, parse envelope, persist delivery.
+        """受理一条 webhook —— **①→②→③ 交给 Gateway**，本层只做本层的职责。
 
-        Returns the persisted ``ChannelDelivery`` (status=PENDING).
-        The caller is responsible for dispatching the message into
-        ``agent_runtime.start_turn``; this service exposes the parsed
-        message via the delivery's payload summary.
+        验签（②）、归一化（③）、幂等键的计算都在 :class:`Gateway` 里（§10
+        Stage 4a 的接管）—— 渠道服务不再自己串这一段（**旧路径变小**）。
+        本层保留的只有：渠道状态检查、**拒绝时写审计事件**、投递行落库、
+        把标准入站消息发到总线。
+
+        返回落库的 ``ChannelDelivery``（status=PENDING）。消息本体由事件带出去。
         """
         tolerance = tolerance_seconds or self.default_timestamp_tolerance_seconds
 
@@ -198,32 +196,26 @@ class ChannelService:
                 code="CHANNEL_DISABLED",
             )
 
-        # Decrypt the HMAC secret (only if a secret is configured; the
-        # web channel can opt out of signing by passing an empty secret).
-        secret_bytes = b""
-        if channel.webhook_secret_id is not None:
-            blob = await self.secret_repo.get(
-                tenant_id=tenant_id, secret_id=channel.webhook_secret_id
-            )
-            if blob is not None:
-                secret_bytes = self.cipher.decrypt(blob)
-
-        # ② Auth Identity：验签 + 时间戳容差。实现已迁到 gateway/identity.py，
-        # 本层只负责把渠道配置（密钥 / 服务账号）喂给它，并把拒绝映射回本层的
-        # 错误类型（对外契约不变：401 + WEBHOOK_*）。
-        # ⚠️ 这里**不再打 G2 的点** —— 旧实现（渠道内的 `_verify_signature`）已经
-        # 没了，现在跑的是新实现；继续打点会让「旧路径还在服役」永远为真。
+        raw = RawIngress(
+            transport="webhook",
+            channel_type=channel.type,
+            channel_id=channel.id,
+            capabilities=capabilities_for(channel.type),
+            method="POST",
+            path=f"/v1/channels/{channel_id}/webhook",
+            headers=headers,
+            body=body,
+            query={},
+            trace_id=trace_id or current_trace_id() or "",
+        )
         try:
-            identity = await self._verify_identity(
-                tenant_id=tenant_id,
-                channel=channel,
-                body=body,
-                headers=headers,
-                secret=secret_bytes,
+            accepted = await self.gateway.accept(
+                raw,
                 tolerance_seconds=tolerance,
-                trace_id=trace_id,
             )
         except IdentityRejected as exc:
+            # ② 拒绝 —— 写审计事件（**拒绝事件是当前职责，不是旧实现**），
+            # 再映射回本层的错误类型（对外契约不变：401 + WEBHOOK_*）。
             await self._reject(
                 tenant_id=tenant_id,
                 channel_id=channel_id,
@@ -232,40 +224,23 @@ class ChannelService:
             )
             if exc.reason_code == REASON_TIMESTAMP_SKEW:
                 raise WebhookTimestampSkew(str(exc), code="WEBHOOK_TIMESTAMP_SKEW") from exc
+            if exc.reason_code == REASON_SERVICE_ACCOUNT_MISSING:
+                # 渠道没登记服务账号 → 产不出标准入站消息（③ 需要身份）。
+                # 这是**渠道配置问题**，不是请求问题 —— 明确拒绝并说清怎么修。
+                raise ChannelServiceAccountMissing(
+                    str(exc),
+                    code="CHANNEL_SERVICE_ACCOUNT_MISSING",
+                ) from exc
             raise WebhookSignatureInvalid(str(exc), code="WEBHOOK_SIGNATURE_INVALID") from exc
-
-        # ③ Message Normalizer：协议 → 标准入站消息。
-        adapter = inbound_registry.get(channel.type)
-        if adapter is None:
+        except GatewayChannelNotFound as exc:
+            raise ChannelNotFound(str(exc), code="CHANNEL_NOT_FOUND") from exc
+        except GatewayNormalizerMissing as exc:
             raise ChannelError(
-                f"no inbound adapter registered for channel type {channel.type.value}",
+                str(exc),
                 code="INBOUND_ADAPTER_MISSING",
-            )
-        if identity.actor is None:
-            # 渠道没登记服务账号 → **产不出标准入站消息**（③ 需要身份）。
-            # 这是**渠道配置问题**，不是请求问题 —— 明确拒绝并说清怎么修。
-            await self._reject(
-                tenant_id=tenant_id,
-                channel_id=channel_id,
-                reason_code=REASON_SERVICE_ACCOUNT_MISSING,
-                trace_id=trace_id,
-            )
-            raise ChannelServiceAccountMissing(
-                f"channel {channel_id} has no service account registered",
-                code="CHANNEL_SERVICE_ACCOUNT_MISSING",
-            )
+            ) from exc
 
-        message = adapter.normalize(
-            body=body,
-            headers=headers,
-            context=NormalizerContext(
-                actor=identity.actor,
-                channel_type=channel.type,
-                channel_id=channel.id,
-                trace_id=trace_id or current_trace_id() or "",
-                capabilities=capabilities_for(channel.type),
-            ),
-        )
+        message = accepted.message
         delivery = make_inbound_delivery(
             tenant_id=tenant_id,
             channel_id=channel_id,
@@ -370,36 +345,6 @@ class ChannelService:
             return updated
 
     # ── ② Auth Identity ───────────────────────────────────────────────────
-
-    async def _verify_identity(
-        self,
-        *,
-        tenant_id: TenantId,
-        channel: Channel,
-        body: bytes,
-        headers: dict[str, str],
-        secret: bytes,
-        tolerance_seconds: int,
-        trace_id: str,
-    ) -> Identity:
-        """验签 + 归一身份 —— **实现住在 gateway/identity.py**（§10 Stage 2）。
-
-        本层只提供「渠道配置 → 验签材料」：密钥来自渠道登记的密文，服务账号
-        来自渠道登记的配置（IM 的 actor 由此物化，§3.2）。
-        """
-        verifier = self.identity or HmacWebhookVerifier(clock=self.clock)
-        return await verifier.verify(
-            IdentityRequest(
-                trace_id=trace_id or current_trace_id() or "",
-                headers=headers,
-                body=body,
-                secret=secret,
-                tolerance_seconds=tolerance_seconds,
-                tenant_id=tenant_id,
-                workspace_id=channel.workspace_id,
-                service_account=ServiceAccount.from_mapping(channel.service_account),
-            )
-        )
 
     async def _reject(
         self,

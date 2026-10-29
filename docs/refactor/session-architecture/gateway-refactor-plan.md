@@ -1,6 +1,7 @@
 # Gateway 层重构方案
 
-> 版本：1.7（2026-10-29：**Stage 3 已实施** —— 归一化收口：`InboundMessage` 成为唯一入站契约（4+1 个 inbound adapter 全部改产它）+ **`ParsedMessage` / `ChannelMessageReceived` / IM 侧进程内 LRU 去重全部删除（G4/G5/G6 已清理）** + 附件收敛为 `AttachmentRef` + 连带修掉「总线按类名路由」与「载荷方法名」两个真实缺陷；详见 §10 Stage 3「实施结果」与附录 C.3）
+> 版本：1.8（2026-10-29：**Stage 4a 第一段已实施** —— `Gateway.accept` 门面（①②③）+ ④ 的三个动作 + 出站 `ResultSink`（编码 + 卡片降级）+ IM 入站/出站接管 + 重复请求的 202 降级路径 + G7/G9/X2 弃用打点；**「切 IM 入口到唯一 turn 实现」被 Session 阻塞，未接管**；详见 §10 Stage 4a「实施结果」与附录 C.4）
+> 沿革：v1.7（2026-10-29：**Stage 3 已实施** —— 归一化收口：`InboundMessage` 成为唯一入站契约（4+1 个 inbound adapter 全部改产它）+ **`ParsedMessage` / `ChannelMessageReceived` / IM 侧进程内 LRU 去重全部删除（G4/G5/G6 已清理）** + 附件收敛为 `AttachmentRef` + 连带修掉「总线按类名路由」与「载荷方法名」两个真实缺陷；详见 §10 Stage 3「实施结果」与附录 C.3）
 > 沿革：v1.6（2026-10-29：**Stage 2 已实施** —— 鉴权收口：`gateway/identity.py`（`IdentityVerifier` 端口 + web JWT / IM HMAC / internal 三种实现）+ **服务账号物化**（`channels.service_account`，迁移 0049，取代硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID`）+ 会话列表**显式租户过滤**；详见 §10 Stage 2「实施结果」与附录 C.2）
 > 沿革：v1.5（2026-10-29：**Stage 1 已实施** —— 幂等守卫落地：契约 `qzdap_agent_runtime/gateway/` + 落库 `PostgresIdempotencyStore` + 接线 `copilot.stream_turn` + 审批恢复路径带键（G10 已修复）+ **删除 `record_request_id` / `recent_request_ids`（G1 已清理）**；详见 §10 Stage 1「实施结果」与附录 C.1）
 > 沿革：v1.4（2026-10-29：**本轮重排** —— §0 按共享模板重写为 §0.1–§0.5；**限流独立成章**（§5）；**数据与表**提前到 §8、**逐文件清单**移到 §9、**边界章**移到 §7；§10.4「外部依赖的现状核实」并入 §1.6
@@ -1047,7 +1048,9 @@ composition
 
 ### Stage 4a：新实现接管（出站与切换，重放降级）
 
-> **本阶段只上新，不删旧**。旧实现在本阶段打上 `@deprecated` + 调用打点，进入清理窗口。
+> ✅ **已实施第一段（2026-10-29）** —— 产出、验证与**未接管的部分**见本节末尾的
+> 「实施结果（第一段）」。**本阶段只上新，不删旧**：旧实现在本阶段打上 `@deprecated`
+> + 调用打点，进入清理窗口。
 >
 > **开工前置**：Gateway Stage 0–3 已完成。**Session 层台账未清零不阻塞本阶段** —— 这是 `README.md` §3.3.1 的**豁免 E1**：Gateway 的接管本身只依赖「重复分支可降级」这一降级路径可用，不依赖 Session 的清理完成。
 
@@ -1068,6 +1071,48 @@ composition
 > **归零判据属于 Stage 5 的进入条件，不在这里要求** —— Stage 4a 刚接管时旧路径必然还有残留流量（长连接、缓存、灰度中的客户端）。
 >
 > **对外声明**：Stage 4a 状态下，重复请求**不支持无感重放**，必须显式告知调用方（202 + `replay_unavailable`）。
+
+#### Stage 4a 实施结果（第一段，2026-10-29）
+
+| 项 | 落地位置 |
+|---|---|
+| **Gateway 门面** | `backend/runtimes/agent_runtime/src/qzdap_agent_runtime/gateway/facade.py` —— `Gateway.accept`（①查渠道 → ②验签 → ③归一化）、`claim` / `complete` / `release`（④）、`ChannelDirectoryPort`（①的端口）、`ChannelDescriptor`（①的裁剪视图）、`scope_for`（幂等作用域推导） |
+| **出站端口** | `gateway/outbound.py` —— `ResultSink`（`deliver` / `replay`）、`DeliveryOutcome`（**降级必须留痕**）、`OutboundTarget`（投递目标：渠道 / 会话 / 能力） |
+| **`ResultSink` 唯一化** | `runtimes/agent_runtime/result/sink.py` 的同名协议**删除**，改为从 gateway 导入 —— **一个协议一份定义**（X1 的「按需取用」） |
+| **渠道侧实现** | `modules/channel/.../adapter/gateway.py`（`ChannelDirectoryAdapter` —— ①的渠道侧实现：密钥 / 租户 / 服务账号）、`adapter/outbound/encoder.py`（§6 的编码规则表 + 降级）、`adapter/outbound/result_sink.py`（`ChannelResultSink` —— 编码 + 投递） |
+| **入站接管** | 渠道服务的 `handle_webhook` **不再自己串 ②③**：改为构造 `RawIngress` 交给 `Gateway.accept`；`_verify_identity` 方法**删除**；`inbound_registry` 参数与路由上的 `_inbound_registry` **删除**（归一化器在门面里） |
+| **IM 派发接管** | `dispatch_subscriber` 消费标准入站消息（Stage 3）；④ 的 claim 走**同一个门面**；出站改走 `ResultSink`（原来直接 `adapter.send_reply` —— 「按 channel_type 找适配器 + 发纯文本」的那段删除） |
+| **重复降级路径** | `DuplicateRequestError` 带 `turn_id` + `replay_unavailable`；web SSE 端点命中重复 → **202 + 上次 turn_id + replay_unavailable**（**不再是 409 错误**，也不静默丢弃） |
+| **弃用标记 + 打点** | **G7**（`/v1/sessions*` 的 turn 部分）、**G9**（`dispatch_subscriber.py`）、**X2**（第二套 turn 实现）—— 弃用标记 + `record_legacy_call` 打点（台账状态改为「已弃用」） |
+
+**旧代码减少**：渠道服务的 `_verify_identity` 与内联的验签 / 归一化段落删除；
+`inbound_registry` 参数与路由上的 `_inbound_registry` 删除；IM 出站的
+「按 channel_type 找适配器 → 直接发纯文本」删除；重复请求从「抛错」改为
+「202 + turn_id」；X1 包里那份 `ResultSink` 协议删除。
+
+**验收结果**：
+- **门面编排**（8 条用例）：**查渠道在验签之前**（验签要用渠道的密钥）、归一化在
+  验签之后、缺服务账号 → 明确拒绝、缺归一化器 → 明确报错、claim 的作用域由标准
+  入站消息推导、complete / release 落到 store；
+- **出站编码**（16 条用例）：§6 的规则表逐条落地 —— 审批在无卡片能力时降级为
+  「回复 YES/NO」的可回答文本、有卡片能力时产出**带 approval_id 的回调载荷**；
+  计划降级为编号列表、产物降级为带链接的文本；`usage` / `done` 不投递但**记账**
+  （`skipped`）；错误**要告诉用户**；投递失败返回 `failed` 而**不炸掉主链路**；
+- **重复降级**（HTTP 层）：同一个 `clientRequestId` 再来一次 → **202**，
+  响应体带 `turnId` + `replayUnavailable: true`（前端拿到的是空流，不是错误）；
+- **弃用 + 打点**：G7 / G9 / X2 三条旧路径都带标记与打点。
+
+#### ⚠️ 本阶段**未接管**的部分（明确记为被阻塞，**不许当成已完成**）
+
+| 未接管项 | 为什么 | 归属 |
+|---|---|---|
+| **切 IM 入口到唯一 turn 实现** | 被 Session 的「唯一 turn 实现（claim / 幂等 / 取消 / 审批合一）」阻塞（§0.5 的前置依赖表）。IM 的**入站与出站**已接管，**轮次编排**仍是第二套实现 | Session（Stage 3–5b）· 切的动作在 Gateway Stage 4a 的下一段，与 Session Stage 5b 同 PR |
+| **web 路径整体改走 `Gateway.accept`** | web 的身份有「header 与 principal 两套来源」，收口属于 Auth 层；本轮只把**重复分支的响应**改成 202 降级 | Auth / Session |
+| **卡片实际下发** | 编码器已产出卡片载荷，但**入站侧还没有「卡片点击 → 审批决策」的回调处理** —— 先发卡片 = 做出一个点了没反应的按钮。本轮一律按「无卡片能力」降级为文本，并把降级记进 `DeliveryOutcome` | Agent Loop / Execution（回调侧）+ 各平台卡片渲染 |
+| **无感重放** | 依赖 `session_events` 真写真读 | Session Stage 4 → Gateway Stage 4b |
+
+> **因此本轮的清零判据不成立**：G9 / X2 的打点**仍会有流量**（IM 仍走它们），
+> Stage 5 的「连续 7 天为 0」不可能满足。**先上新、后清旧**的窗口仍然开着。
 
 ### Stage 4b：启用无感重放（Session 就绪后）
 
@@ -1341,6 +1386,20 @@ Gateway 域对应的规则：
 > 载荷方法名对不上，代码照样编译、单测照样绿，只是**那条链路从来没跑过**。
 > 因此「旧路径还在服役」不能靠「有代码」判断，**只能靠「指标有流量」判断** ——
 > 这正是台账 §3.2 要求「每个待清理的旧入口都有 `record_legacy_call`」的原因。
+
+### C.4 Stage 4a 实施带回的四处修正（v1.7 → v1.8，2026-10-29）
+
+| # | 级别 | 问题 | 修正 | 落点 |
+|---|---|---|---|---|
+| **G-25** | 严重 | **④ 的 claim 不能只发生在门口** —— 方案把 ``accept`` 写成「①②③④ 一把梭」，但**只有开始轮次的一方知道这一轮跑没跑起来**：IM 的门口不知道轮次成败 → 轮次失败时键被白白消费（调用方重试会被误判成重复，消息永远丢） | 门面拆成 ``accept``（①②③）与 ``claim`` / ``complete`` / ``release``（④）—— **谁开始轮次谁 claim**：web 是请求方，IM 是消费方 | §10 Stage 4a / `gateway/facade.py` |
+| **G-26** | 中 | **``ResultSink.deliver(event)`` 没有投递目标** —— ``ResultEvent`` 是**会话内部**的协议，与渠道无关（没有渠道、没有外部会话、没有渠道能力）；没有目标就无法投递 | 端口带一个 ``OutboundTarget``（渠道 / 外部会话 / 能力 / 随行元数据）—— 事件与目标分开，同一份事件流才能投给不同渠道 | §6 / `gateway/outbound.py` |
+| **G-27** | 中 | **``ResultSink`` 有两份定义** —— gateway 的新端口 + X1 包（``runtimes/agent_runtime/result/sink.py``）里的旧协议。两个同名协议 = 两套形状 = 迟早漂移 | X1 的协议**删除**，改为从 gateway 导入；内存 sink 按新协议实现（``deliver`` + ``replay``） | §6 / `result/sink.py` |
+| **G-28** | 中 | **卡片先发、后无回调** —— 编码表让有卡片能力的渠道发审批卡片，但**入站侧没有「卡片点击 → 审批决策」的回调处理** → 用户点了没反应，比不发更糟 | 卡片分支保留在编码器里，但**本期一律按「无卡片能力」降级为文本**并记 ``cards_degraded``；等回调侧落地再开 | §6 / `adapter/outbound/encoder.py` |
+
+> **G-25 的共同教训**：Gateway 的四段流水线是**同步请求**的形状（①②③④ 一把梭），
+> 而 **IM 是异步管道**（门口受理 → 总线 → 消费方执行）。把同步形状照搬到异步管道上，
+> 就会丢掉「失败时释放键」这个只有执行方才做得到的动作 —— **这类缺陷同样是静默的**：
+> 代码能编译、单测能绿，只是失败的消息再也重试不回来。
 
 **跨文档同步**（本轮一并改掉的对 Gateway 章节号的引用）：
 

@@ -14,36 +14,25 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from typing import Any, Protocol, runtime_checkable
-from uuid import uuid4
+from typing import TYPE_CHECKING
 
-from .events import (
-    ApprovalRequiredEvent,
-    ContextCompactedEvent,
-    DoneEvent,
-    ErrorEvent,
-    KnowledgeSearchEvent,
-    MemoryWriteEvent,
-    MessageEvent,
-    ResultEvent,
-    SkillInvocationEvent,
-    ToolCallEvent,
-    ToolResultEvent,
-    UsageEvent,
-)
+from ..gateway.outbound import DeliveryOutcome, OutboundTarget, ResultSink
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from .events import (
+        ResultEvent,
+    )
 
 
 class DispatchError(Exception):
     """单个 sink 投递失败（其他 sink 继续投递）。"""
 
 
-@runtime_checkable
-class ResultSink(Protocol):
-    """§3.2 / §13.5 单个下游 sink (SSE / IM / Webhook)。"""
-
-    async def dispatch(self, event: ResultEvent) -> None:
-        """投递一条 ResultEvent;失败抛 DispatchError。"""
-        ...
+# ⚠️ **ResultSink 的定义只有一份** —— 在 ``gateway/outbound.py``（Gateway ① 的
+# 出站端口）。本模块不再自定义协议：两个同名协议 = 两套形状 = 迟早漂移。
+# 本模块的内存 sink 按该协议实现（``deliver`` / ``replay``）。
 
 
 # ---------------------------------------------------------------------------
@@ -60,24 +49,43 @@ class InMemoryResultSink:
         self._seq_counters: dict[str, int] = defaultdict(int)
         self._lock = asyncio.Lock()
 
-    async def dispatch(self, event: ResultEvent) -> None:
+    async def deliver(
+        self, event: ResultEvent, *, target: OutboundTarget | None = None
+    ) -> DeliveryOutcome:
+        """Gateway 出站端口的实现 —— 内存收集（供 SSE 消费 / 重放）。
+
+        ``target`` 对内存 sink 无意义（它不投递到渠道），但**签名必须与端口一致**
+        —— 这正是「只有一个 ResultSink 定义」的价值。
+        """
+        _ = target
         async with self._lock:
             turn_id = event.turn_id
             if event.seq == 0:
                 # 自动分配 seq（如果上游没指定）
                 self._seq_counters[turn_id] += 1
-                # 注意：dispatch 不可变事件，必须替换
+                # 注意：事件不可变，必须替换
                 object.__setattr__(event, "seq", self._seq_counters[turn_id])
             else:
                 # 显式 seq: 始终更新 latest_seq 为 max
-                if event.seq > self._seq_counters[turn_id]:
-                    self._seq_counters[turn_id] = event.seq
+                self._seq_counters[turn_id] = max(
+                    self._seq_counters[turn_id], event.seq
+                )
             self._events[turn_id].append(event)
+        return DeliveryOutcome(status="sent")
+
+    async def dispatch(self, event: ResultEvent) -> None:
+        """旧调用名 —— 保留一个别名，避免 X1 包内的旧调用点全部改写。"""
+        await self.deliver(event)
 
     def get_events(self, turn_id: str, after_seq: int = 0) -> list[ResultEvent]:
         """SSE 重放: 取 seq > after_seq 的所有事件。"""
         events = self._events.get(turn_id, [])
         return [e for e in events if e.seq > after_seq]
+
+    async def replay(self, turn_id: str, after_seq: int = 0) -> AsyncIterator[ResultEvent]:
+        """Gateway 出站端口的重放实现 —— 按 seq 升序吐出该轮的事件。"""
+        for event in self.get_events(turn_id, after_seq):
+            yield event
 
     def latest_seq(self, turn_id: str) -> int:
         return self._seq_counters.get(turn_id, 0)

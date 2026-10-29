@@ -35,7 +35,6 @@ from qzdap_schema.ids import ChannelId, TenantId
 if TYPE_CHECKING:
     from qzdap.modules.channel.application.ports import OutboundAdapter
     from qzdap.modules.channel.application.services import ChannelService
-    from qzdap_agent_runtime.gateway.normalizer import MessageNormalizer
 
 router = APIRouter(prefix="/v1", tags=["channel"])
 
@@ -61,13 +60,6 @@ def _make_channel_service(request: Request) -> ChannelService:
             "must set app.state.channel_service before serving"
         )
     return svc
-
-
-def _inbound_registry(request: Request) -> dict[ChannelType, MessageNormalizer]:
-    reg = getattr(request.app.state, "channel_inbound_registry", None)
-    if reg is None:
-        raise RuntimeError("channel_inbound_registry not configured")
-    return reg
 
 
 def _outbound_registry(request: Request) -> dict[ChannelType, OutboundAdapter]:
@@ -216,7 +208,6 @@ async def receive_webhook(
         channel_id=ChannelId(channel_id),
         body=body_bytes,
         headers=headers,
-        inbound_registry=_inbound_registry(request),
         # ① 建立 trace：IM 平台自带的 trace 优先，没有就用中间件生成的那个 ——
         # 鉴权失败的请求同样要能追到（§2.3 顺序规则 ②）。
         trace_id=_trace_id(headers),

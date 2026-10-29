@@ -794,12 +794,59 @@ class Container:
         from qzdap.modules.channel.application.services import ChannelService
 
         sf = self.session_factory().maker()
+        channel_repo = SqlChannelRepository(sf)
+        secret_repo = SqlWebhookSecretRepository(sf)
         return ChannelService(
-            channel_repo=SqlChannelRepository(sf),
+            channel_repo=channel_repo,
             delivery_repo=SqlChannelDeliveryRepository(sf),
-            secret_repo=SqlWebhookSecretRepository(sf),
+            secret_repo=secret_repo,
             cipher=cipher,
             clock=self.clock(),
             ids=self.id_generator(),
             publisher=self.channel_event_publisher(),
+            gateway=self.gateway(
+                channel_repo=channel_repo,
+                secret_repo=secret_repo,
+                cipher=cipher,
+            ),
+        )
+
+    def gateway(self, *, channel_repo, secret_repo, cipher):
+        """Gateway 门面 —— ①→②→③ 的编排 + ④ 的幂等守卫。
+
+        **装配点只有这一处** —— 渠道服务与 IM 派发共用同一个门面（§10 Stage 4a）：
+        两边各串一遍 ①②③ 就是「两套实现」。
+        """
+        from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
+            PostgresIdempotencyStore,
+        )
+        from qzdap.modules.channel.adapter.gateway import ChannelDirectoryAdapter
+        from qzdap_agent_runtime.gateway.channels import capabilities_for
+        from qzdap_agent_runtime.gateway.facade import Gateway
+        from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
+        from qzdap_agent_runtime.gateway.identity import HmacWebhookVerifier
+
+        return Gateway(
+            channels=ChannelDirectoryAdapter(
+                channel_repo=channel_repo,
+                secret_repo=secret_repo,
+                cipher=cipher,
+            ),
+            identity=HmacWebhookVerifier(clock=self.clock()),
+            normalizers=self.channel_inbound_registry(),
+            # 幂等守卫自持事务 —— claim 必须在本轮开始前落库。
+            idempotency=IdempotencyGuard(
+                PostgresIdempotencyStore(self.session_factory())
+            ),
+            capabilities=capabilities_for,
+        )
+
+    def channel_result_sink(self):
+        """出站 sink —— 标准结果事件 → 编码 → 投递（Gateway ① 的出站）。"""
+        from qzdap.modules.channel.adapter.outbound.result_sink import (
+            ChannelResultSink,
+        )
+
+        return ChannelResultSink(
+            outbound_registry=self.channel_outbound_registry(),
         )

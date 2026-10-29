@@ -6,6 +6,15 @@
 from __future__ import annotations
 
 from qzdap_agent_runtime.gateway.channels import capabilities_for
+from qzdap_agent_runtime.gateway.facade import (
+    AcceptedIngress,
+    ChannelDescriptor,
+    ChannelDirectoryPort,
+    Gateway,
+    GatewayChannelNotFound,
+    GatewayNormalizerMissing,
+    scope_for,
+)
 from qzdap_agent_runtime.gateway.idempotency import (
     IdempotencyGuard,
     IdempotencyStore,
@@ -31,6 +40,11 @@ from qzdap_agent_runtime.gateway.normalizer import (
     NormalizerContext,
     resolve_idempotency_key,
 )
+from qzdap_agent_runtime.gateway.outbound import (
+    DeliveryOutcome,
+    OutboundTarget,
+    ResultSink,
+)
 from qzdap_agent_runtime.gateway.types import (
     ActorContext,
     AttachmentRef,
@@ -48,13 +62,20 @@ from qzdap_agent_runtime.gateway.types import (
 )
 
 __all__ = [
+    "AcceptedIngress",
     "ActorContext",
     "AttachmentRef",
     "AttachmentStoragePort",
     "AuthMethod",
     "AuthenticatedIngress",
     "ChannelCapabilities",
+    "ChannelDescriptor",
+    "ChannelDirectoryPort",
     "ChannelType",
+    "DeliveryOutcome",
+    "Gateway",
+    "GatewayChannelNotFound",
+    "GatewayNormalizerMissing",
     "HmacWebhookVerifier",
     "IdempotencyDecision",
     "IdempotencyGuard",
@@ -71,7 +92,9 @@ __all__ = [
     "KeySource",
     "MessageNormalizer",
     "NormalizerContext",
+    "OutboundTarget",
     "RawIngress",
+    "ResultSink",
     "ServiceAccount",
     "TrustLevel",
     "approval_key",
@@ -81,4 +104,5 @@ __all__ = [
     "payload_hash_of",
     "platform_message_key",
     "resolve_idempotency_key",
+    "scope_for",
 ]

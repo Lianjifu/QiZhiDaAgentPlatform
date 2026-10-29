@@ -16,7 +16,7 @@
 |---|---|---|---|
 | 1 | [`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) | **权威基线**：会话完整生命周期的泳道划分与时序。所有层方案的共同上游契约 | **已定稿** |
 | 2 | [`cleanup-ledger.md`](cleanup-ledger.md) | **全局收敛机制**：旧实现台账（弃用标记 → 调用打点 → 指标归零 → 删除 → CI 扫描脚本 → 阶段门禁） | **生效中** |
-| 3 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | Gateway 泳道：Channel Gateway / Auth Identity / Message Normalizer / Idempotency Guard ＋ 入口级限流 | **已定稿（v1.7）· Stage 0–3 已实施**（幂等守卫 / 鉴权收口 / 归一化收口；下一步 Stage 4a 接管） |
+| 3 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | Gateway 泳道：Channel Gateway / Auth Identity / Message Normalizer / Idempotency Guard ＋ 入口级限流 | **已定稿（v1.8）· Stage 0–3 已实施 + Stage 4a 第一段**（幂等守卫 / 鉴权收口 / 归一化收口 / 门面接管 + 出站 sink + 202 降级；**「切 IM 入口」等 Session，Stage 4a 剩余部分待续**） |
 | 4 | [`router-refactor-plan.md`](router-refactor-plan.md) | Router 泳道：Strategy（选 agent）+ Session Routing（选会话 + 有序保证） | **已定稿（v1.3）** |
 | 5 | [`session-refactor-plan.md`](session-refactor-plan.md) | Session 泳道：Manager（生命周期）+ State（状态机）+ Thread（多轮线程）+ 唯一 turn 实现 | **已定稿（v1.2）** |
 | 6 | [`context-refactor-plan.md`](context-refactor-plan.md) | Context 泳道：Builder（拼装）+ Compressor（压缩）+ Persistence（manifest 落库） | **已定稿（v1.2）** |
