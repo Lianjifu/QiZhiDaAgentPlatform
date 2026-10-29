@@ -69,6 +69,7 @@ class PostgresSessionJournal:
         agent_version: str,
         model_version: str,
         trace_id: str | None = None,
+        route_decision: dict[str, Any] | None = None,
     ) -> None:
         """写一行轮次 —— 状态 ``running``（在飞）。
 
@@ -92,6 +93,8 @@ class PostgresSessionJournal:
             agent_version=agent_version,
             model_version=model_version,
             trace_id=(trace_id or None) and trace_id[:64],
+            # 路由决策留痕 —— **产出者是 Router**（本层只代填）。
+            route_decision=route_decision,
         )
         try:
             await self._insert_turn(row)

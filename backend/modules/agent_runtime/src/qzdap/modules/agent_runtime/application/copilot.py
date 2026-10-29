@@ -19,6 +19,7 @@ from qzdap_agent_runtime.gateway.idempotency import (
 )
 from qzdap_agent_runtime.gateway.normalizer import resolve_idempotency_key
 from qzdap_agent_runtime.gateway.types import ChannelType, IdempotencyKey
+from qzdap_agent_runtime.router.types import RouteDecision
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_observability.metrics import record_legacy_call
 from qzdap_schema.dtos.turn import (
@@ -120,8 +121,21 @@ class CopilotSessionService:
         owner_id: UUID,
         agent_id: UUID,
         title: str = "",
+        route_decision: RouteDecision | None = None,
     ) -> dict[str, Any]:
         agent = await self._catalog.get_published(agent_id)
+        metadata: dict[str, Any] = {
+            "title": title.strip() or f"与{agent.name}对话",
+            "preview": "",
+            "agentName": agent.name,
+            "model": agent.model,
+            "rolling_summary": "",
+            # 标题先占位, 用户说第一句话后换成真实标题.
+            "title_auto": True,
+        }
+        if route_decision is not None:
+            # 路由决策留痕 —— 挂在会话上, 随每一轮写进 ``session_turns``。
+            metadata["route_decision"] = route_decision.to_dict()
         session = Session.create(
             id=SessionId(uuid4()),
             tenant_id=TenantId(tenant_id),
@@ -129,15 +143,7 @@ class CopilotSessionService:
             owner_id=UserId(owner_id),
             agent_id=AgentId(agent.id),
             agent_version=agent.version or "v1",
-            metadata={
-                "title": title.strip() or f"与{agent.name}对话",
-                "preview": "",
-                "agentName": agent.name,
-                "model": agent.model,
-                "rolling_summary": "",
-                # 标题先占位, 用户说第一句话后换成真实标题.
-                "title_auto": True,
-            },
+            metadata=metadata,
         )
         await self._sessions.add(session)
         await self._events.publish(
@@ -393,6 +399,9 @@ class CopilotSessionService:
             agent_version=session.agent_version,
             model_version=model_used,
             trace_id=current_trace_id(),
+            # 路由决策随轮次留痕（``session_turns.route_decision``）——
+            # **产出者是 Router**，这里只是把它带进轮次行。
+            route_decision=session.metadata.get("route_decision"),
         )
         await self._events.publish(
             turn.raise_started_event(),

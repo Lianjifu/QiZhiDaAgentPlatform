@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from qzdap_kernel.events import DomainEvent
@@ -154,8 +154,14 @@ class SessionJournal(ABC):
         agent_version: str,
         model_version: str,
         trace_id: str | None = None,
+        route_decision: dict[str, Any] | None = None,
     ) -> None:
-        """写一行轮次（状态 ``running``）—— 事件行的外键父行。"""
+        """写一行轮次（状态 ``running``）—— 事件行的外键父行。
+
+        ``route_decision`` 是 **Router 产出的**路由决策留痕（§6.2 的
+        ``session_turns.route_decision``）—— **产出者唯一是 Router**，
+        这里只是把它带进轮次行。
+        """
         ...
 
     @abstractmethod

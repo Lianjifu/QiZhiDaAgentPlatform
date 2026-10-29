@@ -149,6 +149,7 @@ _verify_signature;modules/channel/;G2;G;on
 OrderedDict;modules/channel/;G6;G;on
 @router\.(get|post|put|delete|patch)\("/v1/sessions;modules/;G7/G8;G;on
 dispatch_subscriber;modules/;G9;G;off
+record_legacy_call\("R2"\);modules/;R2;R;on
 build_session_key;modules/;R4;R;off
 RunTurnCompletionUseCase;modules/;X2;X;off
 use_cases.run_turn;modules/;X2;X;off

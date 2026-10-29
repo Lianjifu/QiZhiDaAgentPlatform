@@ -338,7 +338,7 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 | 方法 | 路径 | 请求体 | 响应 | 定义位置 |
 |---|---|---|---|---|
 | GET | `/api/sessions` | — | `SessionCard[]` | `session_router.py:141` |
-| POST | `/api/sessions` | `{agentId, title?}` | `SessionDetail` (201) | `session_router.py:152` |
+| POST | `/api/sessions` | `{agentId?, title?}` | `SessionDetail` (201) | `session_router.py:169` |
 | GET | `/api/sessions/{id}` | — | `SessionDetail` | `session_router.py:172` |
 | DELETE | `/api/sessions/{id}` | — | 204 | `session_router.py:180` |
 | GET | `/api/tasks` | query: `q`, `status` | `TaskCard[]` | `session_router.py:193` |
@@ -352,6 +352,12 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 
 所有 `/api/*` 路由要求请求头 `X-Tenant-Id`、`X-Workspace-Id`；`X-User-Id` 可选，缺省时回落到 `_owner_id(request, x_user_id)` 从认证上下文解析。
 
+> ⚠️ **`agentId` 现在只是「显式指定」这一条规则的输入**（Router Stage 1，台账 **R2 已清理**）：
+> 建会话的 agent 由 **Router 的规则链**选出（粘性 > 显式 > 业务线 > 用户标签 > 兜底默认），
+> 请求体里的 `agentId` 不再直取。**不带 `agentId` 且工作区没有兜底默认 agent 时返回 400**
+> （文案说明缺什么）—— 与改造前同形，只是失败原因更明确。路由决策留痕在
+> `session_turns.route_decision`（可查「为什么是这个 agent」）。
+>
 > ⚠️ **旧的 `/v1/sessions*` 已删除**（Gateway Stage 5，台账 **G7 / G8**）—— API owner 已确认
 > **无仓外调用方**（Gateway 方案 §9.4 的前置 **P-11**）→ 兼容保留期归零。
 > 会话 API 的**唯一入口**是 `/api/sessions*`（走 `CopilotSessionService`）。

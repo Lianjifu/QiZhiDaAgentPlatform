@@ -1,8 +1,8 @@
 # Router 层重构方案
 
-> 版本：1.3（2026-10-29：**独立审查后的 15 项修正** —— `try_claim` 的顺序职责更正、架构测试规则白名单化、粘性规则的两步流程、`last_completed_seq` 的兜底路径、互斥原语口径统一、错误码收敛、扫描规则补全、迁移回滚口径 —— **+ 按 D1 重排骨架**：新增 §0.2 前提、§5.1 改两轴对照、删 `model_hint`、附录 C 记重排）
+> 版本：1.4（2026-10-29：**Stage 0 + Stage 1 已落地** —— 规则链 + `RouteDecision` 留痕 + web 建会话改走 Strategy（台账 **R2 已清理**）；实施结果与偏差见 **§13**）｜ 1.3（2026-10-29：**独立审查后的 15 项修正** —— `try_claim` 的顺序职责更正、架构测试规则白名单化、粘性规则的两步流程、`last_completed_seq` 的兜底路径、互斥原语口径统一、错误码收敛、扫描规则补全、迁移回滚口径 —— **+ 按 D1 重排骨架**：新增 §0.2 前提、§5.1 改两轴对照、删 `model_hint`、附录 C 记重排）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**已定稿**（附录 A 的 10 条决策于 2026-10-29 逐条确认；**v1.3 已按 Agent 决策 #4 重排骨架**，见附录 C 的 D1 行）
+> 状态：**Stage 0 + Stage 1 已执行**（2026-10-29；§13）—— Stage 2（Session Routing）**被 Session Stage 1 的 `lookup` / `resolve_or_create` 端口阻塞**；Stage 3（FIFO）被 Session Stage 3 阻塞
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) —— 本方案实现其中 **Router 泳道**
 > 兄弟方案：[`gateway-refactor-plan.md`](gateway-refactor-plan.md)（已定稿）
@@ -898,6 +898,63 @@ def test_router_layer_has_no_framework_imports():
 | `router.route.rejected` | 路由失败 | 原因、trace_id |
 
 > 审计写入走 Governance 模块，Router 只投递事件。
+---
+
+## 13. Stage 0 + Stage 1 实施结果（2026-10-29）
+
+> **本节记录已落地的部分与偏差** —— 方案是「打算做什么」，本节是「实际做了什么、
+> 哪里没做到」。**偏差不藏**：做不到的写清楚做不到，以及它归谁。
+
+### 13.1 落地了什么
+
+| 动作 | 落点 | 状态 |
+|---|---|---|
+| `router/` 骨架 + `types.py`（4 个类型定稿 + 2 个端口） | `backend/runtimes/agent_runtime/src/qzdap_agent_runtime/router/types.py` | ✅ |
+| 规则链实现（五条规则） | 同目录 `strategy.py` | ✅（**粘性规则缺输入**，见 13.2-D1） |
+| `UserDirectoryPort` 契约（router 侧） | `router/types.py` | ✅ |
+| `UserDirectoryPort` 实现（identity 侧） | `modules/identity/src/qzdap/modules/identity/adapter/user_directory.py` | ✅（identity 模块新增依赖 `qzdap-agent-runtime-runtime`） |
+| 候选池适配（复用既有 `AgentCatalogService`，**不另起查询**） | `modules/agent_runtime/.../adapter/routing/catalog_port.py` | ✅ |
+| `ErrorCode` 增 `QUEUE_FULL` / `QUEUE_TIMEOUT` | `libs/schema/src/qzdap_schema/dtos/errors.py` | ✅（**消费方归 Stage 3**） |
+| 策略配置规范（`admin_agents.profile["routing"]`） | `router/types.py` 的模块 docstring | ✅ |
+| 打点收敛（R2 的旧打点撤除，改打 `record_new_call("R2")`） | `session_router.py` | ✅ |
+| 路由指标（§12.2） | `libs/observability/.../metrics.py`：`qzdap_router_route_total{strategy,outcome}` + `qzdap_router_route_duration_seconds` | ✅（排队的三个指标归 Stage 3） |
+| **web 建会话改走 Strategy**（台账 **R2 已清理**） | `session_router.py` 的 `create_session` | ✅ |
+| `RouteDecision` 留痕 → `session_turns.route_decision` | 决策挂会话 metadata，随轮次写进轮次行 | ✅（**代填**，见 13.2-D2） |
+| 架构测试（§10.2 的 4 条 + 「契约层不得反向依赖模块」） | `backend/tests/architecture/test_router_boundary.py` | ✅ |
+| 扫描规则（台账 §3.1 唯一来源） | `backend/scripts/check_no_legacy_impl.sh`：`record_legacy_call\("R2"\)` **同 PR 启用** | ✅ |
+
+**旧代码减少**：`session_router.py` 的 `agentId` 直取（含 `record_legacy_call("R2")`
+打点）**删除**，收进策略链的「显式指定」规则；台账 R2 状态 → **已清理**。
+
+### 13.2 偏差与未接管（**不假装做到**）
+
+| # | 偏差 | 事实 | 归属 |
+|---|---|---|---|
+| **D1** | **粘性规则（规则 1）拿不到输入** | 规则本身已实现且有单测；但它的唯一输入 `sticky_agent` 来自 **Session 的只读 `lookup(session_key)` 端口**（§2 的两步流程）—— **Session Stage 1 未落地** → web 路径上粘性分支不生效 | Session Stage 1（提供端口）→ Router Stage 2（接上） |
+| **D2** | **`route_decision` 的「唯一写者」在字面上不成立** | 决策的**产出者唯一是 Router**（策略链）；但写列的是 **Session 的行写者**（copilot 的 journal）—— Router 不直接写 `session_turns`（那会越权写会话表，违反 §10.2 规则 1）。实际保证是「**只有 Router 产出这一列的值**」 | 措辞修正见 §6.2 / §10.2 |
+| **D3** | **业务线规则（规则 3）在 web 路径恒不命中** | 规则 3 需要「本次请求的业务线」这个输入 —— **web 路径没有这个概念**（业务线是渠道 / 工作区的属性） | Router Stage 2（IM 路径） |
+| **D4** | **用户标签规则（规则 4）只是近似** | §1.5 的缺口没消失：部门**没有结构化字段**。实现取 `visible_scope` ∩（部门 ∪ 标签 ∪ roles）；`visible_scope` 写的是**范围类型**（默认的 `["部门"]`）时，按「用户有部门归属即命中」处理 | identity 补结构化字段（之后只改适配器） |
+| **D5** | **`QUEUE_FULL` / `QUEUE_TIMEOUT` 暂无消费方** | 排队语义（Stage 3）未落地 → 这两个错误码现在是**纯契约** | Router Stage 3 |
+| **D6** | **`session_key.py` / `sequencer.py` 故意没建** | 「没有调用方的类型就是建而不切」—— 它们分别归 Stage 2（会话 key 派生）与 Stage 3（FIFO 放行） | Router Stage 2 / 3 |
+| **D7** | **兜底默认 agent 需要配置才有意义** | 兜底规则读 `admin_agents.profile.routing.default`。**存量 agent 都没打这个标** → 不带 `agentId` 的建会话请求仍是 400（与改造前同形，只是文案说明「缺什么」） | 运维打标（不改代码） |
+
+### 13.3 验收对照（§10.1）
+
+| # | 验收项 | 状态 |
+|---|---|---|
+| 1 | 路由正确性 + `RouteDecision` 完整留痕 | ✅（**入口类别只覆盖 web**；IM 路径归 Stage 2） |
+| 2 | 粘性 | ⏳ 规则已实现，**输入未接**（D1） |
+| 3 | 会话稳定性（同一 IM 群同一 session） | ⏳ 归 Stage 2 |
+| 4 | 严格有序 | ⏳ 归 Stage 3 |
+| 5 | 跨会话并行 | ✅（Router 不介入执行，天然互不阻塞） |
+| 6 | 审批不阻塞 | ✅（同 5） |
+| 7 | 跨 worker 一致 | ⏳ 归 Stage 2 |
+| 8 | 兜底安全（无命中 → 默认 agent，**消息不丢**） | ✅（规则 5 + 无默认 agent 时 400 且说明缺什么） |
+| 9 | 可解释（`route_decision` 可查） | ✅（会话 metadata + `session_turns.route_decision`） |
+| 10 | 架构测试（Router 不引框架） | ✅ `tests/architecture/test_router_boundary.py` |
+| 11 | 排队超限不静默 | ⏳ 归 Stage 3（错误码已备好，D5） |
+| 12 | 开关可回滚（`QZDAP_ROUTER_QUEUE_ENABLED=off`） | ⏳ 归 Stage 3 |
+
 ---
 
 ## 附录 A：已定稿的决策（2026-10-29 逐条确认）

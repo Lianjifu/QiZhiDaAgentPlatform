@@ -54,7 +54,13 @@ class _Catalog:
         return self._agent
 
     async def get_admin(self, agent_id):  # type: ignore[no-untyped-def]
-        return self._agent.to_catalog_dict()
+        return self._agent.to_admin_dict()
+
+    async def list_admin(self, *, workspace_id):  # type: ignore[no-untyped-def]
+        """候选池 —— 真实实现走 ``to_admin_dict``，这里给同样的形状。"""
+        row = self._agent.to_admin_dict()
+        row["status"] = "published"
+        return [row]
 
 
 class _Messages:
@@ -89,23 +95,29 @@ def _build_test_app(
     from qzdap.modules.agent_runtime.adapter.http.session_router import (
         build_session_router,
         copilot_dependency,
+        routing_strategy_dependency,
     )
+    from qzdap.modules.agent_runtime.adapter.routing import CatalogRoutingAdapter
+    from qzdap_agent_runtime.router.strategy import RuleChainStrategy
 
     sessions = InMemorySessionRepository()
     turns = InMemoryTurnRepository()
     llm = FakeLLM(content=llm_content, raise_on_first_chunk=raise_on_first_chunk)
     events = RecordingEventPublisher()
     journal = InMemorySessionJournal()
+    catalog = _Catalog(_agent())
     svc = CopilotSessionService(
         sessions=sessions,
         turns=turns,
         messages=_Messages(),  # type: ignore[arg-type]
-        catalog=_Catalog(_agent()),  # type: ignore[arg-type]
+        catalog=catalog,  # type: ignore[arg-type]
         events=events,
         graph=SessionGraphRunner(llm=llm),
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
     )
+    # Router 的规则链（真实现，候选池来自同一个 catalog 替身）。
+    strategy = RuleChainStrategy(catalog=CatalogRoutingAdapter(catalog))  # type: ignore[arg-type]
 
     app = FastAPI(title="agent_runtime-test")
     # AppError → HTTP 错误信封（与生产中间件链同源）。
@@ -115,6 +127,7 @@ def _build_test_app(
     app.add_middleware(BaseHTTPMiddleware, dispatch=error_envelope_middleware)  # type: ignore[arg-type]
     app.include_router(build_session_router())
     app.dependency_overrides[copilot_dependency] = lambda: svc
+    app.dependency_overrides[routing_strategy_dependency] = lambda: strategy
     # web 入口的门面（①②③ + ④）—— 与生产装配同型。
     app.state.web_gateway = Gateway(
         channels=None,
@@ -187,6 +200,55 @@ async def test_create_session_requires_agent_id() -> None:
 
     assert resp.status_code == 400
     assert "agentId" in resp.text
+
+
+async def test_create_session_records_the_route_decision() -> None:
+    """路由决策必须留痕（Router §3.2）—— 挂在会话上，随轮次落库。"""
+    app, ctx = _build_test_app()
+
+    async with _make_client(app) as client:
+        resp = await client.post(
+            "/api/sessions", json={"agentId": str(AGENT)}, headers=_hdrs()
+        )
+
+    assert resp.status_code == 201, resp.text
+    session_id = UUID(resp.json()["id"])
+    session = await ctx["sessions"].get(session_id)
+    assert session is not None
+    decision = (session.metadata or {}).get("route_decision")
+    assert decision is not None, "会话上必须带路由决策"
+    assert decision["source"] == "explicit"
+    assert decision["agent_id"] == str(AGENT)
+    assert decision["strategy_id"] == "rule-chain"
+
+
+async def test_the_route_decision_lands_in_the_turn_row() -> None:
+    """``session_turns.route_decision`` —— 轮次行要能回答「为什么是这个 agent」。"""
+    app, ctx = _build_test_app(llm_content="hi")
+
+    async with _make_client(app) as client:
+        resp = await client.post(
+            "/api/sessions", json={"agentId": str(AGENT)}, headers=_hdrs()
+        )
+    session_id = UUID(resp.json()["id"])
+
+    async with (
+        _make_client(app) as client,
+        client.stream(
+            "POST",
+            f"/api/sessions/{session_id}/turns/stream",
+            json={"content": "hello"},
+            headers=_hdrs(),
+        ) as stream,
+    ):
+        assert stream.status_code == 200
+        async for _chunk in stream.aiter_bytes():
+            pass
+
+    assert len(ctx["journal"].turns) == 1
+    row = next(iter(ctx["journal"].turns.values()))
+    assert row["route_decision"]["source"] == "explicit"
+    assert row["route_decision"]["agent_id"] == str(AGENT)
 
 
 async def test_create_session_requires_tenant_header() -> None:

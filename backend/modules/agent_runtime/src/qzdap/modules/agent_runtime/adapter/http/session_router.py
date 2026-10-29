@@ -16,8 +16,10 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from opentelemetry import trace as _trace
 from qzdap_agent_runtime.gateway.channels import capabilities_for
 from qzdap_agent_runtime.gateway.types import ChannelType, RawIngress
+from qzdap_agent_runtime.router.strategy import Strategy
+from qzdap_agent_runtime.router.types import RoutingRequest, RoutingUnavailable
 from qzdap_kernel.contextvars import current_trace_id
-from qzdap_observability.metrics import record_legacy_call
+from qzdap_observability.metrics import record_new_call
 from qzdap_observability.tracing import get_tracer
 
 from qzdap.modules.agent_runtime.adapter.http.dto import (
@@ -36,6 +38,13 @@ def _owner_id(request: Request, fallback: UUID) -> UUID:
     if pid is None:
         return fallback
     return UUID(str(pid))
+
+
+def _roles(request: Request) -> frozenset[str]:
+    """JWT 里的 roles —— 用户标签规则的输入之一（§3.1 规则 4）。"""
+    principal = getattr(request.state, "principal", None)
+    roles = getattr(principal, "roles", None) or ()
+    return frozenset(str(role) for role in roles)
 
 
 async def _write_audit(
@@ -78,6 +87,9 @@ async def copilot_dependency(request: Request) -> CopilotSessionService:
         raise HTTPException(status_code=503, detail="copilot factory not wired")
     sf = container.session_factory()
     async with sf.session() as session:
+        # 请求作用域的 DB 会话 —— 路由策略要读 agent 目录，**共用同一个会话**
+        # （不额外开连接：dev 库的连接池本来就很紧）。
+        request.state.db_session = session
         svc = factory.for_session(session)
         tenant_raw = request.headers.get("x-tenant-id")
         workspace_raw = request.headers.get("x-workspace-id")
@@ -133,6 +145,25 @@ async def copilot_dependency(request: Request) -> CopilotSessionService:
         await session.commit()
 
 
+async def routing_strategy_dependency(
+    request: Request,
+    svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+) -> Strategy:
+    """Router 的策略 —— **请求作用域**，与 copilot 共用同一个 DB 会话。
+
+    ⚠️ **没有策略就没有会话**：建会话必须由策略选出 agent。这是 Router
+    Stage 1 的接线点 —— 旧的 ``agentId`` 直取已下线（台账 **R2**）。
+
+    ⚠️ 显式依赖 ``copilot_dependency`` —— 它负责开出会话并把它放进
+    ``request.state.db_session``；**顺序不能靠参数排列碰运气**。
+    """
+    factory = getattr(request.app.state, "router_strategy_factory", None)
+    session = getattr(request.state, "db_session", None)
+    if factory is None or session is None:
+        raise HTTPException(status_code=503, detail="router strategy not wired")
+    return factory.for_session(session)
+
+
 def build_session_router() -> APIRouter:
     router = APIRouter(tags=["sessions"])
     from qzdap.modules.agent_runtime.adapter.http.attachments import (
@@ -163,17 +194,51 @@ def build_session_router() -> APIRouter:
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
         svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        strategy: Strategy = Depends(routing_strategy_dependency),  # noqa: B008
     ) -> dict[str, Any]:
-        record_legacy_call("R2")  # agentId 直取（无任何策略）
-        agent_id = body.get("agentId") or body.get("agent_id")
-        if not agent_id:
-            raise HTTPException(status_code=400, detail="agentId is required")
+        """建会话 —— **agent 由 Router 的规则链选出**（不再直取 agentId）。
+
+        旧的 ``agentId`` 直取（台账 **R2**）已下线：请求体里的 agentId 现在
+        只是「**显式指定**」这一条规则的输入，还要跟粘性/业务线/用户标签/
+        兜底一起比。
+        """
+        explicit = body.get("agentId") or body.get("agent_id")
+        explicit_id: UUID | None = None
+        if explicit:
+            try:
+                explicit_id = UUID(str(explicit))
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400, detail="agentId is not a valid uuid"
+                ) from exc
+        try:
+            decision = await strategy.decide(
+                RoutingRequest(
+                    tenant_id=x_tenant_id,
+                    workspace_id=x_workspace_id,
+                    user_id=_owner_id(request, x_user_id),
+                    explicit_agent_id=explicit_id,
+                    roles=_roles(request),
+                )
+            )
+        except RoutingUnavailable as exc:
+            # 一条规则都没命中，**且工作区没有兜底默认 agent** —— 不静默：
+            # 告诉调用方缺什么。
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "no agent could be routed — pass agentId explicitly, "
+                    "or configure a default agent (profile.routing.default)"
+                ),
+            ) from exc
+        record_new_call("R2")  # 旧直取已被策略链接管
         return await svc.create_session(
             tenant_id=x_tenant_id,
             workspace_id=x_workspace_id,
             owner_id=_owner_id(request, x_user_id),
-            agent_id=UUID(str(agent_id)),
+            agent_id=decision.agent_id,
             title=str(body.get("title") or ""),
+            route_decision=decision,
         )
 
     @router.get("/api/sessions/{session_id}")

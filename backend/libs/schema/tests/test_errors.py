@@ -48,6 +48,9 @@ NEW_CODES = [
     (ErrorCode.TOOL_ARGUMENT_INVALID, 400, False),
     (ErrorCode.TOOL_TIMEOUT, 504, True),
     (ErrorCode.TOOL_RATE_LIMITED, 429, True),
+    # Router Stage 0（决策 #7）—— 排队语义：满 / 超时，**都不得静默丢弃**。
+    (ErrorCode.QUEUE_FULL, 429, True),
+    (ErrorCode.QUEUE_TIMEOUT, 503, True),
 ]
 
 
@@ -55,7 +58,7 @@ NEW_CODES = [
 def test_new_codes_field_stability(
     code: ErrorCode, expected_status: int, expected_retriable: bool
 ) -> None:
-    """9 个新错误码字段稳定（http_status / retriable / i18n_key）。"""
+    """11 个新错误码字段稳定（http_status / retriable / i18n_key）。"""
     assert code.http_status == expected_status
     assert code.retriable is expected_retriable
     assert code.i18n_key == f"errors.{code.value.lower()}"

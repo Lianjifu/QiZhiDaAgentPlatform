@@ -1127,9 +1127,11 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] G-29 残留列 / 孤儿索引 · G-30 启用扫描脚本 Gateway 段 · G-31 更新台账 + 现状文档
 
 ### Router 层（§3.2）—— **删除 R1–R4**
-- [ ] R-01 `router/` 骨架 · R-02 **迁移 0045** · R-03 策略配置 schema · R-04 `UserDirectoryPort` · R-05 `QUEUE_FULL`/`QUEUE_TIMEOUT` · R-06 打点 R1–R4
-- [ ] R-07 规则链 · R-08 `RouteDecision` 留痕
-- [ ] R-09 **web 建会话改走 Strategy** → **R2**
+- [x] R-01 `router/` 骨架 · R-02 **迁移 0045** · R-03 策略配置 schema · R-04 `UserDirectoryPort` · R-05 `QUEUE_FULL`/`QUEUE_TIMEOUT` · R-06 打点 R1–R4
+      （2026-10-29：R4 无生产调用方 → 打不了点 ✓；R2 的打点随旧实现撤除 ✓）
+- [x] R-07 规则链 · R-08 `RouteDecision` 留痕
+      （2026-10-29：**粘性规则已实现但拿不到输入** —— 依赖 Session Stage 1 的 `lookup` 端口 → 偏差 D1，详见 router 方案 §13.2）
+- [x] R-09 **web 建会话改走 Strategy** → **R2 已清理**
 - [ ] R-10 会话 key 派生 · **R-10b 调 Session 的 `lookup`（粘性依据）** · R-11 改调 `resolve_or_create` · R-12 `ingress_seq` 分配 + 入队
 - [ ] R-13 IM 路径切换 + 旧 key 停用 → **R1**（行为）/ **R4**（停用）
 - [ ] R-14 FIFO 放行 · R-15 会话级互斥 · R-16 审批不占执行位 · R-17 并发语义切排队
@@ -1296,7 +1298,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 | G11 重复请求的 202 降级路径 | **已清理** | —（**2026-10-29 删除**：SSE 端点的 202 分支 + `DuplicateRequestError.replay_unavailable`；替代物 = 按 seq 的事件流重放） | — | Gateway Stage 4b |
 | G10 审批恢复路径的幂等键 | **修复**（✅ 2026-10-29 已修） | —（**打点已撤除**：修复类不留在指标里） | — | **判据 = 回归测试**：`test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`（连点两次「同意」只执行一次工具） |
 | R1 IM 每消息建会话 | 指标 | `dispatch_subscriber.py` `_run_turn`（建 session 前） | — | |
-| R2 `agentId` 直取 | 指标 | `session_router.py` `create_session` | — | |
+| R2 `agentId` 直取 | **已清理** | —（**2026-10-29 删除**：直取 + `record_legacy_call("R2")` 打点一并撤除） | — | Router Stage 1 —— 替代物 = `router/strategy.py` 的规则链（请求里的 agentId 降级为「显式指定」这一条规则） |
 | R3 `try_claim` 的会话互斥职责 | **扫描**（+ 打点） | `copilot.py` `stream_turn`、`repositories.py` `try_claim` | `R3` | ⚠️ **owner 是 Session**；清零判据 = Session 的 CAS 接管后本层无残留调用方 |
 | R4 `build_session_key` | **扫描** | —（无生产调用方） | `R4` | 在从未接线的 runtime 里 → **打点会得到恒为 0 的指标**，是危险状态 |
 | X1 未接线包整包 | **扫描** | — | `X1` | 从未接线 → 无调用入口 |

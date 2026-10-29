@@ -81,6 +81,24 @@ NEW_CALLS_TOTAL = Counter(
     labelnames=("entry",),
     registry=metrics_registry,
 )
+# 路由决策计数 —— 标签 `strategy` 是命中的规则（sticky / explicit /
+# business_line / user_tag / fallback），`outcome` 是结果
+# （matched / fallback / rejected）。
+# 「兜底命中率」= outcome="fallback" 的占比 —— 突增说明策略覆盖不足
+# （router-refactor-plan §12.2）。
+ROUTER_ROUTE_TOTAL = Counter(
+    "qzdap_router_route_total",
+    "Routing decisions by the rule that matched",
+    labelnames=("strategy", "outcome"),
+    registry=metrics_registry,
+)
+# 单次路由决策的耗时。
+ROUTER_ROUTE_DURATION = Histogram(
+    "qzdap_router_route_duration_seconds",
+    "Routing decision latency in seconds",
+    labelnames=("strategy",),
+    registry=metrics_registry,
+)
 
 
 def record_http_request(
@@ -105,6 +123,17 @@ def record_legacy_call(entry: str) -> None:
 def record_new_call(entry: str) -> None:
     """记录一次新实现调用（与 :func:`record_legacy_call` 同一套 ``entry`` 标签）。"""
     NEW_CALLS_TOTAL.labels(entry=entry).inc()
+
+
+def record_router_route(*, strategy: str, outcome: str, duration_s: float = 0.0) -> None:
+    """记录一次路由决策 —— ``strategy`` 是命中的规则，``outcome`` 是结果。
+
+    用于回答「为什么是这个 agent」的**聚合**视角：兜底占比突增说明策略覆盖
+    不足，显式占比高说明策略还没被用起来（router-refactor-plan §12.2）。
+    """
+    ROUTER_ROUTE_TOTAL.labels(strategy=strategy, outcome=outcome).inc()
+    if duration_s:
+        ROUTER_ROUTE_DURATION.labels(strategy=strategy).observe(duration_s)
 
 
 def render_prometheus() -> tuple[bytes, str]:

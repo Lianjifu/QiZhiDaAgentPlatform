@@ -245,6 +245,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.agent_catalog_factory = _AgentCatalogFactory()
 
+    # ── Router 策略（Router Stage 1）────────────────────────────────────
+    # 建会话的 agent 由**规则链**选出 —— 旧的 `agentId` 直取已下线
+    # （台账 R2）。候选池来自 agent 目录，用户属性来自 identity，
+    # **策略本身在契约层**（qzdap_agent_runtime.router），这里只做接线。
+    class _RouterStrategyFactory:
+        def __init__(self) -> None:
+            self._catalog_factory = app.state.agent_catalog_factory
+
+        def for_session(self, session):  # type: ignore[no-untyped-def]
+            from qzdap.modules.agent_runtime.adapter.routing import (
+                CatalogRoutingAdapter,
+            )
+            from qzdap.modules.identity.adapter.persistence.repositories import (
+                SqlUserRepository,
+            )
+            from qzdap.modules.identity.adapter.user_directory import (
+                IdentityUserDirectory,
+            )
+            from qzdap_agent_runtime.router.strategy import RuleChainStrategy
+
+            return RuleChainStrategy(
+                catalog=CatalogRoutingAdapter(
+                    self._catalog_factory.for_session(session)
+                ),
+                users=IdentityUserDirectory(SqlUserRepository(session)),
+            )
+
+    app.state.router_strategy_factory = _RouterStrategyFactory()
+
     class _CopilotFactory:
         def for_session(self, session):  # type: ignore[no-untyped-def]
             llm = LLMPortAdapter(

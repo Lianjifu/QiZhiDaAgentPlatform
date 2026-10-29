@@ -45,6 +45,10 @@ class ErrorCode(str, Enum):
     TOOL_ARGUMENT_INVALID = "TOOL_ARGUMENT_INVALID"
     TOOL_TIMEOUT = "TOOL_TIMEOUT"
     TOOL_RATE_LIMITED = "TOOL_RATE_LIMITED"
+    # Router Stage 0（决策 #7）—— 排队语义：
+    # 队列满 / 等待超时。⚠️ 两者都**不静默丢弃**：轮次落 cancelled 且可查。
+    QUEUE_FULL = "QUEUE_FULL"
+    QUEUE_TIMEOUT = "QUEUE_TIMEOUT"
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +78,9 @@ _HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.TOOL_ARGUMENT_INVALID: 400,
     ErrorCode.TOOL_TIMEOUT: 504,
     ErrorCode.TOOL_RATE_LIMITED: 429,
+    # Router 排队语义
+    ErrorCode.QUEUE_FULL: 429,
+    ErrorCode.QUEUE_TIMEOUT: 503,
 }
 
 
@@ -85,6 +92,8 @@ _RETRIABLE: frozenset[ErrorCode] = frozenset(
         ErrorCode.TOOL_RATE_LIMITED,
         ErrorCode.RATE_LIMITED,
         ErrorCode.EXTERNAL_SERVICE_ERROR,
+        ErrorCode.QUEUE_FULL,
+        ErrorCode.QUEUE_TIMEOUT,
     }
 )
 

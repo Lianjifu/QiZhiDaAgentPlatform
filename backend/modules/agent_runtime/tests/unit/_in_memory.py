@@ -208,6 +208,7 @@ class InMemorySessionJournal(SessionJournal):
         agent_version: str,
         model_version: str,
         trace_id: str | None = None,
+        route_decision: dict[str, Any] | None = None,
     ) -> None:
         self.turns[turn_id] = {
             "tenant_id": tenant_id,
@@ -218,6 +219,7 @@ class InMemorySessionJournal(SessionJournal):
             "agent_version": agent_version,
             "model_version": model_version,
             "status": "running",
+            "route_decision": route_decision,
         }
 
     async def finish_turn(

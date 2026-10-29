@@ -85,7 +85,7 @@
 | # | 旧实现 | 位置 | 替代者 | 状态 | 所属方案 |
 |---|---|---|---|---|---|
 | R1 | IM 每条消息新建临时 session | `modules/channel/adapter/dispatch/dispatch_subscriber.py:175-186` | `channel_session_key` → `session_id` 映射 | 未开始 | Router Stage 2（停用）→ Stage 5（删） |
-| R2 | `agentId` 直取（无任何策略） | `modules/agent_runtime/adapter/http/session_router.py:162-171` | `router/strategy.py` 规则链 | 未开始 | Router Stage 1 |
+| R2 | `agentId` 直取（无任何策略） | ~~`modules/agent_runtime/adapter/http/session_router.py:162-171`~~（**已删**） | `qzdap_agent_runtime/router/strategy.py` 的规则链 | **已清理**（2026-10-29：Router Stage 1 —— `create_session` 的 `agentId` 直取**删除**，改为把请求里的 agentId 作为「**显式指定**」这一条规则的输入交给 `RuleChainStrategy`；旧的 `record_legacy_call("R2")` 打点撤除（打点是清理**前**的观测手段），改打 `record_new_call("R2")`。⚠️ **没有策略就没有会话** —— 一条规则都没命中且工作区无兜底默认 agent 时返回 400 并说明缺什么，**不静默换 agent**） | Router Stage 1 |
 | R3 | **`try_claim` 的会话互斥职责**（CAS `wait_status='running'`；⚠️ **它只有这一个职责** —— 实测无任何序号/顺序语义，旧路径从未有过顺序机制。2026-10-29 审查更正：原描述「混在一起的顺序职责」不成立） | `modules/agent_runtime/adapter/persistence/repositories.py:85-108` | `session_turns.status` 的状态 CAS（执行权） | 未开始 | **Session**（原写 Router Stage 3 —— 互斥归 Session 的执行权；Router 的 FIFO 是**全新建**，不是拆分） |
 | R4 | `build_session_key`（冒号拼接版） | `runtimes/agent_runtime/src/qzdap_agent_runtime/channels/gateway.py` | 哈希版 `session_key`（`router/session_router.py`） | 未开始 | Router Stage 2（停用）→ Stage 5（删） |
 
@@ -234,6 +234,9 @@ _scan '@router\.(get|post|put|delete|patch)\("/v1/sessions'  modules/  "G7/G8"
 _scan "dispatch_subscriber"       modules/          "G9"
 
 # Router 域
+#   R2 的规则绑**旧入口的打点**（`record_legacy_call("R2")`）—— 打点是旧实现
+#   在场的唯一事实来源（§3.2），旧实现删掉就打点一起撤除。
+_scan 'record_legacy_call\("R2"\)'  modules/          "R2"
 _scan "build_session_key"         modules/          "R4"
 
 # 跨层
@@ -353,7 +356,7 @@ def record_legacy_call(entry: str) -> None:
 
 **打点位置**：旧实现的**入口处**（不是内部），保证「旧实现被调用」与「旧实现被调用但走的是别的分支」都能被观测到。
 
-**打点覆盖（2026-10-29 实施，Stage 3 后）**：33 条中 **19 条在旧实现的入口处打点** ——
+**打点覆盖（2026-10-29 实施，Router Stage 1 后）**：35 条中 **18 条在旧实现的入口处打点** ——
 `record_legacy_call("<编号>")` 落在**入口**（不是内部），保证「旧实现被调用」与
 「旧实现被调用但走了别的分支」都能被观测到。
 
@@ -376,8 +379,9 @@ def record_legacy_call(entry: str) -> None:
 | **G6** IM 进程内 LRU 去重 | **旧实现已删除**（2026-10-29 Gateway Stage 3，由 `session_inbox` 原子 claim 取代）—— 打点随代码一起撤除 |
 | **G10** 审批恢复路径丢幂等键 | **修复类** —— 判据是回归测试（`modules/agent_runtime/tests/unit/test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`），不进指标 |
 | **G11** 重复请求的 202 降级路径 | **旧实现已删除**（2026-10-29 Gateway Stage 4b，由「重放上一轮的事件流」取代）—— 打点随代码一起撤除 |
+| **R2** `agentId` 直取 | **旧实现已删除**（2026-10-29 Router Stage 1，改为策略链的「显式指定」规则）—— 打点随代码一起撤除 |
 
-> **「7 条打不了点」+「8 条已不需要打点」= 15 条**必须改用替代判据（扫描 / 测试 / 删除 /
+> **「7 条打不了点」+「9 条已不需要打点」= 16 条**必须改用替代判据（扫描 / 测试 / 删除 /
 > 「无生产调用方」），**不得**用「指标为 0」判清零。
 > **修复完成后继续保留打点，会让指标永远非零、清理判据永远不成立** —— 打点是清理前的
 > 观测手段，不是终态。
@@ -470,14 +474,14 @@ def record_legacy_call(entry: str) -> None:
 
 | 状态 | 条目数 | 说明 |
 |---|---|---|
-| 未开始 | 21 | 旧实现仍是唯一生效路径 |
+| 未开始 | 20 | 旧实现仍是唯一生效路径 |
 | 已弃用 | 2 | **G9**（`dispatch_subscriber.py`）、**X2**（第二套 turn 实现）—— 均已加弃用标记 + 调用打点（Gateway Stage 4a）。⚠️ **G9 / X2 的打点仍会有流量**（IM 仍走它们），Stage 5 的清零判据在切完之前不可能满足 |
 | 待清理 | 1 | X19（死表 `memory_l2_embeddings`，迁移 0048 已实现并在 dev 库执行） |
-| 已清理 | 9 | **G7**（`/v1/sessions*` 的 turn 部分 + 整套 CRUD 别名 —— Gateway Stage 5 整段删除，P-11 确认无仓外消费者）、**G8**（`GET /v1/sessions` 列表别名 —— 同上）、**G11**（重复请求的 **202 降级路径** —— Gateway Stage 4b 删除，由「重放上一轮的事件流」取代）、**G1**（`record_request_id` + `recent_request_ids` —— Gateway Stage 1 直接删除）、**G2**（渠道内的 `_verify_signature` —— Gateway Stage 2 迁到 `gateway/identity.py`）、**G3**（硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` —— Gateway Stage 2 改为渠道登记的服务账号）、**G4**（`ParsedMessage` 数据类 —— Gateway Stage 3 由 `InboundMessage` 取代）、**G5**（`ChannelMessageReceived` 事件 —— Gateway Stage 3 由 `InboundMessage` 取代，连带修掉「按 dotted topic 订阅」与「`to_payload` 从未被调用」两个真实缺陷）、**G6**（IM 进程内 LRU 去重 —— Gateway Stage 3 由 `session_inbox` 原子 claim 取代） |
+| 已清理 | 10 | **R2**（`agentId` 直取 —— Router Stage 1 改为规则链的「显式指定」规则）、**G7**（`/v1/sessions*` 的 turn 部分 + 整套 CRUD 别名 —— Gateway Stage 5 整段删除，P-11 确认无仓外消费者）、**G8**（`GET /v1/sessions` 列表别名 —— 同上）、**G11**（重复请求的 **202 降级路径** —— Gateway Stage 4b 删除，由「重放上一轮的事件流」取代）、**G1**（`record_request_id` + `recent_request_ids` —— Gateway Stage 1 直接删除）、**G2**（渠道内的 `_verify_signature` —— Gateway Stage 2 迁到 `gateway/identity.py`）、**G3**（硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` —— Gateway Stage 2 改为渠道登记的服务账号）、**G4**（`ParsedMessage` 数据类 —— Gateway Stage 3 由 `InboundMessage` 取代）、**G5**（`ChannelMessageReceived` 事件 —— Gateway Stage 3 由 `InboundMessage` 取代，连带修掉「按 dotted topic 订阅」与「`to_payload` 从未被调用」两个真实缺陷）、**G6**（IM 进程内 LRU 去重 —— Gateway Stage 3 由 `session_inbox` 原子 claim 取代） |
 | **已修复** | 2 | X14（跨用户泄漏）、**G10**（审批恢复路径丢幂等键）—— 判据是测试不是指标 |
 
-> **打点覆盖率**：35 条中 **19 条已打点**，其余 16 条走替代判据（见 §3.2 的「打点覆盖」表）。
-> ⚠️ **G7 / G8 的打点随旧实现一起撤除**（2026-10-29 Gateway Stage 5）—— 打点是清理**前**的观测手段，不是终态。
+> **打点覆盖率**：35 条中 **18 条已打点**，其余 17 条走替代判据（见 §3.2 的「打点覆盖」表）。
+> ⚠️ **G7 / G8 / R2 的打点随旧实现一起撤除**（2026-10-29 Gateway Stage 5 / Router Stage 1）—— 打点是清理**前**的观测手段，不是终态。
 > **指标本身**（`qzdap_legacy_calls_total` + `record_legacy_call`）已在
 > `libs/observability/src/qzdap_observability/metrics.py` 落地并有单测。
 
@@ -486,7 +490,7 @@ def record_legacy_call(entry: str) -> None:
 | 方案 | 条目 | 编号 |
 |---|---|---|
 | Gateway | 11 | G1–G11（G7 / G8 已清理；**G9 未接管** —— 等 Session Stage 5b 的原子切换） |
-| Router | 4 | R1–R4 |
+| Router | 4 | R1–R4（**R2 已清理** —— Router Stage 1；R1 / R4 待 Stage 2 / 5；R3 的 owner 是 Session） |
 | Session（跨层） | 6 | X2、X3、X4、X6、X7、X18 |
 | Context（跨层） | 3 | X8、X9、X10 |
 | Memory（跨层） | 7 | X11、X12、X13、X14、X15、X16、X19 |
@@ -518,7 +522,7 @@ def record_legacy_call(entry: str) -> None:
 | G11 | `gateway-refactor-plan.md` §4.5、§10 Stage 4b | Gateway Stage 4b —— ✅ **已执行**（2026-10-29：202 降级路径删除，改重放事件流） |
 | G7、G8 | `gateway-refactor-plan.md` §9.4、§10 Stage 5 | Gateway Stage 5 —— ✅ **已执行**（2026-10-29：整个 `/v1/sessions*` 删除） |
 | R1 | `router-refactor-plan.md` §7.2、§7.4 | Router Stage 2（**行为替换**；文件删除归 Gateway G9） |
-| R2 | `router-refactor-plan.md` §7.2 | Router **Stage 1**（`agentId` 直取 → 策略链） |
+| R2 | `router-refactor-plan.md` §7.2 | Router **Stage 1**（`agentId` 直取 → 策略链）—— ✅ **已执行**（2026-10-29：直取删除，改为「显式指定」规则；扫描规则 `record_legacy_call("R2")` 启用） |
 | R3 | `router-refactor-plan.md` §7.4 | ⚠️ **owner 是 Session**（`try_claim` 的**互斥**职责 → `session_turns.status` 的 CAS；**它没有顺序职责**，旧路径从未有过序号机制 —— Router 的 FIFO 是全新建） |
 | R4 | `router-refactor-plan.md` §7.4 | Router Stage 5（删 `build_session_key`） |
 | X2 | `gateway-refactor-plan.md` §9.4（配合）；`session-refactor-plan.md` §8 | Session Stage 3（停用）→ **Stage 5b（删除，与 Gateway 的 IM 入口切换同 PR）** |

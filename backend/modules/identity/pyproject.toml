@@ -9,6 +9,8 @@ dependencies = [
     "qzdap-persistence",
     "qzdap-auth",
     "qzdap-messaging",
+    # Router 层契约（qzdap_agent_runtime.router）—— UserDirectoryPort 的类型。
+    "qzdap-agent-runtime-runtime",
     "fastapi>=0.115.0",
     "pydantic>=2.9",
     "email-validator>=2.2",
