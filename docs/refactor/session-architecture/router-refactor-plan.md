@@ -1,13 +1,14 @@
 # Router 层重构方案
 
-> 版本：1.1（2026-10-29：按方案集统一更新——文档集入口、清理机制归属、阶段分期口径）
+> 版本：1.2（2026-10-29：**独立审查后的 15 项修正** —— `try_claim` 的顺序职责更正、架构测试规则白名单化、粘性规则的两步流程、`last_completed_seq` 的兜底路径、互斥原语口径统一、错误码收敛、扫描规则补全、迁移回滚口径）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**待评审**（附录 A 的 6 条决策待确认；#1 并发语义、#2 表选择会直接决定 Session 层方案的形态）
+> 状态：**待评审**（附录 A 的 10 条决策待确认；#1 并发语义、#2 表选择、#10 会话创建归属会直接决定 Session 层方案的形态）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) —— 本方案实现其中 **Router 泳道**
 > 兄弟方案：[`gateway-refactor-plan.md`](gateway-refactor-plan.md)（已定稿）
 > 收敛机制：[`cleanup-ledger.md`](cleanup-ledger.md) —— 本方案对应条目 **R1–R4**
 > 硬约束：**最终态只有一个实现**；先上新、后清旧（清理机制见 §0.4 与台账）
+> 方案集导航：落地路线与里程碑见 [`README.md`](README.md) §6 · 系统级验收见 §7 · 外部前置依赖见 §8 · 跨层不变量见 [`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) §6
 
 ---
 
@@ -38,8 +39,9 @@
 | 建会话 / 起轮次 / 执行 / 落库 | Session |
 | 组装上下文、压缩、摘要 | Context |
 | 召回与写入记忆 | Memory |
-| **选模型 / 选工具** | **Agent Router**（见 §5.1，这是最易混的一处） |
-| 判任务类型是否「深度任务」 | Agent Router（需要完整上下文，见 §5.2） |
+| **模型 / 工具的取值**（⚠️ **不是选择** —— 管理员在 agent 配置里绑定，运行时查表；Agent 决策 #4） | **Agent 层 Execution**（见 §5.1，这是最易混的一处） |
+| 判任务类型是否「深度任务」 | **Agent 层**（需要完整上下文，见 §5.2） |
+| **会话级配额**（每会话并发轮次上限、租户级会话数上限） | ✅ **属本层**（§12.1）—— 但**只读**会话表，不写（与决策 #10 一致） |
 
 ### 0.4 实现收敛规则：最终态只有一个实现
 
@@ -51,6 +53,42 @@
 >
 > **代价要认**：清理完成后旧实现不复存在，回退需重新上线旧版本。
 
+### 0.5 前置依赖清单（**本方案的哪些阶段被别的方案挡住**）
+
+| 本方案阶段 | 前置 | 前置归属 | 阻塞性质 | 不满足时 |
+|---|---|---|---|---|
+| **Stage 0** | 表选择决策（Router #2 = Session #5） | 跨方案（§ README 3.4） | 契约 | 迁移 0045 无法定稿 |
+| **Stage 0** | `ErrorCode` 增 `QUEUE_FULL` / `QUEUE_TIMEOUT` | 本方案 | — | 排队超限无处表达 |
+| **Stage 1** | `InboundMessage` 定稿 | Gateway 方案 | 契约 | 无法消费标准消息 |
+| **Stage 1** | `session_turns.route_decision` 列存在（`RouteDecision` 留痕要写它） | Session 方案（迁移 0046） | **DDL** | 无法留痕 |
+| **Stage 2** | `session_turns.status` 含 `queued` | Session 方案（迁移 0046） | **DDL** | 无法入队 |
+| **Stage 3** | **Session 层的唯一 turn 实现落地**（Session Stage 3） | Session 方案 | **语义（硬）** | 有序性只对一条路径成立 → **不得开启** |
+| **Stage 3** | 会话级互斥原语（advisory lock 或轮次表 CAS） | 本方案 + Session | 实现 | 无 |
+
+> **Stage 3 是本方案唯一被硬阻塞的阶段**。Session 层方案未落地「唯一 turn 实现」之前，Router 的 FIFO 排队没有意义 —— 因为另一条路径（渠道 / 子代理 / 评测）仍然可以绕过队列并发执行。**这与 2026-10-15 那次的失败是同一个形状：只建一半。**
+
+### 0.6 排队语义的前端契约（**破坏性变更，必须有契约与开关**）
+
+「并发消息从『拒绝 409』改为『排队』」是**前端可见的行为变更**：
+
+| | 现状 | 改后 |
+|---|---|---|
+| 用户连发两条 | 第二条收到 409 `SESSION_BUSY`，前端提示「上一轮还在跑」 | 第二条**排队**，等第一轮完成后自动执行 |
+| 前端表现 | 错误提示 | **需要展示「排队中」** |
+
+**需要新增的 chunk**：当前 **17** 种 `TurnChunk` 里**没有 `queued` 类型**（`libs/schema/src/qzdap_schema/dtos/turn.py`，实测 17 个 `*Chunk` 类）→ 需新增 `QueuedChunk`（含 `position` / `waited_ms` / `estimated_wait_seconds`），否则前端只能一直转圈到首 chunk 到达。
+
+**灰度开关**：排队语义是**破坏性契约变更**，需要一个开关：
+
+| 项 | 决定 |
+|---|---|
+| 开关 | `QZDAP_ROUTER_QUEUE_ENABLED`（默认 **off**，先按现状「拒绝」跑，观察后再开） |
+| 位置 | Router 层（L2），读环境变量 |
+| 前端 | `QueuedChunk` 与 409 两种表现**都要支持**（前端先上线兼容，再开开关） |
+| 灰度顺序 | 前端兼容 → 后端开关上线（默认 off）→ 观察 → 开 |
+
+> **回滚**：开关关掉即回到「拒绝」语义 —— 这是本层唯一的、**成本最低的回滚手段**，比「回退需重新上线旧版本」好得多。
+
 ---
 
 ## 1. 现状盘点
@@ -61,7 +99,7 @@
 |---|---|---|
 | **Web Copilot** | 前端建会话时直接传 `agentId`，后端不判断 | `modules/agent_runtime/adapter/http/session_router.py:162`（`if not agent_id: 400`） |
 | **IM 渠道** | **硬编码** `SYSTEM_AGENT_ID = 00000000-...-c0c1` | `modules/channel/adapter/dispatch/dispatch_subscriber.py:43` |
-| **模型策略链** | 存在（`route_id` → `select_chain_for_strategy`），但只由前端 body 传入，且在 graph 内部生效 | `modules/agent_runtime/adapter/graph/chat_model.py:90` → `modules/model/application/services.py:980` |
+| **模型策略链** | 存在（`route_id` → `select_chain_for_strategy`），但只由前端 body 传入，且在 graph 内部生效 | `modules/agent_runtime/adapter/graph/chat_model.py:90` → `modules/model/src/qzdap/modules/model/application/services.py:980` |
 | **task_kind 分类** | 旧路径**零实现**；只有新 runtime 有启发式 | `runtimes/agent_runtime/src/qzdap_agent_runtime/graph/routing.py:91` |
 | **业务线 / 用户标签** | **无**。`catalog.py:274-281` 的 `category` 映射只是**前端展示文案**（「销售」→「销售支持」），不参与任何路由 | `modules/agent_runtime/src/qzdap/modules/agent_runtime/domain/catalog.py:274` |
 
@@ -71,10 +109,10 @@
 
 | 场景 | 现状 | 证据 |
 |---|---|---|
-| **Web** | 会话 id 由前端持有 → 指向正确；但并发消息被**拒绝**（`try_claim` CAS → `SESSION_BUSY`），不是排队 | `modules/agent_runtime/adapter/persistence/repositories.py:85`；`application/copilot.py:225` |
+| **Web** | 会话 id 由前端持有 → 指向正确；但并发消息被**拒绝**（`try_claim` CAS → `SESSION_BUSY`），不是排队 | `modules/agent_runtime/adapter/persistence/repositories.py:85`（`try_claim`）；`application/copilot.py:229`（`code="SESSION_BUSY"`） |
 | **IM 渠道** | **每条消息新建一个 session** → 完全无会话、无连续性、无顺序 | `modules/channel/adapter/dispatch/dispatch_subscriber.py:175-186` |
 | **外部会话 → 会话实例映射** | `agent_sessions.channel_session_key` 列**已存在且有索引**，但**全仓无任何读写** | `adapter/persistence/models.py:80` |
-| **跨 worker 顺序保证** | 无。无队列、无会话内序号、无 FIFO | — |
+| **跨 worker 顺序保证** | 无。无队列、无会话内序号、无 FIFO | `modules/` 里 `ingress_seq` / `next_ingress_seq` / `last_completed_seq` **零命中** —— 旧路径**从来没有过任何序号机制** |
 | **审批中断时的后续消息** | 无定义（旧路径 `try_claim` 会直接拒绝） | — |
 
 ### 1.3 现状的两个会话/turn 实现（Session Routing 的下游）
@@ -84,7 +122,7 @@
 | ① Copilot（`application/copilot.py` + `adapter/graph/runner.py`） | ✅ | ⚠️ | ✅ | ⚠️ 决策不落库 | 前端 Copilot 页 |
 | ② use_cases（`application/use_cases/run_turn.py` + `run_turn_to_completion.py`） | ❌ | ❌ | ❌ | ❌ | 渠道入站、子代理、catalog 评测 |
 
-**Router 的 Session Routing 必须建立在「只有一套 turn 实现」之上**——否则「有序处理」只对其中一条路径成立。这是本方案与 Session 层方案的强耦合点（§0.1 前置依赖）。
+**Router 的 Session Routing 必须建立在「只有一套 turn 实现」之上**——否则「有序处理」只对其中一条路径成立。这是本方案与 Session 层方案的强耦合点（**§0.5 前置依赖**）。
 
 ### 1.4 已有可复用资产
 
@@ -96,8 +134,8 @@
 | `admin_agents.tags` / `profile` | 同上 | ✅ 标签与扩展策略配置 |
 | `ActorContext.roles`（来自 JWT claims） | `libs/auth/src/qzdap_auth/dependencies.py:49` | ✅ 角色维度策略依据 |
 | `build_session_key` | `runtimes/.../channels/gateway.py` | ✅ 可用 |
-| `select_chain_for_strategy`（模型策略链） | `modules/model/application/services.py:980` | ✅ 真实现 → 归 Agent Router 调用 |
-| `classify_task_kind_heuristic` | `runtimes/.../graph/routing.py:91` | ✅ 可用 → 归 Agent Router |
+| `select_chain_for_strategy`（模型策略链） | `modules/model/src/qzdap/modules/model/application/services.py:980` | ✅ 真实现 → 归 Agent 层 Execution 的**模型解析**调用（查表，不是运行时决策） |
+| `classify_task_kind_heuristic` | `runtimes/.../graph/routing.py:91` | ✅ 可用 → 归 Agent 层 |
 | `ErrorCode.SESSION_BUSY` / `REVISION_CONFLICT` | `libs/schema/.../errors.py:39` | ✅ 可用 |
 
 ### 1.5 缺口：用户标签没有一等公民
@@ -117,17 +155,22 @@
 ```
 InboundMessage（来自 Gateway）
    │
+   ├─▶ ② Session Routing · 第一步：定位既有会话
+   │      2a. 会话 key 派生（tenant+workspace+channel+chat+user → sha256）
+   │      2b. 调 Session 的 lookup(session_key) → SessionRef | None
+   │          · 命中 → 拿到既有会话的 agent 绑定 → ① 走「粘性」规则
+   │          · 未命中 → 无绑定 → ① 走完整规则链
+   │
    ├─▶ ① Strategy ──────────────── 选 agent（处理单元的 agent 维度）
-   │      输入：actor / channel_type / text / 已存在会话的绑定
-   │      依据：显式指定 · 业务线(category) · 用户标签(visible_scope ∩ roles) · 兜底
+   │      输入：actor / channel_type / text / **2b 给出的既有会话绑定（可空）**
+   │      依据：会话粘性（2b 命中时直接生效）· 显式指定 · 业务线(category) · 用户标签(visible_scope ∩ roles) · 兜底
    │      输出：AgentTarget{agent_id, agent_version, strategy_id, rule_version,
    │                       confidence, reason, candidates[]}
    │
-   └─▶ ② Session Routing ───────── 选会话实例 + 保证有序
-          2a. 会话 key 派生（tenant+workspace+channel+chat+user）
-          2b. 映射到会话实例（channel_session_key → session_id），不存在则创建
-          2c. 分配会话内单调序号 ingress_seq（原子）
-          2d. 入队（status=queued）
+   └─▶ ② Session Routing · 第二步：落地
+          2c. 调 Session 的 resolve_or_create(session_key, agent_binding) → SessionRef
+          2d. 分配会话内单调序号 ingress_seq（原子）
+          2e. 入队（status=queued）
           输出：SessionAssignment{session_id, agent_id, ingress_seq,
                                 predecessor_seq, queue_position}
    │
@@ -135,7 +178,22 @@ InboundMessage（来自 Gateway）
 Session（执行）
 ```
 
-**两个子件的关系**：Strategy 先定 agent（因为会话要绑定 agent），Session Routing 再定会话实例（会话沿用既有绑定）。
+**⚠️ 为什么 Strategy 不能完全排在 Session Routing 之前**（2026-10-29 审查修正）：
+
+决策链的**规则 1「会话粘性」需要「目标会话已存在」这个事实**，而 Gateway 的 `InboundMessage` **不含会话绑定字段**（Gateway 方案 §4.3 的 17 个字段里没有）。若 Strategy 完全先执行，它**拿不到既有绑定** —— 规则 1 无法实现。
+
+**正确的流程是两步**：
+
+| 步骤 | 动作 | 归属 | 为什么必须在这一步 |
+|---|---|---|---|
+| 1 | 派生 `session_key` | Router | key 只依赖入站字段，不需要会话 |
+| 2 | `lookup(session_key)` → `SessionRef`（None 表示不存在） | **Session**（只读） | 拿到「会话是否已存在」与「既有 agent 绑定」 |
+| 3 | Strategy：命中则走粘性；未命中则走完整规则链 | Router | 粘性与规则链共用同一个 `RouteDecision` 出口 |
+| 4 | `resolve_or_create(session_key, agent_binding)` | **Session** | 决策 #10：会话创建只有一处 |
+
+> **决策 #10 的边界澄清**：「Router 不直接写会话表」**约束的是写，不是读**。Router 读 `agent_sessions`（lookup、数会话数配额、读 `last_completed_seq`）是允许的 —— 架构测试规则 1 禁的是**写生命周期字段**（见 §10.2）。
+>
+> **Session 必须提供 `lookup` 端口** —— 原方案只定义了 `resolve_or_create`，而它需要 `agent_binding` 作为**入参**，用粘性去喂它就成了鸡生蛋。`lookup` 是只读的、可单独实现的、不创建任何东西。已同步登记到 [`session-refactor-plan.md`](session-refactor-plan.md)。
 
 ---
 
@@ -145,8 +203,8 @@ Session（执行）
 
 | 优先级 | 规则 | 依据 | 备注 |
 |---|---|---|---|
-| 1 | **会话粘性** | 目标会话已存在 → 沿用其 `agent_id` / `agent_version` | 只在会话已存在时生效。会话中途换 agent 会让历史上下文的解释方式突变 |
-| 2 | **显式指定** | `InboundMessage` 携带 `agent_id` | Web 场景前端建会话时选定 |
+| 1 | **会话粘性** | 目标会话已存在 → 沿用其 `agent_id` / `agent_version` | 只在会话已存在时生效。会话中途换 agent 会让历史上下文的解释方式突变。**前提**：`lookup(session_key)` 必须先返回既有绑定（见 §2 的两步流程） |
+| 2 | **显式指定** | `InboundMessage.explicit_agent_id`（非 None 时生效） | Web / API 场景前端显式指定 agent |
 | 3 | **业务线策略** | `category` 命中 + `status='published'` | 渠道/工作区/业务线 → agent |
 | 4 | **用户标签策略** | `visible_scope` ∩ 用户属性非空，且 `status='published'` | 依赖 `UserDirectoryPort`（§1.5） |
 | 5 | **兜底默认 agent** | 工作区配置的默认 agent | 无匹配时的安全兜底 |
@@ -211,14 +269,29 @@ session_key = sha256(
 **映射**：`(tenant_id, channel_session_key)` → `session_id`
 
 - 复用 `agent_sessions.channel_session_key` 列（**已存在、已建索引、无人使用**）；
-- **需要新增唯一约束** `(tenant_id, channel_session_key)`——否则并发首条消息会建出两个会话；
-- 查不到 → 创建会话（绑定 Strategy 选出的 agent）。
+- **需要唯一约束** `(tenant_id, channel_session_key)`（否则并发首条消息会建出两个会话）——**该索引由 Session 的迁移 0046 建**（会话创建归 Session，决策 #10）；本方案只负责**派生 key**；
+- 查不到 → **交给 Session 创建**（见下）。
+
+> **决策 #10（新增）：Router 不直接写会话表。**
+>
+> | 方案 | 做法 | 问题 |
+> |---|---|---|
+> | **R1（推荐）** Router 只算 `session_key` + 分配 `ingress_seq`；`resolve_or_create` 由 **Session** 执行，Router 收 `SessionRef` | 会话创建逻辑只有一处（Session 的 `SessionManager`），Router 不碰 `agent_sessions` | Router 需要等 Session 的端口就绪（Stage 依赖，见下） |
+> | R2 Router 自己查 `agent_sessions` 并创建 | Router 直接改会话表 | **两处都能建会话** → 第二套真相；且 Router 会退化成第二个持久化模块 |
+>
+> **取 R1。** Router 的职责是「决定这条消息属于哪个 agent、哪个外部会话、排第几」，**不是**「维护会话记录」。
+>
+> **落地**：`session_key` 的**派生**归 Router（它需要 agent 与业务线上下文）；`channel_session_key` 的**存储与查回**归 Session（表归会话域）。因此 Router 0045 的唯一索引是**为 Session 的写入服务的约束**，不是 Router 自己的读路径。
+>
+> **依赖顺序**：Router Stage 2（会话映射）**依赖 Session Stage 1（`SessionManager.resolve_or_create` 端口可用）**。这与 `README.md` §3.3 的 DAG 一致（Session Stage 0–2 与 Gateway Stage 0–3 可并行，Router Stage 2 在其后）。
 
 > **web 场景**：前端先 `POST /api/sessions` 建会话再发消息，web 的 `external_chat_id` = session_id。因此 web 走「**会话已存在 → 粘性**」路径，不走 channel_session_key 映射。
 
 ### 4.2 有序处理：三个机制
 
 #### (a) 序号分配（会话内单调、原子）
+
+> **决策 #5**：用**会话行原子自增**（`agent_sessions.next_ingress_seq` 列）。不用全局序列（跨会话无意义）、不用分布式锁（多一次往返且不解决并发正确性）。
 
 ```sql
 UPDATE agent_sessions
@@ -242,18 +315,54 @@ turn.ingress_seq == session.last_completed_seq + 1
 AND 该会话当前没有正在执行的 turn
 ```
 
-「没有正在执行的 turn」用会话级 advisory lock 保证：
+「没有正在执行的 turn」用会话级互斥保证。
 
-```sql
-SELECT pg_try_advisory_xact_lock(hashtext('session:' || :session_id))
-```
+> **⚠️ 快照可能落后 —— 必须有兜底，否则队列会卡死**（2026-10-29 审查修正）
+>
+> `session.last_completed_seq` 是**冗余快照**（§6.2），权威值在 `session_turns`。若两者不一致（例如轮次终态更新会话行失败、或 sweeper 尚未对账），**放行条件 `ingress_seq == last_completed_seq + 1` 永远不成立** → **整个会话的队列卡死**，且现象是「无报错、只是不跑」，极难排查。
+>
+> **两级判定**：
+>
+> | 级 | 条件 | 用途 |
+> |---|---|---|
+> | **快路径** | `turn.ingress_seq == session.last_completed_seq + 1` | O(1)，命中即放行（**正常路径，快照与权威一致**） |
+> | **兜底路径** | 快路径不成立，但 `session_turns` 里有 `status='succeeded' AND ingress_seq >= :turn.ingress_seq` 的行 | **快照落后** → **以权威值为准放行**，同时：① 修复 `last_completed_seq`（`SET last_completed_seq = (SELECT MAX(ingress_seq) FROM session_turns WHERE session_id = ... AND status = 'succeeded')`）；② 计数 `qzdap_router_seq_snapshot_drift_total` 并告警 |
+>
+> **一致性由设计保证，快照只在异常时落后**：轮次进入终态（`succeeded` / `failed` / `cancelled`）时，**在同一个事务内**更新 `session_turns` 与 `session_sessions.last_completed_seq` → **正常路径上不一致窗口 = 0**。兜底路径处理的是「事务部分失败 / 人工改库 / sweeper 修复前的窗口」这类异常。
+>
+> **检测指标**：`qzdap_router_seq_snapshot_drift_total`（兜底路径命中次数）—— **正常应恒为 0**；持续 > 0 说明有系统性问题。
 
-- 拿到锁 → 该会话当前归我 → 检查 FIFO 条件 → 执行；
-- 没拿到 → 别的 worker 正在处理这个会话 → 本轮**排队等待**（不报错）。
-
-> **跨会话并行**：advisory lock 按 session_id 粒度，不同会话互不阻塞。
+> 🔴 **锁语义必须先论证清楚**（`pg_try_advisory_xact_lock` 直接搬过来是错的）：
+>
+> | 问题 | 说明 |
+> |---|---|
+> | **事务提交即释放** | `_xact_lock` 在事务结束时释放；而 turn 是**长流式执行**（可能几十秒到几分钟），若锁随某个短事务提交而释放，**互斥形同虚设** |
+> | **`hashtext()` 碰撞** | 32 位哈希，不同 session 可能碰撞 → 误互斥（不致命，但会造成莫名排队） |
+> | **长事务** | 持有 `xact` 锁意味着整个 turn 期间都开着事务 → 连接池被占满 |
+>
+> **决议（决策 #9，新增）**：**互斥的唯一权威是 `session_turns` 行的状态 CAS**，advisory lock 只作为「避免重复扫同一会话」的优化：
+>
+> ```sql
+> -- 唯一权威：轮次表 CAS
+> UPDATE session_turns
+>    SET status = 'running', started_at = now()
+>  WHERE id = :turn_id AND status = 'queued'
+> RETURNING id;
+> ```
+>
+> 只有 `status` 从 `queued` 原子地变成 `running` 的那个 worker 才能执行该 turn —— **不需要任何跨事务锁**，也不会因事务提交而失效。
+>
+> advisory lock（若保留）改用**会话级** `pg_try_advisory_lock`（非 `_xact_`），并**显式 `pg_advisory_unlock`**；哈希改用 `('x' || substr(md5(:session_id::text), 1, 16))::bit(64)::bigint`（64 位，降低碰撞）。
+>
+> **Stage 3 的前置**：Session 层的 `session_turns` 必须已启用（含 `status='queued'`），否则 CAS 无从谈起。
+>
+> **现状核实**：`pg_advisory` 在 `modules/` 与 `composition/` 中**零命中**（只出现在从未接线的 `runtimes/agent_runtime/.../execution/lock.py`）→ **这是新增机制，不是复用**。
+>
+> **跨会话并行**：互斥按 session_id 粒度，不同会话互不阻塞。
 
 ### 4.3 「有序」的准确边界
+
+> **决策 #6**：审批中断**不占用 FIFO 执行位**（等待审批不阻塞新消息）。占用会造成「等审批 → 后续消息全部堵死」的死锁。代价是「审批恢复的那一轮」与「新消息」之间不保证全局有序 —— 靠会话级互斥保证不并发即可。
 
 必须说清楚，否则会实现出错误的语义：
 
@@ -267,7 +376,7 @@ SELECT pg_try_advisory_xact_lock(hashtext('session:' || :session_id))
 
 **审批中断的处理**（重要）：
 
-审批等待中的 turn 状态是 `waiting_approval`，**不是 `running`**。它**不持有 advisory lock**（lock 在 turn 完成时释放）。因此：
+审批等待中的 turn 状态是 **`waiting`**（`session_turns.status` 的既有取值），**不是 `running`**。（`waiting_approval` 是 `agent_sessions.status` 的**会话级**取值，两者不是一回事。）它**不持有 advisory lock**（lock 在 turn 完成时释放）。因此：
 
 - 用户在等待审批时发的**新消息**可以立即入队并执行（不会被审批卡住）；
 - 但**审批恢复的那一轮**必须与同一会话的其他执行互斥；
@@ -281,7 +390,7 @@ SELECT pg_try_advisory_xact_lock(hashtext('session:' || :session_id))
 |---|---|---|
 | 同一条消息投递两次 | **Gateway** | `session_inbox` 原子 claim（幂等键） |
 | 同一会话的多条**不同**消息的先后 | **Router** | `ingress_seq` + FIFO |
-| 同一会话同时只能跑一轮 | **Session** | 会话级 advisory lock（执行权） |
+| 同一会话同时只能跑一轮 | **Session** | **`session_turns.status` 的状态 CAS**（唯一权威，决策 #9）；advisory lock 仅作「避免重复扫同一会话」的优化 |
 
 三者是**互补**的，不是重复：幂等防「同一条」，有序防「不同条的乱序」，互斥防「同时跑」。
 
@@ -297,8 +406,14 @@ SELECT pg_try_advisory_xact_lock(hashtext('session:' || :session_id))
 
 **S1 的配套要求**：
 
-1. **前端需要知道「在排队」**。当前 16 种 `TurnChunk` 里**没有 `queued` 类型** → 需要新增 `QueuedChunk`（含 `position` / `waited_ms`），否则前端只能转圈直到首 chunk 到达。
-2. **队列上限与超时**：单会话排队上限（建议 N 条）与最长等待时间（建议 T 秒），超限则返回明确错误码（`ErrorCode` 需新增，如 `QUEUE_FULL` / `QUEUE_TIMEOUT`），**不得静默丢弃**。
+1. **前端需要知道「在排队」**。当前 **17** 种 `TurnChunk` 里**没有 `queued` 类型** → 需要新增 `QueuedChunk`（含 `position` / `waited_ms`），否则前端只能转圈直到首 chunk 到达。
+2. **队列上限与超时**：单会话排队上限（N 条）与最长等待时间（T 秒），超限返回明确错误码，**不得静默丢弃**。
+
+   > **决策 #7**（新增）：N 与 T 的取值，以及错误码。
+   > - **建议**：N = 5 条 / T = 60 秒；错误码 `QUEUE_FULL`（超上限）与 `QUEUE_TIMEOUT`（超等待时间），HTTP 409 / 504。
+   > - **Stage 0 落点**：`ErrorCode` 枚举增这两个码 + `_HTTP_STATUS` 映射（`libs/schema/src/qzdap_schema/dtos/errors.py`）。
+   > - **验收**：排队超限时返回 `QUEUE_FULL` / `QUEUE_TIMEOUT`，**不静默丢弃**；超限的 turn 落 `cancelled`（可从 `session_turns` 查到）。
+   > - **前端契约**：排队中的消息需要前端可见 → 见下方「排队语义的前端契约」。
 
 > 这两条是 S1 相对 S2 的**额外成本**，也是决策 #1 的连带义务。
 
@@ -306,20 +421,24 @@ SELECT pg_try_advisory_xact_lock(hashtext('session:' || :session_id))
 
 ## 5. 四个必须澄清的边界
 
-### 5.1 Strategy 选 agent ≠ Agent Router 选模型/工具
+### 5.1 Strategy 选 agent ≠ Agent 层的模型 / 工具取值
 
-| | Router.Strategy | Agent Router（基线图） |
+> **决策 #4**：**深度任务判定与模型链解析不在本层**，归 **Agent 层**。理由：本层在**会话入口**执行，那时还没有上下文（消息数、工具数、意图都拿不到），无法判定深度任务。
+
+| | Router.Strategy | Agent 层（基线图） |
 |---|---|---|
 | 时机 | **入站时**（拿到标准消息后立刻） | **Agent Loop 内**，每一步推理之后 |
-| 决定 | **哪个 agent**（处理单元） | **哪个模型 / 调哪个工具** |
-| 依据 | 业务线、用户标签、显式指定、会话粘性 | 推理意图、工具白名单、模型可用性、预算 |
+| 决定 | **哪个 agent**（处理单元） | **哪个专家 Agent**（⑧） |
+| 依据 | 业务线、用户标签、显式指定、会话粘性 | 推理意图、专家目录 |
 | 上下文依赖 | **不需要**完整上下文 | 需要 |
 
-> **推论**：v3.1 里放在 `route` 节点的「模型策略链选择」与「深度任务判定」**不属于本层**，应归 Agent Router。Router 层最多给一个 `model_hint`（偏好，不强制）。
+> **⚠️ 模型 / 工具不在这一列里** —— Agent 决策 #4 已定：模型与工具由**管理员在 agent 配置里绑定**，运行时**查表取值**（Agent 层 Execution），**不是运行时挑**。所以本层的对照只到「选专家」为止。
+
+> **推论**：v3.1 里放在 `route` 节点的「模型策略链选择」与「深度任务判定」**不属于本层**，应归 Agent 层。Router 层最多给一个 `model_hint`（偏好，不强制）。
 
 ### 5.2 `deep_task` 判定不在 Strategy
 
-v3.1 §5.5 的启用规则依赖「消息数 > 20」「工具数 > 5」等**完整上下文信息**——入站时拿不到。→ 归 Agent Router。
+v3.1 §5.5 的启用规则依赖「消息数 > 20」「工具数 > 5」等**完整上下文信息**——入站时拿不到。→ 归 Agent 层。
 
 ### 5.3 Router 的 `ingress_seq` ≠ Session 的 `revision`
 
@@ -336,7 +455,21 @@ v3.1 §5.5 的启用规则依赖「消息数 > 20」「工具数 > 5」等**完�
 - **Router** 管「**什么时候轮到**」（FIFO 顺序）；
 - **Session** 管「**能不能执行**」（执行权、幂等、取消、审批）。
 
-旧路径的 `try_claim` 二者混在一起（一个 CAS 同时管顺序和执行权）→ 拆分后 `try_claim` 的「顺序」语义归 Router，「执行权」语义归 Session。
+> **⚠️ 重要更正（2026-10-29 审查）**：旧路径的 `try_claim` **只管执行权，不管顺序**。
+>
+> 实测 `repositories.py:85-108` 全文：
+> ```python
+> .where(SessionORM.id == session_id,
+>        or_(SessionORM.wait_status != "running",
+>            SessionORM.updated_at < stale_before))   # 僵尸兜底
+> .values(wait_status="running", updated_at=func.now())
+> ```
+> 它是**一个布尔 CAS，只保证「同一会话同时只有一轮在跑」**——**没有任何序号、没有顺序语义**。且 `modules/` 里 `ingress_seq` / `next_ingress_seq` / `last_completed_seq` **零命中**，旧路径**从来没有过顺序机制**。
+>
+> **所以**：
+> - **Router 的 FIFO 是从零新建**，不是「从 `try_claim` 里拆出来」；
+> - **`try_claim` 整体归 Session**（唯一职责 = 互斥；替代者是 `session_turns.status` 的状态 CAS，`wait_status` 的停写/DROP 已在 Session Stage 0/6）；
+> - **Router 不删除 `try_claim` 的任何东西**。台账 **R3 的描述据此修正为「`try_claim` 的会话互斥职责」，owner 改为 Session**。
 
 ---
 
@@ -362,38 +495,81 @@ v3.1 §5.5 的启用规则依赖「消息数 > 20」「工具数 > 5」等**完�
 
 | 状态 | 落点 | 动作 |
 |---|---|---|
-| 外部会话 → 会话实例映射 | `agent_sessions.channel_session_key`（**已存在**） | 启用 + 加唯一约束 `(tenant_id, channel_session_key)` |
+| 外部会话 → 会话实例映射 | `agent_sessions.channel_session_key`（**已存在**） | 启用；唯一约束 `(tenant_id, channel_session_key)` 由 **Session 迁移 0046** 建（会话创建归 Session，决策 #10） |
 | 会话内入站序号 | `agent_sessions.next_ingress_seq`（**新增列**） | `Integer NOT NULL DEFAULT 0` |
-| 排队中的消息 | `session_turns`（`status='queued'` + `ingress_seq`） | 启用新表 |
-| 路由决策留痕 | `session_turns` 新增 `route_decision`（JSONB） | 记录 `RouteDecision` |
+| 最后完成轮次的序号 | `agent_sessions.last_completed_seq`（**新增列**） | `Integer NOT NULL DEFAULT 0`；权威值在 `session_turns`，本列是冗余快照。**一致性由同事务更新保证**；万一落后，放行判定走 §4.2(c) 的兜底路径（以权威值为准 + 修复 + 告警） |
+| 排队中的消息 | `session_turns`（`status='queued'` + `ingress_seq`） | 启用新表；**DDL 归 Session（0046）**，本方案只引用 |
+| 路由决策留痕 | `session_turns` 的 `route_decision`（JSONB） | 记录 `RouteDecision`；**DDL 归 Session（0046）** |
 | 用户属性 | `identity` 的 `User.metadata` + 新增 `UserDirectoryPort` | 结构化字段待补（§1.5） |
 
-### 6.3 迁移草案（0041）
+### 6.3 迁移草案（0045）
 
 ```sql
--- migrations/versions/0041_router_session_routing.py
+-- migrations/versions/0045_router_session_routing.py
+--
+-- ⚠️ 本迁移只改 agent_sessions。session_turns 的 DDL **归 Session（0046）**，
+--    Router 只引用列、不另建迁移（表归属唯一原则，见 README.md §3.3）。
 
--- 1) agent_sessions：外部会话映射唯一化 + 入站序号
+-- 1) agent_sessions：入站序号（Router 自己的排序状态）
 ALTER TABLE agent_sessions
-    ADD COLUMN next_ingress_seq Integer NOT NULL DEFAULT 0;
-
-CREATE UNIQUE INDEX uq_agent_sessions_channel_key
-    ON agent_sessions (tenant_id, channel_session_key)
-    WHERE channel_session_key IS NOT NULL;      -- 部分唯一索引：web 会话无 key
-
--- 2) session_turns：排队 + 序号 + 路由留痕
-ALTER TABLE session_turns
-    ADD COLUMN ingress_seq      Integer,
-    ADD COLUMN route_decision   JSONB;
-
-CREATE UNIQUE INDEX uq_session_turns_session_ingress
-    ON session_turns (session_id, ingress_seq)
-    WHERE ingress_seq IS NOT NULL;
-
-ALTER TABLE session_turns
-    ADD CONSTRAINT ck_session_turns_status
-    CHECK (status IN ('queued','running','waiting_approval','succeeded','failed','cancelled'));
+    ADD COLUMN next_ingress_seq    Integer NOT NULL DEFAULT 0,   -- 下一个待分配的入站序号
+    ADD COLUMN last_completed_seq  Integer NOT NULL DEFAULT 0;   -- 最后一个已完成轮次的 ingress_seq
+--
+-- ⚠️ (tenant_id, channel_session_key) 的唯一索引**不在本迁移**：
+--    它保护的是**会话创建**的唯一性，而会话创建由 Session 执行（决策 #10），
+--    因此该索引归 Session 的迁移 0046。
 ```
+
+> **`last_completed_seq` 为什么必须新增**：FIFO 放行判定是 `turn.ingress_seq == session.last_completed_seq + 1`（§4.2c）。该列此前**没有任何方案定义**。它与 `next_ingress_seq` 同表、同生命周期，一并放在 0045。
+>
+> **与 `session_turns` 的关系**：`last_completed_seq` 是**会话行的冗余快照**，权威值在 `session_turns`（该会话已完成轮次的最大 `ingress_seq`）。轮次终态时**在同一事务内**更新两者 → 正常路径不一致窗口 = 0。
+>
+> **不一致时的处理**：以 `session_turns` 为准 —— 放行判定走 §4.2(c) 的**兜底路径**（修复快照 + 计数告警），sweeper 定期对账作为第二重保险。**不能只靠 sweeper 对账**：两次调度之间队列是卡住的。
+>
+#### 6.3.1 0045 的回滚
+
+0045 是**纯新增两列**，回滚代价极低：
+
+```sql
+ALTER TABLE agent_sessions
+    DROP COLUMN IF EXISTS last_completed_seq,
+    DROP COLUMN IF EXISTS next_ingress_seq;
+```
+
+> **⚠️ 回滚会丢失入站序号**：`next_ingress_seq` / `last_completed_seq` 是**运行中状态**（不是业务数据），回滚后 FIFO 判定失效 —— 但**回滚意味着新实现也不再用**，所以无影响。
+>
+> **真正的不可逆点在别处**：`session_turns.ingress_seq`（0046，Session 所有）**不回滚** —— 它是有业务含义的入站顺序，回滚会破坏重放与对账。**两列必须同进同退**：若 0045 回滚而 0046 不回滚，FIFO 判定会缺依据。
+>
+> **⚠️ 因此 0045 与 0046 必须一起回滚**（虽然 DDL 层面互不冲突）：
+> - **DDL 层面可独立回滚** —— 0045 只加 `agent_sessions` 的两列，0046 加索引 + 改 `wait_status` + 加 `session_turns` 的列，**不同列 / 不同约束**，技术上一个回滚另一个不受影响；
+> - **但语义上不可独立回滚** —— 0045 回滚后 `next_ingress_seq` / `last_completed_seq` 消失，而 0046 的 `session_turns.ingress_seq` 还在 → **FIFO 判定失去依据**（Router 方案 §4.2c）。
+>
+> **结论：两者的 DDL 可独立回滚，语义上必须同进同退。** 排期上 0045 与 0046 相邻（Router Stage 0 与 Session Stage 0），**回滚时一起处理**。
+
+> **Session 0046 需要一并提供的 `session_turns` 列**（本迁移不建）：
+>
+> ```sql
+> -- migrations/versions/0046_session_runtime.py（Session 方案拥有）
+> ALTER TABLE session_turns
+>     ADD COLUMN ingress_seq      Integer,
+>     ADD COLUMN route_decision   JSONB,
+>     ADD COLUMN pending_approval JSONB,
+>     ADD COLUMN cancel_requested Boolean NOT NULL DEFAULT false;
+>
+> CREATE UNIQUE INDEX uq_session_turns_session_ingress
+>     ON session_turns (session_id, ingress_seq)
+>     WHERE ingress_seq IS NOT NULL;
+>
+> -- 轮次状态枚举：0035 建的是 session_turns_status_enum
+> --   ('running','waiting','succeeded','failed','cancelled')
+> -- 0046 需要加 'queued'，必须先 DROP 再重建（Postgres 不能直接改 check 约束）
+> ALTER TABLE session_turns DROP CONSTRAINT session_turns_status_enum;
+> ALTER TABLE session_turns
+>     ADD CONSTRAINT session_turns_status_enum
+>     CHECK (status IN ('queued','running','waiting','succeeded','failed','cancelled'));
+> ```
+>
+> ⚠️ **取值统一**：审批挂起态沿用 0035 已有的 **`waiting`**，**不引入 `waiting_approval`**（`agent_sessions` 的会话级状态才用 `waiting_approval`，两者不是一回事）。
 
 ### 6.4 默认 agent 与业务线映射的配置落点
 
@@ -414,36 +590,42 @@ ALTER TABLE session_turns
 |---|---|
 | `types.py` | `RouteDecision` / `AgentTarget` / `AgentCandidate` / `SessionAssignment` |
 | `strategy.py` | `Strategy` Protocol + 规则链实现 + `RouteDecision` 留痕 |
-| `session_router.py` | 会话 key 派生 · 映射与创建 · `ingress_seq` 分配 · 入队 |
+| `session_key.py`（⚠️ **不叫 `session_router.py`** —— 那个名字已被既有的 `modules/agent_runtime/adapter/http/session_router.py` 占用，它是 **HTTP 路由**不是会话路由，同名必然混淆） | 会话 key 派生 · 映射与创建 · `ingress_seq` 分配 · 入队 |
 | `sequencer.py` | `SessionSequencer` Protocol + FIFO 放行判定 + advisory lock 端口 |
 
 ### 7.2 迁移
 
 | 旧位置 | 迁到 | 动作 |
 |---|---|---|
-| `modules/channel/adapter/dispatch/dispatch_subscriber.py:43,175-186` 硬编码 agent + 每消息建 session | `router/strategy.py` + `router/session_router.py` | **删除**，改走 Strategy + 会话映射 |
+| `modules/channel/adapter/dispatch/dispatch_subscriber.py:43,175-186` 硬编码 agent + 每消息建 session | `router/strategy.py` + `router/session_key.py` | **删除**，改走 Strategy + 会话映射 |
 | `modules/agent_runtime/adapter/http/session_router.py:162` `agentId` 直取 | `router/strategy.py` | 改为「显式指定」规则，优先级 2 |
 | `modules/agent_runtime/adapter/persistence/repositories.py:85-108` `try_claim` | 拆成 Router（FIFO）+ Session（执行权） | 改造 |
-| `runtimes/.../channels/gateway.py` `build_session_key` | `router/session_router.py` | 改为哈希版 |
-| `runtimes/.../graph/routing.py:91` `classify_task_kind_heuristic` | `agent_router`（**不属本层**） | 迁出，Router 只留 `model_hint` |
+| `runtimes/.../channels/gateway.py` `build_session_key` | `router/session_key.py` | 改为哈希版 |
+| `runtimes/.../graph/routing.py:91` `classify_task_kind_heuristic` | `agent_router`（**不属本层**） | ⚠️ **该文件从未接线**（`runtimes/agent_runtime/` 全仓零生产引用）→ **「迁出」是伪动作**。它是 **Agent 层**的删除范围（台账 X1），本层**不碰**，Router 只在自己的 `types.py` 里留 `model_hint` 字段 |
 
 ### 7.3 保留但改造
 
 | 文件 | 改造点 |
 |---|---|
-| `modules/agent_runtime/adapter/persistence/models.py` | `agent_sessions` 加 `next_ingress_seq`；`channel_session_key` 加部分唯一索引 |
+| `modules/agent_runtime/adapter/persistence/models.py` | `agent_sessions` 加 `next_ingress_seq` / `last_completed_seq`（唯一索引由 Session 0046 建） |
 | `modules/agent_runtime/adapter/persistence/catalog_models.py` | `admin_agents` 无需 DDL（策略走已有字段） |
-| `modules/model/application/services.py:980` `select_chain_for_strategy` | **保留**，但调用方从 graph 移到 Agent Router |
+| `modules/model/src/qzdap/modules/model/application/services.py:980` `select_chain_for_strategy` | **保留**，但调用方从 graph 移到 Agent 层 Execution 的模型解析 |
 
 ### 7.4 删除清单（Stage 4 停用 + 打点 → Stage 5 删除）
 
-| 类别 | 具体 |
-|---|---|
-| 硬编码路由 | `dispatch_subscriber.py` 的 `SYSTEM_AGENT_ID` / `SYSTEM_USER_ID` |
-| 每消息建会话 | `dispatch_subscriber.py:175-186` 的临时 session 创建 |
-| 进程内去重 | `dispatch_subscriber.py` 的 `OrderedDict` LRU（Gateway 方案已列） |
-| 旧的顺序语义 | `try_claim` 中混在一起的「顺序」职责 → 拆到 Router |
-| 展示用 category 映射 | `catalog.py:274-281`（若策略改用 `category` 原值，需同步改展示层） |
+| 类别 | 具体 | owner |
+|---|---|---|
+| 硬编码路由 | `dispatch_subscriber.py` 的 `SYSTEM_AGENT_ID` / `SYSTEM_USER_ID` | **Gateway（G3）** —— 本层只保证不再有调用方 |
+| 每消息建会话 | `dispatch_subscriber.py:175-186` 的临时 session 创建 | **本层（R1）** —— 行为替换；**文件删除归 Gateway（G9）** |
+| 进程内去重 | `dispatch_subscriber.py` 的 `OrderedDict` LRU | **Gateway（G6）** |
+| 旧的会话互斥 | `try_claim` 的 CAS（**它只有这一个职责** —— 无顺序语义，见 §5.4 的更正） | ⚠️ **Session（R3，owner 已改）** —— 本层**不删**，只确认互斥已迁到 `session_turns` 的状态 CAS |
+| 旧的会话 key | `build_session_key`（冒号拼接版） | **本层（R4）** |
+| 展示用 category 映射 | `catalog.py:274-281`（若策略改用 `category` 原值，需同步改展示层） | **本层** |
+
+> **唯一 owner 规则**（台账 §3.4）：同一个旧实现只能由**一个方案**负责删除。
+> - **`dispatch_subscriber.py` 的文件删除 → Gateway（G9）**。本层只保证「不再有调用方」。
+> - **第二套 turn 实现 → Session（X2）**。本层**不删**，也不另起删除 PR —— 否则会与 Session 的删除 PR 互相冲突。
+> - 本层 Stage 5 真正删除的只有：`build_session_key`（R4）、`try_claim` 的顺序职责（R3）、`catalog.py` 的展示映射。
 
 ---
 
@@ -456,12 +638,15 @@ ALTER TABLE session_turns
 | 动作 | 细节 |
 |---|---|
 | 建 `router/` 骨架 + `types.py` | 4 个类型定稿 |
-| 迁移 0041 | `next_ingress_seq` + 唯一索引 + `session_turns` 加列 |
+| 迁移 0045 | `agent_sessions` 加 `next_ingress_seq` / `last_completed_seq` |
 | 策略配置规范 | `admin_agents.profile` 的路由配置 schema（文档化，不强制） |
 | `UserDirectoryPort` 契约 | 定义在 router 侧，实现在 identity 侧 |
+| **`ErrorCode` 增 `QUEUE_FULL` / `QUEUE_TIMEOUT`** | `libs/schema/src/qzdap_schema/dtos/errors.py` + `_HTTP_STATUS` 映射（决策 #7） |
+| **收敛基础设施** | 建 `qzdap_legacy_calls_total` 指标（若尚未建立），并给本层台账条目的旧入口打点（`record_legacy_call("<编号>")`）。**没有打点就没有清理判据** —— 见 `cleanup-ledger.md` §3.2 |
 
 **旧代码减少**：无（纯新增）。
 **验收**：类型有单测；迁移在 dev 库跑通。
+**验收补充**：本层每个台账条目的旧入口都有打点；`/metrics` 能查到 `qzdap_legacy_calls_total`。
 
 ### Stage 1：Strategy 落地（web 路径先行）
 
@@ -476,10 +661,12 @@ ALTER TABLE session_turns
 
 ### Stage 2：Session Routing 落地（IM 路径）
 
+> **开工前置（硬）**：**Session 层的 `SessionManager.resolve_or_create` 端口已可用**（Session Stage 1）。Router 只**派生 `session_key`**，会话的创建/查回由 Session 执行（决策 #10）—— 没有这个端口，Router 就得自己建会话（第二套真相）。
+
 | 动作 | 细节 |
 |---|---|
-| 会话 key 派生 + 映射 | 启用 `channel_session_key` + 唯一索引 |
-| 会话创建/复用 | IM 首条消息建会话并绑定 Strategy 的 agent |
+| 会话 key 派生 | 本层职责：tenant+workspace+channel+chat+user → sha256 |
+| 会话创建/复用 | **调 Session 的 `resolve_or_create`**（不再自建）；绑定 Strategy 选出的 agent |
 | `ingress_seq` 分配 + 入队 | 新增列 + `session_turns.status='queued'` |
 | **删除** IM 临时 session 创建 | `dispatch_subscriber.py:175-186` |
 
@@ -488,19 +675,21 @@ ALTER TABLE session_turns
 
 ### Stage 3：有序处理落地
 
+> **开工前置（硬）**：**Session 层的唯一 turn 实现已落地**（Session Stage 3）。未落地则「有序」只对一条路径成立 —— 渠道 / 子代理 / 评测仍可绕过队列并发执行。详见 §0.5。
+
 | 动作 | 细节 |
 |---|---|
 | FIFO 放行判定 | `ingress_seq == last_completed_seq + 1` |
-| 会话级 advisory lock | `pg_try_advisory_xact_lock` |
-| 审批中断不占执行位 | 状态机区分 `waiting_approval` 与 `running` |
+| 会话级互斥 | **轮次表 CAS 为主**（`session_turns.status`）；advisory lock 仅作优化（决策 #9） |
+| 审批中断不占执行位 | 轮次状态机区分 `waiting` 与 `running`（`waiting_approval` 是**会话级**状态，见 §4.3） |
 | 并发语义切换 | 从「拒绝 SESSION_BUSY」改为「排队」 |
 
-**旧代码减少**：`try_claim` 的顺序职责移除。
+**旧代码减少**：**无删除**。⚠️ 旧路径**本来就没有顺序机制**（§5.4 的更正）—— 本 Stage 是**从零新建** FIFO，不是「移除 `try_claim` 的顺序职责」。
 **验收**：并发 5 条同会话消息 → **按入站顺序执行**，不丢不乱；不同会话并行不互相阻塞；审批等待期间新消息可执行。
 
 ### Stage 4：新实现接管与弃用
 
-> **本阶段只上新，不删旧**。旧实现打 `@deprecated` + 调用打点（`qzdap_legacy_calls_total{path="..."}`），进入清理窗口。清理机制见 [`cleanup-ledger.md`](cleanup-ledger.md) R1–R4。
+> **本阶段只上新，不删旧**。旧实现打 `@deprecated` + 调用打点（`qzdap_legacy_calls_total{entry="..."}`），进入清理窗口。清理机制见 [`cleanup-ledger.md`](cleanup-ledger.md) R1–R4。
 
 | 动作 | 细节 |
 |---|---|
@@ -510,18 +699,22 @@ ALTER TABLE session_turns
 | 更新 [`cleanup-ledger.md`](cleanup-ledger.md) R1–R4 状态 | → 已弃用 |
 
 **旧代码减少**：无删除，但 R1–R4 全部进入弃用与观测状态。
-**验收**：§10 全部检查项通过；旧路径调用指标归零。
+**验收**：§10 全部检查项通过；**旧路径已被打点覆盖 100%**（每个待清理的旧入口都有 `record_legacy_call("R<N>")`）、新路径流量占比 **≥95%**。
+>
+> **归零判据属于 Stage 5 的进入条件，不在这里要求** —— Stage 4 刚接管时旧路径必然还有残留流量（长连接、缓存、灰度中的客户端）。与 Gateway Stage 4a 的口径一致。
 
 ### Stage 5：旧实现清理
 
-> **进入条件（硬性）**：R1–R4 的调用指标**归零**且**已稳定运行 ≥ 1 个发布周期**。
+> **进入条件（硬性）**：连续运行 **≥ 7 天** + 新路径流量占比 **≥ 95%** + `qzdap_legacy_calls_total{entry="…"}` 窗口内**累计为 0** + 窗口内无相关生产事故。指标未归零 → 不许进入本阶段，先查为什么还有人在调。
 
 | 动作 | 细节 |
 |---|---|
-| 删 `dispatch_subscriber.py` | 渠道不再绕道 EventBus + 第二套 turn |
-| 删第二套 turn 实现 | `use_cases/run_turn.py` + `run_turn_to_completion.py` 与 `copilot.py` 合一（**Session 层方案的主战场**） |
-| 删 `build_session_key` 冒号拼接版 | 台账 R4 |
-| 启用扫描脚本的 Router 段 | 进 CI |
+| 删 `build_session_key` 冒号拼接版 | 台账 **R4**（本层 owner） |
+| **确认** `try_claim` 的互斥职责已由 Session 迁走 | ⚠️ **本层不删** —— 台账 **R3 的 owner 是 Session**（互斥归 Session 的执行权，见 §5.4 的更正） |
+| 删 `catalog.py:274-281` 的展示映射 | 若策略改用 `category` 原值 |
+| **确认** `dispatch_subscriber.py` 无残留调用方 | ⚠️ **文件删除归 Gateway（G9）**，本层不删 |
+| **确认**第二套 turn 实现无残留调用方 | ⚠️ **删除归 Session（X2）**，本层不删 |
+| 启用扫描脚本的 Router 段 | 进 CI（脚本唯一来源：台账 §3.1） |
 | 更新台账状态 | R1–R4 → 已清理 |
 | 更新 `docs/copilot-chat-module-architecture.md` | 现状文档同步 |
 
@@ -534,9 +727,9 @@ ALTER TABLE session_turns
 |---|---|---|---|
 | Stage 1 | `agentId` 直取 | ~10 行 | 直接替换（无残留调用方） |
 | Stage 2 | IM 临时 session 创建 + 硬编码 agent | ~40 行 | 直接替换 |
-| Stage 3 | `try_claim` 顺序职责 | ~20 行 | 直接替换 |
+| Stage 3 | **无**（旧路径无顺序机制，FIFO 全新建） | 0 | — |
 | Stage 4 | — | 0 | **停用 + 打点**（进入清理窗口） |
-| Stage 5 | `dispatch_subscriber.py` + 第二套 turn 实现 + `build_session_key` | **~290 行** | 删除（台账清零） |
+| Stage 5 | `build_session_key` + `catalog.py` 展示映射 | **~90 行** | 删除（台账清零）。`dispatch_subscriber.py`、第二套 turn 实现、**`try_claim`（R3）** 均**不在本层删除** |
 
 ---
 
@@ -544,15 +737,20 @@ ALTER TABLE session_turns
 
 | 方向 | 契约 |
 |---|---|
-| Gateway → Router | `InboundMessage`（含 `actor` / `channel_type` / `external_chat_id` / `external_user_id` / `text` / `idempotency` / 附件） |
-| Router → Session | `SessionAssignment{session_id, agent_id, agent_version, ingress_seq, predecessor_seq, queue_position}` + `RouteDecision`（留痕用） |
+| Gateway → Router | `InboundMessage`（含 `actor` / `channel_type` / `external_chat_id` / `external_user_id` / `explicit_agent_id` / `text` / `idempotency` / 附件） |
+| Router → Session | **两步**：① 先调 **只读**的 `lookup(session_key) → SessionRef`（None 表示不存在；拿既有绑定，供粘性规则用）；② 再调 `resolve_or_create(session_key, agent_binding) → SessionRef`（创建/复用）。随后在 `SessionRef` 上分配 `ingress_seq`，最终产出 `SessionAssignment{session_ref, agent_id, agent_version, ingress_seq, predecessor_seq, queue_position}` + `RouteDecision`（留痕用）。见决策 #10 与 §2 的两步流程 |
 | Router ← Agent Catalog | `AgentCatalogService`（已有）→ 提供 `category` / `visible_scope` / `tags` / `profile` / `version` |
 | Router ← Identity | `UserDirectoryPort`（新增）→ 用户属性 |
-| Router ← Model | **不调用**；模型策略链归 Agent Router |
+| Router ← Model | **不调用**；模型策略链归 Agent 层 Execution |
 
 ---
 
 ## 10. 验收标准
+
+> **本层在系统级验收中的责任**：
+> 本层负责系统级验收的 **#4（同会话严格有序）**（完整清单见 [`README.md`](README.md) §7）。
+
+### 10.1 功能验收
 
 1. **路由正确性**：5 类入口 × 3 类策略来源 → 命中的 agent 符合规则链，且 `RouteDecision` 完整留痕；
 2. **粘性**：同一会话内 Strategy 始终返回同一 agent，即使策略配置在会话中途变化；
@@ -563,7 +761,47 @@ ALTER TABLE session_turns
 7. **跨 worker 一致**：两个 worker 分别处理同一会话的不同消息 → 顺序仍然正确；
 8. **兜底安全**：无任何策略命中 → 走默认 agent，**消息不丢**；
 9. **可解释**：`route_decision` 可查询，能回答「为什么是这个 agent」；
-10. **架构测试**：Router 层不得 import FastAPI / SQLAlchemy（与 Gateway 方案同一条规则）。
+10. **架构测试**：Router 层不得 import FastAPI / SQLAlchemy（与 Gateway 方案同一条规则）；
+11. **排队超限不静默**：排队超过 N 条 → 返回 `QUEUE_FULL`；等待超过 T 秒 → 返回 `QUEUE_TIMEOUT`；两种情况下 turn 落 `cancelled` 且**可从 `session_turns` 查到**（不静默丢弃）；
+12. **开关可回滚**：`QZDAP_ROUTER_QUEUE_ENABLED=off` 时行为回到现状（409 拒绝），前端行为不需改动。
+
+
+---
+
+### 10.2 架构测试
+
+```python
+# tests/architecture/test_router_boundary.py
+FORBIDDEN = ("fastapi", "starlette", "sqlalchemy", "asyncpg", "psycopg")
+
+def test_router_layer_has_no_framework_imports():
+    """Router 层不得依赖框架 —— 由 README §3.2 的边界判据派生。"""
+    for path in _py_files(("backend/runtimes/agent_runtime/src/qzdap_agent_runtime/router",)):
+        for mod in FORBIDDEN:
+            assert mod not in _imports_of(path), f"{path} 引入了 {mod}"
+```
+
+另加三条本层特有的规则：
+
+| # | 规则 | 检查方式 |
+|---|---|---|
+| 1 | **Router 不写会话的生命周期字段**（决策 #10）—— `agent_sessions` 里除**自己的排序列**外，一律只读 | 关键字扫描：router 包内对 `agent_sessions` 的 `UPDATE` **只允许出现在 `next_ingress_seq` 上**；`INSERT INTO agent_sessions` 零命中；`UPDATE agent_sessions SET status` / `agent_id` / `owner_id` / `current_revision` / `wait_status` 零命中 |
+| 2 | **Router 不算 token、不装上下文** | import 扫描（不得 import `context` 包） |
+| 3 | **Router 不调用 LLM** | import 扫描（不得 import `qzdap_llm`） |
+
+### 10.3 「没有第二套实现」的扫描
+
+**扫描脚本的唯一来源是 [`cleanup-ledger.md`](cleanup-ledger.md) §3.1**，本层不另写一份。Router 域对应的规则：
+
+| 旧符号 | 台账条目 | 判据类型 |
+|---|---|---|
+| `build_session_key` | **R4** | 指标 + 扫描 |
+| **IM 每消息新建 session**（`dispatch_subscriber.py` 里的临时 session 创建） | **R1** | **扫描**（行为替换：文件删除归 Gateway G9，本层只保证那段代码不再被调用） |
+| **`agentId` 直取**（`session_router.py` 里 `body.get("agentId")` 直传） | **R2** | 扫描 |
+| **`try_claim`**（`repositories.py`） | **R3** | **扫描** —— ⚠️ **owner 是 Session**，本层只「确认无残留调用方」，**不删** |
+| `compile_loop_graph` | X5（与 Agent 层共用） | 扫描 |
+
+> 启用时点：**Router Stage 5 合并时**，与旧实现删除在同一个提交里完成。
 
 ---
 
@@ -572,12 +810,69 @@ ALTER TABLE session_turns
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | **并发语义从「拒绝」改为「排队」** | 前端契约变化（需 `queued` 事件）；用户预期变化 | 决策 #1 明确取舍；新增 `QueuedChunk`；队列上限与超时显式化 |
-| **「唯一 turn 实现」未先落地** | Router 的有序性只对一条路径成立 | §0.1 前置依赖：Session 层方案先落地；否则 Stage 3 不得开启 |
+| **「唯一 turn 实现」未先落地** | Router 的有序性只对一条路径成立 | §0.5 前置依赖：Session 层方案先落地；否则 Stage 3 不得开启 |
 | **表选择未定** | Router 落 `session_turns` 还是 `agent_turns` | 决策 #2；两表并存即第二套真相 |
 | 用户标签无结构化数据源 | 「按用户标签路由」只能近似 | §1.5；`UserDirectoryPort` 契约先行；不做大范围 identity 改造 |
-| `channel_session_key` 唯一约束加不上 | 并发首条消息可能建两个会话 | 部分唯一索引 + 冲突后重查 |
+| `channel_session_key` 唯一约束加不上 | 并发首条消息可能建两个会话 | 部分唯一索引（Session 0046）+ 冲突后重查 |
 | advisory lock 依赖 Postgres | 多副本部署需共享 DB | 现状已是共享 Postgres；不引入 Redis |
 
+### 11.1 回退
+
+| 时点 | 回退方式 | 代价 |
+|---|---|---|
+| Stage 1–3（未切换） | `git revert` 对应提交即可 | 无（旧实现一直在场） |
+| Stage 4（已接管，未清理） | `git revert` 切换提交 → 流量回落旧实现 | 无。**这正是保留清理窗口的收益** |
+| Stage 5（已清理） | 需**重新上线旧版本** | 旧表已 DROP，**数据不可恢复** → 依赖迁移前的备份 |
+
+> **本层特有的不可逆点**：`agent_turns` / `agent_session_messages` 的 DROP（Session Stage 6 执行）。Router 只引用新表，自身不删表 —— 回退时数据在 `session_turns` 里，**不受影响**。
+>
+> **排队开关是本层的天然回退阀**：`QZDAP_ROUTER_QUEUE_ENABLED` 默认 off（决策 #8）。新路径出问题时把它关掉，即退回「拒绝 SESSION_BUSY」的旧语义，**不需要回滚代码**。
+---
+
+## 12. 治理与可观测性落点
+
+### 12.1 治理落点（Governance）
+
+| 本层步骤 | 闸门 | 拒绝 / 降级时的行为 |
+|---|---|---|
+| Strategy 匹配 | 业务线 / 用户标签的路由策略 | 未命中 → 走 fallback 规则；fallback 也未命中 → **按 §3.1「兜底必须安全」走工作区默认 agent**；连默认 agent 都没有 → `AGENT_NOT_AVAILABLE`（既有 `ErrorCode` 成员） |
+| 策略优先级 | 规则链固定顺序（sticky > explicit > business_line > user_tag > fallback） | 冲突时**高位规则胜出**，不进入低位规则 |
+| 会话配额 | 每会话的并发轮次上限、租户级会话数上限 | 超限 → **排队超时按 `QUEUE_TIMEOUT`（既有于本方案 Stage 0 新增）**；租户级会话数超限 → **`FORBIDDEN`**（既有 `ErrorCode` 成员，403）。⚠️ **本方案不新增 `SESSION_LIMIT` / `NO_ROUTE` 这类码** —— `ErrorCode` 枚举（`libs/schema/.../errors.py`）只有 20 个成员，不含它们 |
+| 租户隔离 | `session_key` 必须含 `tenant_id` + `workspace_id` | 跨租户 key 一律拒绝，防止会话串租户 |
+
+> **本层不拥有的治理**：消息内容级配额（Gateway）、模型与工具白名单（Agent 层 Execution）、记忆检索范围（Memory）。
+
+### 12.2 可观测性指标（Observability）
+
+指标名进 `qzdap_*` 命名空间，实现落在 `backend/libs/observability/src/qzdap_observability/metrics.py`。
+
+| 指标名 | 类型 | 标签 | 说明 |
+|---|---|---|---|
+| `qzdap_router_route_total` | Counter | `strategy`, `outcome` | 路由决策数（`strategy`：命中的规则名；`outcome`：`matched` / `fallback` / `rejected`） |
+| `qzdap_router_route_duration_seconds` | Histogram | `strategy` | 路由决策耗时 |
+| `qzdap_router_queue_depth` | Gauge | `tenant_id` | 当前排队消息数（仅 `QZDAP_ROUTER_QUEUE_ENABLED=true` 时上报） |
+| `qzdap_router_queue_wait_seconds` | Histogram | `tenant_id` | 排队等待时长 |
+| `qzdap_router_concurrency_rejected_total` | Counter | `reason` | 因会话并发上限被拒的消息数 |
+| `qzdap_router_session_key_hash_total` | Counter | — | 会话 key 归一化次数（**不记录 key 本身**，避免泄漏身份） |
+| `qzdap_legacy_calls_total` | Counter | `entry` | 旧实现调用计数（标签 `entry` 为台账编号） |
+
+**Span 划分**：
+
+| Span | 父子关系 | 属性 |
+|---|---|---|
+| `router.route` | 根 | `strategy`, `outcome`, `session_key_hash`（**哈希，不落原文**） |
+| `router.dispatch` | `router.route` | `target`, `ingress_seq` |
+
+> **观测约束**：会话 key 与用户身份在日志 / span 中**一律哈希或脱敏**。trace 属性禁止出现 `external_user_id`、消息正文、附件内容。
+
+### 12.3 审计
+
+| 事件 | 何时写 | 内容 |
+|---|---|---|
+| `router.route.fallback` | 落到 fallback 规则 | 会话 key 哈希、可用策略集（排查「为什么没按业务线路由」） |
+| `router.route.rejected` | 路由失败 | 原因、trace_id |
+
+> 审计写入走 Governance 模块，Router 只投递事件。
 ---
 
 ## 附录 A：待确认的决策
@@ -587,9 +882,13 @@ ALTER TABLE session_turns
 | 1 | 并发消息语义 | **S1 严格排队**（FIFO） | S2 拒绝（现状）/ S3 合并 | 前端契约、用户体验、工作量 |
 | 2 | 表选择 | **启用新表** `session_turns` / `session_messages`，旧 `agent_turns` / `agent_session_messages` 迁数据后废弃 | 沿用旧表（缺幂等键/revision/版本冻结字段） | 与 Gateway 方案 §9 一致性 |
 | 3 | 默认 agent / 业务线映射的配置落点 | **`admin_agents.profile`**（不新建策略表） | 工作区级配置 / 新建 `routing_rules` 表 | 配置模型 |
-| 4 | 深度任务判定与模型链选择 | **不在本层**，归 Agent Router | 放 Strategy（但入站拿不到上下文） | 与基线图的一致性 |
+| 4 | 深度任务判定与模型链解析 | **不在本层**，归 Agent 层 | 放 Strategy（但入站拿不到上下文） | 与基线图的一致性 |
 | 5 | `ingress_seq` 分配方式 | **会话行原子自增**（`next_ingress_seq` 列） | 全局序列 / 分布式锁 | 跨 worker 正确性 |
 | 6 | 审批中断是否占用 FIFO 执行位 | **不占用**（等待审批不阻塞新消息） | 占用（严格全局有序，但会堵死） | 死锁风险 |
+| 7 | 排队上限 N / 等待超时 T / 超限错误码 | **N=5 条、T=60 秒**；`QUEUE_FULL`（409）/ `QUEUE_TIMEOUT`（504） | 无上限（无限排队）；拒绝而非排队 | 前端契约 + 资源保护 |
+| 8 | 排队语义的开关 | **`QZDAP_ROUTER_QUEUE_ENABLED` 默认 off**，前端先兼容再开 | 无开关直接切（不可回滚） | 回滚成本 |
+| 9 | 会话级互斥的原语 | **轮次表 CAS 为唯一权威**（`session_turns.status`）；advisory lock 仅作优化，**不用 `_xact_` 变体** | 纯 advisory lock（事务提交即失效） | 并发正确性 |
+| 10 | 会话实例由谁创建 | **Router 只派生 `session_key` + 分配 `ingress_seq`；`resolve_or_create` 由 Session 执行**（R1） | R2 Router 自己查建会话（两处都能建 → 第二套真相） | 会话创建逻辑的唯一性、层间依赖顺序 |
 
 ---
 
@@ -602,5 +901,5 @@ ALTER TABLE session_turns
 | 选 agent | — | ✅ **Strategy** |
 | 选会话实例 | — | ✅ **Session Routing** |
 | 同一会话的先后顺序 | — | ✅ **`ingress_seq` + FIFO** |
-| 同一会话同时只能跑一轮 | — | 只提供 advisory lock 端口，**执行权归 Session** |
+| 同一会话同时只能跑一轮 | — | **执行权归 Session**（`session_turns.status` 的状态 CAS，唯一权威）。Router 只在**分配 `ingress_seq`** 时写 `agent_sessions.next_ingress_seq`（自己的排序列），**不碰执行权** |
 | 渠道回包 | ✅ | — |

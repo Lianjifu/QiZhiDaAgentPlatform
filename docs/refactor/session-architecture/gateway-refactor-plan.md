@@ -1,12 +1,13 @@
 # Gateway 层重构方案
 
-> 版本：1.2（2026-10-29：按方案集统一更新——文档集入口、清理机制归属、阶段分期口径）
+> 版本：1.3（2026-10-29：**独立审查后的 15 项修正** —— 错误码收敛、weak 键不抑制的落地、部分唯一索引、过期行清理归属、NOT NULL 列的合成值、依赖方向、前端零使用 `/v1/sessions`、`channel_deliveries` 归属）
 > 适用项目：`QiZhiDaAgentPlatform`
-> 状态：**已定稿**（附录 A 的 8 条决策于 2026-10-29 逐条确认）
+> 状态：**已定稿**（附录 A 的 9 条决策于 2026-10-29 逐条确认；另有 1 条补充条目 #2b 于同日随一致性评审修订）
 > 方案集入口：[`README.md`](README.md)
 > 上位基线：**[`session-lifecycle-sequence.md`](session-lifecycle-sequence.md)** —— 会话完整生命周期的泳道划分与时序，本方案是其中 **Gateway 泳道**的展开
 > 收敛机制：**[`cleanup-ledger.md`](cleanup-ledger.md)** —— 本方案对应条目 **G1–G9**
 > 硬约束：**最终态只有一个实现**；先上新、后清旧（清理机制见 §1.4 与台账）
+> 方案集导航：落地路线与里程碑见 [`README.md`](README.md) §6 · 系统级验收见 §7 · 外部前置依赖见 §8 · 跨层不变量见 [`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) §6
 
 ---
 
@@ -14,24 +15,26 @@
 
 上位方案 v3.1 把会话能力划成十项能力域、19 个 LangGraph 节点。经 2026-10-28 的代码核对，v3.1 已经产出了一套**合同完备但从未接线**的 runtime（`backend/runtimes/agent_runtime/`），而**唯一在生产跑的**是旧 Copilot 实现（`backend/modules/agent_runtime/`）。两套并存的原因与后果见 §2.4。
 
-本方案是[会话生命周期基线](session-lifecycle-sequence.md)的 **Gateway 泳道**（该基线把会话拆为 Gateway / Router / Session / Context / Memory / Agent Loop / Agent Router / Execution 七条泳道 + Governance / Observability 两条横切）。它要解决的是：
+本方案是[会话生命周期基线](session-lifecycle-sequence.md)的 **Gateway 泳道**（该基线把会话拆为 Gateway / Router / Session / Context / Memory / Agent Loop / Agent Router / Execution **八条泳道** + Governance / Observability 两条横切）。它要解决的是：
 
 1. 把 Gateway 的职责从「散落在 4 个入站路径里的隐式逻辑」变成**一个显式的、可独立验收的分层**；
 2. **消灭入站侧的全部重复实现**——4 条入站路径、3 套会话 API、3 套幂等逻辑；
-3. 给后面五层一个**稳定的标准数据契约**，让它们不再各自解析入参。
+3. 给后面**七层**一个**稳定的标准数据契约**（Router / Session / Context / Memory / Agent Loop / Agent Router / Execution），让它们不再各自解析入参。
 
-本方案**只覆盖 Gateway**（含入站归一化、身份、去重幂等、出站编码）。Session / Context / Memory / Agent 四层的重构在各自的方案里做，但本方案给出的契约是它们的前置条件。
+本方案**只覆盖 Gateway**（含入站归一化、身份、去重幂等、出站编码）。**Router / Session / Context / Memory / Agent 五份方案**的重构各自做，但本方案给出的契约是它们的前置条件。
 
 ### 0.1 前置依赖清单（本方案不实现，但阻塞本方案的哪一步）
 
 | 依赖 | 归属层 | 阻塞 | 说明 |
 |---|---|---|---|
 | `session_events` 真写真读 | Session | **§5.5 无感重放** | 决策 #4 已定稿为「无感重放」，因此这是硬依赖。若 Session 层未先行落地，Gateway 的重复分支降级为「返回 202 + 上次 turn_id + 标 `replay_unavailable`」，**不得静默丢弃重复请求** |
-| 唯一 turn 实现（claim / 幂等 / 取消 / 审批合一） | Session | §7.4、Stage 4 | 渠道入站改造要求下游只有一套 turn 语义；本方案 Stage 4 会连带删除第二套实现 |
+| 唯一 turn 实现（claim / 幂等 / 取消 / 审批合一） | Session | §7.4、Stage 4a | 渠道入站改造要求下游只有一套 turn 语义；本方案 Stage 4a 会连带停用第二套实现 |
 | `LLMPort` 与真实 `agent` 节点 | Agent Loop | §5.2 的 `unprotected` 策略 | 决策 #5 已定稿为「不抑制 + 标 unprotected + 禁用副作用工具」，该策略由 Agent Loop（不选择副作用工具）与 Execution（拒绝执行）共同执行；两者未落地前，`unprotected` 标记只记录不生效（**此时不得启用任何有副作用的工具**，否则违反决策 #5 的前提） |
 | `tool_executions` 幂等键传递 | Execution | §5.6 三层键传递链 | C 层幂等由 Execution 落地 |
+| **`ErrorCode` 码收敛** | `libs/schema` + `modules/channel` + `modules/agent_runtime` | **§7.0 的投影表** | 7 个码散落在模块内异常的 `code=` 字符串里（`ErrorCode` 枚举**不含**它们）。投影表按码查文案 → **必须先收敛**。登记为横切 H8 的第一条 |
+| **`modules/channel` 新增 `qzdap-agent-runtime` 依赖** | `modules/channel` | §7.2.1 的依赖方向 | webhook 端点要调 `Gateway.accept` → channel 需要依赖 runtime。**必须同步改 `pyproject.toml` 与 `uv.lock`**（横切 H6） |
 
-> **依赖顺序建议**：Session 层的「`session_events` 落库」应先于本方案 Stage 4 落地；本方案 Stage 0–3 不受任何上游阻塞，可立即开工。
+> **依赖顺序建议**：Session 层的「`session_events` 落库」应先于本方案 **Stage 4b** 落地；本方案 Stage 0–4a 不受任何上游阻塞，可立即开工（Stage 4a 属 `README.md` §3.3.1 的豁免 E1）。
 
 ---
 
@@ -57,6 +60,7 @@
 | 拼 prompt / 压缩 / 摘要 | Context |
 | 召回与写入记忆 | Memory |
 | 调 LLM / 跑工具 / 审批中断 | Agent Loop / Execution |
+| **会话级配额**（每会话的轮次上限、并发上限） | Router / Session —— Gateway 只做**入口级**限流（§5.7） |
 
 ### 1.3 可测试的边界判据
 
@@ -82,14 +86,14 @@
 
 | # | 机制 | 具体做法 |
 |---|---|---|
-| 1 | **弃用标记 + 观测** | 每个旧入口在被新实现接管时打 `@deprecated` + 打点 `qzdap_legacy_calls_total{path="..."}`，使「旧实现是否还在被调用」成为**可观测事实**，而不是靠人记得 |
-| 2 | **删除条件客观化** | 清理触发条件 = 「新实现稳定运行 ≥ 1 个发布周期 **且** 该旧路径调用指标归零」。不靠「感觉没人用了」 |
+| 1 | **弃用标记 + 观测** | 每个旧入口在被新实现接管时打 `@deprecated` + 打点 `qzdap_legacy_calls_total{entry="..."}`，使「旧实现是否还在被调用」成为**可观测事实**，而不是靠人记得 |
+| 2 | **删除条件客观化** | 清理触发条件见 [`cleanup-ledger.md`](cleanup-ledger.md) §3.2 的量化判据（≥7 天 + 新路径流量占比 ≥95% + 旧路径调用累计为 0）。**不使用「发布周期」概念**——本项目无 tag / CHANGELOG / release 目标，该周期不可定义 |
 | 3 | **台账化** | 全部旧实现登记在 [`cleanup-ledger.md`](cleanup-ledger.md)，每条含：旧实现位置 → 替代者 → 弃用标记 → 观测指标 → 删除条件 → 状态 → 所属方案 |
-| 4 | **不可结转** | 某层的清理台账未清零，该层不得进入下一层的「切换」阶段；未完成项**不允许滚到下个迭代** |
+| 4 | **不可结转** | 某层的清理台账未清零，该层不得进入下一层的「切换」阶段；未完成项**不允许滚到下个 Stage** |
 
 **回退策略**：清理窗口内（旧实现尚在）可 `git revert` 切换提交直接回落；**清理完成后旧实现不复存在，回退需重新上线旧版本**——这是「先上新后清旧」的代价，写明在此以免误判。
 
-§9 是逐文件的删除清单，§8 是每个阶段「旧代码减少了什么」的记录表。
+§7.4 是逐文件的删除清单，§8 是每个阶段「旧代码减少了什么」的记录表。
 
 ---
 
@@ -225,7 +229,7 @@ IM 平台的 trace id（飞书 `X-Trace-Id` / 企微 `ReqParam.Trace-Id` / 钉�
 class RawIngress:
     transport: Literal["http", "sse", "webhook", "im"]
     channel_type: ChannelType          # web / api 为合成值
-    channel_id: UUID | None             # 渠道实体 ID；web / api 无
+    channel_id: UUID | None             # 渠道实体 ID；web / api 无（见下方「合成值」约定）
     capabilities: ChannelCapabilities   # 该渠道支不支持卡片 / 交互 / 流式
     method: str
     path: str
@@ -236,6 +240,19 @@ class RawIngress:
     peer: str | None                   # IP，供审计与限流
     ingress_ref: str | None            # 渠道实体上的外部路径（webhook 定位用）
 ```
+
+> **合成值约定（web / api 没有渠道实体，但幂等表的两列是 NOT NULL）**
+>
+> `session_inbox` 的 `workspace_id` 与 `channel_id` 都是 **NOT NULL**（0035:199-204），而 web / api 既没有渠道实体、workspace 也可能为空。**约定**：
+>
+> | 字段 | web / api 的取值 | IM 的取值 |
+> |---|---|---|
+> | `channel_id` | 合成常量 `'web'` / `'api'` | 渠道实体 ID 的**字符串形式** |
+> | `workspace_id` | 有则用真实值；无则用**哨兵 UUID** `00000000-0000-0000-0000-000000000000` | 渠道配置上的 `workspace_id` |
+>
+> **为什么用哨兵而不是把列改 nullable**：唯一约束 `(tenant_id, workspace_id, channel_id, idempotency_key)` 含这两列。PostgreSQL 的普通 UNIQUE 约束里 **NULL 互不相等** —— 改成 nullable 会让「同一条消息在 workspace 为空时可以被插入多次」，**幂等直接失效**。哨兵保留了列的 NOT NULL 与索引效率，代价是「无 workspace」与「哨兵 workspace」在键空间里等价（在本平台语义下二者是同一类请求，可接受）。
+>
+> ⚠️ **本表 `channel_id` 是 `String(128)`，而渠道实体 ID 实际是 UUID**（webhook 路由 `channel_id: Annotated[UUID, Path()]`）。**存的是 UUID 的字符串形式**，不是 UUID 类型。迁移 0044 **不改这一列的类型** —— 改类型会动到既有索引，且字符串形式对唯一约束没有影响。
 
 ### 4.2 `AuthenticatedIngress`（② 产出）
 
@@ -253,7 +270,7 @@ class AuthenticatedIngress:
 @dataclass(frozen=True, slots=True)
 class ActorContext:
     tenant_id: UUID
-    workspace_id: UUID | None
+    workspace_id: UUID | None          # None = 该身份无工作区归属（见 §4.1 合成值约定）
     actor_id: UUID
     roles: tuple[str, ...]
     actor_kind: Literal["user", "service_account"]
@@ -275,6 +292,7 @@ class InboundMessage:
     channel_id: UUID | None
     external_chat_id: str              # 外部会话标识；web / api 填 session_id
     external_user_id: str              # 外部用户标识；web / api 填 user_id
+    explicit_agent_id: UUID | None     # 显式指定的目标 agent（web / api 可传）；None = 交由 Router 按策略推导
     # 幂等
     idempotency: IdempotencyKey
     external_message_id: str | None    # 平台原始 ID，审计用
@@ -296,9 +314,12 @@ class InboundMessage:
 - **`raw_metadata` ≠ 原始 payload**。原始 body 在 ③ 结束后即丢弃（可能含敏感信息）；`raw_metadata` 是裁剪后的审计视图。现状 `ParsedMessage.metadata` 把协议细节和业务参数混在一起（`modules/channel/adapter/inbound/feishu.py:69` 把 `tenant_key`/`chat_type`/`message_type` 塞进去），下游无法区分 → 新标准里协议细节归 `raw_metadata`，业务参数才进标准字段。
 - **`capabilities` 前置**。渠道支不支持卡片、交互、流式，在**入站时**就确定。现状是出站时才按 `channel_type` 硬判断。
 - **不做任何文本改写**。Normalizer 只翻译格式，不清洗、不截断、不摘要用户输入。
+- **`explicit_agent_id` 是唯一的「显式指定 agent」入口**。Router 的规则链里「explicit」这一档读的就是它（见 `router-refactor-plan.md` §3.1 规则 2）；IM 渠道恒为 `None`。Gateway **只透传、不校验存在性**（agent 是否存在由 Router / Session 判定）。
 - **不做会话 key 派生**。按生命周期基线（`session-lifecycle-sequence.md`），「外部会话标识 → 目标会话」的解析归 **Router**（「路由到会话」）。Gateway 只负责把外部标识规范化成 `external_chat_id` / `external_user_id`，**不生成 session_id、不查会话表**。
 
 ### 4.4 `AttachmentRef`（附件统一模型）
+
+> **决策 #6**：本次**不迁对象存储**，只统一 `AttachmentRef` 的形状并抽出 `AttachmentStoragePort`。字节迁移是独立课题，与本次解耦。
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -364,43 +385,116 @@ class IdempotencyKey:
 | ② | 平台原始事件 ID | 飞书 / 企微 / 钉钉 | strong | 7d |
 | ③ | 内容指纹 `sha256(channel+chat+user+text+time_bucket)` | 兜底 | **weak** | 120s |
 
+> **`time_bucket` 粒度 = 60 秒**（`floor(now / 60s)`）。这个值直接决定误杀概率：60 秒内连发两条内容相同的消息才会撞键。
+
 **weak 的处理**（决策 #5 已定稿）：用户连发两条「好的」会被误杀，所以 weak **不做抑制，只记录**，并在 `InboundMessage` 上标记 `unprotected`。配套策略：**`unprotected` 的 turn 禁用有副作用的工具**（只允许只读工具），由 Agent Loop / Execution 执行——这样「没有幂等保护」不会静默变成「副作用可能重复执行」。
+
+> **⚠️「不抑制」必须落到唯一约束上，否则会自相矛盾**（2026-10-29 审查发现）：
+>
+> §5.4 的原子 claim 是 `INSERT ... ON CONFLICT (tenant_id, workspace_id, channel_id, idempotency_key) DO NOTHING`。**如果 weak 键也参与这个唯一约束，两条内容相同、落在同一 `time_bucket` 的消息会互相冲突 —— 第二条被判为重复而被抑制**，直接违反决策 #5 与 §10.1 验收 4（「用户连发两条『好的』→ 两轮都跑」）。
+>
+> **落地方式**：唯一约束改为**只覆盖 strong 的部分唯一索引**（§5.3 的 DDL），weak 走**不带 arbiter 的普通 INSERT** —— 既落表可观测，又永不判重。详见 §5.3 与 §5.4。
 
 > web / api 的 strong 是常态（前端已在传 `clientRequestId`，`frontend/web/src/features/user/copilot/copilotApi.ts:43`）。缺失属异常 → 记 warning + 走 `unprotected`，**不静默降级为 weak 抑制**。
 
 ### 5.3 `session_inbox` 表改造
 
-现状两个硬伤：`external_message_id` **NOT NULL**（web 塞不进 `clientRequestId` 语义）；唯一约束 `(tenant_id, channel_id, external_message_id)` **不含 `workspace_id`**，且没有键来源 / 强度 / 过期概念。
+> **决策 #3**：**改造现有表**（加 6 列 + 换唯一约束），**不新建 v2 表**。理由：现有表是空的（0035 建后从未被使用），改造没有迁移负担，新建反而多一张孤儿表。
+>
+> **⚠️ 2026-10-29 审查修订**：「换唯一约束」的具体形态是**换成只覆盖 strong 的部分唯一索引**（`WHERE key_strength = 'strong'`），不是换成普通约束 —— 否则 weak 键会参与判重，**违反决策 #5**。详见本节末尾与 §5.4。
+
+现状三个硬伤：
+1. `external_message_id` **NOT NULL**（web 塞不进 `clientRequestId` 语义）；
+2. 唯一约束 `(tenant_id, channel_id, external_message_id)` **不含 `workspace_id`**，且没有键来源 / 强度 / 过期概念；
+3. **没有「过期」这个状态** —— 键空间只增不减，24h 后同一个 `clientRequestId` 重发会撞上旧行被误判为重复（见 §5.4 的过期分支）。
 
 ```sql
--- migrations/versions/0040_gateway_inbox_idempotency.py
+-- migrations/versions/0044_gateway_inbox_idempotency.py
 ALTER TABLE session_inbox
     ALTER COLUMN external_message_id DROP NOT NULL,
     ADD COLUMN idempotency_key  String(128) NOT NULL,
     ADD COLUMN key_source       String(32)  NOT NULL,
-    ADD COLUMN key_strength     String(8)   NOT NULL,
+    ADD COLUMN key_strength     String(8)   NOT NULL,   -- 'strong' | 'weak'
     ADD COLUMN status           String(16)  NOT NULL DEFAULT 'received',
     ADD COLUMN claimed_at       TIMESTAMPTZ,
     ADD COLUMN expires_at       TIMESTAMPTZ NOT NULL;
 
+-- 旧约束换成「只覆盖 strong 的部分唯一索引」
 ALTER TABLE session_inbox DROP CONSTRAINT uq_session_inbox_dedup;
-ALTER TABLE session_inbox
-    ADD CONSTRAINT uq_session_inbox_idem
-    UNIQUE (tenant_id, workspace_id, channel_id, idempotency_key);
+CREATE UNIQUE INDEX uq_session_inbox_idem_strong
+    ON session_inbox (tenant_id, workspace_id, channel_id, idempotency_key)
+    WHERE key_strength = 'strong';
 
 CREATE INDEX ix_session_inbox_expires ON session_inbox (expires_at);
 ```
 
+> **为什么是部分唯一索引而不是普通约束**（2026-10-29 审查发现）：决策 #5 要求 weak 键**不抑制**。若唯一约束覆盖全部行，两条内容相同、落在同一 `time_bucket` 的 weak 消息会互相冲突 → 第二条被误判为重复 → **违反决策 #5**。部分索引（`WHERE key_strength = 'strong'`）让 weak 行**落表可观测、但永不参与判重**。
+>
+> **代价**：`ON CONFLICT` 的 arbiter 必须带上同样的谓词（`ON CONFLICT (...) WHERE key_strength = 'strong' DO NOTHING`），否则推断不出这个部分索引。**这是本方案唯一需要记住的 SQL 细节。**
+>
+> **`workspace_id` / `channel_id` 保持 NOT NULL**：web / api 的合成值与哨兵见 §4.1「合成值约定」。**不改成 nullable** —— PostgreSQL 的 UNIQUE 约束中 NULL 互不相等，改 nullable 会让「workspace 为空」的消息被反复插入，**幂等直接失效**。
+>
+> **`ADD COLUMN ... NOT NULL` 的隐含前提**：本表自 0035 建起**零代码引用、零数据行**（`grep session_inbox` 只在迁移与注释里命中），所以加 NOT NULL 列无需 DEFAULT。**若表里已有数据，0044 必须先补 DEFAULT 再回填** —— 这一条要在迁移脚本的注释里写死。
+
 `status` 取值：`received`（已收未 claim）→ `claimed`（已 claim，处理中）→ `completed`（本轮已完成）；异常分支 `abandoned`。
 
+#### 5.3.1 过期行的清理（**必须有归属，否则键空间只增不减**）
+
+| 维度 | 结论 |
+|---|---|
+| **谁清理** | **Session 的 sweeper**（`session/…/sweeper.py`）—— 因为 `session_inbox` 的**表归属是 Session**（§9），Gateway 只持端口，不直接操作这张表 |
+| **清理什么** | `expires_at < now()` 的行（按批删除，单批上限 1000 行，避免长事务） |
+| **清理频率** | 与 sweeper 的其它三类超时同批调度（**不是独立 cron**） |
+| **为什么必须** | 唯一约束**不含 `expires_at`** —— 过期行留在表里，同一个键重发时仍会命中冲突。**不清理 = 24h 后开始持续误杀**（见 §5.4 的过期分支，它是第二道保险，不是第一道） |
+
+> **⚠️ 这是跨层依赖**：Session 方案的 sweeper 原本只覆盖「轮次 / 审批 / 会话空闲」三类超时，**没有 `session_inbox` 的过期清理**。已同步登记到 [`session-refactor-plan.md`](session-refactor-plan.md) 的 sweeper 章节与 [`implementation-plan.md`](implementation-plan.md) §3.3。
+>
+> **两道保险，缺一不可**：① sweeper 定期删（减少冲突面）；② claim 时发现冲突行已过期 → 当作不存在（保证「刚好在清理前重发」也不误杀）。**只有第 ② 条也能正确工作，但第 ① 条不做，表会无限膨胀。**
+
+#### 5.3.2 0044 的回滚
+
+0044 是**纯新增列 + 换约束**，但**换约束会换掉幂等语义** —— 回滚必须显式：
+
+```sql
+-- 1) 删新增的索引（含部分唯一索引）
+DROP INDEX IF EXISTS ix_session_inbox_expires;
+DROP INDEX IF EXISTS uq_session_inbox_idem_strong;
+
+-- 2) 删新增的列
+ALTER TABLE session_inbox
+    DROP COLUMN IF EXISTS expires_at,
+    DROP COLUMN IF EXISTS claimed_at,
+    DROP COLUMN IF EXISTS status,
+    DROP COLUMN IF EXISTS key_strength,
+    DROP COLUMN IF EXISTS key_source,
+    DROP COLUMN IF EXISTS idempotency_key;
+
+-- 3) 恢复 0035 的原约束
+ALTER TABLE session_inbox
+    ADD CONSTRAINT uq_session_inbox_dedup
+    UNIQUE (tenant_id, channel_id, external_message_id);
+ALTER TABLE session_inbox
+    ALTER COLUMN external_message_id SET NOT NULL;
+```
+
+> **⚠️ 回滚的硬前提**：`external_message_id` 恢复 `NOT NULL` 之前，必须先把 `NULL` 的行补齐 —— 而 0035 的原语义下这些行**本来就没有这个值**（web 请求没有平台消息 ID）。
+>
+> **因此：回滚 0044 前，必须先把这批行的 `external_message_id` 用 `idempotency_key` 回填**，否则 `SET NOT NULL` 会失败。
+>
+> **回滚的语义代价**：恢复原约束 = 幂等退回「按平台消息 ID 去重」，**web 的 `clientRequestId` 语义消失**（同一条 web 消息会被受理多次）。**回滚 0044 等于放弃 web 侧的幂等** —— 这不是技术问题，是产品语义问题，必须由 Gateway 层 owner 决定。
+
 ### 5.4 原子 claim
+
+**strong 键**（`key_strength = 'strong'`）走原子 claim：
 
 ```sql
 INSERT INTO session_inbox
     (tenant_id, workspace_id, channel_id, idempotency_key, key_source, key_strength,
      external_message_id, payload_hash, status, claimed_at, expires_at, trace_id)
 VALUES (...)
-ON CONFLICT (tenant_id, workspace_id, channel_id, idempotency_key) DO NOTHING
+ON CONFLICT (tenant_id, workspace_id, channel_id, idempotency_key)
+    WHERE key_strength = 'strong'
+DO NOTHING
 RETURNING id, status, turn_id;
 ```
 
@@ -409,12 +503,41 @@ RETURNING id, status, turn_id;
 
 | 查回状态 | 含义 | 动作 |
 |---|---|---|
-| `completed` | 上一轮已完成 | **重放**该 turn 的事件流（§5.5） |
+| `completed`（未过期） | 上一轮已完成 | **重放**该 turn 的事件流（§5.5） |
 | `claimed`（未超时） | 正在处理 | 返回「处理中」，或挂等该 turn 的事件流 |
 | `claimed`（已超时） | 处理方崩溃 | **接管**：重置 `claimed_at`，重跑 |
 | `received` | 前一处理方在 claim 前崩溃 | 接管 |
+| `abandoned` | 前一处理方明确放弃 | 接管（重置 `claimed_at` 与 `status`） |
+| **任意（`expires_at < now()`）** | **该行已过期** | **当作不存在**：在同一事务里 `DELETE` 旧行 → 重新 `INSERT`（新 `expires_at`）→ 继续往下走。**这是「过期不误杀」的第二道保险** |
 
 崩溃超时阈值沿用旧路径 `try_claim` 的经验（`modules/agent_runtime/adapter/persistence/repositories.py:85-108` 的 30 分钟僵尸接管）。
+
+**weak 键**（`key_strength = 'weak'`）**不走 claim**：
+
+```sql
+INSERT INTO session_inbox
+    (tenant_id, workspace_id, channel_id, idempotency_key, key_source, key_strength,
+     external_message_id, payload_hash, status, claimed_at, expires_at, trace_id)
+VALUES (
+    :tenant_id, :workspace_id, :channel_id,
+    :idempotency_key,            -- sha256(channel+chat+user+text+time_bucket)
+    'payload_fingerprint',       -- key_source
+    'weak',                      -- key_strength
+    NULL,                        -- external_message_id：weak 键没有平台消息 ID
+    :payload_hash,
+    'received',                  -- status
+    NULL,                        -- claimed_at：weak 不走 claim
+    now() + interval '120 seconds',   -- expires_at（weak 的 TTL）
+    :trace_id
+);
+-- 不带 ON CONFLICT：weak 行不参与唯一索引（部分索引的谓词是 key_strength='strong'），插入永不冲突
+```
+
+- **永远不判重、永远放行**（决策 #5）；
+- 在 `InboundMessage` 上标 `unprotected` → 该 turn **禁用有副作用的工具**（§5.2）；
+- 只进指标 `qzdap_gateway_dedup_total{outcome="weak_recorded"}`，可观测但不抑制。
+
+> **两条路径必须分开写，不能用同一个 INSERT 糊过去**：weak 走 claim 就会被部分索引的谓词排除在冲突之外 → `ON CONFLICT` 推断不出 arbiter → **SQL 直接报错**。所以 strong 与 weak 是两条语句、两个分支。
 
 ### 5.5 重复时返回什么
 
@@ -447,7 +570,41 @@ Agent     tool_executions.idempotency_key (UNIQUE) + request_hash               
 
 ---
 
+### 5.7 限流（**当前只写在职责里，无任何设计 —— 本节补齐**）
+
+§1.1 声称 Gateway 做「验签、**限流**、去重、错误码映射」，但全篇无限流设计、无阈值、无错误码、无验收。现状：**无限流**（`grep` 无任何 rate limit 逻辑），IM 渠道的入站 webhook 可被无限刷。
+
+**设计**：
+
+| 维度 | 规则 | 依据 |
+|---|---|---|
+| **IM 限流键** | `(tenant_id, channel_id, external_user_id)` | 用户级；防止单用户刷爆一个渠道。**IM 路径有 `external_user_id`** |
+| **Web / API 限流键** | `(tenant_id, actor_id)` | ⚠️ **web / api 路径没有 `external_user_id`**（`session_router.py` 里该字段零命中）—— 所以 IM 的那个键**不适用于 web**。web 用已认证的 `actor_id` |
+| 租户级 | `(tenant_id, 全局)` | 防止单租户占满 worker |
+| 算法 | **双层令牌桶**（短窗 + 长窗） | 短窗挡突发，长窗挡持续 |
+| 短窗 | 每分钟 N 次（建议 N=60） | — |
+| 长窗 | 每小时 M 次（建议 M=600） | — |
+| 超限响应 | `ErrorCode.RATE_LIMITED` → HTTP 429 | `ErrorCode` 枚举已有 `RATE_LIMITED`（status 429） |
+| IM 渠道超限 | **返回 200 但不受理**（避免平台反复重推） | IM 平台对 429 的重试策略不可控 |
+| Web 超限 | 返回 429 + `Retry-After` | — |
+
+**实现位置**：Gateway 的 **L1 接入层**（`identity.py` 同级），因为限流必须在**解析与落库之前**。计数器落在 `qzdap_observability`（与 `qzdap_legacy_calls_total` 同处），按 `runtimes/embedding_runtime` 的独立服务模式，或先用进程内实现（单副本够用）。
+
+**归属决策**：限流是 Gateway 的职责还是独立能力域？现状 `modules/governance` 有 `policies` 表。**本方案把限流放在 Gateway**（它是入口边界的一部分），但**限流策略（阈值、租户配额）由治理模块配置**。
+
+> **决策 #9**（新增）：限流的阈值与租户配额 —— 硬编码在配置里（简单，默认值够用）还是由治理模块的 `policies` 表配置（可按租户调整）？
+> **建议**：先硬编码 + 环境变量覆盖（决策 #9 的备选之一），治理侧可配留待后续 —— **不要在本轮引入新配置面**。
+
+**验收**：
+- 同一用户 1 分钟内超过 N 次 → 第 N+1 次返回 429（Web）/ 不受理（IM）；
+- 限流在**落库之前**发生（被限流的请求不产生 `session_inbox` 行）；
+- 限流计数进指标 `qzdap_rate_limited_total{channel="<type>"}`。
+
+---
+
 ## 6. 出站：统一编码与投递
+
+> **决策 #1**：出站**归 ① Channel Gateway**（与入站对称）。不单列「Result Encoder」—— 那会让渠道知识有两份。
 
 现状缺口：`OutboundAdapter.send_reply(external_chat_id, text, metadata)`（`modules/channel/application/ports.py:112`）**只能发纯文本**，而会话层能产 16 种 chunk。IM 侧现在收不到审批卡片、plan、artifact。
 
@@ -467,16 +624,69 @@ class ResultSink(Protocol):
 | `approval_required` | 审批卡片（带按钮，回调带 approval_id） | 文本 + 「回复 YES/NO」指令 |
 | `plan_proposed` | 计划卡片 | 编号文本列表 |
 | `artifact_ready` | 产物卡片（含下载链接） | 文本 + 链接 |
-| `interactive_action` | 交互卡片 | **丢弃并记 degraded**（无法在纯文本渠道表达） |
+| `interactive_action` | 交互卡片 | **降级为文本提示 + 记 degraded**（见下） |
 | `usage` / `done` / `error` | 折叠或忽略 | 忽略（不打扰用户） |
 
-原则：**降级必须保信息**。唯一的例外是 `interactive_action`——它在纯文本渠道无法表达，此时应记 `degraded` 而非静默丢弃。
+原则：**降级必须保信息**。
+
+**`interactive_action` 的降级契约**（前端消费方 `CopilotPage.tsx:506`）：
+
+| 渠道能力 | 行为 | 前端表现 |
+|---|---|---|
+| `interactive: true` | 发交互卡片 | 前端渲染对应卡片（问题卡 / plan / 待办 / 委派） |
+| `interactive: false` | **降级为一条 `message` 事件**，内容为可回答的文本提示（如「请回复你的选择：A / B / C」），同时置 `degraded_flags.interactive_degraded = true` | 前端按普通消息气泡显示，用户可文字回复 |
+
+> **不得静默丢弃**：`interactive_action` 在纯文本渠道无法表达，但**可以降级为可回答的文本**。若连文本都无法表达（如 IM 的富文本限制），则发一条 `message` 说明「此操作需要在 Web 端完成」并记 degraded。
 
 投递失败 → 重试 → 死信（复用 `runtimes/.../outbox/__init__.py` 的 8 次 + 指数退避 + jitter 状态机）。
 
 ---
 
 ## 7. 逐文件改造清单
+
+> **决策 #2**：`modules/channel` **保持独立模块**，实现 runtime 定义的 Protocol，Gateway 只持有端口。不把协议适配器迁进 runtime —— 边界更干净，但要拆包、改多处 import，收益不抵成本。
+>
+> **⚠️「迁移」一词的准确含义**（2026-10-29 审查补充）：本节说的「迁到 `gateway/…`」指的是**逻辑迁移** —— **语义搬到 runtime 的 `gateway/` 包里，旧代码在对应 Stage 被删除**。**`modules/channel` 这个模块本身不被拆散、不被并入 runtime**：它的**路由端点与渠道 CRUD 留在原处**，只是变成调用 `Gateway.accept` 的薄壳。
+>
+> 这样两个决策才不冲突：#2 说「模块保持独立」，本节说「逻辑搬到 runtime」—— **搬的是逻辑，不是模块**。
+
+### 7.0 本层涉及的错误码
+
+> **⚠️ 现状核对（2026-10-29 审查）**：`libs/schema/src/qzdap_schema/dtos/errors.py` 的 `ErrorCode` 枚举**只有 20 个成员**，**不包含**下表中除 `RATE_LIMITED` / `AUTHENTICATION_FAILED` / `FORBIDDEN` / `CONTEXT_TOO_LARGE` / `AGENT_NOT_AVAILABLE` / `SESSION_BUSY` 之外的码。那些码是**各模块 `domain/errors.py` 里异常类的自由字符串**：
+> ```
+> modules/channel/…/domain/errors.py:24:        code = "CHANNEL_NOT_FOUND"
+> modules/agent_runtime/…/domain/errors.py:43:  code = "DUPLICATE_REQUEST"
+> ```
+> **所以「本层新增：无」这个结论是错的** —— 本层需要做的是**收敛**，不是新增。
+
+| 错误码 | 现状归属 | HTTP | 本层行为 |
+|---|---|---|---|
+| `RATE_LIMITED` | ✅ `ErrorCode` 枚举成员 | 429 | §5.7 限流超限 |
+| `AUTHENTICATION_FAILED` | ✅ `ErrorCode` 枚举成员 | 401 | 验签 / JWT 失败 |
+| `FORBIDDEN` | ✅ `ErrorCode` 枚举成员 | 403 | 租户 / 工作区归属不符 |
+| `CONTEXT_TOO_LARGE` | ✅ `ErrorCode` 枚举成员 | 413 | Context 层溢出时的透传 |
+| `AGENT_NOT_AVAILABLE` | ✅ `ErrorCode` 枚举成员 | 502 | Router 未选到 agent |
+| `SESSION_BUSY` | ✅ `ErrorCode` 枚举成员 | 409 | 同会话已有活动轮次 |
+| `CHANNEL_NOT_FOUND` / `CHANNEL_DISABLED` | ⚠️ `modules/channel` 异常字符串 | 404 / 409 | 渠道不存在或已停用 |
+| `INBOUND_ADAPTER_MISSING` | ⚠️ `modules/channel` 异常字符串 | 500 | 该渠道类型没有注册解析器 |
+| `WEBHOOK_SIGNATURE_INVALID` / `WEBHOOK_TIMESTAMP_SKEW` | ⚠️ `modules/channel` 异常字符串 | 401 | 验签失败 |
+| `DUPLICATE_REQUEST` | ⚠️ `modules/agent_runtime` 异常字符串 | 409 | 幂等命中且**未启用**无感重放时的兜底 |
+| `TENANT_DENIED` | ⚠️ 模块内异常字符串 | 403 | 租户 / 工作区归属不符 |
+
+**本层的动作 = 收敛 + 投影**：
+
+1. **收敛**：把上表 ⚠️ 标记的 7 个码**提升为 `ErrorCode` 枚举成员**，并把各模块 `domain/errors.py` 的 `code = "..."` 字符串**对齐到枚举**。理由：§7.1 的 `ERROR_PROJECTION` 投影表是**按码查文案**的 —— 若码散落在两套体系里，投影表要维护两套码，而其中一套必然漏。
+2. **投影**：新增 `ERROR_PROJECTION`（http / im / web 三套文案）。
+3. **⚠️ 不新增码**：本方案**不引入任何新错误码**。若实施中发现某个场景确实没有对应码，**先确认现有码能否表达**，再决定新增 —— 并同步更新本表。
+
+> **实施顺序**：错误码收敛属于**跨模块改动**（`libs/schema` + `modules/channel` + `modules/agent_runtime`），登记为横切项 **H8（跨模块外部前置）** 的第一条（见 [`implementation-plan.md`](implementation-plan.md) §5）。**它是 Stage 0 的前置** —— §7.1 的投影表建在 `ErrorCode` 之上。
+
+**非 `ErrorCode` 的标记**（走 `flags` 或事件字段，不进错误码枚举）：
+
+| 标记 | 载体 | 含义 |
+|---|---|---|
+| `replay_unavailable` | `InboundMessage` / 响应头 | 无感重放依赖未就绪，重复请求降级为 202 |
+| `recall_degraded` / `compaction_degraded` / `interactive_degraded` | `ResultEvent.flags` | 降级发生，前端按策略折叠或提示 |
 
 ### 7.1 新增（`backend/runtimes/agent_runtime/src/qzdap_agent_runtime/gateway/`）
 
@@ -487,8 +697,8 @@ class ResultSink(Protocol):
 | `normalizer.py` | `MessageNormalizer` Protocol + 按 `channel_type` 分派 |
 | `idempotency.py` | `IdempotencyGuard`、`IdempotencyStore` Protocol、`IdempotencyDecision` |
 | `channels.py` | `ChannelGateway`：渠道注册表、入站分派、出站编解码、能力声明 |
-| `facade.py` | `Gateway.accept(raw) -> InboundMessage \| Duplicate`；`Gateway.emit(event)` |
-| `errors.py` | `ErrorCode` → 多渠道文案投影表 |
+| `facade.py` | `Gateway.accept(raw)` 返回 `InboundMessage` 或 `Duplicate`；`Gateway.emit(event)` |
+| `errors.py` | `ErrorCode` → 多渠道文案投影表（`ERROR_PROJECTION`） |
 
 ### 7.2 迁移（旧代码 → 新位置）
 
@@ -505,6 +715,31 @@ class ResultSink(Protocol):
 | `modules/channel/adapter/dispatch/dispatch_subscriber.py:113-125` LRU 去重 | `gateway/idempotency.py` | **删除 LRU**，改用 claim |
 | `modules/agent_runtime/adapter/http/attachments.py:89` `resolve_attachment_context` | `gateway/normalizer.py` | 改为产出 `AttachmentRef` |
 
+### 7.2.1 依赖方向（**实施前必须确认，否则循环依赖**）
+
+```
+composition
+   │
+   ├─→ modules/agent_runtime      (Session：turn 实现 / 轮次 / 事件)
+   ├─→ modules/channel            (渠道 CRUD + 验签薄壳 + 渠道适配器)
+   │        │
+   │        └──→ qzdap-agent-runtime   ← 本方案新增的依赖（webhook 端点要调 Gateway.accept）
+   │
+   └─→ qzdap-agent-runtime        (Gateway 新实现：gateway/ 包)
+            └─→ kernel / schema / persistence / auth / messaging / llm / observability
+```
+
+| 事实 | 依据 |
+|---|---|
+| `modules/channel` **当前不依赖** `qzdap-agent-runtime` | `modules/channel/pyproject.toml` 只声明 kernel / schema / persistence / auth / messaging / vault / http / fastapi / pydantic / httpx |
+| `qzdap-agent-runtime` **不依赖** `modules/channel` | `runtimes/agent_runtime/pyproject.toml` 同上，无 channel |
+| **无循环** | 两者都只依赖 `kernel` / `schema` / `auth` 等叶子包 |
+| **本方案新增** | `modules/channel` 增加 `qzdap-agent-runtime` 依赖；`qzdap-agent-runtime` **不增加** `qzdap-channel` 依赖 |
+
+> **为什么 runtime 不反向依赖 channel**：Gateway 需要「渠道实体查询」（验签前要知道用哪把密钥），这通过**端口**（`ChannelDirectoryPort`）实现，实现在 `modules/channel` 侧 —— 与 §3.2 ① 的「渠道实体查询属于 ①」一致，且保持了 §3.2 ③ 的「**Gateway 不直接依赖 DB**」。
+>
+> **⚠️ 这是本方案唯一的跨包依赖变更**，登记在横切项 **H6（锁文件与依赖）** 与 **H8（跨模块外部前置）** 下（见 [`implementation-plan.md`](implementation-plan.md) §5）。**实施时必须同步改 `modules/channel/pyproject.toml` 与 `uv.lock`，否则 `uv sync` 后 `modules/channel` 找不到 `Gateway.accept`。**
+
 ### 7.3 保留但改造
 
 | 文件 | 改造点 |
@@ -514,27 +749,33 @@ class ResultSink(Protocol):
 | `modules/agent_runtime/adapter/http/sse.py` | 保留 SSE 编码器；新增 `Last-Event-ID` 支持 |
 | `libs/auth/src/qzdap_auth/middleware.py` | 保留；其产出的 principal 转为 `ActorContext` |
 
-### 7.4 删除清单（Stage 4 停用 + 打点 → Stage 5 删除）
+### 7.4 删除清单（Stage 4a 停用 + 打点 → Stage 5 删除）
+
+> **决策 #7**：`/v1/sessions*` 的会话 CRUD 保留**兼容别名**（打 deprecation 日志），保留期 = **新路径流量占比 ≥95% 之后的 ≥7 天**，其 **turn 部分直接删**。前端已切 `/api/*`，不保留 turn 部分没有回退价值。
 
 | 类别 | 具体 |
 |---|---|
-| 旧数据类 | `ParsedMessage`（`modules/channel/application/ports.py:95`） |
-| 旧去重逻辑 | `dispatch_subscriber.py` 的 `OrderedDict` LRU（`:44`）、`_message_key`（`:253-260`） |
+| 旧数据类 | `ParsedMessage`（`modules/channel/application/ports.py:95`）—— ⚠️ **当前被 4 个 inbound adapter + `adapter/inbound/__init__.py` 引用**（`feishu.py` / `dingtalk.py` / `wechatwork.py` / `web.py`），Stage 3 改完这 5 处后才真正「全仓无引用」 |
+| 旧去重逻辑 | `dispatch_subscriber.py` 的 `OrderedDict` LRU（`:44`）、`_message_key`（`:253-260`）。**文件删除归本层（台账 G9）** |
 | 旧幂等逻辑 | `repositories.py:155-170` `record_request_id`；`session.metadata.recent_request_ids` 字段与所有读写 |
 | 旧硬编码身份 | `dispatch_subscriber.py:42-46` `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` |
 | 旧入站形状 | `channel/domain/events.py` 的 `ChannelMessageReceived`（缺 `external_message_id` / `trace_id`）→ 由 `InboundMessage` 取代 |
 | 旧会话 API | `/v1/sessions*`（`modules/agent_runtime/adapter/http/router.py:143-280`）与 `/api/sessions*`（`session_router.py`）**合并为一套** |
-| 旧 turn 实现 | `application/use_cases/run_turn.py`、`run_turn_to_completion.py` 与 `application/copilot.py` 的 **turn 编排部分合并为一套**（保留 `copilot.py` 的 claim / 幂等 / 取消 / 审批语义为唯一实现） |
-| 旧路由 | `session_router.py:541` 的 `GET /v1/sessions`（与 `/api/sessions` 语义重复） |
+| 旧 turn 实现 | `application/use_cases/run_turn.py`、`run_turn_to_completion.py` 与 `application/copilot.py` 的 **turn 编排部分合并为一套**（保留 `copilot.py` 的 claim / 幂等 / 取消 / 审批语义为唯一实现）。⚠️ **唯一 owner 是 Session（台账 X2）** —— 本层只做「停用 + 打点 + 确认无残留调用方」，**删除动作在 Session Stage 5b**（与本层的「切 IM 入口」同 PR） |
+| 旧路由 | `session_router.py` 的 `GET /v1/sessions`（与 `/api/sessions` 语义重复）—— 锚点用**符号名** `GET /v1/sessions`，行号会漂移 |
 | 孤儿表 | 无（`session_inbox` / `session_turns` / `session_events` / `tool_executions` **保留并启用**，不是删除对象） |
 
-> **注意**：`/v1/sessions*` 与 `/api/sessions*` 的合并涉及前端契约。前端目前只用 `/api/*`（`frontend/web/src/features/user/copilot/copilotApi.ts`）与 `/v1/sessions`（列表）。合并方案：**外部路径保持 `/api/sessions*` 不变**（前端零改动），`/v1/sessions*` 只保留一个兼容别名并打 deprecation，**一个发布周期后删除**。
+> **注意**：`/v1/sessions*` 与 `/api/sessions*` 的合并涉及前端契约。**前端零使用 `/v1/sessions*`**（2026-10-29 核实：`frontend/packages/api/src/pathMap.ts:171-177` 的会话相关条目**全部**是 `/api/sessions*`，全仓 grep `v1/sessions` 零命中）。合并方案：**外部路径保持 `/api/sessions*` 不变**（前端零改动），`/v1/sessions*` 只保留一个兼容别名并打 deprecation，**保留期：新路径流量占比 ≥95% 之后的 ≥7 天**，到期删除。
+>
+> **⚠️ 因此保留兼容别名的唯一理由是「仓外消费者」，不是前端。** 这一点必须落实为一次确认动作（[`implementation-plan.md`](implementation-plan.md) 前置 **P-11**：由 API owner 确认是否存在仓外调用方）。**若确认无仓外消费者，G7 / G8 可在 Stage 5 直接删，保留期归零。**
 
 ---
 
 ## 8. 实施阶段
 
 > 每阶段的验收都包含「**旧代码减少了什么**」这一栏。缺这一栏的阶段不算完成。
+>
+> **决策 #8（切换方式）**：**先上新、后清旧** —— Stage 4a 新实现接管（旧实现打弃用标记 + 打点，进入清理窗口），Stage 5 清理。**不留 feature flag 双跑**，但清理窗口内旧实现在场（这正是回退兜底的前提，详见 §11）。Stage 4b（启用无感重放）待 Session 就绪，**不豁免**。
 
 ### Stage 0：契约与地基（不改行为）
 
@@ -542,26 +783,32 @@ class ResultSink(Protocol):
 |---|---|
 | 建 `gateway/` 骨架 + `types.py` | 4 个类型定稿 |
 | 扩 `ErrorCode` 投影表 | `libs/schema/.../errors.py` 加 `ERROR_PROJECTION`（http / im / web 三套文案） |
-| 迁移 0040 | `session_inbox` 加列改约束 |
+| 迁移 0044 | `session_inbox` 加列改约束 |
 | 建架构测试 | §10.2 的 import 禁令 |
+| **收敛基础设施** | 建 `qzdap_legacy_calls_total` 指标（若尚未建立），并给本层台账条目的旧入口打点（`record_legacy_call("<编号>")`）。**没有打点就没有清理判据** —— 见 `cleanup-ledger.md` §3.2 |
 
 **旧代码减少**：无（纯新增）。
 **验收**：类型有单测；迁移可在 dev 库跑通；架构测试通过。
+**验收补充**：本层每个台账条目的旧入口都有打点；`/metrics` 能查到 `qzdap_legacy_calls_total`。
 
 ### Stage 1：Idempotency Guard 落地（先做，因为它不依赖其他层）
 
 | 动作 | 细节 |
 |---|---|
-| `IdempotencyStore` 端口 + SQL 实现 | `INSERT ... ON CONFLICT DO NOTHING RETURNING` |
+| `IdempotencyStore` 端口 + SQL 实现 | **strong / weak 两条 INSERT 路径**（§5.4）：strong 走 `ON CONFLICT (...) WHERE key_strength='strong' DO NOTHING RETURNING`；weak 走不带 arbiter 的普通 INSERT（**永不判重**，决策 #5） |
 | `Gateway.accept` 编排 | ①→②→③→④ 四步串起来 |
 | web 入站切过来 | `session_router.py` 的 `stream_turn` 改为先过 `Gateway.accept` |
+| **审批恢复路径传幂等键** | `decide_approval` 触发的续跑请求携带原轮次的 `clientRequestId` → 连点两次「同意」只执行一次工具（台账 **G10**） |
 | **删除** | `repositories.py:155-170` `record_request_id` + `session.metadata.recent_request_ids` 全部读写 |
 
 **旧代码减少**：`record_request_id` 删除；`recent_request_ids` 从 `agent_sessions.metadata` 消失。
-**验收**：
-- 同一 `clientRequestId` 重复 10 次并发 → 只起 1 轮，其余 9 次返回 `Duplicate`；
-- 不同 `clientRequestId` 并发 → 1 轮成功 + 9 次 `SESSION_BUSY`（不重复执行）；
-- 幂等窗口 24h 内有效（跨进程验证：两个 worker 交替请求）。
+**验收**（**两种并发要分开测，语义不同**）：
+- **同键并发**（同一 `clientRequestId` 10 次并发）→ 只起 **1** 轮，其余 9 次返回「重复」（SSE 走重放 / REST 走 202 + turn_id）；**不重复执行**；
+- **同会话不同键并发**（同一 session 10 个不同 `clientRequestId`）→ 按 Router 决策 #1 的语义：**排队**（各自最终都跑，顺序按 `ingress_seq`）或 **`SESSION_BUSY`**（拒绝语义下）—— **由决策 #1 决定，不是本层能定的**。⚠️ 不同幂等键**不是**重复请求，**不得**按重复处理；
+- **弱键不误杀**：同一会话 60 秒内连发 2 条内容相同的消息（「好的」）→ **两轮都跑**（weak 不抑制，标 `unprotected`）；
+- **过期不误杀**：同一个 `clientRequestId` 在 24h（TTL）后重发 → **当作新消息受理**（不判重复）；
+- **审批不重复执行**：连点两次「同意」→ 工具只执行一次（依赖「审批恢复路径传幂等键」）；
+- **跨进程**：两个 worker 交替请求同一 `clientRequestId` → 只起 1 轮。
 
 ### Stage 2：Auth Identity 收口
 
@@ -570,7 +817,7 @@ class ResultSink(Protocol):
 | `IdentityVerifier` 端口 | web(JWT) / IM(HMAC) / internal 三种实现 |
 | 服务账号物化 | IM 的 actor 从渠道配置读，不再用全局常量 |
 | 渠道验签迁出 | `channel/application/services.py` 的 `_verify_signature` → `gateway/identity.py` |
-| 补 `/v1/sessions` 的租户校验 | 或随 Stage 4 直接删除该路由 |
+| 补 `/v1/sessions` 的租户校验 | 或随 Stage 4a 直接删除该路由 |
 
 **旧代码减少**：`channel/application/services.py` 的验签分支删除；`dispatch_subscriber.py` 的硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` 删除。
 **验收**：伪造签名 / 过期时间戳 / 跨租户重放全部拒绝且产生审计事件；鉴权失败的请求**有 trace_id**。
@@ -587,34 +834,54 @@ class ResultSink(Protocol):
 **旧代码减少**：`ParsedMessage`、`ChannelMessageReceived`、IM 侧进程内 LRU 去重全部删除。
 **验收**：5 种入口归一化后，除 `channel_type` / `raw_metadata` 外字段完全一致（参数化测试）；附件三套语义收敛为一个 `AttachmentRef`。
 
-### Stage 4：新实现接管（出站与切换）
+### Stage 4a：新实现接管（出站与切换，重放降级）
 
-> **开工前置**：Session 层的「`session_events` 真写真读」必须已落地（决策 #4 的硬依赖，见 §0.1）。未落地时本阶段**可以开工但不能启用重放**——重复分支走降级路径（202 + turn_id + `replay_unavailable`），并在合并说明里写明「重放待 Session 层上线后开启」。
->
 > **本阶段只上新，不删旧**。旧实现在本阶段打上 `@deprecated` + 调用打点，进入清理窗口。
+>
+> **开工前置**：Gateway Stage 0–3 已完成。**Session 层台账未清零不阻塞本阶段** —— 这是 `README.md` §3.3.1 的**豁免 E1**：Gateway 的接管本身只依赖「重复分支可降级」这一降级路径可用，不依赖 Session 的清理完成。
 
 | 动作 | 细节 |
 |---|---|
 | `ResultSink` 落地 | 出站编码 + 卡片 + 降级规则 |
-| `Last-Event-ID` 重放 | 依赖 `session_events` 落库（Session 层前置，见 §0.1） |
 | 渠道入站切过来 | `receive_webhook` → `Gateway.accept` → Router |
+| **切 IM 入口**（**原子**） | `dispatch_subscriber.py` → `Gateway.accept` → 新链路。**必须与 Session Stage 5b（删 `use_cases/*`）同一个 PR** —— 否则 IM 断（台账 §3.4 的「必须原子切换」条目） |
 | `/v1/sessions*` 的 turn 部分 | 停用（打弃用标记），不立即删 |
 | 第二套 turn 实现 | 停用（打弃用标记），不立即删 |
 | `dispatch_subscriber.py` | 停用（打弃用标记），不立即删 |
-| **给以上旧路径打点** | `qzdap_legacy_calls_total{path="..."}`，供清理判定 |
+| **给以上旧路径打点** | `qzdap_legacy_calls_total{entry="..."}`，供清理判定 |
+| **重复请求降级路径** | 命中重复但 `session_events` 未就绪 → 返回 202 + turn_id + `replay_unavailable`（**不静默丢弃**） |
 
 **旧代码减少**：无删除，但全部旧路径**进入弃用与观测状态**。
-**验收**：四条入站路径全部经过 `Gateway.accept`；旧路径调用指标归零。
+**验收**：四条入站路径全部经过 `Gateway.accept`；**旧路径的调用打点覆盖率 100%**（每个待清理的旧入口都有 `record_legacy_call("<编号>")`）；新路径流量占比 ≥ 95%；重复请求在降级路径下返回 202 而非报错。
+
+> **归零判据属于 Stage 5 的进入条件，不在这里要求** —— Stage 4a 刚接管时旧路径必然还有残留流量（长连接、缓存、灰度中的客户端）。
+>
+> **对外声明**：Stage 4a 状态下，重复请求**不支持无感重放**，必须显式告知调用方（202 + `replay_unavailable`）。
+
+### Stage 4b：启用无感重放（Session 就绪后）
+
+> **开工前置（硬依赖，不豁免）**：Session Stage 4 已完成 —— `session_events` **真写真读**（落库 + 按 seq 读取），且 Session 提供 `EventStore.get_events(turn_id, after_seq)` 读取端口（见 `session-refactor-plan.md` §6）。
+>
+> **本阶段不豁免「不可结转」规则**：Session 台账清零前不得启用无感重放，因为重放的正确性直接依赖 Session 的事件落库语义。
+
+| 动作 | 细节 |
+|---|---|
+| `Last-Event-ID` 重放 | 从 `session_events` 按 seq 重放 |
+| 降级路径移除 | 重复命中 → 直接重放事件流，不再返回 202 |
+| 重放一致性校验 | 重放内容与原始事件流的 seq 对齐 |
+
+**旧代码减少**：无（能力补齐）。
+**验收**：SSE 断开后带 `Last-Event-ID` 重连 → **重放拼接结果与原流 chunk 序列的 hash 相同**、seq 连续；重放不再走 202 降级路径。
 
 ### Stage 5：旧实现清理
 
-> **进入条件（硬性）**：Stage 4 的旧路径调用指标**归零**且**已稳定运行 ≥ 1 个发布周期**。指标未归零 → 不许进入本阶段，先查为什么还有人在调。
+> **进入条件（硬性）**：连续运行 **≥ 7 天** + 新路径流量占比 **≥ 95%** + `qzdap_legacy_calls_total{entry="…"}` 窗口内**累计为 0** + 窗口内无相关生产事故。指标未归零 → 不许进入本阶段，先查为什么还有人在调。
 
 | 动作 | 细节 |
 |---|---|
 | 删 `/v1/sessions*` 的 turn 部分 | |
-| 删第二套 turn 实现 | `use_cases/run_turn.py` + `run_turn_to_completion.py` 与 `copilot.py` 合并 |
-| 删 `dispatch_subscriber.py` | |
+| **配合** Session Stage 5b：删第二套 turn 实现 | ⚠️ **本层不删**（台账 X2 的唯一 owner 是 Session）。本阶段只做「确认无残留调用方」，删除动作在 Session Stage 5b（与本层的「切 IM 入口」同 PR）—— 否则会与 Session 的删除 PR 互相冲突 |
+| 删 `dispatch_subscriber.py` | ⚠️ **文件删除归本层（台账 G9）**，但**必须与「切 IM 入口」+ Session Stage 5b（删 `use_cases/*`）同一个 PR** |
 | 删 `agent_sessions.metadata.recent_request_ids` 残留列 | 数据清理 |
 | 删孤儿索引 / 废弃常量 | |
 | 全仓扫描「第二实现」 | §10.3 的扫描脚本，**进 CI** |
@@ -631,10 +898,11 @@ class ResultSink(Protocol):
 | Stage 1 | `record_request_id` + `recent_request_ids` | ~25 行 | 直接删除（无调用方） |
 | Stage 2 | IM 验签分支、硬编码系统身份 | ~60 行 | 直接删除（无调用方） |
 | Stage 3 | `ParsedMessage`、`ChannelMessageReceived`、LRU 去重 | ~120 行 | 直接删除（无调用方） |
-| Stage 4 | `/v1/sessions*` turn 部分、`run_turn.py`、`run_turn_to_completion.py`、`dispatch_subscriber.py` | **~700 行** | **停用 + 打点**（进入清理窗口，Stage 5 才删） |
+| Stage 4a | `/v1/sessions*` turn 部分、`run_turn.py`、`run_turn_to_completion.py`、`dispatch_subscriber.py` | **~700 行** | **停用 + 打点**（进入清理窗口，Stage 5 才删） |
+| Stage 4b | —（仅启用重放能力） | 0 | — |
 | Stage 5 | 上述 ~700 行 + 残留列、孤儿常量 | ~730 行 | 删除（台账清零） |
 
-> **Stage 4 与 Stage 5 拆开的原因**：Stage 4 是「新实现接管」，需要旧实现留在场做流量对照与回退兜底；Stage 5 是「清理」，有客观的进入条件（调用指标归零 + 稳定运行 ≥ 1 个发布周期）。合并成一个阶段就失去了对照期，也失去了回退窗口。
+> **Stage 4 与 Stage 5 拆开的原因**：Stage 4 是「新实现接管」，需要旧实现留在场做流量对照与回退兜底；Stage 5 是「清理」，有客观的进入条件（连续运行 **≥ 7 天** + 新路径流量占比 **≥ 95%** + `qzdap_legacy_calls_total{entry="…"}` 窗口内**累计为 0** + 窗口内无相关生产事故）。合并成一个阶段就失去了对照期，也失去了回退窗口。
 
 ---
 
@@ -643,10 +911,11 @@ class ResultSink(Protocol):
 | 表 | 归属 | 状态 |
 |---|---|---|
 | `agent_sessions` | Session | 保留（`metadata.recent_request_ids` 字段随 Stage 5 删除） |
-| `agent_turns` | Session | **保留**（现状在用） |
-| `agent_session_messages` | Session | **保留**（现状在用） |
+| `agent_turns` | Session | **迁数据后废弃**（Session Stage 6；新表 `session_turns` / `session_messages` 启用后删除） |
+| `agent_session_messages` | Session | **迁数据后废弃**（Session Stage 6） |
 | `copilot_attachments` | Gateway | 保留（本方案不迁字节） |
-| `session_inbox` | Gateway（④） | **启用 + 改造**（加列改约束） |
+| `channel_deliveries` | **Gateway（`modules/channel`）** | ⚠️ **保留，但职责收窄**（2026-10-29 审查补充）：这张表现状同时承载 **inbound**（`services.py:236` 写入）与 **outbound**（`services.py:290` 写入）两类记录，`direction` 字段区分。本方案把**出站投递**移到 Gateway 的 `ResultSink`（§6）后，`modules/channel` 侧的 outbound 写入**不再产生**；**inbound 记录保留**（它是「收到过这条 webhook」的审计凭据，与本方案的幂等表 `session_inbox` 职责不同：后者管去重，前者管投递轨迹）。**迁移 0044 不动这张表** |
+| `session_inbox` | **Session**（会话域） | **启用 + 改造**（加列改约束）。Gateway 只持 `IdempotencyStore` 端口，**表归 Session**，改造 DDL 由 Gateway 的迁移 0044 执行（表是 Gateway 的实现细节依赖，但归属是会话域） |
 | `session_turns` | Session | 启用（B 层幂等） |
 | `session_events` | Session | 启用（重放前置） |
 | `tool_executions` | Execution | 启用（C 层幂等） |
@@ -654,21 +923,32 @@ class ResultSink(Protocol):
 | `langgraph_checkpoints` / `langgraph_store` | Agent Loop | 由 Agent Loop 方案决定 |
 
 > **本方案不新建任何表**，只改造 `session_inbox` 一张已存在但未使用的表。
+>
+> **归属说明（2026-10-29 修订）**：`session_inbox` 的**表归属是 Session**（会话域），Gateway 只持有 `IdempotencyStore` 端口（见 §3.2 ④）。改造该表的 DDL 放在 Gateway 的迁移 0044 里，是因为**改约束的动机来自 Gateway 的幂等语义**（幂等键强度分层），而不是表的归属。两处不冲突：谁定义语义、谁拥有表，是两件事。
 
 ---
 
 ## 10. 验收标准
+
+> **本层在系统级验收中的责任**：
+> 本层负责系统级验收的 **#2（五种入口行为一致）· #3（重复消息只跑一次）的幂等侧 · #7（`unprotected` 不碰副作用）的判定侧**（完整清单见 [`README.md`](README.md) §7）。
 
 ### 10.1 功能验收
 
 1. **归一化一致**：5 种入口（web / api / 飞书 / 企微 / 钉钉）经 `Gateway.accept` 后，除 `channel_type` / `raw_metadata` 外字段完全一致；
 2. **幂等**：同一 `clientRequestId` 并发 10 次 → 只起 1 轮；
 3. **幂等跨进程**：两个 worker 交替请求同一 `clientRequestId` → 只起 1 轮；
-4. **幂等不误杀**：用户连发两条相同内容（「好的」）→ **两轮都跑**（weak 不抑制）；
-5. **审批不重复执行**：连续点两次「同意」→ 工具只执行一次；
-6. **出站降级保信息**：IM 渠道收到 `plan_proposed` → 收到编号文本列表，不是空；
-7. **trace 贯穿**：鉴权失败的 webhook 请求在 trace 里可查；
-8. **渠道 session 稳定**：同一飞书群的连续 3 条消息 → 同一个 `session_id`。
+4. **幂等不误杀（两种）**：① 用户连发两条相同内容（「好的」）→ **两轮都跑**（weak 不抑制）；② 同一个 `clientRequestId` 在 24h（TTL）后重发 → **当作新消息受理**（过期不判重）；
+5. **审批恢复路径也带幂等键**：审批决策触发的续跑请求（`decide_approval` → `stream_turn`）**必须携带与原轮次相同的 `clientRequestId`** → 连点两次「同意」只执行一次工具。
+   > ⚠️ **这是 §2.3 那个安全洞在本层的责任**：现状 `copilot.py:474-482` 的 `decide_approval` 调用 `stream_turn` 时**不传 `clientRequestId`** → `record_request_id("")` 直接返回 `True` → 幂等被跳过 → 工具被再执行一次。
+   > **归属**：审批校验本身归 Session（台账 **X7** 审批吞异常）；**幂等键在恢复路径的传递**归 **Gateway**（本层）—— 幂等键由 Gateway 生成并随轮次上下文传递，恢复时复用同一个键。**两侧都要做，只做一边不够。**
+6. **审批不重复执行**：连续点两次「同意」→ 工具只执行一次（**依赖第 5 条的幂等键传递**）；
+7. **出站降级保信息**：IM 渠道收到 `plan_proposed` → 收到编号文本列表，不是空；
+8. **trace 贯穿**：鉴权失败的 webhook 请求在 trace 里可查；
+9. **渠道 session 稳定**：同一飞书群的连续 3 条消息 → 同一个 `session_id`（**依赖 Router 就绪** —— 该项验证的是 Router 的会话映射，Gateway 只保证 `external_chat_id` 归一化稳定）；
+10. **限流生效**：同一用户 1 分钟内超 N 次 → 第 N+1 次被拒（Web 429 / IM 不受理），且**被拒请求不产生 `session_inbox` 行**（限流在落库之前）；
+11. **降级不静默**：`interactive_action` 在纯文本渠道 → 收到一条可回答的 `message` 提示，且 `interactive_degraded` 为真；
+12. **收敛可判**：每个待清理的旧入口都有 `record_legacy_call("<编号>")` 打点，`/metrics` 可见。
 
 ### 10.2 架构测试
 
@@ -687,21 +967,40 @@ def test_no_framework_imports_in_runtime_layers():
 
 另加：Gateway 之外的任何模块不得 import `qzdap_agent_runtime.gateway.types` 以外的 gateway 内部模块。
 
-### 10.3 「没有第二套实现」的扫描脚本
+### 10.3 「没有第二套实现」的扫描
 
-```bash
-# 在对应层的 Stage 5 合并时启用并进 CI；命中即失败
-grep -rn "recent_request_ids" backend/ && exit 1
-grep -rn "record_request_id" backend/ && exit 1
-grep -rn "class ParsedMessage" backend/ && exit 1
-grep -rn "ChannelMessageReceived" backend/ && exit 1
-grep -rn "SYSTEM_USER_ID\|SYSTEM_AGENT_ID" backend/ && exit 1
-grep -rn "OrderedDict" backend/modules/channel/ && exit 1
-grep -rn "RunTurnCompletionUseCase" backend/ && exit 1
-grep -rn "\"/v1/sessions" backend/ && exit 1
-```
+**扫描脚本的唯一来源是 [`cleanup-ledger.md`](cleanup-ledger.md) §3.1**，本层**不另写一份**（写两份必然漂移，且其中一份必然忘记排除 `tests/` —— 那会让 CI 永远红、脚本必然被绕过）。
+
+Gateway 域对应的规则：
+
+| 旧符号 | 台账条目 |
+|---|---|
+| `recent_request_ids` | G1 |
+| `record_request_id` | G1 |
+| `class ParsedMessage` | G4 |
+| `ChannelMessageReceived` | G5 |
+| `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` | G3 |
+| `OrderedDict`（`modules/channel/` 内） | G6 |
+| `/v1/sessions` | G7 / G8 |
+| `dispatch_subscriber` | G9 |
+
+> 启用时点：**Gateway Stage 5 合并时**，与旧实现删除在同一个提交里完成。
 
 ---
+
+### 10.4 外部依赖的现状核实（2026-10-29）
+
+本方案依赖的能力**在当前代码里的真实状态**（避免把假设当现状）：
+
+| 依赖 | 状态 | 证据 | 本层动作 |
+|---|---|---|---|
+| Prometheus 指标底座 | ✅ 存在 | `libs/observability/src/qzdap_observability/metrics.py:22-60`（6 个指标） | 新增 `LEGACY_CALLS_TOTAL` + `LAST_CALL` gauge |
+| `/metrics` 暴露 | ✅ 存在 | `composition/qzdap_app/src/qzdap/composition/main.py:237` | 无需改动 |
+| `qzdap_legacy_calls_total` | ❌ **不存在** | `grep` 零命中 | **Stage 0 必须新建**，否则本层清理判据无从判定 |
+| Postgres（幂等 claim / advisory lock） | ✅ 存在 | `backend/docker-compose.yml` pgvector/pgvector:pg16 | — |
+| `psycopg`（驱动） | ✅ **已声明** | `runtimes/agent_runtime/pyproject.toml`：`psycopg[binary,pool]>=3.2` | 本层不需要；若 Session 层接 saver，必须改用**异步**变体（见下） |
+| LangGraph checkpoint saver | ⚠️ **同步版** | `runtimes/.../graph/builder.py:144` 用的是 `langgraph.checkpoint.postgres.PostgresSaver`（同步） | 全异步仓库里会阻塞事件循环 → Session 方案已定为 `AsyncPostgresSaver`（`langgraph.checkpoint.postgres.aio`，venv 实测可用） |
+| `langgraph_checkpoint_*` 表 | ❌ **不在任何迁移里** | `grep` 零命中 | 必须在 Session 迁移 0046 建表（不能依赖 saver 的 `setup()` 运行期建表） |
 
 ## 11. 风险与回退
 
@@ -710,7 +1009,7 @@ grep -rn "\"/v1/sessions" backend/ && exit 1
 | 幂等 claim 依赖 `session_inbox` 新约束，迁移失败 | 所有入站不可用 | 迁移在 Stage 0 先行 dev 验证；失败则回退整个切换提交 |
 | 「无感重放」依赖 `session_events` 落库（Session 层） | 重复请求只能返回 202，无法重放 | 降级方案：`replay_unavailable` 标记 + 返回上次 turn_id；**不静默丢弃** |
 | 渠道入站改造影响 4 个 IM 平台 | IM 消息中断 | 每个平台一个独立 PR，全部走同一 `Gateway.accept` 契约；先飞书后其余 |
-| 前端依赖 `/v1/sessions` | 前端 404 | 保留兼容别名一个发布周期，Stage 5 后删；前端已切 `/api/*` |
+| **仓外调用方依赖 `/v1/sessions*`** | 外部 404 | **前端已确认零使用**（2026-10-29 核实：`pathMap.ts` 会话条目全是 `/api/sessions*`）。**唯一风险是仓外调用方** → 由前置 **P-11（API owner 确认）** 兜底；确认无则 G7 / G8 在 Stage 5 直接删（保留期归零）；确认有则保留兼容别名 ≥95% 流量后 ≥7 天 |
 | 去掉 `/v1/sessions*` 的 turn 部分 | 外部 API 使用方中断 | 该 API 无文档、无前端使用；打 deprecation 日志一个周期 |
 | 幂等从「报错」变「无感」 | 用户感知行为变化 | 前端无需改动（SSE 重放对前端是同构的） |
 | 附件仍存 `LargeBinary` | 数据量增长后 DB 膨胀 | 本方案不处理；单独立项迁对象存储 |
@@ -719,7 +1018,7 @@ grep -rn "\"/v1/sessions" backend/ && exit 1
 
 | 阶段 | 回退方式 |
 |---|---|
-| Stage 4（接管）之后、Stage 5（清理）之前 | `git revert` 切换提交即可回落旧实现——**旧实现仍在场，这就是保留清理窗口的收益**；必要时回滚迁移 |
+| Stage 4a/4b（接管）之后、Stage 5（清理）之前 | `git revert` 切换提交即可回落旧实现——**旧实现仍在场，这就是保留清理窗口的收益**；必要时回滚迁移 |
 | Stage 5（清理）之后 | 旧实现已删除，**回退需重新上线旧版本**——这是本方案明确接受的代价 |
 
 全程**不留 feature flag 双跑**：清理窗口内的并存是「旧实现已弃用但仍可被回退调用」，不是「两套实现由开关选择」。
@@ -744,22 +1043,74 @@ grep -rn "\"/v1/sessions" backend/ && exit 1
 
 ---
 
+## 13. 治理与可观测性落点
+
+### 13.1 治理落点（Governance）
+
+| 本层步骤 | 闸门 | 拒绝 / 降级时的行为 |
+|---|---|---|
+| 入站验签 | `TrustLevel` 判定；未知渠道 → 拒绝 | 返回 `CHANNEL_NOT_FOUND`（渠道不存在）/ `CHANNEL_DISABLED`（渠道停用），写审计事件 |
+| Auth Identity | 租户 / 工作区 / 用户解析失败 → 拒绝 | `AUTHENTICATION_FAILED`（401，验签 / JWT 失败）/ `FORBIDDEN`（403，身份有效但无权）；**不进入 Router** |
+| 限流（§5.7） | 租户级 QPS / 日配额 | 超限 → `RATE_LIMITED`；**不落 `session_inbox`**（不污染幂等表） |
+| 消息去重（§5.4 / §5.5） | `session_inbox` 唯一约束（§5.3 的表改造） | 命中 → **无感重放**；重放依赖未就绪 → 202 + `replay_unavailable` |
+| 附件引用（§4.4） | 附件归属校验 | 不通过 → 丢弃该附件，**不丢弃整条消息** |
+
+> **本层不拥有的治理**：会话级配额（Router）、工具白名单（Agent Loop / Execution）、记忆可见范围（Memory）。Gateway 只做**入口级**治理。
+
+### 13.2 可观测性指标（Observability）
+
+指标名一律进 `qzdap_*` 命名空间，实现落在 `backend/libs/observability/src/qzdap_observability/metrics.py`。
+
+| 指标名 | 类型 | 标签 | 说明 |
+|---|---|---|---|
+| `qzdap_gateway_ingress_total` | Counter | `channel_type`, `trust_level` | 入站消息总数（按渠道与信任级别） |
+| `qzdap_gateway_auth_failures_total` | Counter | `channel_type`, `reason` | 鉴权失败数（`reason`：签名/过期/未知租户…） |
+| `qzdap_gateway_dedup_total` | Counter | `channel_type`, `outcome` | 去重命中数（`outcome`：`replayed` / `replay_unavailable` / `suppressed` / **`weak_recorded`** —— weak 键「记录但不抑制」，用它观测 unprotected 的比例） |
+| `qzdap_gateway_rate_limited_total` | Counter | `tenant_id`, `scope` | 限流拒绝数 |
+| `qzdap_gateway_ingress_duration_seconds` | Histogram | `channel_type` | 入站处理耗时（含验签 + 归一化 + 去重） |
+| `qzdap_legacy_calls_total` | Counter | `entry` | **旧实现调用计数**，标签 `entry` 为台账编号（如 `X5`）。收敛判据依赖它 |
+
+**Span 划分**（沿用现有 trace 基础设施）：
+
+| Span | 父子关系 | 属性 |
+|---|---|---|
+| `gateway.accept` | 根 | `channel_type`, `external_message_id`, `trace_id` |
+| `gateway.auth` | `gateway.accept` | `trust_level`, `auth_method` |
+| `gateway.normalize` | `gateway.accept` | `source_kind`, `normalized` |
+| `gateway.dedup` | `gateway.accept` | `outcome`, `idempotency_strength` |
+
+**日志**：入站拒绝必须带 `trace_id` + `external_message_id` + `reason`，**不得记录消息正文**（含 PII）。
+
+### 13.3 审计
+
+| 事件 | 何时写 | 内容 |
+|---|---|---|
+| `gateway.ingress.rejected` | 验签 / 鉴权 / 限流拒绝 | 渠道、租户（若已知）、原因、trace_id |
+| `gateway.dedup.replayed` | 重复消息被重放 | 幂等键、原 turn_id |
+
+> 审计写入走 **Governance 模块**，Gateway 只投递事件，不直接写审计表。
+---
+
 ## 附录 A：已定稿的决策（2026-10-29 逐条确认）
 
-> **修订记录**：决策 #8（切换方式）在同日按用户「先上新、后清旧」的要求修订——由「一次性同时删」改为「Stage 4 接管 + Stage 5 清理」。其余 7 条维持原确认结果。
+> **修订记录**：决策 #8（切换方式）在同日按用户「先上新、后清旧」的要求修订——由「一次性同时删」改为「Stage 4a 接管 + Stage 5 清理」（Stage 4b 待 Session 就绪）。其余 8 条维持原确认结果。
 
-以下 8 条决策已逐条确认并定稿。**改动其中任何一条，都必须同步修改正文对应章节，并在 §8 补记受影响的阶段。**
+以下 **9 条**决策（#1–#9）已逐条确认并定稿，另有 **#2b**（`session_inbox` 表归属）于同日随一致性评审修订。**改动其中任何一条，都必须同步修改正文对应章节，并在 §8 补记受影响的阶段。**
 
 | # | 决策 | 定稿结果 | 影响章节 | 备选（已被否决） |
 |---|---|---|---|---|
 | 1 | 出站归属 | **归 ① Channel Gateway**（与入站对称） | §6、§7.2 | 单列 Result Encoder（要维护两份渠道知识） |
 | 2 | `modules/channel` 去向 | **保持独立模块**，实现 runtime 定义的 Protocol；Gateway 只持有端口 | §7.2、§7.3 | 协议适配器迁进 runtime（边界更干净，但要拆包、改多处 import） |
-| 3 | `session_inbox` | **改造现有表**（加 6 列 + 换唯一约束），不新建 v2 表 | §5.3 | 新建 v2 表（现有表是空的，改造无迁移负担） |
+| 2b | `session_inbox` 表归属 | **表归 Session**（会话域），Gateway 只持 `IdempotencyStore` 端口；改造 DDL 仍在 Gateway 迁移 0044 | §3.2、§5.3、§9 | 表归 Gateway（与现状写法一致，但会让 Gateway 看起来拥有会话域存储） |
+| 3 | `session_inbox` | **改造现有表**（加 6 列 + 换唯一约束 → **只覆盖 strong 的部分唯一索引**），不新建 v2 表 | §5.3、§5.4 | 新建 v2 表（现有表是空的，改造无迁移负担） |
 | 4 | 重复时行为 | **无感重放**（按 `session_events` 的 seq 重放事件流）；依赖未就绪时降级为 202 + turn_id + `replay_unavailable` | §5.5、§0.1 | 返回 202 不重放 / 沿用 `DUPLICATE_REQUEST` 报错 |
-| 5 | weak 强度 | **不抑制 + 标 `unprotected` + Agent Loop / Execution 禁用副作用工具** | §5.2、§0.1 | 照常抑制（误杀用户消息）/ 拒绝受理（IM 消息丢失） |
+| 5 | weak 强度 | **不抑制 + 标 `unprotected` + Agent Loop / Execution 禁用副作用工具** | §5.2、§5.3、§5.4、§0.1 | 照常抑制（误杀用户消息）/ 拒绝受理（IM 消息丢失） |
+
+> **决策 #5 的落地方式（2026-10-29 审查补记）**：「不抑制」不能只写在文档里 —— §5.4 的原子 claim 是 `ON CONFLICT ... DO NOTHING`，**若 weak 键也参与唯一约束，两条内容相同、落在同一 `time_bucket` 的消息会互相冲突 → 第二条被抑制**，直接违反 #5。**落地方式是 §5.3 的部分唯一索引（`WHERE key_strength = 'strong'`）+ §5.4 的 strong / weak 两条 INSERT 路径。**
 | 6 | 附件字节 | 本次**不迁对象存储**，只统一 `AttachmentRef` 形状并抽 `AttachmentStoragePort` | §4.4、§11 | 同期迁移（范围膨胀） |
-| 7 | `/v1/sessions*` | 保留会话 CRUD **兼容别名一个发布周期**（打 deprecation 日志），删除其 turn 部分 | §7.4、Stage 4 | 立即全删 |
-| 8 | 切换方式 | **先上新、后清旧**：Stage 4 新实现接管（旧实现打弃用标记 + 打点，进入清理窗口），Stage 5 清理。**不留 feature flag 双跑**，但清理窗口内旧实现在场 | §1.4、§8、§11 | 一次性同时删（失去流量对照期与回退窗口）；灰度双跑（不采纳） |
+| 7 | `/v1/sessions*` | 保留会话 CRUD **兼容别名**（打 deprecation 日志；保留期 = ≥95% 流量后 ≥7 天），删除其 turn 部分 | §7.4、Stage 4a | 立即全删 |
+| 8 | 切换方式 | **先上新、后清旧**：Stage 4a 新实现接管（旧实现打弃用标记 + 打点，进入清理窗口），Stage 5 清理。Stage 4b（启用无感重放）待 Session 就绪，不豁免。**不留 feature flag 双跑**，但清理窗口内旧实现在场 | §1.4、§8、§11 | 一次性同时删（失去流量对照期与回退窗口）；灰度双跑（不采纳） |
+| 9 | 限流的阈值与租户配额 | **硬编码 + 环境变量覆盖**（`QZDAP_RATE_LIMIT_*`），治理侧可配留待后续 | §5.7 | 治理模块 `policies` 表配置（引入新配置面） |
 
 > **决策 #4 与 #5 的连带义务**（定稿时一并确认）：
 > - #4 使 `session_events` 落库成为 Gateway 的**硬依赖** → 已登记进 §0.1 前置依赖清单；未就绪时必须走降级路径并标记，**禁止静默丢弃重复请求**。
