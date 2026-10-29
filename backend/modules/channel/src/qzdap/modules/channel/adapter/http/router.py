@@ -8,8 +8,8 @@ Inbound adapter registry + outbound adapter registry are read from
 
 from __future__ import annotations
 
-from typing import Annotated
-from uuid import UUID
+from typing import TYPE_CHECKING, Annotated
+from uuid import UUID  # noqa: TC003 —— FastAPI 在运行时解析注解，UUID 不能进 TYPE_CHECKING
 
 from fastapi import APIRouter, Body, Path, Query, Request, status
 
@@ -26,14 +26,16 @@ from qzdap.modules.channel.adapter.http.mappers import (
     channel_to_response,
     delivery_to_response,
 )
-from qzdap_kernel.contextvars import current_trace_id
-
 from qzdap.modules.channel.domain.errors import ChannelNotFound
-from qzdap.modules.channel.domain.value_objects import ChannelStatus, ChannelType
+from qzdap.modules.channel.domain.value_objects import ChannelStatus
+from qzdap_agent_runtime.gateway.types import ChannelType
+from qzdap_kernel.contextvars import current_trace_id
 from qzdap_schema.ids import ChannelId, TenantId
 
-from qzdap.modules.channel.application.ports import InboundAdapter, OutboundAdapter
-from qzdap.modules.channel.application.services import ChannelService
+if TYPE_CHECKING:
+    from qzdap.modules.channel.application.ports import OutboundAdapter
+    from qzdap.modules.channel.application.services import ChannelService
+    from qzdap_agent_runtime.gateway.normalizer import MessageNormalizer
 
 router = APIRouter(prefix="/v1", tags=["channel"])
 
@@ -61,7 +63,7 @@ def _make_channel_service(request: Request) -> ChannelService:
     return svc
 
 
-def _inbound_registry(request: Request) -> dict[ChannelType, InboundAdapter]:
+def _inbound_registry(request: Request) -> dict[ChannelType, MessageNormalizer]:
     reg = getattr(request.app.state, "channel_inbound_registry", None)
     if reg is None:
         raise RuntimeError("channel_inbound_registry not configured")

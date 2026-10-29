@@ -8,8 +8,12 @@ adapters and settings.
 from __future__ import annotations
 
 from datetime import UTC
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+# 历史: QZDAP_LLM_API_KEY / llm_embedding_model / llm_embedding_dim 已下线.
+# 嵌入维度统一用 OpenAI text-embedding-3-small 的 1536, 这个值在 P7 之后
+# 长期稳定. 后续如果要支持多维模型再扩展为按 provider 查找.
+from qzdap.modules.memory.domain.entities import EMBEDDING_DIM as _DEFAULT_EMBEDDING_DIM
 from qzdap_auth.api_key import ApiKeyHasher
 from qzdap_auth.jwt import JWTConfig, JWTIssuer, JWTVerifier
 from qzdap_llm.embeddings import set_default_client
@@ -20,12 +24,9 @@ from qzdap_vault.hashicorp_vault import HashicorpVaultSecretsResolver
 from qzdap_vault.resolver import VaultSecretsResolver
 from qzdap_vector.store import VectorStore
 
-from qzdap.composition.settings import Settings
+if TYPE_CHECKING:
+    from qzdap.composition.settings import Settings
 
-# 历史: QZDAP_LLM_API_KEY / llm_embedding_model / llm_embedding_dim 已下线.
-# 嵌入维度统一用 OpenAI text-embedding-3-small 的 1536, 这个值在 P7 之后
-# 长期稳定. 后续如果要支持多维模型再扩展为按 provider 查找.
-from qzdap.modules.memory.domain.entities import EMBEDDING_DIM as _DEFAULT_EMBEDDING_DIM
 _DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
 
@@ -458,11 +459,12 @@ class Container:
         """
         provider = self.settings.embedding_provider
         if provider == "openai":
-            from qzdap.composition.unavailable_providers import (
-                ProviderUnavailable,
-            )
             from qzdap.modules.memory.adapter.embedding.openai_adapter import (
                 OpenAIEmbeddingAdapter,
+            )
+
+            from qzdap.composition.unavailable_providers import (
+                ProviderUnavailable,
             )
 
             api_key = self.settings.openai_api_key.strip()
@@ -698,14 +700,15 @@ class Container:
         return self.model_credential_cipher()
 
     def channel_inbound_registry(self):
-        """Dict[ChannelType, InboundAdapter] — parsed once at boot."""
+        """Dict[ChannelType, MessageNormalizer] — parsed once at boot."""
         from qzdap.modules.channel.adapter.inbound import (
+            ApiInboundAdapter,
             DingTalkInboundAdapter,
             FeishuInboundAdapter,
             WebInboundAdapter,
             WeChatWorkInboundAdapter,
         )
-        from qzdap.modules.channel.domain.value_objects import ChannelType
+        from qzdap_agent_runtime.gateway.types import ChannelType
 
         # Inject channel-specific encryption material so the
         # encrypted inbound adapters (DingTalk Stream v2 AES-CBC,
@@ -721,6 +724,7 @@ class Container:
                 encoding_aes_key=self.settings.wechatwork_encoding_aes_key,
             ),
             ChannelType.WEB: WebInboundAdapter(),
+            ChannelType.API: ApiInboundAdapter(),
         }
 
     def channel_outbound_registry(self):
@@ -738,7 +742,7 @@ class Container:
             WebOutboundAdapter,
             WeChatWorkOutboundAdapter,
         )
-        from qzdap.modules.channel.domain.value_objects import ChannelType
+        from qzdap_agent_runtime.gateway.types import ChannelType
 
         http = httpx.AsyncClient(timeout=30.0)
         timeout = self.settings.model_invocation_timeout_seconds

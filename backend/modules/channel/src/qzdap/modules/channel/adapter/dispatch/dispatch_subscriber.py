@@ -1,37 +1,46 @@
 """Channel → agent_runtime dispatch subscriber.
 
-Subscribes to :class:`ChannelMessageReceived` events on the in-process
+Subscribes to the standard inbound message (:class:`InboundMessage`) on the
 event bus, opens an ephemeral session **owned by the channel's registered
 service account**, runs a single agent turn through
 :class:`RunTurnCompletionUseCase`, and writes the final assistant message
 back through the outbound adapter registered for the channel's
 ``channel_type``.
 
-v1 (P7-8):
-* idempotency: process-local LRU keyed by
-  ``(tenant_id, channel_id, message_key)`` — same message arriving
-  twice in the dedup window does not start a second turn.
+⚠️ **总线按类名路由**（``EventEnvelope.event_name`` = 类名），因此这里订阅的是
+``"InboundMessage"`` —— **不是** dotted 的 topic 串。旧实现按 ``TOPIC`` 订阅，
+而发布方用的是类名 → **这条链路从未被触发过**（§10 Stage 3 / 附录 C.2）。
+
+* idempotency: **session_inbox 的原子 claim**（Gateway ④）—— 取代了旧的进程内
+  LRU：LRU 跨不了进程、也没有过期概念，且键空间只增不减。
 * workspace resolution: looked up via :class:`ChannelRepository`
-  (``get_by_id``), since the inbound event payload only carries
-  ``tenant_id`` + ``channel_id``.
+  (``get_by_id``), since the inbound message carries the channel id.
 * failures: logged and swallowed; never re-raised (the bus logs
   handler exceptions but we still log a domain-level summary here).
+
+⚠️ **``unprotected`` 目前只记录不生效** —— 决策 #5 的兑现点（剔除副作用工具）在
+Agent Loop / Execution（Gateway 方案 §0.5 的前置依赖）。IM 的三个平台都带消息 id
+→ **strong 键** → 实际暴露面只有「注册成渠道的 web / api 且没给消息 id」。
 """
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
-from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
 
+from qzdap_agent_runtime.gateway.idempotency import (
+    SENTINEL_WORKSPACE_ID,
+    IdempotencyGuard,
+    InboxScope,
+)
 from qzdap_agent_runtime.gateway.identity import ServiceAccount
-from qzdap.modules.channel.domain.events import ChannelMessageReceived
+from qzdap_agent_runtime.gateway.types import InboundMessage
 from qzdap_observability.metrics import record_legacy_call
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from qzdap.modules.channel.application.ports import (
         ChannelRepository,
         OutboundAdapter,
@@ -47,11 +56,13 @@ _log = logging.getLogger("qzdap.channel.dispatch")
 
 DEFAULT_MODEL = "default"
 DEFAULT_TIMEOUT_SECONDS = 60
-DEDUP_WINDOW = 1024
+
+#: 总线的订阅键 = 事件类名（``EventEnvelope.event_name``）。
+INBOUND_MESSAGE_EVENT = InboundMessage.__name__
 
 
 class ChannelDispatchSubscriber:
-    """Wires ``ChannelMessageReceived`` → ``RunTurnCompletionUseCase``."""
+    """Wires the standard inbound message → ``RunTurnCompletionUseCase``."""
 
     def __init__(
         self,
@@ -61,28 +72,28 @@ class ChannelDispatchSubscriber:
         outbound_registry_getter: Any,
         clock: Any,
         open_session: Any,
+        idempotency: IdempotencyGuard,
         model: str = DEFAULT_MODEL,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
-        dedup_window: int = DEDUP_WINDOW,
     ) -> None:
         self._channels = channel_repository
         self._ar_factory = agent_runtime_factory
         self._outbound_getter = outbound_registry_getter
         self._clock = clock
         self._open_session = open_session
+        self._idempotency = idempotency
         self._model = model
         self._timeout = timeout_seconds
-        # OrderedDict acts as a tiny LRU: re-insert on touch, evict from
-        # the front when we exceed ``dedup_window``.
-        self._seen: OrderedDict[tuple[UUID, UUID, str], None] = OrderedDict()
-        self._dedup_window = dedup_window
 
     async def install(self, event_bus: Any) -> None:
-        """Subscribe to :attr:`ChannelMessageReceived.TOPIC`."""
-        await event_bus.subscribe(ChannelMessageReceived.TOPIC, self._handle_envelope)
+        """Subscribe to the inbound message event.
+
+        ⚠️ **键是事件类名**（总线按类名路由）—— 不是 dotted 的 topic 串。
+        """
+        await event_bus.subscribe(INBOUND_MESSAGE_EVENT, self._handle_envelope)
         _log.info(
             "channel dispatch subscriber installed",
-            extra={"topic": ChannelMessageReceived.TOPIC},
+            extra={"event_name": INBOUND_MESSAGE_EVENT},
         )
 
     # ── handler ─────────────────────────────────────────────────────────
@@ -97,45 +108,31 @@ class ChannelDispatchSubscriber:
             _log.warning("envelope payload is not a dict: %r", payload)
             return
         try:
-            evt = ChannelMessageReceived(
-                channel_id=UUID(str(payload["channel_id"])),
-                channel_type=str(payload["channel_type"]),
-                external_user_id=str(payload["external_user_id"]),
-                external_chat_id=str(payload["external_chat_id"]),
-                text_preview=str(payload["text_preview"]),
-                tenant_id=UUID(str(payload["tenant_id"])),
-            )
+            message = InboundMessage.from_payload(payload)
         except (KeyError, ValueError, TypeError):
-            _log.exception("invalid ChannelMessageReceived payload: %r", payload)
+            _log.exception("invalid inbound message payload: %r", payload)
             return
-        await self._handle_event(evt)
+        await self._handle_event(message)
 
-    async def _handle_event(self, evt: ChannelMessageReceived) -> None:
-        record_legacy_call("G9")  # dispatch_subscriber.py 整体
+    async def _handle_event(self, message: InboundMessage) -> None:
         """Domain-level dispatch."""
-        record_legacy_call("G6")  # IM 进程内 LRU 去重
-        msg_key = self._message_key(evt)
-        dedup_key = (evt.tenant_id, evt.channel_id, msg_key)
-        if dedup_key in self._seen:
-            _log.info(
-                "channel dispatch dedup hit; skipping turn",
-                extra={
-                    "tenant_id": str(evt.tenant_id),
-                    "channel_id": str(evt.channel_id),
-                },
-            )
-            return
-        self._seen[dedup_key] = None
-        self._evict_dedup()
+        record_legacy_call("G9")  # dispatch_subscriber.py 整体
+        channel_id = message.channel_id
+        tenant_id = message.actor.tenant_id
 
-        # Resolve workspace via channel row.
-        channel = await self._channels.get_by_id(evt.channel_id)
+        if channel_id is None:
+            _log.warning("inbound message has no channel id; dropping")
+            return
+
+        # Resolve the channel row — it carries the workspace and the
+        # answering agent (via the registered service account).
+        channel = await self._channels.get_by_id(channel_id)
         if channel is None:
             _log.warning(
                 "channel not found; dropping event",
                 extra={
-                    "channel_id": str(evt.channel_id),
-                    "tenant_id": str(evt.tenant_id),
+                    "channel_id": str(channel_id),
+                    "tenant_id": str(tenant_id),
                 },
             )
             return
@@ -146,8 +143,36 @@ class ChannelDispatchSubscriber:
             _log.error(
                 "channel has no service account registered; dropping event",
                 extra={
-                    "channel_id": str(evt.channel_id),
-                    "tenant_id": str(evt.tenant_id),
+                    "channel_id": str(channel_id),
+                    "tenant_id": str(tenant_id),
+                },
+            )
+            return
+
+        # ④ Idempotency Guard：**先 claim 再起轮次** —— 同一平台消息投递两次
+        # 只能起一轮。旧的进程内 LRU 已被这一步取代（跨进程可见 + 有过期）。
+        decision = await self._idempotency.accept(
+            InboxScope(
+                tenant_id=tenant_id,
+                workspace_id=(
+                    channel.workspace_id
+                    or message.actor.workspace_id
+                    or SENTINEL_WORKSPACE_ID
+                ),
+                channel_id=str(channel_id),
+            ),
+            message.idempotency,
+            payload_hash=message.payload_hash,
+            external_message_id=message.external_message_id,
+            trace_id=message.trace_id,
+        )
+        if decision.is_duplicate:
+            _log.info(
+                "channel dispatch duplicate; skipping turn",
+                extra={
+                    "tenant_id": str(tenant_id),
+                    "channel_id": str(channel_id),
+                    "outcome": decision.outcome,
                 },
             )
             return
@@ -155,23 +180,28 @@ class ChannelDispatchSubscriber:
         # Open an ephemeral agent_runtime session, create + run a turn,
         # then write the reply via the outbound adapter (best effort).
         try:
-            _, final_message, turn_id = await self._run_turn(evt, channel, account)
+            _, final_message, turn_id = await self._run_turn(message, channel, account)
         except Exception:
+            # 这一轮**根本没跑起来** → 键不该被消费（④ 的 release），
+            # 否则平台重投时会被判成重复而永远丢掉。
+            await self._idempotency.release(decision)
             _log.exception(
                 "channel dispatch turn failed",
                 extra={
-                    "tenant_id": str(evt.tenant_id),
-                    "channel_id": str(evt.channel_id),
+                    "tenant_id": str(tenant_id),
+                    "channel_id": str(channel_id),
                 },
             )
             return
+
+        await self._idempotency.complete(decision, turn_id=turn_id)
 
         if not final_message:
             return
 
         await self._send_reply(
-            evt=evt,
-            channel_type=getattr(channel, "type", evt.channel_type),
+            message=message,
+            channel_type=getattr(channel, "type", message.channel_type),
             text=final_message[:4096],
             turn_id=turn_id,
         )
@@ -179,10 +209,15 @@ class ChannelDispatchSubscriber:
     # ── helpers ──────────────────────────────────────────────────────────
 
     async def _run_turn(
-        self, evt: ChannelMessageReceived, channel: Any, account: ServiceAccount
+        self, message: InboundMessage, channel: Any, account: ServiceAccount
     ) -> tuple[UUID, str, UUID | None]:
         """Open session, create agent turn, drain to completion."""
         from qzdap_schema.ids import AgentId, UserId
+
+        tenant_id = message.actor.tenant_id
+        workspace_id = channel.workspace_id
+        chat_id = message.external_chat_id
+        channel_type = str(message.channel_type)
 
         async def _drive() -> tuple[UUID, str, UUID | None]:
             session_obj = self._open_session()
@@ -190,24 +225,22 @@ class ChannelDispatchSubscriber:
                 svc = self._ar_factory.for_session(sess)
                 record_legacy_call("R1")  # IM 每条消息新建临时 session
                 session = await svc.create_session().execute(
-                    tenant_id=evt.tenant_id,
-                    workspace_id=channel.workspace_id,
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
                     owner_id=UserId(account.user_id),
                     agent_id=AgentId(account.agent_id),
                     agent_version=account.agent_version,
                     metadata={
-                        "channel_id": str(evt.channel_id),
-                        "channel_type": evt.channel_type,
-                        "external_chat_id": evt.external_chat_id,
+                        "channel_id": str(message.channel_id),
+                        "channel_type": channel_type,
+                        "external_chat_id": chat_id,
                     },
                 )
-                user_input = (
-                    f"[channel={evt.channel_type} chat={evt.external_chat_id}] {evt.text_preview}"
-                )
+                user_input = f"[channel={channel_type} chat={chat_id}] {message.text}"
                 record_legacy_call("X2")  # 第二套 turn 实现
                 result = await svc.run_turn_to_completion().execute(
-                    tenant_id=evt.tenant_id,
-                    workspace_id=channel.workspace_id,
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
                     owner_id=UserId(account.user_id),
                     session_id=session.id,
                     user_input=user_input,
@@ -224,7 +257,7 @@ class ChannelDispatchSubscriber:
     async def _send_reply(
         self,
         *,
-        evt: ChannelMessageReceived,
+        message: InboundMessage,
         channel_type: Any,
         text: str,
         turn_id: UUID | None,
@@ -237,7 +270,9 @@ class ChannelDispatchSubscriber:
         # definition site.
         adapter: OutboundAdapter | None = None
         for key, candidate in registry.items():
-            if str(key) == str(channel_type) or (getattr(key, "value", None) == channel_type):
+            if str(key) == str(channel_type) or (
+                getattr(key, "value", None) == channel_type
+            ):
                 adapter = candidate
                 break
         if adapter is None:
@@ -245,41 +280,27 @@ class ChannelDispatchSubscriber:
                 "no outbound adapter for channel_type=%s; reply dropped",
                 channel_type,
                 extra={
-                    "channel_id": str(evt.channel_id),
-                    "tenant_id": str(evt.tenant_id),
+                    "channel_id": str(message.channel_id),
+                    "tenant_id": str(message.actor.tenant_id),
                 },
             )
             return
         try:
             metadata: dict[str, str] = {
-                "channel_id": str(evt.channel_id),
+                "channel_id": str(message.channel_id),
             }
             if turn_id is not None:
                 metadata["turn_id"] = str(turn_id)
             await adapter.send_reply(
-                external_chat_id=evt.external_chat_id,
+                external_chat_id=message.external_chat_id,
                 text=text,
                 metadata=metadata,
             )
         except Exception:  # pragma: no cover - defensive
             _log.exception(
                 "outbound send_reply failed",
-                extra={"channel_id": str(evt.channel_id)},
+                extra={"channel_id": str(message.channel_id)},
             )
 
-    @staticmethod
-    def _message_key(evt: ChannelMessageReceived) -> str:
-        """Stable dedup key from event fields.
 
-        The inbound event lacks ``external_message_id``; combine the
-        fields we do have and hash so the tuple fits in the LRU key.
-        """
-        raw = f"{evt.channel_id}|{evt.external_user_id}|{evt.external_chat_id}|{evt.text_preview}"
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-    def _evict_dedup(self) -> None:
-        while len(self._seen) > self._dedup_window:
-            self._seen.popitem(last=False)
-
-
-__all__ = ["ChannelDispatchSubscriber"]
+__all__ = ["INBOUND_MESSAGE_EVENT", "ChannelDispatchSubscriber"]

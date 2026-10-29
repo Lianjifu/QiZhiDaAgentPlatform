@@ -7,6 +7,8 @@ Covers:
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 
 from qzdap.modules.channel.adapter.crypto.webhook_cipher import (
@@ -19,6 +21,26 @@ from qzdap.modules.channel.adapter.inbound import (
     WebInboundAdapter,
     WeChatWorkInboundAdapter,
 )
+from qzdap_agent_runtime.gateway.channels import capabilities_for
+from qzdap_agent_runtime.gateway.normalizer import NormalizerContext
+from qzdap_agent_runtime.gateway.types import ActorContext, ChannelType
+
+
+def _ctx(channel_type: ChannelType) -> NormalizerContext:
+    """③ 的入站上下文 —— 身份 + 渠道 + trace + 能力。"""
+    return NormalizerContext(
+        actor=ActorContext(
+            tenant_id=uuid4(),
+            workspace_id=None,
+            actor_id=uuid4(),
+            roles=("service_account",),
+            actor_kind="service_account",
+        ),
+        channel_type=channel_type,
+        channel_id=uuid4(),
+        trace_id="trace-1",
+        capabilities=capabilities_for(channel_type),
+    )
 
 # ── Feishu ────────────────────────────────────────────────────────────────
 
@@ -32,23 +54,29 @@ def test_feishu_parses_text_message() -> None:
         b'"message_type":"text","content":"{\\"text\\":\\"hello\\"}"},'
         b'"tenant_key":"t1"}}'
     )
-    msg = FeishuInboundAdapter().parse_webhook(body=body, headers={})
+    msg = FeishuInboundAdapter().normalize(
+        body=body, headers={}, context=_ctx(ChannelType.FEISHU)
+    )
     assert msg.external_user_id == "u_42"
     assert msg.external_chat_id == "c_1"
     assert msg.external_message_id == "om_1"
     assert msg.text == "hello"
-    assert msg.metadata["message_type"] == "text"
+    assert msg.raw_metadata["message_type"] == "text"
 
 
 def test_feishu_parses_url_verification() -> None:
     body = b'{"type":"url_verification","challenge":"abc123","token":"t"}'
-    msg = FeishuInboundAdapter().parse_webhook(body=body, headers={})
-    assert msg.metadata["kind"] == "url_verification"
+    msg = FeishuInboundAdapter().normalize(
+        body=body, headers={}, context=_ctx(ChannelType.FEISHU)
+    )
+    assert msg.raw_metadata["kind"] == "url_verification"
     assert msg.text == "abc123"
 
 
 def test_feishu_handles_invalid_json() -> None:
-    msg = FeishuInboundAdapter().parse_webhook(body=b"not json", headers={})
+    msg = FeishuInboundAdapter().normalize(
+        body=b"not json", headers={}, context=_ctx(ChannelType.FEISHU)
+    )
     assert msg.external_user_id == ""
     assert msg.text == ""
 
@@ -58,7 +86,9 @@ def test_feishu_handles_plain_string_content() -> None:
         b'{"event":{"sender":{"sender_id":{"user_id":"u"}},"message":'
         b'{"message_id":"m1","chat_id":"c","content":"plain text"}}}'
     )
-    msg = FeishuInboundAdapter().parse_webhook(body=body, headers={})
+    msg = FeishuInboundAdapter().normalize(
+        body=body, headers={}, context=_ctx(ChannelType.FEISHU)
+    )
     assert msg.text == "plain text"
 
 
@@ -70,7 +100,9 @@ def test_dingtalk_parses_text_callback() -> None:
         b'{"msgtype":"text","text":{"content":"hi"},"senderId":"u1",'
         b'"conversationId":"c1","msgId":"m1"}'
     )
-    msg = DingTalkInboundAdapter().parse_webhook(body=body, headers={})
+    msg = DingTalkInboundAdapter().normalize(
+        body=body, headers={}, context=_ctx(ChannelType.DINGTALK)
+    )
     assert msg.external_user_id == "u1"
     assert msg.external_chat_id == "c1"
     assert msg.external_message_id == "m1"
@@ -79,8 +111,10 @@ def test_dingtalk_parses_text_callback() -> None:
 
 def test_dingtalk_parses_encrypted_placeholder() -> None:
     body = b'{"encrypt":"aGVsbG8="}'
-    msg = DingTalkInboundAdapter().parse_webhook(body=body, headers={})
-    assert msg.metadata["kind"] == "encrypted"
+    msg = DingTalkInboundAdapter().normalize(
+        body=body, headers={}, context=_ctx(ChannelType.DINGTALK)
+    )
+    assert msg.raw_metadata["kind"] == "encrypted"
     assert msg.text == ""
 
 
@@ -97,7 +131,9 @@ def test_wechatwork_parses_xml_callback() -> None:
         b"<MsgId>123456</MsgId>"
         b"<AgentID>1</AgentID></xml>"
     )
-    msg = WeChatWorkInboundAdapter().parse_webhook(body=body, headers={})
+    msg = WeChatWorkInboundAdapter().normalize(
+        body=body, headers={}, context=_ctx(ChannelType.WECHATWORK)
+    )
     assert msg.external_user_id == "u1"
     assert msg.external_chat_id == "corp"
     assert msg.external_message_id == "123456"
@@ -106,8 +142,10 @@ def test_wechatwork_parses_xml_callback() -> None:
 
 def test_wechatwork_parses_encrypted_placeholder() -> None:
     body = b'{"encrypt":"xxxxx"}'
-    msg = WeChatWorkInboundAdapter().parse_webhook(body=body, headers={})
-    assert msg.metadata["kind"] == "encrypted"
+    msg = WeChatWorkInboundAdapter().normalize(
+        body=body, headers={}, context=_ctx(ChannelType.WECHATWORK)
+    )
+    assert msg.raw_metadata["kind"] == "encrypted"
 
 
 def test_dingtalk_decrypts_aes_cbc_stream_payload() -> None:
@@ -139,8 +177,10 @@ def test_dingtalk_decrypts_aes_cbc_stream_payload() -> None:
     body = json.dumps({"encrypt": base64.b64encode(frame).decode("ascii")}).encode()
 
     adapter = DingTalkInboundAdapter(app_secret=secret)
-    msg = adapter.parse_webhook(body=body, headers={})
-    assert msg.metadata["kind"] == "decrypted"
+    msg = adapter.normalize(
+        body=body, headers={}, context=_ctx(ChannelType.DINGTALK)
+    )
+    assert msg.raw_metadata["kind"] == "decrypted"
     assert msg.external_user_id == "staff-1"
     assert msg.external_chat_id == "conv-9"
     assert msg.text == "hi from dingtalk"
@@ -149,9 +189,11 @@ def test_dingtalk_decrypts_aes_cbc_stream_payload() -> None:
 
 def test_dingtalk_bad_ciphertext_returns_failed_metadata() -> None:
     adapter = DingTalkInboundAdapter(app_secret="anything")
-    msg = adapter.parse_webhook(body=b'{"encrypt":"AAAA"}', headers={})
-    assert msg.metadata["kind"] == "encrypted"
-    assert msg.metadata["decrypt"] == "frame_too_short"
+    msg = adapter.normalize(
+        body=b'{"encrypt":"AAAA"}', headers={}, context=_ctx(ChannelType.DINGTALK)
+    )
+    assert msg.raw_metadata["kind"] == "encrypted"
+    assert msg.raw_metadata["decrypt"] == "frame_too_short"
 
 
 def test_wechatwork_decrypts_aes_cbc_json_payload() -> None:
@@ -182,8 +224,10 @@ def test_wechatwork_decrypts_aes_cbc_json_payload() -> None:
     body = json.dumps({"encrypt": base64.b64encode(ciphertext).decode("ascii")}).encode()
 
     adapter = WeChatWorkInboundAdapter(encoding_aes_key=eak)
-    msg = adapter.parse_webhook(body=body, headers={})
-    assert msg.metadata["kind"] == "decrypted"
+    msg = adapter.normalize(
+        body=body, headers={}, context=_ctx(ChannelType.DINGTALK)
+    )
+    assert msg.raw_metadata["kind"] == "decrypted"
     assert msg.external_user_id == "UserID1"
     assert msg.external_chat_id == "chat-1"
     assert msg.text == "hello wecom"
@@ -191,8 +235,10 @@ def test_wechatwork_decrypts_aes_cbc_json_payload() -> None:
 
 
 def test_wechatwork_handles_empty() -> None:
-    msg = WeChatWorkInboundAdapter().parse_webhook(body=b"", headers={})
-    assert msg.metadata["kind"] == "empty"
+    msg = WeChatWorkInboundAdapter().normalize(
+        body=b"", headers={}, context=_ctx(ChannelType.WECHATWORK)
+    )
+    assert msg.raw_metadata["kind"] == "empty"
 
 
 # ── Web ───────────────────────────────────────────────────────────────────
@@ -200,15 +246,19 @@ def test_wechatwork_handles_empty() -> None:
 
 def test_web_parses_json_envelope() -> None:
     body = b'{"external_user_id":"u","external_chat_id":"c","text":"hi","metadata":{"k":"v"}}'
-    msg = WebInboundAdapter().parse_webhook(body=body, headers={})
+    msg = WebInboundAdapter().normalize(
+        body=body, headers={}, context=_ctx(ChannelType.WEB)
+    )
     assert msg.external_user_id == "u"
     assert msg.external_chat_id == "c"
     assert msg.text == "hi"
-    assert msg.metadata["k"] == "v"
+    assert msg.raw_metadata["k"] == "v"
 
 
 def test_web_handles_missing_fields() -> None:
-    msg = WebInboundAdapter().parse_webhook(body=b"{}", headers={})
+    msg = WebInboundAdapter().normalize(
+        body=b"{}", headers={}, context=_ctx(ChannelType.WEB)
+    )
     assert msg.external_user_id == ""
     assert msg.text == ""
 
@@ -260,7 +310,7 @@ def test_aes_gcm_cipher_rejects_bad_key_len() -> None:
 
 
 import base64
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 from qzdap.modules.channel.adapter.outbound import WeChatWorkOutboundAdapter
 from qzdap.modules.channel.domain.errors import ChannelDeliveryFailed
@@ -285,7 +335,6 @@ def test_wechatwork_send_reply_unconfigured_raises() -> None:
 
 def test_wechatwork_encrypt_round_trip() -> None:
     """AES-256-CBC encrypt must round-trip when given the right key."""
-    import asyncio
 
     from qzdap.modules.channel.adapter.outbound.wechatwork import (
         _aes_encrypt,

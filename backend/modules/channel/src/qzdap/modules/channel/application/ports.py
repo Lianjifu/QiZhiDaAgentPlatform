@@ -7,7 +7,6 @@ inbound/outbound adapters) live in ``adapter/``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -15,7 +14,7 @@ if TYPE_CHECKING:
     from uuid import UUID
 
     from qzdap.modules.channel.domain.entities import Channel, ChannelDelivery
-    from qzdap.modules.channel.domain.value_objects import ChannelType
+    from qzdap_agent_runtime.gateway.types import ChannelType
     from qzdap_schema.ids import ChannelId, TenantId
 
 # ── Persistence ───────────────────────────────────────────────────────────
@@ -81,29 +80,9 @@ class WebhookSecretCipher(Protocol):
 # ── Inbound / outbound ───────────────────────────────────────────────────
 
 
-@dataclass(slots=True, frozen=True)
-class ParsedMessage:
-    """A normalized webhook payload after channel-specific parsing."""
-
-    external_user_id: str
-    external_chat_id: str
-    external_message_id: str | None
-    text: str
-    metadata: dict[str, Any] = dict  # type: ignore[assignment]
-
-
-@runtime_checkable
-class InboundAdapter(Protocol):
-    """Parses a raw webhook envelope into a normalized message."""
-
-    channel_type: ChannelType
-
-    def parse_webhook(
-        self,
-        *,
-        body: bytes,
-        headers: dict[str, str],
-    ) -> ParsedMessage: ...
+# ⚠️ `ParsedMessage` 与本模块原来的 `InboundAdapter` 端口**已删除** ——
+# 归一化的产物是 Gateway 的 `InboundMessage`，端口是 Gateway 的
+# `MessageNormalizer`（§10 Stage 3 / 台账 G4）。**不留第二套形状。**
 
 
 @runtime_checkable
@@ -156,9 +135,7 @@ __all__ = [
     "ChannelRepository",
     "ClockPort",
     "IdGeneratorPort",
-    "InboundAdapter",
     "OutboundAdapter",
-    "ParsedMessage",
     "WebhookSecretCipher",
     "WebhookSecretRepository",
 ]

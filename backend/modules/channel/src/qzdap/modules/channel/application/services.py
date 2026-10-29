@@ -4,7 +4,7 @@ Responsibilities:
 
 - register / list / disable / rotate secrets for channels
 - verify inbound webhook signatures (HMAC-SHA256 + timestamp skew)
-- dispatch inbound messages to ``InboundAdapter`` for parsing
+- dispatch inbound messages to ``MessageNormalizer`` for normalization
 - persist ``ChannelDelivery`` rows (inbound + outbound)
 - push domain events via ``ChannelEventPublisher``
 
@@ -29,20 +29,18 @@ from qzdap.modules.channel.domain.errors import (
     ChannelDisabled,
     ChannelError,
     ChannelNotFound,
+    ChannelServiceAccountMissing,
     WebhookSignatureInvalid,
     WebhookTimestampSkew,
 )
 from qzdap.modules.channel.domain.events import (
-    ChannelMessageReceived,
     ChannelReplySent,
     ChannelWebhookRejected,
 )
-from qzdap.modules.channel.domain.value_objects import (
-    ChannelStatus,
-    ChannelType,
-    DeliveryStatus,
-)
+from qzdap.modules.channel.domain.value_objects import ChannelStatus, DeliveryStatus
+from qzdap_agent_runtime.gateway.channels import capabilities_for
 from qzdap_agent_runtime.gateway.identity import (
+    REASON_SERVICE_ACCOUNT_MISSING,
     REASON_TIMESTAMP_SKEW,
     HmacWebhookVerifier,
     Identity,
@@ -51,8 +49,11 @@ from qzdap_agent_runtime.gateway.identity import (
     IdentityVerifier,
     ServiceAccount,
 )
+from qzdap_agent_runtime.gateway.normalizer import (
+    MessageNormalizer,
+    NormalizerContext,
+)
 from qzdap_kernel.contextvars import current_trace_id
-from qzdap_observability.metrics import record_legacy_call
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -63,11 +64,11 @@ if TYPE_CHECKING:
         ChannelRepository,
         ClockPort,
         IdGeneratorPort,
-        InboundAdapter,
         OutboundAdapter,
         WebhookSecretCipher,
         WebhookSecretRepository,
     )
+    from qzdap_agent_runtime.gateway.types import ChannelType
     from qzdap_schema.ids import ChannelId, TenantId
 
 DEFAULT_TIMESTAMP_TOLERANCE_SECONDS = 300
@@ -166,7 +167,7 @@ class ChannelService:
         channel_id: ChannelId,
         body: bytes,
         headers: dict[str, str],
-        inbound_registry: dict[ChannelType, InboundAdapter],
+        inbound_registry: dict[ChannelType, MessageNormalizer],
         tolerance_seconds: int | None = None,
         trace_id: str = "",
     ) -> ChannelDelivery:
@@ -213,7 +214,7 @@ class ChannelService:
         # ⚠️ 这里**不再打 G2 的点** —— 旧实现（渠道内的 `_verify_signature`）已经
         # 没了，现在跑的是新实现；继续打点会让「旧路径还在服役」永远为真。
         try:
-            await self._verify_identity(
+            identity = await self._verify_identity(
                 tenant_id=tenant_id,
                 channel=channel,
                 body=body,
@@ -233,41 +234,59 @@ class ChannelService:
                 raise WebhookTimestampSkew(str(exc), code="WEBHOOK_TIMESTAMP_SKEW") from exc
             raise WebhookSignatureInvalid(str(exc), code="WEBHOOK_SIGNATURE_INVALID") from exc
 
-        # Pick the adapter and parse the envelope.
+        # ③ Message Normalizer：协议 → 标准入站消息。
         adapter = inbound_registry.get(channel.type)
         if adapter is None:
             raise ChannelError(
                 f"no inbound adapter registered for channel type {channel.type.value}",
                 code="INBOUND_ADAPTER_MISSING",
             )
+        if identity.actor is None:
+            # 渠道没登记服务账号 → **产不出标准入站消息**（③ 需要身份）。
+            # 这是**渠道配置问题**，不是请求问题 —— 明确拒绝并说清怎么修。
+            await self._reject(
+                tenant_id=tenant_id,
+                channel_id=channel_id,
+                reason_code=REASON_SERVICE_ACCOUNT_MISSING,
+                trace_id=trace_id,
+            )
+            raise ChannelServiceAccountMissing(
+                f"channel {channel_id} has no service account registered",
+                code="CHANNEL_SERVICE_ACCOUNT_MISSING",
+            )
 
-        parsed = adapter.parse_webhook(body=body, headers=headers)
+        message = adapter.normalize(
+            body=body,
+            headers=headers,
+            context=NormalizerContext(
+                actor=identity.actor,
+                channel_type=channel.type,
+                channel_id=channel.id,
+                trace_id=trace_id or current_trace_id() or "",
+                capabilities=capabilities_for(channel.type),
+            ),
+        )
         delivery = make_inbound_delivery(
             tenant_id=tenant_id,
             channel_id=channel_id,
-            external_message_id=parsed.external_message_id,
+            external_message_id=message.external_message_id,
             payload_summary={
-                "external_user_id": parsed.external_user_id,
-                "external_chat_id": parsed.external_chat_id,
-                "text": parsed.text[:4096],
-                "metadata": dict(parsed.metadata) if parsed.metadata else {},
+                "external_user_id": message.external_user_id,
+                "external_chat_id": message.external_chat_id,
+                "text": message.text[:4096],
+                "metadata": dict(message.raw_metadata),
             },
         )
         await self.delivery_repo.add(delivery)
 
         if self.publisher is not None:
-            record_legacy_call("G5")  # ChannelMessageReceived 事件
+            # ⚠️ 这里**不再打 G5 的点** —— 旧的 `ChannelMessageReceived` 事件已经
+            # 没了，发出去的就是标准入站消息本身。
             await self.publisher.publish(
-                ChannelMessageReceived(
-                    channel_id=channel_id,
-                    channel_type=channel.type.value,
-                    external_user_id=parsed.external_user_id,
-                    external_chat_id=parsed.external_chat_id,
-                    text_preview=parsed.text[:200],
-                    tenant_id=tenant_id,
-                ),
+                message,
                 tenant_id=tenant_id,
                 workspace_id=channel.workspace_id,
+                trace_id=message.trace_id or None,
             )
         return delivery
 

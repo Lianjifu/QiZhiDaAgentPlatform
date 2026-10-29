@@ -16,28 +16,10 @@ if TYPE_CHECKING:
     from uuid import UUID
 
 
-@dataclass(slots=True, frozen=True)
-class ChannelMessageReceived(DomainEvent):
-    """An inbound webhook was successfully verified and accepted."""
-
-    TOPIC = "channel.message.received"
-
-    channel_id: UUID
-    channel_type: str
-    external_user_id: str
-    external_chat_id: str
-    text_preview: str
-    tenant_id: UUID
-
-    def to_payload(self) -> dict[str, Any]:
-        return {
-            "channel_id": str(self.channel_id),
-            "channel_type": self.channel_type,
-            "external_user_id": self.external_user_id,
-            "external_chat_id": self.external_chat_id,
-            "text_preview": self.text_preview,
-            "tenant_id": str(self.tenant_id),
-        }
+# ⚠️ `ChannelMessageReceived` **已删除** —— 入站消息的形状由 Gateway 的
+# `InboundMessage` 统一承担（§10 Stage 3 / 台账 G5）。它缺 `external_message_id`
+# / `trace_id` / `payload_hash`，而且**从未被总线正确路由过**（按 dotted 的
+# TOPIC 订阅，而总线按类名路由）—— 旧实现是一条**从未被触发**的链路。
 
 
 @dataclass(slots=True, frozen=True)
@@ -51,7 +33,10 @@ class ChannelReplySent(DomainEvent):
     external_chat_id: str
     tenant_id: UUID
 
-    def to_payload(self) -> dict[str, Any]:
+    def _as_payload_dict(self) -> dict[str, Any]:
+        # ⚠️ 方法名必须是 ``_as_payload_dict`` —— ``EventEnvelope.wrap`` 只认它。
+        # 旧的 ``to_payload`` **从未被调用**，slots dataclass 的事件因此退化成了
+        # ``{"value": "<repr>"}``，审计侧拿到的是字符串而不是字段。
         return {
             "channel_id": str(self.channel_id),
             "delivery_id": str(self.delivery_id),
@@ -75,7 +60,7 @@ class ChannelWebhookRejected(DomainEvent):
     tenant_id: UUID | None = None
     trace_id: str = ""
 
-    def to_payload(self) -> dict[str, Any]:
+    def _as_payload_dict(self) -> dict[str, Any]:
         return {
             "channel_id": str(self.channel_id),
             "reason_code": self.reason_code,
@@ -85,8 +70,8 @@ class ChannelWebhookRejected(DomainEvent):
 
 
 # Topic groups used by the audit recorder when subscribing.
+# ⚠️ 入站消息不在这里 —— 它的形状是 Gateway 的 `InboundMessage`（类名路由）。
 CHANNEL_TOPICS: tuple[str, ...] = (
-    ChannelMessageReceived.TOPIC,
     ChannelReplySent.TOPIC,
     ChannelWebhookRejected.TOPIC,
 )
@@ -94,7 +79,6 @@ CHANNEL_TOPICS: tuple[str, ...] = (
 
 __all__ = [
     "CHANNEL_TOPICS",
-    "ChannelMessageReceived",
     "ChannelReplySent",
     "ChannelWebhookRejected",
 ]

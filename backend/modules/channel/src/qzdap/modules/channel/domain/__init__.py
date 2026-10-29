@@ -16,15 +16,11 @@ from qzdap.modules.channel.domain.errors import (
     WebhookTimestampSkew,
 )
 from qzdap.modules.channel.domain.events import (
-    ChannelMessageReceived,
     ChannelReplySent,
     ChannelWebhookRejected,
 )
-from qzdap.modules.channel.domain.value_objects import (
-    ChannelStatus,
-    ChannelType,
-    DeliveryStatus,
-)
+from qzdap.modules.channel.domain.value_objects import ChannelStatus, DeliveryStatus
+from qzdap_agent_runtime.gateway.types import ChannelType
 from qzdap_schema.ids import ChannelId
 
 __all__ = [
@@ -33,7 +29,6 @@ __all__ = [
     "ChannelDisabled",
     "ChannelError",
     "ChannelId",
-    "ChannelMessageReceived",
     "ChannelNotFound",
     "ChannelReplySent",
     "ChannelStatus",

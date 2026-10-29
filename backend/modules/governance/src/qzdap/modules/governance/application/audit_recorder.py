@@ -30,12 +30,13 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from qzdap_schema.ids import TenantId, UserId
 from qzdap_vault.actor import ActorContext
 
-from qzdap.modules.governance.application.ports import AuditLogPort, ClockPort
+if TYPE_CHECKING:
+    from qzdap.modules.governance.application.ports import AuditLogPort, ClockPort
 
 _log = logging.getLogger(__name__)
 
@@ -221,7 +222,7 @@ def build_default_topics() -> tuple[str, ...]:
         "model.quota_exceeded",
         "model.credential_rotated",
         # channel (EventEnvelope.wrap → PascalCase)
-        "ChannelMessageReceived",
+        "InboundMessage",
         "ChannelReplySent",
         "ChannelWebhookRejected",
         # orchestration (EventEnvelope.wrap → PascalCase)

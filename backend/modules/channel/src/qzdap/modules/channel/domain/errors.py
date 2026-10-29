@@ -39,6 +39,17 @@ class WebhookTimestampSkew(ChannelError, AuthenticationError):  # noqa: N818
     status = 401
 
 
+class ChannelServiceAccountMissing(ChannelError, AppError):  # noqa: N818
+    """渠道没登记服务账号 —— 产不出标准入站消息（③ 需要身份）。
+
+    这是**渠道配置问题**，不是请求问题：调用方改不了，只有管理员能给渠道登记
+    服务账号。因此状态码是 503（服务暂时不可用），不是 4xx。
+    """
+
+    code = "CHANNEL_SERVICE_ACCOUNT_MISSING"
+    status = 503
+
+
 class ChannelDeliveryFailed(ChannelError, AppError):  # noqa: N818
     code = "CHANNEL_DELIVERY_FAILED"
     status = 502
@@ -49,6 +60,7 @@ __all__ = [
     "ChannelDisabled",
     "ChannelError",
     "ChannelNotFound",
+    "ChannelServiceAccountMissing",
     "WebhookSignatureInvalid",
     "WebhookTimestampSkew",
 ]

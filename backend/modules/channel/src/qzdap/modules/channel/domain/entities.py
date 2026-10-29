@@ -9,15 +9,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-from qzdap.modules.channel.domain.value_objects import (
-    ChannelStatus,
-    ChannelType,
-    DeliveryStatus,
-)
+from qzdap.modules.channel.domain.value_objects import ChannelStatus, DeliveryStatus
 from qzdap_schema.ids import ChannelId, TenantId
+
+if TYPE_CHECKING:
+    from qzdap_agent_runtime.gateway.types import ChannelType
 
 
 @dataclass(slots=True, frozen=True)

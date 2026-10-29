@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from qzdap_agent_runtime.gateway.channels import capabilities_for
 from qzdap_agent_runtime.gateway.idempotency import (
     IdempotencyGuard,
     IdempotencyStore,
@@ -25,9 +26,15 @@ from qzdap_agent_runtime.gateway.identity import (
     JwtIdentityVerifier,
     ServiceAccount,
 )
+from qzdap_agent_runtime.gateway.normalizer import (
+    MessageNormalizer,
+    NormalizerContext,
+    resolve_idempotency_key,
+)
 from qzdap_agent_runtime.gateway.types import (
     ActorContext,
     AttachmentRef,
+    AttachmentStoragePort,
     AuthenticatedIngress,
     AuthMethod,
     ChannelCapabilities,
@@ -43,6 +50,7 @@ from qzdap_agent_runtime.gateway.types import (
 __all__ = [
     "ActorContext",
     "AttachmentRef",
+    "AttachmentStoragePort",
     "AuthMethod",
     "AuthenticatedIngress",
     "ChannelCapabilities",
@@ -61,12 +69,16 @@ __all__ = [
     "InternalIdentityVerifier",
     "JwtIdentityVerifier",
     "KeySource",
+    "MessageNormalizer",
+    "NormalizerContext",
     "RawIngress",
     "ServiceAccount",
     "TrustLevel",
     "approval_key",
+    "capabilities_for",
     "client_request_key",
     "payload_fingerprint_key",
     "payload_hash_of",
     "platform_message_key",
+    "resolve_idempotency_key",
 ]

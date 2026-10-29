@@ -5,13 +5,6 @@ from __future__ import annotations
 from enum import StrEnum
 
 
-class ChannelType(StrEnum):
-    FEISHU = "feishu"
-    DINGTALK = "dingtalk"
-    WECHATWORK = "wechatwork"
-    WEB = "web"
-
-
 class ChannelStatus(StrEnum):
     ACTIVE = "active"
     DISABLED = "disabled"
@@ -24,4 +17,4 @@ class DeliveryStatus(StrEnum):
     FAILED = "failed"
 
 
-__all__ = ["ChannelStatus", "ChannelType", "DeliveryStatus"]
+__all__ = ["ChannelStatus", "DeliveryStatus"]

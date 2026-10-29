@@ -1,6 +1,7 @@
 # Gateway 层重构方案
 
-> 版本：1.6（2026-10-29：**Stage 2 已实施** —— 鉴权收口：`gateway/identity.py`（`IdentityVerifier` 端口 + web JWT / IM HMAC / internal 三种实现）+ **服务账号物化**（`channels.service_account`，迁移 0049，取代硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID`）+ 会话列表**显式租户过滤**；详见 §10 Stage 2「实施结果」与附录 C.2）
+> 版本：1.7（2026-10-29：**Stage 3 已实施** —— 归一化收口：`InboundMessage` 成为唯一入站契约（4+1 个 inbound adapter 全部改产它）+ **`ParsedMessage` / `ChannelMessageReceived` / IM 侧进程内 LRU 去重全部删除（G4/G5/G6 已清理）** + 附件收敛为 `AttachmentRef` + 连带修掉「总线按类名路由」与「载荷方法名」两个真实缺陷；详见 §10 Stage 3「实施结果」与附录 C.3）
+> 沿革：v1.6（2026-10-29：**Stage 2 已实施** —— 鉴权收口：`gateway/identity.py`（`IdentityVerifier` 端口 + web JWT / IM HMAC / internal 三种实现）+ **服务账号物化**（`channels.service_account`，迁移 0049，取代硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID`）+ 会话列表**显式租户过滤**；详见 §10 Stage 2「实施结果」与附录 C.2）
 > 沿革：v1.5（2026-10-29：**Stage 1 已实施** —— 幂等守卫落地：契约 `qzdap_agent_runtime/gateway/` + 落库 `PostgresIdempotencyStore` + 接线 `copilot.stream_turn` + 审批恢复路径带键（G10 已修复）+ **删除 `record_request_id` / `recent_request_ids`（G1 已清理）**；详见 §10 Stage 1「实施结果」与附录 C.1）
 > 沿革：v1.4（2026-10-29：**本轮重排** —— §0 按共享模板重写为 §0.1–§0.5；**限流独立成章**（§5）；**数据与表**提前到 §8、**逐文件清单**移到 §9、**边界章**移到 §7；§10.4「外部依赖的现状核实」并入 §1.6
 > **v1.4 同时修正**：§0.3「选模型 → Router」**违反 D1**、§10 对照表**把 Session 的删除量记到本层**、附录 A **被引用块截断成两张表**、§3.3 `InboundMessage` **缺 `unprotected` 字段**（正文引用 6 处）、§5「L1 接入层」串用了 Memory 的层名、限流指标名与 §13.2 不一致
@@ -993,15 +994,56 @@ composition
 
 ### Stage 3：Message Normalizer 收口
 
+> ✅ **已实施（2026-10-29）** —— 产出与验证见本节末尾的「实施结果」。
+
 | 动作 | 细节 |
 |---|---|
 | 4 个 inbound adapter 改产出 `InboundMessage` | 补 tenant / workspace / channel / trace / attachments |
 | 附件统一 | `AttachmentRef` + `AttachmentStoragePort` |
 | **删除** `ParsedMessage` | 全仓无引用 |
 | **删除** `ChannelMessageReceived` | 由 `InboundMessage` 取代（补 `external_message_id` / `trace_id` / `payload_hash`） |
+| **删除** IM 侧进程内 LRU 去重 | 改走 ④ 的 `session_inbox` 原子 claim |
 
 **旧代码减少**：`ParsedMessage`、`ChannelMessageReceived`、IM 侧进程内 LRU 去重全部删除。
 **验收**：5 种入口归一化后，除 `channel_type` / `raw_metadata` 外字段完全一致（参数化测试）；附件三套语义收敛为一个 `AttachmentRef`。
+
+#### Stage 3 实施结果（2026-10-29）
+
+| 项 | 落地位置 |
+|---|---|
+| **③ 的契约** | `backend/runtimes/agent_runtime/src/qzdap_agent_runtime/gateway/normalizer.py` —— `MessageNormalizer` 端口（`normalize(body, headers, context) -> InboundMessage`）、`NormalizerContext`（actor / channel_type / channel_id / trace_id / capabilities）、`resolve_idempotency_key`（**键阶梯在 ③ 采集**，判定在 ④）；`gateway/channels.py` —— `capabilities_for(channel_type)`（**能力在入站时就确定**） |
+| **适配器改造** | `modules/channel/.../adapter/inbound/{web,api,feishu,dingtalk,wechatwork}.py` 全部改为 `normalize(...)`；公共装配抽到 `inbound/_base.py`（幂等键挑选、载荷指纹、`unprotected` 推导、附件归一**只做一次** —— 写四遍 = 四个实现 = 迟早漂移）。**新增 `api` 适配器**（`ChannelType.API` 此前无适配器） |
+| **`ParsedMessage` 删除**（台账 **G4 已清理**） | 数据类、协议 `InboundAdapter` 与 `parse_webhook` 全部删除 —— 全仓无引用 |
+| **`ChannelMessageReceived` 删除**（台账 **G5 已清理**） | 事件类删除；**入站消息本身（`InboundMessage`）就是总线事件**（它继承 `DomainEvent`，`event_name` = 类名）。补上 `external_message_id` / `trace_id` / `payload_hash` / `attachments` |
+| **IM 侧 LRU 去重删除**（台账 **G6 已清理**） | `dispatch_subscriber.py` 的 `OrderedDict` LRU、`_message_key`、`_evict_dedup` 全部删除；IM 派发改为先走 ④ 的 `session_inbox` 原子 claim（**跨进程可见 + 有 TTL**），轮次失败时 **release**（键不该被消费，平台重投还能被受理） |
+| **附件统一** | 飞书的 `image_key` / 钉钉的 `media_id` / 企微的 `MediaId` → 同一个 `AttachmentRef`（`storage="object_storage"`）；**字节不在消息里**（要另走下载接口）—— 决策 #6：本次只统一**引用形状**，不迁对象存储 |
+| **事件载荷修正** | `ChannelReplySent` / `ChannelWebhookRejected` 的 `to_payload()` → **`_as_payload_dict()`** —— `EventEnvelope.wrap` **只认后者**（见附录 C.3 的 G-23）。审计侧的事件名同步改为 `InboundMessage` |
+| **订阅键修正** | `dispatch_subscriber.py` 改为按**事件类名** `"InboundMessage"` 订阅（见附录 C.3 的 G-22） |
+
+> **⚠️ 「五入口」的口径**：验收里写的「5 种入口（web / api / 飞书 / 企微 / 钉钉）」指
+> **五个 `ChannelType`**，不是五个 HTTP 路径。`api` 此前**没有适配器**（注册一个 api 渠道
+> 会直接报 `INBOUND_ADAPTER_MISSING`）—— 本轮补上，与 web 同形状（JSON 信封）。
+
+> **⚠️ 行为变化：渠道没登记服务账号 → webhook 返回 503**。
+> ③ 要产出标准入站消息，就需要 actor；而 actor 来自**渠道登记的服务账号**（Stage 2）。
+> 渠道没登记 → **产不出消息** → 明确拒绝并说清怎么修
+> （`ChannelServiceAccountMissing`，码 `CHANNEL_SERVICE_ACCOUNT_MISSING`，**503** 而非 401 ——
+> 这是**配置问题**，不是请求问题，可重试）。
+> 迁移 0049 已把存量渠道回填成可用状态；新建渠道需在管理接口登记 `serviceAccount`。
+
+> **⚠️ `unprotected` 目前「只记录不生效」** —— 决策 #5 的兑现点（剔除副作用工具）
+> 在 **Agent Loop / Execution**（§0.5 的前置依赖），本层不实现。**残余暴露面有限**：
+> 飞书 / 钉钉 / 企微都带平台消息 id → **strong 键** → `unprotected=False`；
+> 只有「注册成渠道的 web / api 且调用方没给 `external_message_id`」才会落到 weak 键。
+> 这一段在 **Agent Loop 落地前不得启用任何有副作用的工具**（§0.5 的义务）。
+
+> **验收结果**：
+> - **五个入口归一化后是同一个形状**（参数化测试）：除 `channel_type` / `raw_metadata` 外字段完全一致；`payload_hash`（body 的摘要）与 `capabilities`（渠道的能力声明）**按设计就该不同** —— 这两处的差异已写进测试的说明里；
+> - **附件三套语义收敛为一个 `AttachmentRef`**（飞书 / 钉钉 / 企微各一条参数化用例）；
+> - **幂等键阶梯**：客户端 id > 平台消息 id > 内容指纹（**weak** → 标 `unprotected`）；
+> - **总线往返无损**：`InboundMessage._as_payload_dict()` → `from_payload()` 还原到等值对象；
+> - **IM 派发**：同一平台消息投递两次 → **只起一轮**（④ 的 claim 生效，旧的 LRU 已删）；轮次失败 → **release**；
+> - **订阅键**：按类名 `"InboundMessage"` 订阅（不再是 dotted topic）。
 
 ### Stage 4a：新实现接管（出站与切换，重放降级）
 
@@ -1286,6 +1328,19 @@ Gateway 域对应的规则：
 |---|---|---|---|---|
 | **G-20** | 严重 | **「服务账号没登记」被当成了「请求不可信」** —— 初版把「渠道没登记服务账号」做成验签失败，会把**配置问题**变成**请求被拒**（该渠道的每一批消息都被拒） | 验签与身份**分成两件事**：验签只回答「可信吗」；服务账号只在**派发起轮次**那一步被需要。`Identity.actor` 因此可以是 None | §10 Stage 2 / `gateway/identity.py` |
 | **G-21** | 中 | **会话列表的租户过滤依赖 ORM 自动过滤** —— 那依赖请求上下文里绑定了租户；没有绑定时它退化成 no-op，查询就会跨租户 | 租户过滤**显式写进 SQL**（`list_for_owner` / `list_for_owner_workspace` 都带 `tenant_id`），并把 `X-Tenant-Id` 设为必填 | §10 Stage 2 / `session_router.py` |
+
+### C.3 Stage 3 实施带回的三处修正（v1.6 → v1.7，2026-10-29）
+
+| # | 级别 | 问题 | 修正 | 落点 |
+|---|---|---|---|---|
+| **G-22** | 严重 | **总线按**类名**路由，订阅方按 dotted 的 `TOPIC` 订阅** —— `EventEnvelope.event_name` = 事件类名；旧的 `dispatch_subscriber.py` 订阅的是 `ChannelMessageReceived.TOPIC`（`"channel.message.received"`），而发布方走 `EventEnvelope.wrap` → `event_name = "ChannelMessageReceived"` → **两边对不上，这条 IM 入站链路从未被触发过** | 订阅键改为**事件类名** `"InboundMessage"`；并在订阅处写明这条规则（总线按类名路由，不是 dotted topic） | §10 Stage 3 / `dispatch_subscriber.py` |
+| **G-23** | 严重 | **事件定义了 `to_payload()`，而 `EventEnvelope.wrap` 只认 `_as_payload_dict()`** —— 旧的 `ChannelMessageReceived` / `ChannelReplySent` / `ChannelWebhookRejected` 都写的 `to_payload`，**从未被调用**；slots dataclass 的事件因此在总线上退化成了 `{"value": "<repr>"}`，审计侧拿到的是**字符串**而不是字段 | 载荷方法统一改为 **`_as_payload_dict()`**（三个渠道事件 + 新的 `InboundMessage`）；测试替身 `CollectingPublisher` 也改成与真实发布器**逐字一致**（类名 + `_as_payload_dict`） | §10 Stage 3 / `domain/events.py` |
+| **G-24** | 中 | **`ChannelType` 有两份** —— 渠道模块的 `domain/value_objects.py` 与 Gateway 的 `gateway/types.py` 各有一个同名枚举；`str()` 值相同但**不是同一个类型** → `is` 比较失败、以枚举为键的字典查不到 | **统一到 Gateway**（`gateway/types.py` 是契约的定义处）；渠道模块的 13 个文件改从那里导入，`value_objects.py` 只留 `ChannelStatus` / `DeliveryStatus` | §10 Stage 3 |
+
+> **G-22 / G-23 的共同教训**：**这两条缺陷在旧实现里是「静默」的** —— 订阅键对不上、
+> 载荷方法名对不上，代码照样编译、单测照样绿，只是**那条链路从来没跑过**。
+> 因此「旧路径还在服役」不能靠「有代码」判断，**只能靠「指标有流量」判断** ——
+> 这正是台账 §3.2 要求「每个待清理的旧入口都有 `record_legacy_call`」的原因。
 
 **跨文档同步**（本轮一并改掉的对 Gateway 章节号的引用）：
 

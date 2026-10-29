@@ -13,16 +13,19 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from logging import getLogger
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI
 from qzdap.modules.memory.domain.entities import EMBEDDING_DIM
 
-from qzdap.composition.container import Container
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from qzdap.composition.container import Container
 
 _log = getLogger(__name__)
 
@@ -1036,9 +1039,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ar_factory = getattr(app.state, "agent_runtime_factory", None)
     channel_service_obj = getattr(app.state, "channel_service", None)
     if channel_service_obj is not None and ar_factory is not None:
+        from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
+            PostgresIdempotencyStore,
+        )
         from qzdap.modules.channel.adapter.dispatch.dispatch_subscriber import (
             ChannelDispatchSubscriber,
         )
+        from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 
         dispatch = ChannelDispatchSubscriber(
             channel_repository=channel_service_obj.channel_repo,
@@ -1048,6 +1055,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             ),
             clock=container.clock(),
             open_session=container.session_factory().maker,
+            # ④ 幂等守卫 —— IM 侧的去重**跨进程**且有 TTL；
+            # 旧的进程内 LRU 已删除（Gateway 方案 §10 Stage 3）。
+            idempotency=IdempotencyGuard(
+                PostgresIdempotencyStore(container.session_factory())
+            ),
         )
         await dispatch.install(bus)
         app.state.channel_dispatch_subscriber = dispatch

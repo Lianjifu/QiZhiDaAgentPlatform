@@ -16,7 +16,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 from dataclasses import dataclass, field
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import pytest
@@ -33,9 +34,7 @@ from _channel_in_memory import (  # type: ignore[import-not-found]
 )
 
 from qzdap.modules.channel.application.ports import (
-    InboundAdapter,
     OutboundAdapter,
-    ParsedMessage,
     WebhookSecretCipher,
 )
 from qzdap.modules.channel.application.services import (
@@ -50,37 +49,76 @@ from qzdap.modules.channel.domain.errors import (
     ChannelDeliveryFailed,
     ChannelDisabled,
     ChannelNotFound,
+    ChannelServiceAccountMissing,
     WebhookSignatureInvalid,
     WebhookTimestampSkew,
 )
 from qzdap.modules.channel.domain.events import (
-    ChannelMessageReceived,
     ChannelReplySent,
     ChannelWebhookRejected,
 )
 from qzdap.modules.channel.domain.value_objects import (
     ChannelStatus,
-    ChannelType,
     DeliveryStatus,
+)
+from qzdap_agent_runtime.gateway.types import (
+    ChannelType,
+    InboundMessage,
 )
 from qzdap_schema.ids import ChannelId, TenantId
 
+if TYPE_CHECKING:
+    from qzdap_agent_runtime.gateway.normalizer import NormalizerContext
+
+# 渠道登记的服务账号 —— IM 的 actor 由此物化（§3.2）。
+_ACCOUNT = {
+    "user_id": str(uuid4()),
+    "agent_id": str(uuid4()),
+    "agent_version": "channel-router-1.0.0",
+}
+
 
 @dataclass(slots=True)
-class EchoInbound(InboundAdapter):
+class EchoInbound:
+    """③ 的测试替身 —— 产出标准 :class:`InboundMessage`。"""
+
     channel_type: ChannelType = ChannelType.WEB
 
-    def parse_webhook(self, *, body: bytes, headers: dict[str, str]) -> ParsedMessage:
+    def normalize(
+        self,
+        *,
+        body: bytes,
+        headers: dict[str, str],
+        context: NormalizerContext,
+    ) -> InboundMessage:
         import json
 
         payload = json.loads(body or b"{}")
-        return ParsedMessage(
-            external_user_id=str(payload.get("external_user_id", "u1")),
+        return InboundMessage(
+            actor=context.actor,
+            channel_type=context.channel_type,
+            channel_id=context.channel_id,
             external_chat_id=str(payload.get("external_chat_id", "c1")),
+            external_user_id=str(payload.get("external_user_id", "u1")),
+            explicit_agent_id=None,
+            idempotency=_idempotency_key(payload),
             external_message_id=payload.get("external_message_id"),
+            payload_hash="hash",
+            trace_id=context.trace_id,
             text=str(payload.get("text", "")),
-            metadata={"raw_headers": dict(headers)},
+            raw_metadata={"raw_headers": dict(headers)},
         )
+
+
+def _idempotency_key(payload: dict[str, Any]):  # type: ignore[no-untyped-def]
+    from qzdap_agent_runtime.gateway.types import IdempotencyKey, KeySource
+
+    return IdempotencyKey(
+        value=str(payload.get("external_message_id") or "test-key"),
+        source=KeySource.PLATFORM_MESSAGE_ID,
+        strength="strong",
+        expires_at=datetime.now(UTC) + timedelta(days=7),
+    )
 
 
 @dataclass(slots=True)
@@ -269,6 +307,7 @@ async def test_handle_webhook_happy_path() -> None:
         external_id="e1",
         inbound_path="/hook",
         webhook_secret="topsecret",
+        service_account=_ACCOUNT,
     )
     body = b'{"external_user_id":"u1","external_chat_id":"c1","text":"hello"}'
     ts = int(svc.clock.now().timestamp())
@@ -286,9 +325,12 @@ async def test_handle_webhook_happy_path() -> None:
     assert delivery.status is DeliveryStatus.PENDING
     assert delivery.payload_summary["text"] == "hello"
     assert delivery.payload_summary["external_user_id"] == "u1"
-    # publisher saw the message.received event
+    # publisher saw the **standard inbound message**（总线按类名路由）
     topics = [t for t, _ in publisher.events]
-    assert "channel.message.received" in topics
+    assert "InboundMessage" in topics
+    payloads = [p for t, p in publisher.events if t == "InboundMessage"]
+    assert payloads[-1]["text"] == "hello"
+    assert payloads[-1]["external_chat_id"] == "c1"
 
 
 @pytest.mark.asyncio
@@ -319,7 +361,7 @@ async def test_handle_webhook_rejects_bad_signature() -> None:
         )
     # publisher recorded the reject event
     topics = [t for t, _ in publisher.events]
-    assert "channel.webhook.rejected" in topics
+    assert "ChannelWebhookRejected" in topics
 
 
 @pytest.mark.asyncio
@@ -449,7 +491,7 @@ async def test_send_reply_happy_path() -> None:
     assert delivery.external_message_id == "out-1"
     assert out.sent == [{"external_chat_id": "c-1", "text": "world", "metadata": {}}]
     topics = [t for t, _ in publisher.events]
-    assert "channel.reply.sent" in topics
+    assert "ChannelReplySent" in topics
 
 
 @pytest.mark.asyncio
@@ -526,30 +568,30 @@ async def test_list_channels_filters() -> None:
 
 
 def test_event_payloads_are_dicts() -> None:
+    """载荷方法名必须是 ``_as_payload_dict`` —— ``EventEnvelope.wrap`` 只认它。
+
+    旧的 ``to_payload`` **从未被调用**：slots dataclass 的事件在总线上退化成了
+    ``{"value": "<repr>"}``，审计侧拿到的是字符串而不是字段。
+    """
     tenant = TenantId(uuid4())
     cid = ChannelId(uuid4())
-    msg = ChannelMessageReceived(
-        channel_id=cid,
-        channel_type="web",
-        external_user_id="u1",
-        external_chat_id="c1",
-        text_preview="hello",
-        tenant_id=tenant,
-    )
-    assert msg.to_payload()["channel_type"] == "web"
     reply = ChannelReplySent(
         channel_id=cid,
         delivery_id=uuid4(),
         external_chat_id="c1",
         tenant_id=tenant,
     )
-    assert reply.TOPIC == "channel.reply.sent"
+    reply_payload = reply._as_payload_dict()
+    assert reply_payload["external_chat_id"] == "c1"
+    assert reply_payload["tenant_id"] == str(tenant)
     rej = ChannelWebhookRejected(
         channel_id=cid,
         reason_code="BAD_SIGNATURE",
         tenant_id=tenant,
     )
-    assert rej.TOPIC == "channel.webhook.rejected"
+    rej_payload = rej._as_payload_dict()
+    assert rej_payload["reason_code"] == "BAD_SIGNATURE"
+    assert rej_payload["trace_id"] == ""
 
 
 # ── Stage 2 验收：拒绝 + 审计事件 + trace_id ─────────────────────────────
@@ -587,7 +629,7 @@ async def test_a_forged_signature_is_rejected_with_an_audit_event_and_trace_id()
             trace_id="trace-forged",
         )
     rejected = [
-        payload for topic, payload in publisher.events if topic == "channel.webhook.rejected"
+        payload for topic, payload in publisher.events if topic == "ChannelWebhookRejected"
     ]
     assert rejected, publisher.events
     assert rejected[-1]["reason_code"] == "WEBHOOK_SIGNATURE_INVALID"
@@ -623,7 +665,7 @@ async def test_an_expired_timestamp_is_rejected_with_an_audit_event_and_trace_id
             trace_id="trace-skew",
         )
     rejected = [
-        payload for topic, payload in publisher.events if topic == "channel.webhook.rejected"
+        payload for topic, payload in publisher.events if topic == "ChannelWebhookRejected"
     ]
     assert rejected
     assert rejected[-1]["reason_code"] == "WEBHOOK_TIMESTAMP_SKEW"
@@ -647,6 +689,7 @@ async def test_a_signature_replayed_across_tenants_is_rejected() -> None:
         external_id="ea",
         inbound_path="/hook/a",
         webhook_secret="secret-a",
+        service_account=_ACCOUNT,
     )
     ch_b = await svc.register_channel(
         tenant_id=tenant_b,
@@ -656,6 +699,7 @@ async def test_a_signature_replayed_across_tenants_is_rejected() -> None:
         external_id="eb",
         inbound_path="/hook/b",
         webhook_secret="secret-b",
+        service_account=_ACCOUNT,
     )
     body = b'{"text":"hello"}'
     ts = int(svc.clock.now().timestamp())
@@ -687,7 +731,7 @@ async def test_a_signature_replayed_across_tenants_is_rejected() -> None:
     )
     assert delivery.status is DeliveryStatus.PENDING
     rejected = [
-        payload for topic, payload in publisher.events if topic == "channel.webhook.rejected"
+        payload for topic, payload in publisher.events if topic == "ChannelWebhookRejected"
     ]
     assert rejected
     assert rejected[-1]["trace_id"] == "trace-replay"
@@ -733,3 +777,46 @@ async def test_the_channel_service_account_is_handed_to_the_identity_verifier() 
     assert str(identity.actor.actor_id) == account["user_id"]
     assert identity.actor.actor_kind == "service_account"
     assert identity.trust.value == "verified_hmac"
+
+
+# ── Stage 3 验收：标准入站消息 + 服务账号缺失 ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_channel_without_a_service_account_is_refused() -> None:
+    """渠道没登记服务账号 → **产不出标准入站消息** → 明确拒绝并说清怎么修。
+
+    这是**配置问题**，不是请求问题 —— 所以拒绝码是 503（可重试）而不是 401。
+    """
+    svc, _channel_repo, _delivery_repo, _, publisher = _make_service()
+    tenant = TenantId(uuid4())
+    ch = await svc.register_channel(
+        tenant_id=tenant,
+        workspace_id=None,
+        type=ChannelType.WEB,
+        name="no-account",
+        external_id="e",
+        inbound_path="/hook",
+        webhook_secret="secret",
+    )
+    body = b'{"text":"hello"}'
+    ts = int(svc.clock.now().timestamp())
+    sig = _sign(b"secret", ts, body)
+    with pytest.raises(ChannelServiceAccountMissing):
+        await svc.handle_webhook(
+            tenant_id=tenant,
+            channel_id=ch.id,
+            body=body,
+            headers={
+                "X-Webhook-Timestamp": str(ts),
+                "X-Webhook-Signature": f"sha256={sig}",
+            },
+            inbound_registry={ChannelType.WEB: EchoInbound()},
+            trace_id="trace-no-account",
+        )
+    rejected = [
+        payload for topic, payload in publisher.events if topic == "ChannelWebhookRejected"
+    ]
+    assert rejected
+    assert rejected[-1]["reason_code"] == "SERVICE_ACCOUNT_NOT_CONFIGURED"
+    assert rejected[-1]["trace_id"] == "trace-no-account"

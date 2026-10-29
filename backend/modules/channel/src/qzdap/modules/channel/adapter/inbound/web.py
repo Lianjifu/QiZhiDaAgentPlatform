@@ -6,6 +6,7 @@ Plain ``application/json`` envelope::
         "external_user_id": "u1",
         "external_chat_id": "c1",
         "external_message_id": "m1",   # optional
+        "clientRequestId": "r1",       # optional — strong 幂等键
         "text": "hello",
         "metadata": {}                  # optional, free-form
     }
@@ -17,34 +18,51 @@ can sign a payload but doesn't fit a specific provider.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from qzdap.modules.channel.application.ports import InboundAdapter, ParsedMessage
-from qzdap.modules.channel.domain.value_objects import ChannelType
-from qzdap_observability.metrics import record_legacy_call
+from qzdap.modules.channel.adapter.inbound._base import build_inbound_message
+from qzdap_agent_runtime.gateway.types import ChannelType, InboundMessage
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from qzdap_agent_runtime.gateway.normalizer import NormalizerContext
 
 
-class WebInboundAdapter(InboundAdapter):
+class WebInboundAdapter:
+    """③ 的 web 实现 —— 产出标准 :class:`InboundMessage`。"""
+
     channel_type = ChannelType.WEB
 
-    def parse_webhook(
+    def normalize(
         self,
         *,
         body: bytes,
-        headers: dict[str, str],
-    ) -> ParsedMessage:
-        record_legacy_call("G4")  # ParsedMessage 数据类
+        headers: Mapping[str, str],
+        context: NormalizerContext,
+    ) -> InboundMessage:
+        _ = headers
         payload = _safe_json(body)
         metadata = payload.get("metadata") or {}
         if not isinstance(metadata, dict):
             metadata = {"value": metadata}
-        return ParsedMessage(
+        client_request_id = str(payload.get("clientRequestId") or "")
+        return build_inbound_message(
+            context=context,
+            body=body,
             external_user_id=str(payload.get("external_user_id", "")),
             external_chat_id=str(payload.get("external_chat_id", "")),
-            external_message_id=payload.get("external_message_id"),
+            external_message_id=_opt_str(payload.get("external_message_id")),
             text=str(payload.get("text", "")),
-            metadata=metadata,
+            raw_metadata=metadata,
+            client_request_id=client_request_id or None,
         )
+
+
+def _opt_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
 
 
 def _safe_json(body: bytes) -> dict[str, Any]:

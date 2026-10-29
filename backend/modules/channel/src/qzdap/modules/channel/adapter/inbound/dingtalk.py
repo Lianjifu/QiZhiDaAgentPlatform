@@ -8,7 +8,7 @@ DingTalk delivers two kinds of payloads to the webhook:
   ciphertext as IV. Decrypted plaintext is a JSON envelope with
   ``msgtype`` / ``senderId`` / ``text`` fields. When ``app_secret`` is
   configured the adapter decrypts and parses normally; otherwise it
-  returns a ``kind=encrypted`` placeholder (legacy behaviour).
+  returns a placeholder (legacy behaviour).
 - **Plain callback events**: ``{"msgtype":"text","text":{"content":...},
   "senderId":"...","conversationId":"..."}``.
 """
@@ -18,14 +18,27 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from qzdap.modules.channel.application.ports import InboundAdapter, ParsedMessage
-from qzdap.modules.channel.domain.value_objects import ChannelType
-from qzdap_observability.metrics import record_legacy_call
+from qzdap.modules.channel.adapter.inbound._base import (
+    build_inbound_message,
+    object_storage_attachment,
+)
+from qzdap_agent_runtime.gateway.types import (
+    AttachmentRef,
+    ChannelType,
+    InboundMessage,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from qzdap_agent_runtime.gateway.normalizer import NormalizerContext
 
 
-class DingTalkInboundAdapter(InboundAdapter):
+class DingTalkInboundAdapter:
+    """③ 的钉钉实现 —— 产出标准 :class:`InboundMessage`。"""
+
     channel_type = ChannelType.DINGTALK
 
     def __init__(self, *, app_secret: str = "") -> None:
@@ -36,13 +49,14 @@ class DingTalkInboundAdapter(InboundAdapter):
         if app_secret:
             self._aes_key = hashlib.sha256(app_secret.encode("utf-8")).digest()
 
-    def parse_webhook(
+    def normalize(
         self,
         *,
         body: bytes,
-        headers: dict[str, str],
-    ) -> ParsedMessage:
-        record_legacy_call("G4")  # ParsedMessage 数据类
+        headers: Mapping[str, str],
+        context: NormalizerContext,
+    ) -> InboundMessage:
+        _ = headers
         payload = _safe_json(body)
 
         # Stream v2 encryption. Real DingTalk signs the request with a
@@ -51,113 +65,136 @@ class DingTalkInboundAdapter(InboundAdapter):
         # ``encrypt`` so the rest of the pipeline can dispatch on
         # ``msgtype``.
         if "encrypt" in payload and isinstance(payload.get("encrypt"), str):
-            if self._aes_key is None:
-                return ParsedMessage(
-                    external_user_id="dingtalk-encrypted",
-                    external_chat_id="dingtalk-encrypted",
-                    external_message_id=None,
-                    text="",
-                    metadata={"kind": "encrypted", "raw_len": len(payload["encrypt"])},
-                )
-            try:
-                cipher = base64.b64decode(payload["encrypt"])
-                # AES-256-CBC: IV is the first 16 bytes of the
-                # ciphertext. Anything shorter is a malformed frame.
-                if len(cipher) < 32:
-                    return ParsedMessage(
-                        external_user_id="dingtalk-encrypted",
-                        external_chat_id="dingtalk-encrypted",
-                        external_message_id=None,
-                        text="",
-                        metadata={
-                            "kind": "encrypted",
-                            "raw_len": len(payload["encrypt"]),
-                            "decrypt": "frame_too_short",
-                        },
-                    )
-                iv = cipher[:16]
-                ct = cipher[16:]
-                from cryptography.hazmat.primitives import padding as sym_padding
-                from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-
-                decryptor = Cipher(
-                    algorithms.AES(self._aes_key), modes.CBC(iv)
-                ).decryptor()
-                padded = decryptor.update(ct) + decryptor.finalize()
-                unpadder = sym_padding.PKCS7(128).unpadder()
-                plaintext = unpadder.update(padded) + unpadder.finalize()
-                inner = json.loads(plaintext.decode("utf-8"))
-            except Exception:
-                # Decryption failed — fall back to the placeholder so
-                # we never leak raw ciphertext into the audit log.
-                return ParsedMessage(
-                    external_user_id="dingtalk-encrypted",
-                    external_chat_id="dingtalk-encrypted",
-                    external_message_id=None,
-                    text="",
-                    metadata={
-                        "kind": "encrypted",
-                        "raw_len": len(payload["encrypt"]),
-                        "decrypt": "failed",
-                    },
-                )
-            if not isinstance(inner, dict):
-                return ParsedMessage(
-                    external_user_id="dingtalk-encrypted",
-                    external_chat_id="dingtalk-encrypted",
-                    external_message_id=None,
-                    text="",
-                    metadata={"kind": "encrypted", "decrypt": "invalid_json"},
-                )
-            msg_type = inner.get("msgtype", "text")
-            text = _extract_text(inner)
-            sender_id = str(
-                inner.get("senderId")
-                or inner.get("senderStaffId")
-                or ""
-            )
-            chat_id = str(
-                inner.get("conversationId")
-                or inner.get("chatId")
-                or inner.get("openConversationId")
-                or ""
-            )
-            msg_id = inner.get("msgId") or inner.get("messageId")
-            return ParsedMessage(
-                external_user_id=sender_id,
-                external_chat_id=chat_id,
-                external_message_id=str(msg_id) if msg_id else None,
-                text=text,
-                metadata={
-                    "msg_type": msg_type,
-                    "conversation_type": inner.get("conversationType", ""),
-                    "robot_code": inner.get("robotCode", ""),
-                    "kind": "decrypted",
-                },
+            return self._encrypted_message(
+                context=context, body=body, payload=payload
             )
 
-        msg_type = payload.get("msgtype", "text")
+        msg_type = str(payload.get("msgtype", "text"))
         text = _extract_text(payload)
-        sender_id = str(payload.get("senderId") or payload.get("senderStaffId") or "")
-        chat_id = str(
-            payload.get("conversationId")
-            or payload.get("chatId")
-            or payload.get("openConversationId")
-            or ""
-        )
-        msg_id = payload.get("msgId") or payload.get("messageId")
-
-        return ParsedMessage(
-            external_user_id=sender_id,
-            external_chat_id=chat_id,
-            external_message_id=str(msg_id) if msg_id else None,
+        return build_inbound_message(
+            context=context,
+            body=body,
+            external_user_id=str(
+                payload.get("senderId") or payload.get("senderStaffId") or ""
+            ),
+            external_chat_id=str(
+                payload.get("conversationId")
+                or payload.get("chatId")
+                or payload.get("openConversationId")
+                or ""
+            ),
+            external_message_id=_opt_msg_id(payload),
             text=text,
-            metadata={
+            attachments=_attachments(msg_type, payload),
+            raw_metadata={
                 "msg_type": msg_type,
                 "conversation_type": payload.get("conversationType", ""),
                 "robot_code": payload.get("robotCode", ""),
             },
         )
+
+    def _encrypted_message(
+        self,
+        *,
+        context: NormalizerContext,
+        body: bytes,
+        payload: dict[str, Any],
+    ) -> InboundMessage:
+        raw_len = len(str(payload.get("encrypt") or ""))
+        if self._aes_key is None:
+            return _placeholder(
+                context=context,
+                body=body,
+                raw_metadata={"kind": "encrypted", "raw_len": raw_len},
+            )
+        try:
+            cipher = base64.b64decode(payload["encrypt"])
+            # AES-256-CBC: IV is the first 16 bytes of the
+            # ciphertext. Anything shorter is a malformed frame.
+            if len(cipher) < 32:
+                return _placeholder(
+                    context=context,
+                    body=body,
+                    raw_metadata={
+                        "kind": "encrypted",
+                        "raw_len": raw_len,
+                        "decrypt": "frame_too_short",
+                    },
+                )
+            iv = cipher[:16]
+            ct = cipher[16:]
+            from cryptography.hazmat.primitives import padding as sym_padding
+            from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+            decryptor = Cipher(
+                algorithms.AES(self._aes_key), modes.CBC(iv)
+            ).decryptor()
+            padded = decryptor.update(ct) + decryptor.finalize()
+            unpadder = sym_padding.PKCS7(128).unpadder()
+            plaintext = unpadder.update(padded) + unpadder.finalize()
+            inner = json.loads(plaintext.decode("utf-8"))
+        except Exception:
+            # Decryption failed — fall back to the placeholder so
+            # we never leak raw ciphertext into the audit log.
+            return _placeholder(
+                context=context,
+                body=body,
+                raw_metadata={
+                    "kind": "encrypted",
+                    "raw_len": raw_len,
+                    "decrypt": "failed",
+                },
+            )
+        if not isinstance(inner, dict):
+            return _placeholder(
+                context=context,
+                body=body,
+                raw_metadata={"kind": "encrypted", "decrypt": "invalid_json"},
+            )
+        msg_type = str(inner.get("msgtype", "text"))
+        return build_inbound_message(
+            context=context,
+            body=body,
+            external_user_id=str(
+                inner.get("senderId") or inner.get("senderStaffId") or ""
+            ),
+            external_chat_id=str(
+                inner.get("conversationId")
+                or inner.get("chatId")
+                or inner.get("openConversationId")
+                or ""
+            ),
+            external_message_id=_opt_msg_id(inner),
+            text=_extract_text(inner),
+            attachments=_attachments(msg_type, inner),
+            raw_metadata={
+                "msg_type": msg_type,
+                "conversation_type": inner.get("conversationType", ""),
+                "robot_code": inner.get("robotCode", ""),
+                "kind": "decrypted",
+            },
+        )
+
+
+def _placeholder(
+    *,
+    context: NormalizerContext,
+    body: bytes,
+    raw_metadata: dict[str, Any],
+) -> InboundMessage:
+    return build_inbound_message(
+        context=context,
+        body=body,
+        external_user_id="dingtalk-encrypted",
+        external_chat_id="dingtalk-encrypted",
+        text="",
+        raw_metadata=raw_metadata,
+    )
+
+
+def _opt_msg_id(payload: dict[str, Any]) -> str | None:
+    msg_id = payload.get("msgId") or payload.get("messageId")
+    return str(msg_id) if msg_id else None
 
 
 def _safe_json(body: bytes) -> dict[str, Any]:
@@ -180,6 +217,34 @@ def _extract_text(payload: dict[str, Any]) -> str:
     if isinstance(body, str):
         return body
     return str(payload.get("text", {}).get("content", ""))
+
+
+def _attachments(
+    msg_type: str, payload: dict[str, Any]
+) -> tuple[AttachmentRef, ...]:
+    """图片 / 文件 / 语音 → 统一成 :class:`AttachmentRef`（§3.4）。"""
+    if msg_type not in {"image", "file", "audio", "video"}:
+        return ()
+    body = payload.get(msg_type) or {}
+    if not isinstance(body, dict):
+        return ()
+    media_id = str(body.get("media_id") or body.get("fileId") or "")
+    if not media_id:
+        return ()
+    content_type = {
+        "image": "image/*",
+        "file": "application/octet-stream",
+        "audio": "audio/*",
+        "video": "video/*",
+    }.get(msg_type, "application/octet-stream")
+    return (
+        object_storage_attachment(
+            attachment_id=media_id,
+            filename=str(body.get("file_name") or ""),
+            content_type=content_type,
+            uri=media_id,
+        ),
+    )
 
 
 __all__ = ["DingTalkInboundAdapter"]

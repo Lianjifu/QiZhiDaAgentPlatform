@@ -24,13 +24,11 @@ from qzdap.modules.channel.application.ports import (
     ChannelRepository,
     WebhookSecretRepository,
 )
-from qzdap.modules.channel.domain.value_objects import (
-    ChannelStatus,
-    ChannelType,
-)
+from qzdap.modules.channel.domain.value_objects import ChannelStatus
 
 if TYPE_CHECKING:
     from qzdap.modules.channel.domain.entities import Channel, ChannelDelivery
+    from qzdap_agent_runtime.gateway.types import ChannelType
     from qzdap_schema.ids import ChannelId, TenantId
 
 # ── ChannelRepository ──────────────────────────────────────────────────────
@@ -233,9 +231,13 @@ class CollectingPublisher:
     """Records every event for later assertions.
 
     Stores ``(topic, payload)`` tuples so the test can assert both
-    the routing topic and the marshalled body. ``topic`` comes from
-    ``event.TOPIC`` when present (legacy governance / model) and
-    falls back to the class name (the kernel convention).
+    the routing topic and the marshalled body.
+
+    ⚠️ **topic 用类名，payload 用 ``_as_payload_dict``** —— 与真实发布器
+    （``MessagingChannelEventPublisher`` → ``EventEnvelope.wrap``）**逐字一致**：
+    总线按类名路由，载荷只认 ``_as_payload_dict``。旧实现按 ``event.TOPIC``
+    取 dotted 串（"channel.reply.sent"）→ 与总线的真实行为对不上，
+    断言会绿但线上根本没被路由到。
     """
 
     events: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
@@ -251,8 +253,12 @@ class CollectingPublisher:
         _ = tenant_id
         _ = workspace_id
         _ = trace_id
-        topic = getattr(event, "TOPIC", type(event).__name__)
-        payload = getattr(event, "to_payload", lambda: {})()
+        topic = type(event).__name__
+        payload = (
+            event._as_payload_dict()
+            if hasattr(event, "_as_payload_dict")
+            else getattr(event, "to_payload", lambda: {})()
+        )
         self.events.append((topic, payload))
 
 

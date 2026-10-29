@@ -71,9 +71,9 @@
 | G1 | `record_request_id` + `session.metadata.recent_request_ids` | ~~`modules/agent_runtime/adapter/persistence/repositories.py:155-170`~~（**已删**） | `qzdap_agent_runtime/gateway/idempotency.py` + `session_inbox` 原子 claim | **已清理**（2026-10-29：Gateway Stage 1 —— `record_request_id` 的协议方法与实现、`recent_request_ids` 的全部读写**已删除**；`copilot.stream_turn` 改走 `IdempotencyGuard`；替代物 = `session_inbox` 的 strong 键部分唯一索引 + 原子 claim） | Gateway Stage 1 |
 | G2 | IM 验签分支 `_verify_signature` / `_reject` | ~~`modules/channel/application/services.py:195-215`~~（**已删**） | `qzdap_agent_runtime/gateway/identity.py` 的 `HmacWebhookVerifier` | **已清理**（2026-10-29：Gateway Stage 2 —— 渠道服务里的 `_verify_signature` **已删除**，改为调用 gateway 的验签器；`_reject`（审计事件）**保留** —— 拒绝事件是当前职责，不是旧实现） | Gateway Stage 2 |
 | G3 | 硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` | ~~`modules/channel/adapter/dispatch/dispatch_subscriber.py:42-46`~~（**已删**） | **渠道配置登记的服务账号**（`channels.service_account` JSON 列，迁移 0049） | **已清理**（2026-10-29：Gateway Stage 2 —— 两个常量**已删除**；IM 的 actor 由渠道登记的服务账号物化（`ServiceAccount.from_mapping`），渠道没登记就**不跑这一轮**并留错误日志。迁移 0049 把既有全局身份**回填**进存量渠道行，升级不丢身份） | Gateway Stage 2 / Router Stage 2 |
-| G4 | `ParsedMessage` 数据类 | `modules/channel/application/ports.py:95-104` | `gateway/types.py` 的 `InboundMessage` | 未开始 | Gateway Stage 3 |
-| G5 | `ChannelMessageReceived` 事件（缺 `external_message_id` / `trace_id`） | `modules/channel/domain/events.py:27-46` | `InboundMessage` + `session_inbox` | 未开始 | Gateway Stage 3 |
-| G6 | IM 进程内 LRU 去重 | `modules/channel/adapter/dispatch/dispatch_subscriber.py:43-44,113-125,253-260` | `session_inbox` 原子 claim | 未开始 | Gateway Stage 3 |
+| G4 | `ParsedMessage` 数据类 | ~~`modules/channel/application/ports.py:95-104`~~（**已删**） | `gateway/types.py` 的 `InboundMessage` | **已清理**（2026-10-29：Gateway Stage 3 —— 数据类、协议 `InboundAdapter` 与 4 个适配器的 `parse_webhook` **全部删除**；适配器改为实现 Gateway ③ 的 `MessageNormalizer.normalize()`，产出标准 `InboundMessage`） | Gateway Stage 3 |
+| G5 | `ChannelMessageReceived` 事件（缺 `external_message_id` / `trace_id`） | ~~`modules/channel/domain/events.py:27-46`~~（**已删**） | `InboundMessage` + `session_inbox` | **已清理**（2026-10-29：Gateway Stage 3 —— 事件类**已删除**，入站消息本身（`InboundMessage`）就是总线事件；补上 `external_message_id` / `trace_id` / `payload_hash`。⚠️ 连带修掉两个真实缺陷：**总线按类名路由**，旧实现按 dotted 的 `TOPIC` 订阅 → 这条 IM 链路**从未被触发过**；事件定义了 `to_payload()` 而 `EventEnvelope.wrap` 只认 `_as_payload_dict()` → 载荷退化成 `{"value": "<repr>"}`。审计侧的事件名同步改为 `InboundMessage`） | Gateway Stage 3 |
+| G6 | IM 进程内 LRU 去重 | ~~`modules/channel/adapter/dispatch/dispatch_subscriber.py:43-44,113-125,253-260`~~（**已删**） | `session_inbox` 原子 claim | **已清理**（2026-10-29：Gateway Stage 3 —— `OrderedDict` LRU、`_message_key`、`_evict_dedup` **全部删除**；IM 派发改为先走 ④ 的 `session_inbox` 原子 claim（跨进程可见 + 有 TTL），轮次失败时 **release**（键不该被消费）） | Gateway Stage 3 |
 | G7 | `/v1/sessions*` 的 turn 部分 | `modules/agent_runtime/adapter/http/router.py:209-280` | 统一会话 API（`/api/sessions*`） | 未开始 | Gateway Stage 4→5 |
 | G8 | `GET /v1/sessions` 列表别名 | `modules/agent_runtime/adapter/http/session_router.py:541-547` | `GET /api/sessions` | 未开始 | Gateway Stage 4→5 |
 | G9 | `dispatch_subscriber.py` 整体 | `modules/channel/adapter/dispatch/dispatch_subscriber.py` | `Gateway.accept` 直连 | 未开始 | Gateway Stage 4→5 |
@@ -194,9 +194,12 @@ Agent / Execution 层方案**暂不编写**，但读码时核实到以下事实�
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)/backend"
 
+# ⚠️ **注释行不算命中** —— 清理记录本身要写明「旧的 X 已删除」，那正是
+#    注释里的 `X` 在。如果注释也算命中，这条规则永远红，必然被绕过
+#    （「绕过一条永远红的检查」比「没有检查」更危险）。活引用一定在代码里。
 _scan() {  # $1=ERE pattern  $2=目录  $3=编号
   local hits
-  hits="$(grep -rEn --include='*.py' -- "$1" "$2" 2>/dev/null | grep -v '/tests/' || true)"
+  hits="$(grep -rEn --include='*.py' -- "$1" "$2" 2>/dev/null | grep -v '/tests/' | grep -Ev ':[0-9]+:[[:space:]]*#' || true)"
   if [ -n "$hits" ]; then
     echo "✗ $3 未清理：$1"
     echo "$hits"
@@ -335,7 +338,7 @@ def record_legacy_call(entry: str) -> None:
 
 **打点位置**：旧实现的**入口处**（不是内部），保证「旧实现被调用」与「旧实现被调用但走的是别的分支」都能被观测到。
 
-**打点覆盖（2026-10-29 实施）**：33 条中 **22 条在旧实现的入口处打点** ——
+**打点覆盖（2026-10-29 实施，Stage 3 后）**：33 条中 **19 条在旧实现的入口处打点** ——
 `record_legacy_call("<编号>")` 落在**入口**（不是内部），保证「旧实现被调用」与
 「旧实现被调用但走了别的分支」都能被观测到。
 
@@ -353,9 +356,12 @@ def record_legacy_call(entry: str) -> None:
 | **G1** `record_request_id` | **旧实现已删除**（2026-10-29 Gateway Stage 1）—— 打点随代码一起撤除 |
 | **G2** IM 验签分支 | **旧实现已删除**（2026-10-29 Gateway Stage 2，验签迁到 `gateway/identity.py`）—— 打点随代码一起撤除 |
 | **G3** 硬编码系统身份 | **旧实现已删除**（2026-10-29 Gateway Stage 2，改为渠道登记的服务账号）—— 打点随代码一起撤除 |
+| **G4** `ParsedMessage` 数据类 | **旧实现已删除**（2026-10-29 Gateway Stage 3，由 `InboundMessage` 取代）—— 打点随代码一起撤除 |
+| **G5** `ChannelMessageReceived` 事件 | **旧实现已删除**（2026-10-29 Gateway Stage 3，由 `InboundMessage` 取代）—— 打点随代码一起撤除 |
+| **G6** IM 进程内 LRU 去重 | **旧实现已删除**（2026-10-29 Gateway Stage 3，由 `session_inbox` 原子 claim 取代）—— 打点随代码一起撤除 |
 | **G10** 审批恢复路径丢幂等键 | **修复类** —— 判据是回归测试（`modules/agent_runtime/tests/unit/test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`），不进指标 |
 
-> **「7 条打不了点」+「5 条已不需要打点」= 12 条**必须改用替代判据（扫描 / 测试 / 删除 /
+> **「7 条打不了点」+「7 条已不需要打点」= 14 条**必须改用替代判据（扫描 / 测试 / 删除 /
 > 「无生产调用方」），**不得**用「指标为 0」判清零。
 > **修复完成后继续保留打点，会让指标永远非零、清理判据永远不成立** —— 打点是清理前的
 > 观测手段，不是终态。
@@ -448,13 +454,13 @@ def record_legacy_call(entry: str) -> None:
 
 | 状态 | 条目数 | 说明 |
 |---|---|---|
-| 未开始 | 27 | 旧实现仍是唯一生效路径 |
+| 未开始 | 24 | 旧实现仍是唯一生效路径 |
 | 已弃用 | 0 | — |
 | 待清理 | 1 | X19（死表 `memory_l2_embeddings`，迁移 0048 已实现并在 dev 库执行） |
-| 已清理 | 3 | **G1**（`record_request_id` + `recent_request_ids` —— Gateway Stage 1 直接删除）、**G2**（渠道内的 `_verify_signature` —— Gateway Stage 2 迁到 `gateway/identity.py`）、**G3**（硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` —— Gateway Stage 2 改为渠道登记的服务账号） |
+| 已清理 | 6 | **G1**（`record_request_id` + `recent_request_ids` —— Gateway Stage 1 直接删除）、**G2**（渠道内的 `_verify_signature` —— Gateway Stage 2 迁到 `gateway/identity.py`）、**G3**（硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` —— Gateway Stage 2 改为渠道登记的服务账号）、**G4**（`ParsedMessage` 数据类 —— Gateway Stage 3 由 `InboundMessage` 取代）、**G5**（`ChannelMessageReceived` 事件 —— Gateway Stage 3 由 `InboundMessage` 取代，连带修掉「按 dotted topic 订阅」与「`to_payload` 从未被调用」两个真实缺陷）、**G6**（IM 进程内 LRU 去重 —— Gateway Stage 3 由 `session_inbox` 原子 claim 取代） |
 | **已修复** | 2 | X14（跨用户泄漏）、**G10**（审批恢复路径丢幂等键）—— 判据是测试不是指标 |
 
-> **打点覆盖率**：33 条中 **26 条已打点**，其余 7 条走替代判据（见 §3.2 的「打点覆盖」表）。
+> **打点覆盖率**：33 条中 **19 条已打点**，其余 14 条走替代判据（见 §3.2 的「打点覆盖」表）。
 > **指标本身**（`qzdap_legacy_calls_total` + `record_legacy_call`）已在
 > `libs/observability/src/qzdap_observability/metrics.py` 落地并有单测。
 
@@ -490,7 +496,7 @@ def record_legacy_call(entry: str) -> None:
 | G1 | `gateway-refactor-plan.md` §9.2、Stage 1 | Gateway Stage 1（直接删，无调用方）—— ✅ **已执行**（2026-10-29） |
 | G2 | `gateway-refactor-plan.md` §9.2、Stage 2 | Gateway Stage 2 —— ✅ **已执行**（2026-10-29） |
 | G3 | `gateway-refactor-plan.md` §9.2；`router-refactor-plan.md` §7.2 | Gateway Stage 2 —— ✅ **已执行**（2026-10-29；Router Stage 2 的「按渠道解析会话」部分仍未做） |
-| G4、G5、G6 | `gateway-refactor-plan.md` §9.2、Stage 3 | Gateway Stage 3 |
+| G4、G5、G6 | `gateway-refactor-plan.md` §9.2、Stage 3 | Gateway Stage 3 —— ✅ **已执行**（2026-10-29） |
 | G7、G8、G9 | `gateway-refactor-plan.md` §9.4、Stage 4 | Gateway Stage 5 |
 | R1 | `router-refactor-plan.md` §7.2、§7.4 | Router Stage 2（**行为替换**；文件删除归 Gateway G9） |
 | R2 | `router-refactor-plan.md` §7.2 | Router **Stage 1**（`agentId` 直取 → 策略链） |

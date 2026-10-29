@@ -18,10 +18,8 @@ from qzdap.modules.channel.application.ports import (
     WebhookSecretRepository,
 )
 from qzdap.modules.channel.domain.entities import Channel, ChannelDelivery
-from qzdap.modules.channel.domain.value_objects import (
-    ChannelStatus,
-    ChannelType,
-)
+from qzdap.modules.channel.domain.value_objects import ChannelStatus
+from qzdap_agent_runtime.gateway.types import ChannelType
 from qzdap_schema.ids import ChannelId, TenantId
 
 if TYPE_CHECKING:
