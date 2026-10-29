@@ -34,6 +34,7 @@ from xml.etree import ElementTree
 from qzdap.modules.channel.application.ports import OutboundAdapter
 from qzdap.modules.channel.domain.errors import ChannelDeliveryFailed
 from qzdap_agent_runtime.gateway.types import ChannelType
+from qzdap_schema.dtos.errors import ErrorCode
 
 if TYPE_CHECKING:
     import httpx
@@ -75,14 +76,13 @@ class WeChatWorkOutboundAdapter(OutboundAdapter):
     ) -> str | None:
         if not (self._corp_id and self._corp_secret and self._agent_id):
             raise ChannelDeliveryFailed(
-                "wechatwork outbound not configured "
-                "(set corp_id/corp_secret/agent_id)",
-                code="CHANNEL_DELIVERY_FAILED",
+                "wechatwork outbound not configured (set corp_id/corp_secret/agent_id)",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         if self._http is None:
             raise ChannelDeliveryFailed(
                 "wechatwork outbound missing httpx.AsyncClient",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         aes_key = self._resolve_aes_key(metadata)
         token = self._resolve_token(metadata)
@@ -90,7 +90,7 @@ class WeChatWorkOutboundAdapter(OutboundAdapter):
         if not touser:
             raise ChannelDeliveryFailed(
                 "wechatwork send requires external_chat_id (touser)",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
 
         access_token = await self._fetch_access_token()
@@ -116,7 +116,7 @@ class WeChatWorkOutboundAdapter(OutboundAdapter):
         if resp.status_code >= 400:
             raise ChannelDeliveryFailed(
                 f"wechatwork send failed: {resp.status_code} {resp.text}",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         payload = _parse_response_xml(resp.text)
         errcode = int(payload.get("ErrorCode", payload.get("errcode", 0)))
@@ -124,7 +124,7 @@ class WeChatWorkOutboundAdapter(OutboundAdapter):
             raise ChannelDeliveryFailed(
                 f"wechatwork send rejected: code={errcode} "
                 f"msg={payload.get('ErrorMsg', payload.get('errmsg', 'unknown'))}",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         return payload.get("MsgId") or payload.get("msgid")
 
@@ -142,17 +142,19 @@ class WeChatWorkOutboundAdapter(OutboundAdapter):
             if resp.status_code >= 400:
                 raise ChannelDeliveryFailed(
                     f"wechatwork gettoken http {resp.status_code}",
-                    code="CHANNEL_DELIVERY_FAILED",
+                    code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
                 )
-            body = resp.json() if resp.headers.get("content-type", "").startswith(
-                "application/json"
-            ) else {}
+            body = (
+                resp.json()
+                if resp.headers.get("content-type", "").startswith("application/json")
+                else {}
+            )
             token = body.get("access_token")
             expires_in = int(body.get("expires_in") or 0)
             if not token or expires_in <= 0:
                 raise ChannelDeliveryFailed(
                     f"wechatwork gettoken rejected: {body.get('errmsg', 'unknown')}",
-                    code="CHANNEL_DELIVERY_FAILED",
+                    code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
                 )
             self._access_token = token
             self._access_token_expires_at = now + expires_in
@@ -171,19 +173,19 @@ class WeChatWorkOutboundAdapter(OutboundAdapter):
         if not candidate:
             raise ChannelDeliveryFailed(
                 "wechatwork outbound missing EncodingAESKey",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         try:
             raw = base64.b64decode(candidate + "=")
         except Exception as exc:
             raise ChannelDeliveryFailed(
                 f"wechatwork EncodingAESKey invalid: {exc}",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             ) from exc
         if len(raw) != 32:
             raise ChannelDeliveryFailed(
                 f"wechatwork EncodingAESKey must decode to 32 bytes, got {len(raw)}",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         return raw
 
@@ -192,7 +194,7 @@ class WeChatWorkOutboundAdapter(OutboundAdapter):
         if not token:
             raise ChannelDeliveryFailed(
                 "wechatwork outbound missing token",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         return token
 

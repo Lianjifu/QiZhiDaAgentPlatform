@@ -22,6 +22,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from qzdap_kernel.errors import AuthenticationError
+from qzdap_schema.dtos.errors import ErrorCode
 
 from qzdap_agent_runtime.gateway.types import (
     ActorContext,
@@ -33,11 +34,16 @@ from qzdap_agent_runtime.gateway.types import (
 DEFAULT_TIMESTAMP_TOLERANCE_SECONDS = 300
 
 # ── 拒绝原因码（稳定契约）────────────────────────────────────────────────
-REASON_SIGNATURE_INVALID = "WEBHOOK_SIGNATURE_INVALID"
-REASON_TIMESTAMP_SKEW = "WEBHOOK_TIMESTAMP_SKEW"
-REASON_CREDENTIALS_MISSING = "IDENTITY_CREDENTIALS_MISSING"
-REASON_TOKEN_INVALID = "TOKEN_INVALID"
-REASON_SERVICE_ACCOUNT_MISSING = "SERVICE_ACCOUNT_NOT_CONFIGURED"
+REASON_SIGNATURE_INVALID = ErrorCode.WEBHOOK_SIGNATURE_INVALID.value
+REASON_TIMESTAMP_SKEW = ErrorCode.WEBHOOK_TIMESTAMP_SKEW.value
+REASON_CREDENTIALS_MISSING = ErrorCode.IDENTITY_CREDENTIALS_MISSING.value
+REASON_TOKEN_INVALID = ErrorCode.TOKEN_INVALID.value
+# ⚠️ **拒绝原因码与 API 错误码是两套词汇**：
+#   - 原因码（这里）是**审计**里的「为什么拒收」（稳定契约，审计台看的就是它）；
+#   - API 错误码是「哪类失败」（渠道模块会把它翻成 `CHANNEL_SERVICE_ACCOUNT_MISSING`）。
+# 两者**都已登记进 `ErrorCode`**（投影表要覆盖它们），但**不允许互相替代** ——
+# 合并会改掉审计事件的既有取值。
+REASON_SERVICE_ACCOUNT_MISSING = ErrorCode.SERVICE_ACCOUNT_NOT_CONFIGURED.value
 
 
 class IdentityRejected(AuthenticationError):
@@ -47,7 +53,7 @@ class IdentityRejected(AuthenticationError):
     「还没进入业务处理」时就结束了（§2.3 的顺序规则 ②）。
     """
 
-    code = "IDENTITY_REJECTED"
+    code = ErrorCode.IDENTITY_REJECTED.value
     status = 401
 
     def __init__(

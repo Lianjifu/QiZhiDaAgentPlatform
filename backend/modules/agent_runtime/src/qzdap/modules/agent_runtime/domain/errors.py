@@ -18,6 +18,7 @@ from qzdap_kernel.errors import (
     ApprovalRequiredError,
     NotFoundError,
 )
+from qzdap_schema.dtos.errors import ErrorCode
 
 
 class SessionNotFound(NotFoundError):
@@ -47,7 +48,7 @@ class DuplicateRequestError(AppError):
     **不得静默丢弃重复请求**；重放不了（这一轮还在跑）时回 409。
     """
 
-    code = "DUPLICATE_REQUEST"
+    code = ErrorCode.DUPLICATE_REQUEST.value
     status = 409
 
     def __init__(

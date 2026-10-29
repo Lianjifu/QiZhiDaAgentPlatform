@@ -43,9 +43,7 @@ def _target(capabilities: ChannelCapabilities = _NO_CARDS) -> OutboundTarget:
 
 
 def _message(text: str = "hello") -> MessageEvent:
-    return MessageEvent(
-        turn_id="t1", seq=1, event_id="e1", trace_id="trace", delta=text
-    )
+    return MessageEvent(turn_id="t1", seq=1, event_id="e1", trace_id="trace", delta=text)
 
 
 def _approval() -> ApprovalRequiredEvent:
@@ -150,12 +148,26 @@ def test_usage_is_not_delivered_to_the_user() -> None:
 
 def test_an_error_is_told_to_the_user() -> None:
     """错误**不是**「不打扰用户」的那一类 —— 要说。"""
-    event = ErrorEvent(
-        turn_id="t1", seq=6, event_id="e6", error_code="E_X", safe_message="出错了"
-    )
+    event = ErrorEvent(turn_id="t1", seq=6, event_id="e6", error_code="E_X", safe_message="出错了")
     encoded = encode_result_event(event, _NO_CARDS)
     assert encoded.skip is False
     assert "出错了" in encoded.text
+
+
+def test_a_known_error_code_is_projected_into_the_im_copy() -> None:
+    """im 投放面：已知码 → **投影文案**（同一个码永远说同一句话 ✓）。"""
+    from qzdap_schema.dtos.errors import ErrorCode, project_error
+
+    event = ErrorEvent(
+        turn_id="t1",
+        seq=6,
+        event_id="e6",
+        error_code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
+        safe_message="outbound send failed: boom",
+    )
+    encoded = encode_result_event(event, _NO_CARDS)
+
+    assert encoded.text == project_error(ErrorCode.CHANNEL_DELIVERY_FAILED, "im")
 
 
 # ── 投递（sink）──────────────────────────────────────────────────────────
@@ -169,9 +181,7 @@ class _Adapter:
     async def send_reply(self, *, external_chat_id, text, metadata) -> str | None:  # type: ignore[no-untyped-def]
         if self.fail:
             raise RuntimeError("boom")
-        self.sent.append(
-            {"external_chat_id": external_chat_id, "text": text, "metadata": metadata}
-        )
+        self.sent.append({"external_chat_id": external_chat_id, "text": text, "metadata": metadata})
         return "mid-1"
 
 

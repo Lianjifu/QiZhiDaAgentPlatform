@@ -34,6 +34,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
+from qzdap_schema.dtos.errors import ErrorCode
+
 from qzdap_agent_runtime.gateway.idempotency import (
     SENTINEL_WORKSPACE_ID,
     IdempotencyGuard,
@@ -72,7 +74,7 @@ class GatewayChannelNotFound(Exception):
     def __init__(self, channel_id: UUID) -> None:
         super().__init__(f"channel {channel_id} not found")
         self.channel_id = channel_id
-        self.code = "CHANNEL_NOT_FOUND"
+        self.code = ErrorCode.CHANNEL_NOT_FOUND.value
 
 
 class GatewayNormalizerMissing(Exception):
@@ -81,7 +83,7 @@ class GatewayNormalizerMissing(Exception):
     def __init__(self, channel_type: ChannelType) -> None:
         super().__init__(f"no normalizer registered for channel type {channel_type}")
         self.channel_type = channel_type
-        self.code = "INBOUND_ADAPTER_MISSING"
+        self.code = ErrorCode.INBOUND_ADAPTER_MISSING.value
 
 
 @dataclass(frozen=True, slots=True)

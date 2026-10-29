@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_kernel.errors import AppError, InternalError
 from qzdap_observability.logging import get_logger
+from qzdap_schema.dtos.errors import project_error_message
 
 _log = get_logger("http.error")
 
@@ -25,6 +26,9 @@ async def error_envelope_middleware(
         return await call_next(request)
     except AppError as e:
         env = e.to_envelope(trace_id=current_trace_id())
+        # 没有自定义消息 → 用**投影文案**代替裸码（裸码对调用方毫无意义；
+        # 日志里另有 code 字段 ✓）。有具体消息的一律保留。
+        env.message = project_error_message(env.code, env.message, "http")
         _log.warning("app.error", code=env.code, message=env.message, status=env.status)
         return _json_response(env.to_dict(), env.status)
     except Exception:  # noqa: BLE001

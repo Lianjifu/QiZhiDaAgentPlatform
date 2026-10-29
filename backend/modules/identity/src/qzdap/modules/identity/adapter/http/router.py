@@ -20,6 +20,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request
+from qzdap_schema.dtos.errors import ErrorCode
 
 from qzdap.modules.identity.adapter.http.auth.router import auth_router
 from qzdap.modules.identity.adapter.http.deps import get_identity_service
@@ -134,7 +135,9 @@ def build_router() -> APIRouter:
 
             raise UserNotFound(f"user {x_user_id} not found")
         if u.tenant_id != x_tenant_id:
-            raise ForbiddenError("cross-tenant access", code="TENANT_DENIED")
+            raise ForbiddenError(
+                "cross-tenant access", code=ErrorCode.TENANT_DENIED.value
+            )
         return user_domain_to_response(u)
 
     @router.get("/users/{uid}", response_model=UserResponse)
@@ -151,7 +154,9 @@ def build_router() -> APIRouter:
 
             raise UserNotFound(f"user {uid} not found")
         if u.tenant_id != x_tenant_id:
-            raise ForbiddenError("cross-tenant access", code="TENANT_DENIED")
+            raise ForbiddenError(
+                "cross-tenant access", code=ErrorCode.TENANT_DENIED.value
+            )
         return user_domain_to_response(u)
 
     # ── API keys ───────────────────────────────────────────────────────────
@@ -172,7 +177,9 @@ def build_router() -> APIRouter:
         # of the with_loader_criteria auto-filter.
         owner = await svc.users.get(uid)
         if owner is None or owner.tenant_id != x_tenant_id:
-            raise ForbiddenError("cross-tenant access", code="TENANT_DENIED")
+            raise ForbiddenError(
+                "cross-tenant access", code=ErrorCode.TENANT_DENIED.value
+            )
         # If a workspace is supplied, it must also belong to the tenant.
         if body.workspace_id is not None:
             ws = await svc.workspaces.get(body.workspace_id)
@@ -204,7 +211,9 @@ def build_router() -> APIRouter:
             or existing.tenant_id != x_tenant_id
             or existing.owner_user_id != uid
         ):
-            raise ForbiddenError("cross-tenant access", code="TENANT_DENIED")
+            raise ForbiddenError(
+                "cross-tenant access", code=ErrorCode.TENANT_DENIED.value
+            )
         await svc.revoke_api_key().execute(api_key_id=kid)
 
     # ── login ──────────────────────────────────────────────────────────────

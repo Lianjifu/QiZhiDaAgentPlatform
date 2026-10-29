@@ -14,6 +14,7 @@ from qzdap_kernel.errors import (
     ForbiddenError,
     NotFoundError,
 )
+from qzdap_schema.dtos.errors import ErrorCode
 
 
 class ChannelError(AppError):
@@ -21,21 +22,21 @@ class ChannelError(AppError):
 
 
 class ChannelNotFound(ChannelError, NotFoundError):  # noqa: N818
-    code = "CHANNEL_NOT_FOUND"
+    code = ErrorCode.CHANNEL_NOT_FOUND.value
 
 
 class ChannelDisabled(ChannelError, ForbiddenError):  # noqa: N818
-    code = "CHANNEL_DISABLED"
+    code = ErrorCode.CHANNEL_DISABLED.value
     status = 403
 
 
 class WebhookSignatureInvalid(ChannelError, AuthenticationError):  # noqa: N818
-    code = "WEBHOOK_SIGNATURE_INVALID"
+    code = ErrorCode.WEBHOOK_SIGNATURE_INVALID.value
     status = 401
 
 
 class WebhookTimestampSkew(ChannelError, AuthenticationError):  # noqa: N818
-    code = "WEBHOOK_TIMESTAMP_SKEW"
+    code = ErrorCode.WEBHOOK_TIMESTAMP_SKEW.value
     status = 401
 
 
@@ -46,12 +47,12 @@ class ChannelServiceAccountMissing(ChannelError, AppError):  # noqa: N818
     服务账号。因此状态码是 503（服务暂时不可用），不是 4xx。
     """
 
-    code = "CHANNEL_SERVICE_ACCOUNT_MISSING"
+    code = ErrorCode.CHANNEL_SERVICE_ACCOUNT_MISSING.value
     status = 503
 
 
 class ChannelDeliveryFailed(ChannelError, AppError):  # noqa: N818
-    code = "CHANNEL_DELIVERY_FAILED"
+    code = ErrorCode.CHANNEL_DELIVERY_FAILED.value
     status = 502
 
 

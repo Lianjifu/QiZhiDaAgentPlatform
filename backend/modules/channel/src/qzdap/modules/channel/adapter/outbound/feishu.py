@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from qzdap.modules.channel.application.ports import OutboundAdapter
 from qzdap.modules.channel.domain.errors import ChannelDeliveryFailed
 from qzdap_agent_runtime.gateway.types import ChannelType
+from qzdap_schema.dtos.errors import ErrorCode
 
 if TYPE_CHECKING:
     import httpx
@@ -51,7 +52,7 @@ class FeishuOutboundAdapter(OutboundAdapter):
         if body.get("code") != 0:
             raise ChannelDeliveryFailed(
                 f"feishu auth failed: {body.get('msg', 'unknown')}",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         token = body["tenant_access_token"]
         self._cached_token = token
@@ -83,13 +84,13 @@ class FeishuOutboundAdapter(OutboundAdapter):
         if resp.status_code >= 400:
             raise ChannelDeliveryFailed(
                 f"feishu send failed: {resp.status_code} {resp.text}",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         body = resp.json()
         if body.get("code") != 0:
             raise ChannelDeliveryFailed(
                 f"feishu send rejected: {body.get('msg', 'unknown')}",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         return body.get("data", {}).get("message_id")
 

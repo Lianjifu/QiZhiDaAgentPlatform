@@ -13,6 +13,7 @@ from __future__ import annotations
 from contextvars import ContextVar
 from uuid import UUID
 
+from qzdap_schema.dtos.errors import ErrorCode
 from sqlalchemy import event
 from sqlalchemy.orm import with_loader_criteria
 
@@ -38,7 +39,7 @@ def assert_tenant_scope(tenant_id: UUID) -> None:
 
         raise ForbiddenError(
             "cross-tenant access attempted",
-            code="TENANT_DENIED",
+            code=ErrorCode.TENANT_DENIED.value,
         )
 
 

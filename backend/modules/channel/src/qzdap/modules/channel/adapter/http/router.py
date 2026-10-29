@@ -30,6 +30,7 @@ from qzdap.modules.channel.domain.errors import ChannelNotFound
 from qzdap.modules.channel.domain.value_objects import ChannelStatus
 from qzdap_agent_runtime.gateway.types import ChannelType
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_schema.dtos.errors import ErrorCode
 from qzdap_schema.ids import ChannelId, TenantId
 
 if TYPE_CHECKING:
@@ -85,7 +86,7 @@ def _require_admin(request: Request):
     if "admin" not in roles:
         from qzdap_kernel.errors import ForbiddenError
 
-        raise ForbiddenError("admin role required", code="TENANT_DENIED")
+        raise ForbiddenError("admin role required", code=ErrorCode.TENANT_DENIED.value)
     return actor
 
 
@@ -142,7 +143,10 @@ async def get_channel(
         tenant_id=TenantId(actor.tenant_id), channel_id=ChannelId(channel_id)
     )
     if ch is None:
-        raise ChannelNotFound(f"channel {channel_id} not found", code="CHANNEL_NOT_FOUND")
+        raise ChannelNotFound(
+            f"channel {channel_id} not found",
+            code=ErrorCode.CHANNEL_NOT_FOUND.value,
+        )
     return channel_to_response(ch)
 
 
@@ -158,7 +162,10 @@ async def update_channel(
         tenant_id=TenantId(actor.tenant_id), channel_id=ChannelId(channel_id)
     )
     if ch is None:
-        raise ChannelNotFound(f"channel {channel_id} not found", code="CHANNEL_NOT_FOUND")
+        raise ChannelNotFound(
+            f"channel {channel_id} not found",
+            code=ErrorCode.CHANNEL_NOT_FOUND.value,
+        )
 
     updated = ch
     if body.status is not None:
@@ -202,7 +209,10 @@ async def receive_webhook(
         channel_id=ChannelId(channel_id)
     )
     if ch is None:
-        raise ChannelNotFound(f"channel {channel_id} not found", code="CHANNEL_NOT_FOUND")
+        raise ChannelNotFound(
+            f"channel {channel_id} not found",
+            code=ErrorCode.CHANNEL_NOT_FOUND.value,
+        )
     delivery = await svc.handle_webhook(
         tenant_id=ch.tenant_id,
         channel_id=ChannelId(channel_id),

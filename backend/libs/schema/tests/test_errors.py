@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import pytest
-
 from qzdap_kernel.errors import AppError
 
 from qzdap_schema.dtos import ErrorCode
+from qzdap_schema.dtos.errors import (
+    ERROR_PROJECTION,
+    project_error,
+    try_project_error,
+)
 from qzdap_schema.dtos.errors import ErrorCode as DirectErrorCode
-
 
 # ---------------------------------------------------------------------------
 # 既有错误码（与 kernel `AppError.code` 字面值一致）
@@ -51,6 +54,22 @@ NEW_CODES = [
     # Router Stage 0（决策 #7）—— 排队语义：满 / 超时，**都不得静默丢弃**。
     (ErrorCode.QUEUE_FULL, 429, True),
     (ErrorCode.QUEUE_TIMEOUT, 503, True),
+    # Gateway Stage 0 · G-02b —— 收敛自各模块的自由字符串（方案 §9.0）
+    (ErrorCode.CHANNEL_NOT_FOUND, 404, False),
+    (ErrorCode.CHANNEL_DISABLED, 409, False),
+    (ErrorCode.INBOUND_ADAPTER_MISSING, 500, False),
+    (ErrorCode.OUTBOUND_ADAPTER_MISSING, 500, False),
+    (ErrorCode.WEBHOOK_SIGNATURE_INVALID, 401, False),
+    (ErrorCode.WEBHOOK_TIMESTAMP_SKEW, 401, False),
+    (ErrorCode.DUPLICATE_REQUEST, 409, False),
+    (ErrorCode.TENANT_DENIED, 403, False),
+    (ErrorCode.CHANNEL_SERVICE_ACCOUNT_MISSING, 503, False),
+    (ErrorCode.CHANNEL_DELIVERY_FAILED, 502, False),
+    (ErrorCode.IDENTITY_REJECTED, 401, False),
+    (ErrorCode.IDENTITY_CREDENTIALS_MISSING, 401, False),
+    (ErrorCode.TOKEN_INVALID, 401, False),
+    (ErrorCode.TOKEN_EXPIRED, 401, False),
+    (ErrorCode.SERVICE_ACCOUNT_NOT_CONFIGURED, 503, False),
 ]
 
 
@@ -58,7 +77,7 @@ NEW_CODES = [
 def test_new_codes_field_stability(
     code: ErrorCode, expected_status: int, expected_retriable: bool
 ) -> None:
-    """11 个新错误码字段稳定（http_status / retriable / i18n_key）。"""
+    """26 个新错误码字段稳定（http_status / retriable / i18n_key）。"""
     assert code.http_status == expected_status
     assert code.retriable is expected_retriable
     assert code.i18n_key == f"errors.{code.value.lower()}"
@@ -66,17 +85,20 @@ def test_new_codes_field_stability(
 
 def test_new_codes_are_distinct() -> None:
     """9 个新错误码之间互不重复。"""
-    new_values = {c.value for c in (
-        ErrorCode.SESSION_BUSY,
-        ErrorCode.AGENT_NOT_AVAILABLE,
-        ErrorCode.CONTEXT_TOO_LARGE,
-        ErrorCode.REVISION_CONFLICT,
-        ErrorCode.APPROVAL_EXPIRED,
-        ErrorCode.APPROVAL_NOT_MATCH,
-        ErrorCode.TOOL_ARGUMENT_INVALID,
-        ErrorCode.TOOL_TIMEOUT,
-        ErrorCode.TOOL_RATE_LIMITED,
-    )}
+    new_values = {
+        c.value
+        for c in (
+            ErrorCode.SESSION_BUSY,
+            ErrorCode.AGENT_NOT_AVAILABLE,
+            ErrorCode.CONTEXT_TOO_LARGE,
+            ErrorCode.REVISION_CONFLICT,
+            ErrorCode.APPROVAL_EXPIRED,
+            ErrorCode.APPROVAL_NOT_MATCH,
+            ErrorCode.TOOL_ARGUMENT_INVALID,
+            ErrorCode.TOOL_TIMEOUT,
+            ErrorCode.TOOL_RATE_LIMITED,
+        )
+    }
     assert len(new_values) == 9
 
 
@@ -122,6 +144,7 @@ def test_errorcode_serialization_roundtrip() -> None:
     assert code.value == "SESSION_BUSY"
     # JSON 序列化保持字符串
     import json
+
     assert json.loads(json.dumps(code.value)) == "SESSION_BUSY"
 
 
@@ -145,5 +168,59 @@ def test_errorcode_unknown_value_raises() -> None:
 def test_dtos_package_exports_errorcode() -> None:
     """ErrorCode 必须从 `qzdap_schema.dtos` 直接可导入。"""
     assert ErrorCode is DirectErrorCode
-    from qzdap_schema.dtos import ErrorCode as PackageErrorCode  # noqa: F401
+    from qzdap_schema.dtos import ErrorCode as PackageErrorCode
+
     assert PackageErrorCode is ErrorCode
+
+
+# ---------------------------------------------------------------------------
+# 投影表（Gateway Stage 0 · G-02）
+# ---------------------------------------------------------------------------
+
+
+def test_every_error_code_resolves_through_the_projection() -> None:
+    """**任何**码都要能查到一句话 —— 查不到就给兜底，不能把裸码甩给用户。"""
+    for code in ErrorCode:
+        for surface in ("http", "im", "web"):
+            assert project_error(code, surface), f"{code} 的 {surface} 文案为空"
+
+
+def test_the_projection_is_keyed_by_enum_members_only() -> None:
+    """投影表的键**只能是** `ErrorCode` 成员 —— 两套码必然有一套漏。"""
+    for key in ERROR_PROJECTION:
+        assert isinstance(key, ErrorCode), f"投影表里有非枚举的键：{key!r}"
+
+
+def test_project_error_accepts_a_plain_string_code() -> None:
+    """按字符串查也要能用 —— 错误码在运行时就是字符串（`AppError.code`）。"""
+    assert project_error("TENANT_DENIED", "http") == project_error(
+        ErrorCode.TENANT_DENIED, "http"
+    )
+
+
+def test_an_unknown_code_falls_back_instead_of_leaking_the_raw_code() -> None:
+    """不认识的码 → 兜底文案，**不是**把裸码返回去。"""
+    fallback = project_error("SOME_CODE_WE_NEVER_HEARD_OF", "http")
+    assert fallback
+    assert "SOME_CODE_WE_NEVER_HEARD_OF" not in fallback
+
+
+def test_try_project_error_returns_none_for_an_unknown_code() -> None:
+    """已有自己文案的调用方用这个 —— 投影表没登记时保留原文，不被兜底覆盖。"""
+    assert try_project_error("SOME_CODE_WE_NEVER_HEARD_OF") is None
+    assert try_project_error("TENANT_DENIED") is not None
+
+
+def test_the_three_surfaces_can_say_different_things() -> None:
+    """同一个码在三个投放面上**允许**文案不同 —— 那正是投影表的意义。"""
+    copy = ERROR_PROJECTION[ErrorCode.TENANT_DENIED]
+    assert copy.http != copy.im or copy.im != copy.web
+
+
+def test_the_im_and_web_copy_fall_back_to_http_when_not_written() -> None:
+    """少写一份文案不该让用户看到裸码。"""
+    from qzdap_schema.dtos.errors import ErrorCopy
+
+    only_http = ErrorCopy(http="只有 http")
+    assert only_http.for_surface("im") == "只有 http"
+    assert only_http.for_surface("web") == "只有 http"

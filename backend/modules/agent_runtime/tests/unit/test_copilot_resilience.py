@@ -63,6 +63,22 @@ class _Messages:
         self.rows.append(kwargs)
 
 
+class _DomainErrorLLM:
+    """Yields one chunk, then fails with a **带稳定错误码**的领域异常。"""
+
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+        self.requests: list[ChatRequest] = []
+
+    async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
+        self.requests.append(req)
+        yield LLMChunk(model=req.model, delta="partial")
+        raise self._error
+
+    async def synthetic_chunks(self, user_input, *, turn_id):
+        return []
+
+
 class _ExplodingLLM:
     """Yields one chunk, then blows up mid-stream."""
 
@@ -137,7 +153,9 @@ class _PricingResolver:
 class _PricingLLM:
     """LLM fake that accepts the saved-model call shape."""
 
-    async def stream(self, req, *, model_id=None, route_id=None, actor=None, fallback_model_ids=None):
+    async def stream(
+        self, req, *, model_id=None, route_id=None, actor=None, fallback_model_ids=None
+    ):
         yield LLMChunk(model=req.model, delta="ok")
         yield LLMChunk(
             model=req.model,
@@ -184,7 +202,6 @@ class _ScriptedLLM:
 
     async def synthetic_chunks(self, user_input, *, turn_id):
         return []
-
 
 
 class _CatalogToolPort:
@@ -247,7 +264,9 @@ async def test_tool_failure_does_not_kill_the_turn() -> None:
         ]
     )
     tool_port = _BoomToolPort()
-    svc, deps, sid, *_ = await _make_service(llm=llm, agent=agent, owner_id=uid, tool_port=tool_port)
+    svc, deps, sid, *_ = await _make_service(
+        llm=llm, agent=agent, owner_id=uid, tool_port=tool_port
+    )
 
     chunks = [
         chunk
@@ -283,7 +302,9 @@ async def test_mid_stream_failure_emits_error_chunk_and_fails_the_turn() -> None
         owner="test",
         model="default",
     )
-    svc, deps, sid, *_ = await _make_service(llm=_ExplodingLLM(), agent=agent, owner_id=uid)
+    svc, deps, sid, *_ = await _make_service(
+        llm=_ExplodingLLM(), agent=agent, owner_id=uid
+    )
 
     chunks = [
         chunk
@@ -334,6 +355,7 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
     detail = await svc.create_session(
         tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
     )
+
     # deps["llm"] is FakeLLM with raise_on_first_chunk unset → replace the
     # graph with one whose model fails before the first chunk.
     class _FailFast:
@@ -373,7 +395,9 @@ async def test_cancelled_stream_does_not_leave_a_running_turn() -> None:
         owner="test",
         model="default",
     )
-    svc, deps, sid, *_ = await _make_service(llm=_ExplodingLLM(), agent=agent, owner_id=uid)
+    svc, deps, sid, *_ = await _make_service(
+        llm=_ExplodingLLM(), agent=agent, owner_id=uid
+    )
 
     stream = svc.stream_turn(
         tenant_id=tid,
@@ -420,7 +444,9 @@ async def test_catalog_tool_reaches_the_model_with_its_argument_schema() -> None
             }
         ]
     )
-    svc, deps, sid, *_ = await _make_service(llm=llm, agent=agent, owner_id=uid, tool_port=tool_port)
+    svc, deps, sid, *_ = await _make_service(
+        llm=llm, agent=agent, owner_id=uid, tool_port=tool_port
+    )
 
     _ = [
         chunk
@@ -437,7 +463,11 @@ async def test_catalog_tool_reaches_the_model_with_its_argument_schema() -> None
     tools = llm.requests[0].tools or []
     names = [t["function"]["name"] for t in tools]
     assert "web_search" in names
-    schema = next(t["function"]["parameters"] for t in tools if t["function"]["name"] == "web_search")
+    schema = next(
+        t["function"]["parameters"]
+        for t in tools
+        if t["function"]["name"] == "web_search"
+    )
     assert schema["properties"]["query"]["type"] == "string"
     assert schema["required"] == ["query"]
 
@@ -471,19 +501,32 @@ async def test_second_concurrent_turn_is_rejected() -> None:
     """Two turns on one session would interleave messages and race on seq."""
     tid, wid, uid, aid = _owners()
     agent = CatalogAgent.create(
-        id=aid, tenant_id=tid, workspace_id=wid, name="t", category="test", owner="test",
+        id=aid,
+        tenant_id=tid,
+        workspace_id=wid,
+        name="t",
+        category="test",
+        owner="test",
         model="default",
     )
     svc, deps, sid, *_ = await _make_service(llm=_SlowLLM(), agent=agent, owner_id=uid)
 
     first = svc.stream_turn(
-        tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=UUID(sid), user_input="one"
+        tenant_id=tid,
+        workspace_id=wid,
+        owner_id=uid,
+        session_id=UUID(sid),
+        user_input="one",
     )
     await anext(first)
 
     with pytest.raises(SessionBusyError):
         async for _ in svc.stream_turn(
-            tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=UUID(sid), user_input="two"
+            tenant_id=tid,
+            workspace_id=wid,
+            owner_id=uid,
+            session_id=UUID(sid),
+            user_input="two",
         ):
             pass
 
@@ -497,13 +540,22 @@ async def test_cancel_request_stops_the_running_turn(monkeypatch) -> None:
     monkeypatch.setattr(copilot_mod, "CANCEL_POLL_SECONDS", 0.01)
     tid, wid, uid, aid = _owners()
     agent = CatalogAgent.create(
-        id=aid, tenant_id=tid, workspace_id=wid, name="t", category="test", owner="test",
+        id=aid,
+        tenant_id=tid,
+        workspace_id=wid,
+        name="t",
+        category="test",
+        owner="test",
         model="default",
     )
     svc, deps, sid, *_ = await _make_service(llm=_SlowLLM(), agent=agent, owner_id=uid)
 
     stream = svc.stream_turn(
-        tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=UUID(sid), user_input="hi"
+        tenant_id=tid,
+        workspace_id=wid,
+        owner_id=uid,
+        session_id=UUID(sid),
+        user_input="hi",
     )
     await anext(stream)
     live = await svc.request_cancel(tenant_id=tid, session_id=UUID(sid))
@@ -525,16 +577,27 @@ async def test_a_new_turn_is_not_cancelled_by_a_stale_flag(monkeypatch) -> None:
     monkeypatch.setattr(copilot_mod, "CANCEL_POLL_SECONDS", 0.01)
     tid, wid, uid, aid = _owners()
     agent = CatalogAgent.create(
-        id=aid, tenant_id=tid, workspace_id=wid, name="t", category="test", owner="test",
+        id=aid,
+        tenant_id=tid,
+        workspace_id=wid,
+        name="t",
+        category="test",
+        owner="test",
         model="default",
     )
-    svc, deps, sid, *_ = await _make_service(llm=_RecordingLLM(), agent=agent, owner_id=uid)
+    svc, deps, sid, *_ = await _make_service(
+        llm=_RecordingLLM(), agent=agent, owner_id=uid
+    )
     await svc.request_cancel(tenant_id=tid, session_id=UUID(sid))
 
     chunks = [
         chunk
         async for chunk in svc.stream_turn(
-            tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=UUID(sid), user_input="hi"
+            tenant_id=tid,
+            workspace_id=wid,
+            owner_id=uid,
+            session_id=UUID(sid),
+            user_input="hi",
         )
     ]
     assert chunks[-1].kind == "done"
@@ -545,17 +608,28 @@ async def test_a_replayed_client_request_id_does_not_start_a_second_turn() -> No
     """Double click / network retry must not produce two conversations."""
     tid, wid, uid, aid = _owners()
     agent = CatalogAgent.create(
-        id=aid, tenant_id=tid, workspace_id=wid, name="t", category="test", owner="test",
+        id=aid,
+        tenant_id=tid,
+        workspace_id=wid,
+        name="t",
+        category="test",
+        owner="test",
         model="default",
     )
-    svc, deps, sid, *_ = await _make_service(llm=_RecordingLLM(), agent=agent, owner_id=uid)
+    svc, deps, sid, *_ = await _make_service(
+        llm=_RecordingLLM(), agent=agent, owner_id=uid
+    )
 
     async def send(request_id: str) -> None:
         _ = [
             chunk
             async for chunk in svc.stream_turn(
-                tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=UUID(sid),
-                user_input="hi", client_request_id=request_id,
+                tenant_id=tid,
+                workspace_id=wid,
+                owner_id=uid,
+                session_id=UUID(sid),
+                user_input="hi",
+                client_request_id=request_id,
             )
         ]
 
@@ -570,15 +644,25 @@ async def test_a_replayed_client_request_id_does_not_start_a_second_turn() -> No
 async def test_the_first_user_message_becomes_the_session_title() -> None:
     tid, wid, uid, aid = _owners()
     agent = CatalogAgent.create(
-        id=aid, tenant_id=tid, workspace_id=wid, name="智能助手", category="test", owner="test",
+        id=aid,
+        tenant_id=tid,
+        workspace_id=wid,
+        name="智能助手",
+        category="test",
+        owner="test",
         model="default",
     )
-    svc, deps, sid, *_ = await _make_service(llm=_RecordingLLM(), agent=agent, owner_id=uid)
+    svc, deps, sid, *_ = await _make_service(
+        llm=_RecordingLLM(), agent=agent, owner_id=uid
+    )
 
     _ = [
         chunk
         async for chunk in svc.stream_turn(
-            tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=UUID(sid),
+            tenant_id=tid,
+            workspace_id=wid,
+            owner_id=uid,
+            session_id=UUID(sid),
             user_input="帮我把这份季度报表整理成一页摘要",
         )
     ]
@@ -592,7 +676,12 @@ async def test_the_first_user_message_becomes_the_session_title() -> None:
 async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
     tid, wid, uid, aid = _owners()
     agent = CatalogAgent.create(
-        id=aid, tenant_id=tid, workspace_id=wid, name="t", category="test", owner="test",
+        id=aid,
+        tenant_id=tid,
+        workspace_id=wid,
+        name="t",
+        category="test",
+        owner="test",
         model="default",
     )
     deps = make_dependencies()
@@ -601,8 +690,12 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
         llm=_PricingLLM(), catalog_model_resolver=_PricingResolver()
     )
     svc = CopilotSessionService(
-        sessions=deps["sessions"], turns=deps["turns"], messages=messages,
-        catalog=_Catalog(agent), events=deps["events"], graph=runner,
+        sessions=deps["sessions"],
+        turns=deps["turns"],
+        messages=messages,
+        catalog=_Catalog(agent),
+        events=deps["events"],
+        graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=InMemorySessionJournal(),
     )
@@ -612,7 +705,10 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
     chunks = [
         chunk
         async for chunk in svc.stream_turn(
-            tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=UUID(detail["id"]),
+            tenant_id=tid,
+            workspace_id=wid,
+            owner_id=uid,
+            session_id=UUID(detail["id"]),
             user_input="hi",
         )
     ]
@@ -620,6 +716,8 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
     assert usage, "usage chunk missing"
     # FakeLLM: input 3 / output 2 tokens; price 2.0 / 4.0 per 1K
     assert usage[-1].cost_usd == round(3 / 1000 * 2.0 + 2 / 1000 * 4.0, 6)
+
+
 @pytest.mark.asyncio
 async def test_double_clicking_approve_executes_the_tool_only_once() -> None:
     """台账 G10 —— 连点两次「同意」, 工具只能被执行一次。
@@ -728,7 +826,9 @@ async def test_two_identical_messages_without_a_client_request_id_both_run() -> 
         owner="test",
         model="default",
     )
-    svc, _deps, sid, *_ = await _make_service(llm=_RecordingLLM(), agent=agent, owner_id=uid)
+    svc, _deps, sid, *_ = await _make_service(
+        llm=_RecordingLLM(), agent=agent, owner_id=uid
+    )
 
     async def send() -> list:
         return [
@@ -746,3 +846,45 @@ async def test_two_identical_messages_without_a_client_request_id_both_run() -> 
     second = await send()
     assert first[-1].kind == "done"
     assert second[-1].kind == "done"
+
+
+async def test_a_known_error_code_is_projected_into_the_web_copy() -> None:
+    """web 投放面：错误码已知 → 气泡里是**投影文案**，不是技术细节。
+
+    ⚠️ 轮次行里存的仍是技术细节（`str(exc)`）—— 那是给日志/运维看的 ✓；
+    气泡给用户看的是人话 ✓。
+    """
+    from qzdap_kernel.errors import ExternalServiceError
+    from qzdap_schema.dtos.errors import ErrorCode, project_error
+
+    tid, wid, uid = TenantId(uuid4()), WorkspaceId(uuid4()), UserId(uuid4())
+    agent = CatalogAgent.create(
+        id=AgentId(uuid4()),
+        tenant_id=tid,
+        workspace_id=wid,
+        name="t",
+        category="test",
+        owner="test",
+        model="default",
+    )
+    svc, deps, sid, *_ = await _make_service(
+        llm=_DomainErrorLLM(ExternalServiceError()), agent=agent, owner_id=uid
+    )
+
+    chunks = [
+        chunk
+        async for chunk in svc.stream_turn(
+            tenant_id=tid,
+            workspace_id=wid,
+            owner_id=uid,
+            session_id=UUID(sid),
+            user_input="hi",
+        )
+    ]
+
+    assert chunks[-1].kind == "error"
+    assert chunks[-1].message == project_error(ErrorCode.EXTERNAL_SERVICE_ERROR, "web")
+    # 轮次行里留的仍是技术细节（运维看这个）。
+    turn = await deps["turns"].latest_for_session(UUID(sid))
+    assert turn is not None
+    assert turn.error_code == "TURN_FAILED"

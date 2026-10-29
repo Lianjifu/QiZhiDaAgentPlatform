@@ -1,6 +1,6 @@
 # Gateway 层重构方案
 
-> 版本：1.11（2026-10-29：**Stage 5 已实施（部分）** —— 旧的 `/v1/sessions*` **整段删除**（台账 **G7 / G8**；P-11 确认无仓外消费者 → 兼容保留期归零）+ `recent_request_ids` 残留数据清零 + 孤儿索引删除 + 「没有第二套实现」扫描脚本**进 CI** + §11.2 的架构测试落地；**G9（`dispatch_subscriber.py`）与 X2（第二套 turn 实现）仍未接管** —— 必须与 Session Stage 5b 原子切换；详见 §10 Stage 5「实施结果」与附录 C.7）
+> 版本：1.12（2026-10-29：**Stage 0 的 G-02 / G-02b 已补齐** —— 错误码**收敛 + 投影**落地：15 个 Gateway 域的自由字符串码提升为 `ErrorCode` 枚举成员（台账 **G12 已清理**）+ `ERROR_PROJECTION` 投影表（http / im / web 三套文案）+ 三处投放面接线；**§9.0 的表只列了 7 个** —— 实施时发现 Gateway 自己又造了 8 个，按实况补齐；**其余模块自己的 ~150 个码未接管**；详见附录 C.8）｜ 1.11（2026-10-29：**Stage 5 已实施（部分）** —— 旧的 `/v1/sessions*` **整段删除**（台账 **G7 / G8**；P-11 确认无仓外消费者 → 兼容保留期归零）+ `recent_request_ids` 残留数据清零 + 孤儿索引删除 + 「没有第二套实现」扫描脚本**进 CI** + §11.2 的架构测试落地；**G9（`dispatch_subscriber.py`）与 X2（第二套 turn 实现）仍未接管** —— 必须与 Session Stage 5b 原子切换；详见 §10 Stage 5「实施结果」与附录 C.7）
 > 沿革：v1.10（2026-10-29：**Stage 4b 已实施** —— 无感重放落地：Gateway 侧新增 `gateway/replay.py`（`StoredEvent` / `EventStore` 读端口 / 规范化摘要 `event_digest`）+ `Gateway.replay()`；**连带落地 Session 侧的最小必要**（`session_turns` 轮次双写 + `session_events` 事件落库 + 按 seq 读取端口，迁移 0050）—— 因为 Stage 4b 的硬前置（Session Stage 4「真写真读」）开工时不满足；**202 降级路径整条删除**，重复命中改为**重放上一轮的事件流**（SSE 带 `id:` 游标，支持 `Last-Event-ID` 续传），重放不了才回 409；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4b「实施结果」与附录 C.6）
 > 沿革：v1.9（2026-10-29：**Stage 4a 两段都已实施** —— 第一段：门面接管 + 出站 sink + 202 降级 + 弃用打点；第二段：**web 入口也走 `Gateway.accept`**（身份与幂等键各只有一个来源）；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4a「实施结果」与附录 C.4 / C.5）
 > 沿革：v1.8（2026-10-29：**Stage 4a 第一段已实施** —— `Gateway.accept` 门面（①②③）+ ④ 的三个动作 + 出站 `ResultSink`（编码 + 卡片降级）+ IM 入站/出站接管 + 重复请求的 202 降级路径 + G7/G9/X2 弃用打点；**「切 IM 入口到唯一 turn 实现」被 Session 阻塞，未接管**；详见 §10 Stage 4a「实施结果」与附录 C.4）
@@ -785,14 +785,19 @@ class ResultSink(Protocol):
 | `AGENT_NOT_AVAILABLE` | ✅ `ErrorCode` 枚举成员 | 502 | Router 未选到 agent |
 | `SESSION_BUSY` | ✅ `ErrorCode` 枚举成员 | 409 | 同会话已有活动轮次 |
 | `CHANNEL_NOT_FOUND` / `CHANNEL_DISABLED` | ⚠️ `modules/channel` 异常字符串 | 404 / 409 | 渠道不存在或已停用 |
-| `INBOUND_ADAPTER_MISSING` | ⚠️ `modules/channel` 异常字符串 | 500 | 该渠道类型没有注册解析器 |
+| `INBOUND_ADAPTER_MISSING` / `OUTBOUND_ADAPTER_MISSING` | ⚠️ `modules/channel` 异常字符串 | 500 | 该渠道类型没有注册解析器 / 投递适配器 |
 | `WEBHOOK_SIGNATURE_INVALID` / `WEBHOOK_TIMESTAMP_SKEW` | ⚠️ `modules/channel` 异常字符串 | 401 | 验签失败 |
 | `DUPLICATE_REQUEST` | ⚠️ `modules/agent_runtime` 异常字符串 | 409 | 幂等命中且**未启用**无感重放时的兜底 |
 | `TENANT_DENIED` | ⚠️ 模块内异常字符串 | 403 | 租户 / 工作区归属不符 |
+| `CHANNEL_SERVICE_ACCOUNT_MISSING` | ⚠️ Stage 2 **自己新增**的自由字符串 | 503 | 渠道没登记服务账号（③ 需要身份） |
+| `CHANNEL_DELIVERY_FAILED` | ⚠️ Stage 4a **自己新增**的自由字符串 | 502 | 出站投递失败 |
+| `IDENTITY_REJECTED` / `IDENTITY_CREDENTIALS_MISSING` / `TOKEN_INVALID` / `TOKEN_EXPIRED` | ⚠️ Stage 2 **自己新增**的自由字符串（② 的拒绝原因码） | 401 | 鉴权失败 |
+| `SERVICE_ACCOUNT_NOT_CONFIGURED` | ⚠️ Stage 2 的**拒绝原因码**（审计事件里的 `reason_code`） | 503 | 同上 —— ⚠️ **与 API 错误码是两套词汇**（见附录 C.8） |
 
 **本层的动作 = 收敛 + 投影**：
 
-1. **收敛**：把上表 ⚠️ 标记的 7 个码**提升为 `ErrorCode` 枚举成员**，并把各模块 `domain/errors.py` 的 `code = "..."` 字符串**对齐到枚举**。理由：§9.1 的 `ERROR_PROJECTION` 投影表是**按码查文案**的 —— 若码散落在两套体系里，投影表要维护两套码，而其中一套必然漏。
+1. **收敛**：把上表 ⚠️ 标记的码**提升为 `ErrorCode` 枚举成员**，并把各模块 `domain/errors.py` 的 `code = "..."` 字符串**对齐到枚举**。理由：§9.1 的 `ERROR_PROJECTION` 投影表是**按码查文案**的 —— 若码散落在两套体系里，投影表要维护两套码，而其中一套必然漏。
+   > ⚠️ **实施时发现本表漏了 8 个** —— Gateway Stage 2 / 4a **自己又造了自由字符串**（服务账号缺失 / 投递失败 / 出站适配器缺失 / 鉴权原因码）。**收敛只做一半等于没做** → 按实况补齐到 **15 个**（附录 C.8）。
 2. **投影**：新增 `ERROR_PROJECTION`（http / im / web 三套文案）。
 3. **⚠️ 不新增码**：本方案**不引入任何新错误码**。若实施中发现某个场景确实没有对应码，**先确认现有码能否表达**，再决定新增 —— 并同步更新本表。
 
@@ -816,7 +821,7 @@ class ResultSink(Protocol):
 | `idempotency.py` | `IdempotencyGuard`、`IdempotencyStore` Protocol、`IdempotencyDecision` |
 | `channels.py` | `ChannelGateway`：渠道注册表、入站分派、出站编解码、能力声明 |
 | `facade.py` | `Gateway.accept(raw)` 返回 `InboundMessage` 或 `Duplicate`；`Gateway.emit(event)` |
-| `errors.py` | `ErrorCode` → 多渠道文案投影表（`ERROR_PROJECTION`） |
+| ~~`errors.py`~~ | ⚠️ **没建** —— 投影表落在 `libs/schema/src/qzdap_schema/dtos/errors.py`（**唯一一份**）。理由：`libs/http`（错误信封）与各模块都要用它，放进契约包就得让它们反向依赖 runtime 包；**两份投影表 = 两套文案**（附录 C.8） |
 
 ### 9.2 迁移（旧代码 → 新位置）
 
@@ -900,7 +905,7 @@ composition
 | 动作 | 产出 |
 |---|---|
 | 建 `gateway/` 骨架 + `types.py` | 4 个类型定稿 |
-| 扩 `ErrorCode` 投影表 | `libs/schema/.../errors.py` 加 `ERROR_PROJECTION`（http / im / web 三套文案） |
+| 扩 `ErrorCode` 投影表 | `libs/schema/.../errors.py` 加 `ERROR_PROJECTION`（http / im / web 三套文案）—— ✅ **已实施**（附录 C.8） |
 | 迁移 0044 | `session_inbox` 加列改约束 |
 | 建架构测试 | §11.2 的 import 禁令 |
 | **收敛基础设施** | 建 `qzdap_legacy_calls_total` 指标（若尚未建立），并给本层台账条目的旧入口打点（`record_legacy_call("<编号>")`）。**没有打点就没有清理判据** —— 见 `cleanup-ledger.md` §3.2 |
@@ -1551,6 +1556,26 @@ Gateway 域对应的规则：
 > 指标窗口需要时间，引用关系不需要。本轮选了**能当场证明的那一种**（谁还在调用
 > 这个旧实现），并把**证明不了的部分**明确留成「未接管」—— **既没有假装条件
 > 满足，也没有因为条件不满足就什么都不做**。
+
+
+### C.8 Stage 0 的 G-02 / G-02b 补齐实施带回的五处修正（v1.11 → v1.12，2026-10-29）
+
+> **背景**：Gateway Stage 0 的两项工作（G-02 投影表 / G-02b 错误码收敛）在
+> Stage 1–5 实施时**没做** —— 当时只做了「不引入新错误码」的一半。本轮补齐。
+
+| # | 级别 | 问题 | 修正 | 落点 |
+|---|---|---|---|---|
+| **G-45** | 严重 | **§9.0 的码清单已过时** —— 那张表列了 7 个码，但 **Gateway Stage 2 / 4a 自己又造了 8 个自由字符串**（`CHANNEL_SERVICE_ACCOUNT_MISSING` / `CHANNEL_DELIVERY_FAILED` / `OUTBOUND_ADAPTER_MISSING` / `IDENTITY_REJECTED` / `IDENTITY_CREDENTIALS_MISSING` / `TOKEN_INVALID` / `TOKEN_EXPIRED` / `SERVICE_ACCOUNT_NOT_CONFIGURED`）。**按过时的清单收敛 = 收敛只做了一半** | **按实况收敛 15 个**，并把 §9.0 的表同步更新 ✓ | `libs/schema/.../errors.py` / §9.0 |
+| **G-46** | 中 | **§9.1 说投影表放 `gateway/errors.py`，而 §3.1 的 G-02 说放 `libs/schema/.../errors.py`** —— 两处矛盾 | **放 `libs/schema`**（唯一一份 ✓）：`libs/http`（错误信封）与各模块都要用它，放进契约包就得让它们反向依赖 runtime 包；**两份投影表 = 两套文案** —— 与 G-02b 的动因同源 | `libs/schema/src/qzdap_schema/dtos/errors.py` |
+| **G-47** | 中 | **「拒绝原因码」与「API 错误码」是两套词汇，方案没区分** —— `IdentityRejected` 把 `reason_code` 直接当成 `code` 发出去，而审计事件里也用同一个 `reason_code`。合并两者的取值会**改掉审计事件的既有取值**（`SERVICE_ACCOUNT_NOT_CONFIGURED`） | **不合并**：两套词汇都登记进 `ErrorCode`（投影表要覆盖它们），但**不允许互相替代** —— 审计的「为什么拒收」与 API 的「哪类失败」各有其义 | `gateway/identity.py` / `libs/schema/.../errors.py` |
+| **G-48** | 中 | **投影表是「按码查文案」—— 但码一直在增加**（每层都在加码）。没有兜底的话，未登记的码只能把**裸码**返回给用户 | 表里只登记 **Gateway 层会产生 / 关心**的码；其余走**兜底文案**（三个面各一句）。另给 `try_project_error()`：调用方**已有自己文案**时用它（返回 `None` → 保留原文，投影不覆盖有用的细节） | `libs/schema/.../errors.py` |
+| **G-49** | 低 | **投影表建好但没人用 = 建而不切**（本项目的教训） | **三处投放面各接一处**：① http —— `libs/http/error_envelope.py`，**没写消息**的领域异常用投影文案代替裸码；② im —— `modules/channel/.../outbound/encoder.py`，已知码用投影文案（同一个码永远说同一句话）；③ web —— `modules/agent_runtime/.../copilot.py` 的 SSE 错误 chunk，**没写消息**时用投影文案（技术细节仍留在日志与轮次行里） | 三处 + 各自的单测 |
+
+**未接管（不属本层）**：**其余模块自己的 ~150 个自由字符串错误码**（tool / skill / memory / governance / identity / platform …）——
+全量收敛是**跨层工程**，不在 Gateway 层假装做完。Gateway 域的 15 个由
+`tests/architecture/test_error_code_vocabulary.py`（架构守卫）+ 台账 **G12** 的
+三条扫描规则（`modules/` / `libs/` / `runtimes/` 各一条）双重守门 ✓。
+
 
 **跨文档同步**（本轮一并改掉的对 Gateway 章节号的引用）：
 

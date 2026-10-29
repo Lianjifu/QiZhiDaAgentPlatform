@@ -51,6 +51,7 @@ from qzdap_agent_runtime.gateway.identity import (
 )
 from qzdap_agent_runtime.gateway.types import RawIngress
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_schema.dtos.errors import ErrorCode
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -149,7 +150,7 @@ class ChannelService:
         if channel is None:
             raise ChannelNotFound(
                 f"channel {channel_id} not found",
-                code="CHANNEL_NOT_FOUND",
+                code=ErrorCode.CHANNEL_NOT_FOUND.value,
             )
         updated = channel.with_status(status)
         await self.channel_repo.update(updated)
@@ -182,18 +183,18 @@ class ChannelService:
         if channel is None:
             raise ChannelNotFound(
                 f"channel {channel_id} not found",
-                code="CHANNEL_NOT_FOUND",
+                code=ErrorCode.CHANNEL_NOT_FOUND.value,
             )
 
         if channel.status is not ChannelStatus.ACTIVE:
             await self._reject(
                 tenant_id=tenant_id,
                 channel_id=channel_id,
-                reason_code="CHANNEL_DISABLED",
+                reason_code=ErrorCode.CHANNEL_DISABLED.value,
             )
             raise ChannelDisabled(
                 f"channel {channel_id} is {channel.status.value}",
-                code="CHANNEL_DISABLED",
+                code=ErrorCode.CHANNEL_DISABLED.value,
             )
 
         raw = RawIngress(
@@ -223,21 +224,25 @@ class ChannelService:
                 trace_id=exc.trace_id,
             )
             if exc.reason_code == REASON_TIMESTAMP_SKEW:
-                raise WebhookTimestampSkew(str(exc), code="WEBHOOK_TIMESTAMP_SKEW") from exc
+                raise WebhookTimestampSkew(
+                    str(exc), code=ErrorCode.WEBHOOK_TIMESTAMP_SKEW.value
+                ) from exc
             if exc.reason_code == REASON_SERVICE_ACCOUNT_MISSING:
                 # 渠道没登记服务账号 → 产不出标准入站消息（③ 需要身份）。
                 # 这是**渠道配置问题**，不是请求问题 —— 明确拒绝并说清怎么修。
                 raise ChannelServiceAccountMissing(
                     str(exc),
-                    code="CHANNEL_SERVICE_ACCOUNT_MISSING",
+                    code=ErrorCode.CHANNEL_SERVICE_ACCOUNT_MISSING.value,
                 ) from exc
-            raise WebhookSignatureInvalid(str(exc), code="WEBHOOK_SIGNATURE_INVALID") from exc
+            raise WebhookSignatureInvalid(
+                str(exc), code=ErrorCode.WEBHOOK_SIGNATURE_INVALID.value
+            ) from exc
         except GatewayChannelNotFound as exc:
-            raise ChannelNotFound(str(exc), code="CHANNEL_NOT_FOUND") from exc
+            raise ChannelNotFound(str(exc), code=ErrorCode.CHANNEL_NOT_FOUND.value) from exc
         except GatewayNormalizerMissing as exc:
             raise ChannelError(
                 str(exc),
-                code="INBOUND_ADAPTER_MISSING",
+                code=ErrorCode.INBOUND_ADAPTER_MISSING.value,
             ) from exc
 
         message = accepted.message
@@ -279,18 +284,18 @@ class ChannelService:
         if channel is None:
             raise ChannelNotFound(
                 f"channel {channel_id} not found",
-                code="CHANNEL_NOT_FOUND",
+                code=ErrorCode.CHANNEL_NOT_FOUND.value,
             )
         if channel.status is not ChannelStatus.ACTIVE:
             raise ChannelDisabled(
                 f"channel {channel_id} is {channel.status.value}",
-                code="CHANNEL_DISABLED",
+                code=ErrorCode.CHANNEL_DISABLED.value,
             )
         adapter = outbound_registry.get(channel.type)
         if adapter is None:
             raise ChannelError(
                 f"no outbound adapter registered for channel type {channel.type.value}",
-                code="OUTBOUND_ADAPTER_MISSING",
+                code=ErrorCode.OUTBOUND_ADAPTER_MISSING.value,
             )
         delivery = make_outbound_delivery(
             tenant_id=tenant_id,
@@ -330,7 +335,7 @@ class ChannelService:
             # callers still see ChannelDeliveryFailed, not bare Exception.
             failed = delivery.with_status(
                 DeliveryStatus.FAILED,
-                error_code="CHANNEL_DELIVERY_FAILED",
+                error_code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
             await self.delivery_repo.update(failed)
             raise
@@ -339,7 +344,7 @@ class ChannelService:
             await self.delivery_repo.update(failed)
             raise ChannelDeliveryFailed(
                 f"outbound send failed: {exc}",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             ) from exc
         else:
             return updated

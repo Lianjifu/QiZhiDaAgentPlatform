@@ -79,6 +79,7 @@
 | G9 | `dispatch_subscriber.py` 整体 | `modules/channel/adapter/dispatch/dispatch_subscriber.py` | `Gateway.accept` 直连 | **已弃用**（2026-10-29：Gateway Stage 4a —— 加弃用标记 + `record_legacy_call("G9")` 打点。⚠️ **它仍是 IM 的现行入口**（Stage 4a 的「切 IM 入口」被 Session 的「唯一 turn 实现」阻塞，见 Gateway 方案 §0.5）→ **打点仍会有流量**，Stage 5 的清零判据在切完之前不可能满足。**2026-10-29（Gateway Stage 5）未接管**：文件删除**必须与「切 IM 入口」+ Session Stage 5b（删 `use_cases/*`）同一个 PR**（台账 §3.4 的原子切换规则）→ 归属 Session Stage 5b） | Gateway Stage 4→5 |
 | G10 | **审批恢复路径丢失幂等键**：`decide_approval` 调 `stream_turn` 时**不传 `clientRequestId`** → `record_request_id("")` 直接返回 `True` → 幂等被跳过 → 连点两次「同意」工具被**再执行一次** | ~~`modules/agent_runtime/src/qzdap/modules/agent_runtime/application/copilot.py:474-482`~~（**已修**） | 审批决策带**自己的**幂等键（由 `approval_id` 派生）—— **键只由审批自身的稳定标识派生**，不掺原轮次的键（审批恢复时原轮次状态已推进、原键取不到 → 键会漂移 → 重复点击挡不住） | **已修复**（2026-10-29：Gateway Stage 1 —— `decide_approval` 生成 `approval\|{approval_id}\|{decision}` 的 strong 键；连点两次「同意」第二次被判定为重复，工具只执行一次。**判据是回归测试**：`modules/agent_runtime/tests/unit/test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`） | **Gateway Stage 1**（幂等键传递 ✅）+ **Session Stage 5**（X7 审批吞异常 ⏳）—— **两侧都要做，只做一边不够** |
 | G11 | **重复请求的 202 降级路径**（Stage 4a 引入的**临时**降级：命中重复 → 202 + 上次 turn_id + `replay_unavailable`） | ~~`modules/agent_runtime/adapter/http/session_router.py`（SSE 端点的 202 分支）~~ + `DuplicateRequestError.replay_unavailable`（**已删**） | **无感重放**（`session_events` 按 seq 重放；Gateway Stage 4b） | **已清理**（2026-10-29：Gateway Stage 4b —— 202 分支与 `replay_unavailable` 字段**删除**；重复命中改为**重放上一轮的事件流**（SSE 带 `id:` 游标，支持 `Last-Event-ID` 续传），重放不了才回 409。⚠️ 这是**同一语义的两套实现**（重放 vs 降级），最终态只留重放） | Gateway Stage 4b |
+| G12 | **各模块 `domain/errors.py` 里的自由字符串错误码**（Gateway 域的 15 个：`CHANNEL_NOT_FOUND` / `CHANNEL_DISABLED` / `INBOUND_ADAPTER_MISSING` / `OUTBOUND_ADAPTER_MISSING` / `WEBHOOK_SIGNATURE_INVALID` / `WEBHOOK_TIMESTAMP_SKEW` / `DUPLICATE_REQUEST` / `TENANT_DENIED` / `CHANNEL_SERVICE_ACCOUNT_MISSING` / `CHANNEL_DELIVERY_FAILED` / `IDENTITY_REJECTED` / `IDENTITY_CREDENTIALS_MISSING` / `TOKEN_INVALID` / `TOKEN_EXPIRED` / `SERVICE_ACCOUNT_NOT_CONFIGURED`）| `modules/channel/domain/errors.py` 等各模块 + `libs/auth/jwt.py` + `libs/persistence/tenant_guard.py` + `runtimes/.../gateway/identity.py` | `ErrorCode` 枚举（`libs/schema/.../errors.py`）+ `ERROR_PROJECTION` 投影表 | **已清理**（2026-10-29：Gateway Stage 0 · G-02b —— 15 个码**全部提升为 `ErrorCode` 枚举成员**，生产代码改为引用 `ErrorCode.X.value`；扫描规则 + 架构测试（`tests/architecture/test_error_code_vocabulary.py`）守门。⚠️ **方案 §9.0 的表只列了 7 个** —— 实施时发现 Gateway Stage 2/4a **自己又造了 8 个**（服务账号缺失 / 投递失败 / 出站适配器缺失 / 鉴权拒绝原因等）→ **按实况补齐到 15 个**，否则收敛只做了一半。⚠️ **其余模块自己的 ~150 个码未接管** —— 不属 Gateway 层，全量收敛是跨层工程） | Gateway Stage 0（G-02b） |
 
 ### 2.2 Router 域
 
@@ -232,6 +233,12 @@ _scan "_verify_signature"          modules/channel/  "G2"
 _scan "OrderedDict"               modules/channel/  "G6"
 _scan '@router\.(get|post|put|delete|patch)\("/v1/sessions'  modules/  "G7/G8"
 _scan "dispatch_subscriber"       modules/          "G9"
+
+# Gateway 域 · G12（错误码收敛）—— 码不许再以**字面量**出现，只能引用
+#   `ErrorCode.X.value`。⚠️ 三个目录各一条（脚本一次只扫一个目录）。
+_scan '(code|reason_code|error_code)\s*=\s*"(CHANNEL_NOT_FOUND|CHANNEL_DISABLED|INBOUND_ADAPTER_MISSING|OUTBOUND_ADAPTER_MISSING|WEBHOOK_SIGNATURE_INVALID|WEBHOOK_TIMESTAMP_SKEW|DUPLICATE_REQUEST|TENANT_DENIED|CHANNEL_SERVICE_ACCOUNT_MISSING|CHANNEL_DELIVERY_FAILED|IDENTITY_REJECTED|IDENTITY_CREDENTIALS_MISSING|TOKEN_INVALID|TOKEN_EXPIRED|SERVICE_ACCOUNT_NOT_CONFIGURED)"' modules/ "G12"
+_scan '(code|reason_code|error_code)\s*=\s*"(CHANNEL_NOT_FOUND|CHANNEL_DISABLED|INBOUND_ADAPTER_MISSING|OUTBOUND_ADAPTER_MISSING|WEBHOOK_SIGNATURE_INVALID|WEBHOOK_TIMESTAMP_SKEW|DUPLICATE_REQUEST|TENANT_DENIED|CHANNEL_SERVICE_ACCOUNT_MISSING|CHANNEL_DELIVERY_FAILED|IDENTITY_REJECTED|IDENTITY_CREDENTIALS_MISSING|TOKEN_INVALID|TOKEN_EXPIRED|SERVICE_ACCOUNT_NOT_CONFIGURED)"' libs/    "G12"
+_scan '(code|reason_code|error_code)\s*=\s*"(CHANNEL_NOT_FOUND|CHANNEL_DISABLED|INBOUND_ADAPTER_MISSING|OUTBOUND_ADAPTER_MISSING|WEBHOOK_SIGNATURE_INVALID|WEBHOOK_TIMESTAMP_SKEW|DUPLICATE_REQUEST|TENANT_DENIED|CHANNEL_SERVICE_ACCOUNT_MISSING|CHANNEL_DELIVERY_FAILED|IDENTITY_REJECTED|IDENTITY_CREDENTIALS_MISSING|TOKEN_INVALID|TOKEN_EXPIRED|SERVICE_ACCOUNT_NOT_CONFIGURED)"' runtimes/ "G12"
 
 # Router 域
 #   R2 的规则绑**旧入口的打点**（`record_legacy_call("R2")`）—— 打点是旧实现
@@ -477,10 +484,11 @@ def record_legacy_call(entry: str) -> None:
 | 未开始 | 20 | 旧实现仍是唯一生效路径 |
 | 已弃用 | 2 | **G9**（`dispatch_subscriber.py`）、**X2**（第二套 turn 实现）—— 均已加弃用标记 + 调用打点（Gateway Stage 4a）。⚠️ **G9 / X2 的打点仍会有流量**（IM 仍走它们），Stage 5 的清零判据在切完之前不可能满足 |
 | 待清理 | 1 | X19（死表 `memory_l2_embeddings`，迁移 0048 已实现并在 dev 库执行） |
-| 已清理 | 10 | **R2**（`agentId` 直取 —— Router Stage 1 改为规则链的「显式指定」规则）、**G7**（`/v1/sessions*` 的 turn 部分 + 整套 CRUD 别名 —— Gateway Stage 5 整段删除，P-11 确认无仓外消费者）、**G8**（`GET /v1/sessions` 列表别名 —— 同上）、**G11**（重复请求的 **202 降级路径** —— Gateway Stage 4b 删除，由「重放上一轮的事件流」取代）、**G1**（`record_request_id` + `recent_request_ids` —— Gateway Stage 1 直接删除）、**G2**（渠道内的 `_verify_signature` —— Gateway Stage 2 迁到 `gateway/identity.py`）、**G3**（硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` —— Gateway Stage 2 改为渠道登记的服务账号）、**G4**（`ParsedMessage` 数据类 —— Gateway Stage 3 由 `InboundMessage` 取代）、**G5**（`ChannelMessageReceived` 事件 —— Gateway Stage 3 由 `InboundMessage` 取代，连带修掉「按 dotted topic 订阅」与「`to_payload` 从未被调用」两个真实缺陷）、**G6**（IM 进程内 LRU 去重 —— Gateway Stage 3 由 `session_inbox` 原子 claim 取代） |
+| 已清理 | 11 | **G12**（各模块的自由字符串错误码 —— Gateway Stage 0 · G-02b 收敛进 `ErrorCode` 枚举 + 投影表）、**R2**（`agentId` 直取 —— Router Stage 1 改为规则链的「显式指定」规则）、**G7**（`/v1/sessions*` 的 turn 部分 + 整套 CRUD 别名 —— Gateway Stage 5 整段删除，P-11 确认无仓外消费者）、**G8**（`GET /v1/sessions` 列表别名 —— 同上）、**G11**（重复请求的 **202 降级路径** —— Gateway Stage 4b 删除，由「重放上一轮的事件流」取代）、**G1**（`record_request_id` + `recent_request_ids` —— Gateway Stage 1 直接删除）、**G2**（渠道内的 `_verify_signature` —— Gateway Stage 2 迁到 `gateway/identity.py`）、**G3**（硬编码 `SYSTEM_USER_ID` / `SYSTEM_AGENT_ID` —— Gateway Stage 2 改为渠道登记的服务账号）、**G4**（`ParsedMessage` 数据类 —— Gateway Stage 3 由 `InboundMessage` 取代）、**G5**（`ChannelMessageReceived` 事件 —— Gateway Stage 3 由 `InboundMessage` 取代，连带修掉「按 dotted topic 订阅」与「`to_payload` 从未被调用」两个真实缺陷）、**G6**（IM 进程内 LRU 去重 —— Gateway Stage 3 由 `session_inbox` 原子 claim 取代） |
 | **已修复** | 2 | X14（跨用户泄漏）、**G10**（审批恢复路径丢幂等键）—— 判据是测试不是指标 |
 
-> **打点覆盖率**：35 条中 **18 条已打点**，其余 17 条走替代判据（见 §3.2 的「打点覆盖」表）。
+> **条目数**：36 条（2026-10-29 新增 **G12** = 错误码收敛）。
+> **打点覆盖率**：36 条中 **18 条已打点**，其余 18 条走替代判据（见 §3.2 的「打点覆盖」表）。
 > ⚠️ **G7 / G8 / R2 的打点随旧实现一起撤除**（2026-10-29 Gateway Stage 5 / Router Stage 1）—— 打点是清理**前**的观测手段，不是终态。
 > **指标本身**（`qzdap_legacy_calls_total` + `record_legacy_call`）已在
 > `libs/observability/src/qzdap_observability/metrics.py` 落地并有单测。
@@ -489,7 +497,7 @@ def record_legacy_call(entry: str) -> None:
 
 | 方案 | 条目 | 编号 |
 |---|---|---|
-| Gateway | 11 | G1–G11（G7 / G8 已清理；**G9 未接管** —— 等 Session Stage 5b 的原子切换） |
+| Gateway | 12 | G1–G12（G7 / G8 / **G12** 已清理；**G9 未接管** —— 等 Session Stage 5b 的原子切换） |
 | Router | 4 | R1–R4（**R2 已清理** —— Router Stage 1；R1 / R4 待 Stage 2 / 5；R3 的 owner 是 Session） |
 | Session（跨层） | 6 | X2、X3、X4、X6、X7、X18 |
 | Context（跨层） | 3 | X8、X9、X10 |

@@ -302,8 +302,8 @@
 | Stage | 工作项 | 产出 / 落点 | **删除的旧实现**（台账 / 关注点） | **旧代码减少** | 依赖 |
 |---|---|---|---|---|---|
 | Stage 0 · 契约与地基 | G-01 建 `gateway/` 骨架 + `types.py` | 4 个类型定稿 | — | 0（纯新增） | — |
-| | G-02 扩 `ErrorCode` 投影表 | `libs/schema/.../errors.py` 加 `ERROR_PROJECTION`（http/im/web 三套文案） | — | 0 | G-01 |
-| | **G-02b 错误码收敛（跨模块）** | 把 7 个散落在模块内异常的码（`CHANNEL_NOT_FOUND` / `CHANNEL_DISABLED` / `INBOUND_ADAPTER_MISSING` / `WEBHOOK_SIGNATURE_INVALID` / `WEBHOOK_TIMESTAMP_SKEW` / `DUPLICATE_REQUEST` / `TENANT_DENIED`）**提升为 `ErrorCode` 枚举成员**，并对齐各模块 `domain/errors.py` 的 `code=` 字符串 | — | 0 | **横切 H8**（跨模块前置） |
+| | G-02 扩 `ErrorCode` 投影表 | ✅ **已实施**（2026-10-29）：`libs/schema/.../errors.py` 的 `ERROR_PROJECTION`（http/im/web 三套文案）+ `project_error` / `try_project_error` / `project_error_message`；**三处投放面接线**（http 错误信封 / im 出站编码器 / web 的 SSE 错误 chunk）。⚠️ **落点与 §9.1 的 `gateway/errors.py` 不同** —— 唯一一份放 `libs/schema`（Gateway 方案附录 C.8 的 G-46）| — | 0 | G-01 |
+| | **G-02b 错误码收敛（跨模块）** | ✅ **已实施**（2026-10-29）：**15 个**码提升为 `ErrorCode` 枚举成员（方案 §9.0 列了 7 个 —— 实施时发现 Gateway Stage 2/4a **自己又造了 8 个**，按实况补齐），各模块 `domain/errors.py` 的 `code=` 改为 `ErrorCode.X.value`；台账 **G12 已清理**（扫描规则 + 架构测试双重守门）。⚠️ **其余模块自己的 ~150 个码未接管** —— 不属本层 | — | 0 | **横切 H8**（跨模块前置） |
 | | G-03 **迁移 0044** | `session_inbox` 加列 + 换约束：**部分唯一索引**（`WHERE key_strength='strong'`，让 weak 键不参与判重）+ `expires_at` + NOT NULL 列的**合成值/哨兵**约定 | — | 0 | G-01 |
 | | G-04 建架构测试 | import 禁令 | — | 0 | — |
 | | G-05 打点本层旧入口 | `record_legacy_call("G1".."G10")` ×10 | — | 0 | 前置 C2 |
@@ -1112,19 +1112,24 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] P-11 **确认 `/v1/sessions*` 是否有仓外消费者**（H5 / C9，需 API owner 拍板）
 - [ ] P-12 CI 加 isolated install 检查（H6 / C10）
 
-### Gateway 层（§3.1）—— **删除 G1–G11**
-- [ ] G-01 `gateway/` 骨架 + `types.py` · G-02 `ErrorCode` 投影表 · **G-02b 错误码收敛（7 个模块内码 → `ErrorCode` 枚举）** · G-03 **迁移 0044**（部分唯一索引 + 合成值约定）· G-04 架构测试 · G-05 打点 G1–G11
-- [ ] G-06 `IdempotencyStore` · G-07 `Gateway.accept` · G-08 web 入站切过来
-- [ ] G-09 **删 `record_request_id` + `recent_request_ids`** → **G1** · **G-09b 审批恢复路径传幂等键** → **G10** · **G-09c 过期行不当成重复**
-- [ ] G-10 `IdentityVerifier` · G-11 服务账号物化 · G-12 验签迁出 · G-13 `/v1/sessions` 租户校验 · **G-13b `modules/channel` 加 `qzdap-agent-runtime` 依赖 + `uv.lock`**
-- [ ] G-14 **删验签分支 + 硬编码身份常量** → **G2 / G3**
-- [ ] G-15 4 个 inbound adapter · G-16 附件统一
-- [ ] G-17 **删 `ParsedMessage` + `ChannelMessageReceived` + IM LRU** → **G4 / G5 / G6**
-- [ ] G-18 `ResultSink` · G-19 渠道入站切过来
-- [ ] G-20 **切 IM 入口**（与 **S-32 同 PR**）· G-21 `/v1/sessions*` 停用打点 · G-22 `dispatch_subscriber.py` 停用打点 · G-23 重复请求降级路径
-- [ ] G-24 `Last-Event-ID` 重放 · G-25 降级路径移除 · G-26 重放一致性校验
-- [ ] G-27 **删 `/v1/sessions*`** → **G7 / G8** · G-28 **删 `dispatch_subscriber.py`** → **G9**（与 **S-33 同 PR**）
-- [ ] G-29 残留列 / 孤儿索引 · G-30 启用扫描脚本 Gateway 段 · G-31 更新台账 + 现状文档
+### Gateway 层（§3.1）—— **删除 G1–G12**
+> **2026-10-29 核对**：G-01…G-19 / G-21…G-27 / G-29…G-31 / **G-02 / G-02b** 均已落地
+> （依据 = 代码 + 台账 + git 历史 ✓）。**G-20 / G-28 未接管** —— 必须与
+> **Session Stage 5b 同一个 PR**（台账 §3.4 的原子切换规则 ✓）。
+
+- [x] G-01 `gateway/` 骨架 + `types.py` · **G-02 `ErrorCode` 投影表** ✅ 2026-10-29 · **G-02b 错误码收敛（15 个 → `ErrorCode` 枚举 + 台账 G12）** ✅ 2026-10-29 · G-03 **迁移 0044**（部分唯一索引 + 合成值约定）· G-04 架构测试 · G-05 打点 G1–G11
+- [x] G-06 `IdempotencyStore` · G-07 `Gateway.accept` · G-08 web 入站切过来
+- [x] G-09 **删 `record_request_id` + `recent_request_ids`** → **G1** · **G-09b 审批恢复路径传幂等键** → **G10** · **G-09c 过期行不当成重复**
+- [x] G-10 `IdentityVerifier` · G-11 服务账号物化 · G-12 验签迁出 · G-13 `/v1/sessions` 租户校验（该路由已随 Stage 5 删除 ✓）· **G-13b `modules/channel` 加 `qzdap-agent-runtime` 依赖 + `uv.lock`**
+- [x] G-14 **删验签分支 + 硬编码身份常量** → **G2 / G3**
+- [x] G-15 4 个 inbound adapter · G-16 附件统一
+- [x] G-17 **删 `ParsedMessage` + `ChannelMessageReceived` + IM LRU** → **G4 / G5 / G6**
+- [x] G-18 `ResultSink` · G-19 渠道入站切过来
+- [ ] **G-20 切 IM 入口**（与 **S-32 同 PR**）—— ⏳ **未接管**：IM 仍走旧路径，等 Session 的「唯一 turn 实现」
+- [x] G-21 `/v1/sessions*` 停用打点（随后随 Stage 5 删除 ✓）· G-22 `dispatch_subscriber.py` 停用打点 · G-23 重复请求降级路径（Stage 4b 已删除，改重放 ✓）
+- [x] G-24 `Last-Event-ID` 重放 · G-25 降级路径移除 · G-26 重放一致性校验
+- [x] G-27 **删 `/v1/sessions*`** → **G7 / G8** · G-28 **删 `dispatch_subscriber.py`** → **G9** —— ⏳ **未接管**（与 **S-33 同 PR**）
+- [x] G-29 残留列 / 孤儿索引 · G-30 启用扫描脚本 Gateway 段 · G-31 更新台账 + 现状文档
 
 ### Router 层（§3.2）—— **删除 R1–R4**
 - [x] R-01 `router/` 骨架 · R-02 **迁移 0045** · R-03 策略配置 schema · R-04 `UserDirectoryPort` · R-05 `QUEUE_FULL`/`QUEUE_TIMEOUT` · R-06 打点 R1–R4
@@ -1297,6 +1302,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 | G9 `dispatch_subscriber.py` | 指标 | `dispatch_subscriber.py` `_handle_event` | — | 与 Session S-32 同 PR 删除 |
 | G11 重复请求的 202 降级路径 | **已清理** | —（**2026-10-29 删除**：SSE 端点的 202 分支 + `DuplicateRequestError.replay_unavailable`；替代物 = 按 seq 的事件流重放） | — | Gateway Stage 4b |
 | G10 审批恢复路径的幂等键 | **修复**（✅ 2026-10-29 已修） | —（**打点已撤除**：修复类不留在指标里） | — | **判据 = 回归测试**：`test_copilot_resilience.py::test_double_clicking_approve_executes_the_tool_only_once`（连点两次「同意」只执行一次工具） |
+| G12 各模块的自由字符串错误码（Gateway 域 15 个） | **扫描**（+ 架构测试） | `modules/` / `libs/` / `runtimes/` 里的 `code="X"` 字面量 | `G12` | ✅ **已清理**（2026-10-29：15 个码提升为 `ErrorCode` 枚举成员；⚠️ 其余模块自己的 ~150 个码**未接管**） |
 | R1 IM 每消息建会话 | 指标 | `dispatch_subscriber.py` `_run_turn`（建 session 前） | — | |
 | R2 `agentId` 直取 | **已清理** | —（**2026-10-29 删除**：直取 + `record_legacy_call("R2")` 打点一并撤除） | — | Router Stage 1 —— 替代物 = `router/strategy.py` 的规则链（请求里的 agentId 降级为「显式指定」这一条规则） |
 | R3 `try_claim` 的会话互斥职责 | **扫描**（+ 打点） | `copilot.py` `stream_turn`、`repositories.py` `try_claim` | `R3` | ⚠️ **owner 是 Session**；清零判据 = Session 的 CAS 接管后本层无残留调用方 |

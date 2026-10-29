@@ -13,6 +13,7 @@ from uuid import UUID
 
 import jwt
 from qzdap_kernel.errors import AuthenticationError
+from qzdap_schema.dtos.errors import ErrorCode
 
 
 @dataclass(slots=True, frozen=True)
@@ -78,9 +79,13 @@ class JWTVerifier:
                 options={"require": ["exp", "iat", "iss", "aud", "sub"]},
             )
         except jwt.ExpiredSignatureError as e:
-            raise AuthenticationError("token expired", code="TOKEN_EXPIRED") from e
+            raise AuthenticationError(
+                "token expired", code=ErrorCode.TOKEN_EXPIRED.value
+            ) from e
         except jwt.InvalidTokenError as e:
-            raise AuthenticationError("invalid token", code="TOKEN_INVALID") from e
+            raise AuthenticationError(
+                "invalid token", code=ErrorCode.TOKEN_INVALID.value
+            ) from e
 
 
 def issue_access_token(issuer: JWTIssuer, **kwargs: Any) -> str:

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from qzdap.modules.channel.application.ports import OutboundAdapter
 from qzdap.modules.channel.domain.errors import ChannelDeliveryFailed
 from qzdap_agent_runtime.gateway.types import ChannelType
+from qzdap_schema.dtos.errors import ErrorCode
 
 if TYPE_CHECKING:
     import httpx
@@ -46,7 +47,7 @@ class WebOutboundAdapter(OutboundAdapter):
         if not self._webhook_url:
             raise ChannelDeliveryFailed(
                 "web outbound has no webhook_url configured",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         resp = await self._http.post(
             self._webhook_url,
@@ -60,7 +61,7 @@ class WebOutboundAdapter(OutboundAdapter):
         if resp.status_code >= 400:
             raise ChannelDeliveryFailed(
                 f"web webhook returned {resp.status_code}",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         try:
             body = resp.json()

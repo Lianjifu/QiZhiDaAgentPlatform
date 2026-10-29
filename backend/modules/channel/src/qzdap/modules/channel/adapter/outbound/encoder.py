@@ -31,6 +31,7 @@ from qzdap_agent_runtime.result.events import (
     PlanProposedEvent,
     ResultEvent,
 )
+from qzdap_schema.dtos.errors import try_project_error
 
 if TYPE_CHECKING:
     from qzdap_agent_runtime.gateway.types import ChannelCapabilities
@@ -69,9 +70,7 @@ class EncodedOutbound:
     metadata: dict[str, str] = field(default_factory=dict)
 
 
-def encode_result_event(
-    event: ResultEvent, capabilities: ChannelCapabilities
-) -> EncodedOutbound:
+def encode_result_event(event: ResultEvent, capabilities: ChannelCapabilities) -> EncodedOutbound:
     """把一条标准结果事件编码成渠道表达。
 
     **规则表见 Gateway 方案 §6**；能力来自**入站时**的渠道能力声明（§3.5），
@@ -110,8 +109,7 @@ def encode_result_event(
 
     if isinstance(event, PlanProposedEvent):
         steps = "\n".join(
-            f"{index}. {_step_title(step)}"
-            for index, step in enumerate(event.steps, start=1)
+            f"{index}. {_step_title(step)}" for index, step in enumerate(event.steps, start=1)
         )
         text = f"计划：{event.title}\n{steps}".rstrip()
         if not capabilities.cards:
@@ -140,6 +138,11 @@ def encode_result_event(
 
     if isinstance(event, ErrorEvent):
         # 错误**要告诉用户**（不是 usage/done 那类「不打扰用户」的事件）。
+        # 已知错误码 → 用**投影文案**（同一个码永远说同一句话 ✓）；
+        # 细节留在事件的 `detailed` 里（仅日志/trace 用）。
+        projected = try_project_error(event.error_code, "im")
+        if projected:
+            return EncodedOutbound(text=projected)
         return EncodedOutbound(text=f"出错了：{event.safe_message}")
 
     # 未知种类 —— 不静默丢：按文本兜底，交给投递结果记账。

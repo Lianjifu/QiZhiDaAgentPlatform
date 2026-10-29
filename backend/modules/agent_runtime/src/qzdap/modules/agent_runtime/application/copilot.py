@@ -22,6 +22,7 @@ from qzdap_agent_runtime.gateway.types import ChannelType, IdempotencyKey
 from qzdap_agent_runtime.router.types import RouteDecision
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_observability.metrics import record_legacy_call
+from qzdap_schema.dtos.errors import ErrorCode, project_error_message
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
     DoneChunk,
@@ -158,7 +159,9 @@ class CopilotSessionService:
         messages = await self._messages.list_for_session(session_id)
         pending = (session.graph_state or {}).get("pending_approval")
         agent = await self._catalog.get_admin(session.agent_id)
-        return _session_detail(session, messages=messages, pending=pending, agent=None, agent_dict=agent)
+        return _session_detail(
+            session, messages=messages, pending=pending, agent=None, agent_dict=agent
+        )
 
     async def close_session(self, *, tenant_id: UUID, session_id: UUID) -> None:
         session = await self._require_session(tenant_id, session_id)
@@ -180,7 +183,9 @@ class CopilotSessionService:
         closed = session.close()
         meta = dict(closed.metadata)
         meta["archived"] = True
-        meta["archived_at"] = __import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()
+        meta["archived_at"] = (
+            __import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()
+        )
         closed = closed.with_runtime(metadata=meta)
         await self._sessions.update(closed)
         await self._events.publish(
@@ -278,7 +283,7 @@ class CopilotSessionService:
             # **重放上一轮的事件流**（§4.5 / Stage 4b）。
             raise DuplicateRequestError(
                 f"request {key.value} was already handled",
-                code="DUPLICATE_REQUEST",
+                code=ErrorCode.DUPLICATE_REQUEST.value,
                 turn_id=decision.turn_id,
             )
         claimed = await self._sessions.try_claim(session_id)
@@ -365,7 +370,9 @@ class CopilotSessionService:
         if session.workspace_id != workspace_id or session.owner_id != owner_id:
             raise SessionNotFound(f"session {session_id} not found")
         if session.status is SessionStatus.CLOSED:
-            raise SessionClosedError(f"session {session_id} is closed", code="SESSION_CLOSED")
+            raise SessionClosedError(
+                f"session {session_id} is closed", code="SESSION_CLOSED"
+            )
         # 上一轮遗留的停止标记不能影响这一轮.
         await self._sessions.clear_cancel(session_id)
         agent_row = await self._catalog.get_published(session.agent_id)
@@ -375,7 +382,11 @@ class CopilotSessionService:
         )
         history = await self._messages.list_for_session(session_id)
         hist_msgs = [
-            {"role": item["role"], "content": item["content"], "name": item.get("toolName") or None}
+            {
+                "role": item["role"],
+                "content": item["content"],
+                "name": item.get("toolName") or None,
+            }
             for item in history
             if item.get("role") in {"user", "assistant", "tool", "system"}
         ]
@@ -446,7 +457,9 @@ class CopilotSessionService:
             # Phase 12: 策略路由. 当 route_id 提供时, 优先用它走 Phase 7 select_chain_for_strategy
             route_id=route_id,
             rolling_summary=str(session.metadata.get("rolling_summary") or ""),
-            resume=graph_resume if graph_resume.get("pending_approval") or resume else None,
+            resume=graph_resume
+            if graph_resume.get("pending_approval") or resume
+            else None,
             # Phase 14: 把 session_id 透给 graph, 让 delegate_to_agent 工具 stub
             # 知道在哪个 session 上 spawn sub-session.
             session_id=session_id,
@@ -495,7 +508,11 @@ class CopilotSessionService:
                         )
                         meta = dict(session.metadata)
                         meta["preview"] = final[:80]
-                        summary = str((self._graph.last_loop_state or {}).get("rolling_summary") or meta.get("rolling_summary") or "")
+                        summary = str(
+                            (self._graph.last_loop_state or {}).get("rolling_summary")
+                            or meta.get("rolling_summary")
+                            or ""
+                        )
                         meta["rolling_summary"] = summary
                         updated = session.with_runtime(
                             metadata=meta,
@@ -505,8 +522,12 @@ class CopilotSessionService:
                         await self._sessions.update(updated)
                         finished = turn.succeed(
                             final_response=final,
-                            input_tokens=turn_usage.input_tokens if turn_usage else None,
-                            output_tokens=turn_usage.output_tokens if turn_usage else None,
+                            input_tokens=turn_usage.input_tokens
+                            if turn_usage
+                            else None,
+                            output_tokens=turn_usage.output_tokens
+                            if turn_usage
+                            else None,
                             cost_usd=turn_usage.cost_usd if turn_usage else None,
                         )
                         await self._turns.add(finished)
@@ -549,7 +570,14 @@ class CopilotSessionService:
                     turn_id=turn.id,
                     seq=0,
                     code="TURN_FAILED",
-                    message=str(exc) or type(exc).__name__,
+                    # web 投放面：**没写消息的领域异常** → 用投影文案
+                    # （别把 "EXTERNAL_SERVICE_ERROR" 甩到聊天气泡里）；
+                    # 有具体消息的保留原样，技术细节留在日志 ✓。
+                    message=project_error_message(
+                        str(getattr(exc, "code", "")),
+                        str(exc) or type(exc).__name__,
+                        "web",
+                    ),
                     retriable=False,
                 ),
                 seq=event_seq,
@@ -576,9 +604,7 @@ class CopilotSessionService:
         )
         return stamped
 
-    async def _fail_turn(
-        self, turn: Turn, *, code: str, message: str = ""
-    ) -> None:
+    async def _fail_turn(self, turn: Turn, *, code: str, message: str = "") -> None:
         """Persist a failed turn. Best effort — never raises."""
         try:
             await self._turns.add(
@@ -644,7 +670,11 @@ class CopilotSessionService:
             owner_id=owner_id,
             session_id=session_id,
             user_input="继续",
-            resume={"pending_approval": pending, "decision": pending["decision"], "messages": (session.graph_state or {}).get("messages")},
+            resume={
+                "pending_approval": pending,
+                "decision": pending["decision"],
+                "messages": (session.graph_state or {}).get("messages"),
+            },
             idempotency_key=key,
             parent_span_context=parent_span_context,
         ):
@@ -749,7 +779,9 @@ def _task_card(session: Session, latest_turn: Turn | None) -> dict[str, Any]:
     meta = dict(session.metadata or {})
     title = str(meta.get("title") or "新对话")
     source = str(meta.get("agentName") or session.agent_version or "智能体")
-    description = (latest_turn.user_input[:120] if latest_turn and latest_turn.user_input else "").strip()
+    description = (
+        latest_turn.user_input[:120] if latest_turn and latest_turn.user_input else ""
+    ).strip()
     if not description:
         description = str(meta.get("preview") or "无内容")
 

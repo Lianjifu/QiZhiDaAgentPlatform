@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from qzdap.modules.channel.application.ports import OutboundAdapter
 from qzdap.modules.channel.domain.errors import ChannelDeliveryFailed
 from qzdap_agent_runtime.gateway.types import ChannelType
+from qzdap_schema.dtos.errors import ErrorCode
 
 if TYPE_CHECKING:
     import httpx
@@ -53,7 +54,7 @@ class DingTalkOutboundAdapter(OutboundAdapter):
         if resp.status_code >= 400:
             raise ChannelDeliveryFailed(
                 f"dingtalk send failed: {resp.status_code} {resp.text}",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         body = (
             resp.json()
@@ -63,7 +64,7 @@ class DingTalkOutboundAdapter(OutboundAdapter):
         if isinstance(body, dict) and body.get("errcode") not in (None, 0):
             raise ChannelDeliveryFailed(
                 f"dingtalk send rejected: {body.get('errmsg', 'unknown')}",
-                code="CHANNEL_DELIVERY_FAILED",
+                code=ErrorCode.CHANNEL_DELIVERY_FAILED.value,
             )
         return None
 

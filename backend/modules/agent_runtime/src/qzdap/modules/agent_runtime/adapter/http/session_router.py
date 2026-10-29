@@ -21,6 +21,7 @@ from qzdap_agent_runtime.router.types import RoutingRequest, RoutingUnavailable
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_observability.metrics import record_new_call
 from qzdap_observability.tracing import get_tracer
+from qzdap_schema.dtos.errors import ErrorCode
 
 from qzdap.modules.agent_runtime.adapter.http.dto import (
     InteractiveAnswerRequest,
@@ -430,7 +431,9 @@ def build_session_router() -> APIRouter:
         )
         rating = int(body.get("rating") or 0)
         if rating not in (1, 5):
-            raise HTTPException(status_code=422, detail="rating must be 1 (踩) or 5 (赞)")
+            raise HTTPException(
+                status_code=422, detail="rating must be 1 (踩) or 5 (赞)"
+            )
         comment = str(body.get("comment") or "")[:2000]
         topic = str(body.get("topic") or "对话质量")[:64]
         tags = [str(item)[:32] for item in (body.get("tags") or [])][:8]
@@ -880,7 +883,7 @@ def _duplicate_conflict(exc: DuplicateRequestError) -> JSONResponse:
     return JSONResponse(
         status_code=409,
         content={
-            "code": exc.code or "DUPLICATE_REQUEST",
+            "code": exc.code or ErrorCode.DUPLICATE_REQUEST.value,
             "turnId": str(exc.turn_id) if exc.turn_id else None,
             "replayUnavailable": True,
         },
