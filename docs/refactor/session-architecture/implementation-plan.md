@@ -568,12 +568,12 @@
 | | C-23 端到端回归 | 长会话、混合中英文、召回为空、摘要模型故障 | — | 0 | C-21 |
 | | **C-24 停用 + 打点 `_load_messages` / 四套模板 / `compact.py`** | ⚠️ **前置（硬）已满足**（Agent A-26 ✅ 2026-10-30）—— 旧循环 `_run_turn_inner` 已改接 `context/builder.py` + `memory/writer.py` ✓；**X8 的调用点已归零** ✓（演示栈实测 ✓）—— 剩下的「停用 + 打点 + 删除」归 **Context Stage 4 / Stage 5** ✓ | **X8 / X9 / X10 → 已弃用**（关注点 #9、#10、#11） | — | C-21 · **Agent A-26 ✓** |
 | | C-25 Agent Loop 内自拼 messages 分支停用 + 打点 | ✅ **旧循环那一半已停用** ✓（2026-10-30：随 A-26 改调 Builder ✓）—— ⚠️ `nodes.py` 的 `agent` 节点那半是**死代码** ✓（19 节点图没有生产调用方 ✓）→ 删除归 Agent Stage 7（X17）✓ | — | — | C-21 ✓ |
-| Stage 5 · 清理 | **C-26 删 `adapter/graph/compact.py`** | — | **X9**（关注点 #10） | **~53 行** | 归零判据满足 + **C-24 已停用打点** |
-| | **C-27 删 `adapter/llm/prompts.py` 四函数** | ⚠️ 前置：**Session Stage 5b 已删 `use_cases/run_turn.py`**（它 import 这四个函数） | **X10**（关注点 #11） | **~60 行** | 同上 + **Session S-33** |
-| | **C-28 删 `runner.py` 的 `_load_messages`** | — | **X8**（关注点 #9） | **~70 行** | 同上 + **Agent A-26** |
-| | **C-29 删 `runtimes/.../context/budget.py`** | 拆入新文件后删除 | — | **~384 行** | 同上 |
-| | C-30 删 `metadata['rolling_summary']` 残留读写 | — | — | 少量 | C-19 |
-| | C-31 启用扫描脚本 Context 段 | 台账 X8/X9/X10 段 | — | 0 | C-26 |
+| Stage 5 · 清理 | **C-26 删 `adapter/graph/compact.py`** | ✅ **已达成**（2026-10-30，Context Stage 5）—— 文件已删 ✓；调用点随 Stage 4 换掉 ✓ | **X9 → 已清理**（关注点 #10） | **~53 行** | 归零判据满足 + **C-24 已停用打点** ✓ |
+| | **C-27 删 `adapter/llm/prompts.py` 四函数** | ✅ **已达成** —— 旧模板随 **Session Stage 5b** 删除 ✓；新渲染（`context/prompts.py` 单段式 ✓）随 Context Stage 4 接上生产 ✓ | **X10 → 已清理**（关注点 #11） | **~60 行** | 同上 + **Session S-33** ✓ |
+| | **C-28 删 `runner.py` 的 `_load_messages`** | ✅ **已达成**（2026-10-30，Context Stage 5）—— 函数已删 ✓；调用点随 A-26 换掉 ✓ | **X8 → 已清理**（关注点 #9） | **~70 行** | 同上 + **Agent A-26** ✓ |
+| | **C-29 删 `runtimes/.../context/budget.py`** | ⚠️ **未达成** —— 它的两个旧类（`Compactor` / `ContextAssembler`）还被**19 节点图的 `nodes.py`** import ✓（那图**没有生产调用方** ✓）→ 删除归 **Agent Stage 7**（连 `nodes.py` 一起删 ✓） | — | **~384 行** | **Agent Stage 7** |
+| | C-30 删 `metadata['rolling_summary']` 残留读写 | ✅ **已达成**（2026-10-30，Context Stage 5）—— Session 层不再写 ✓、`copilot.py` 不再读 ✓（只读新列 ✓） | — | 少量 | C-19 ✓ |
+| | C-31 启用扫描脚本 Context 段 | ✅ **已达成**（2026-10-30）—— `compact.py`（X9 ✓）与 `_load_messages`（X8 ✓）两条规则**已启用** ✓（脚本 28 → **30** 条启用 ✓，扫描通过 ✓） | — | 0 | C-26 ✓ |
 | | C-32 更新台账 + 现状文档 | — | — | 0 | C-31 |
 
 **退出判据**：
@@ -1173,7 +1173,8 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] C-21 Agent Loop 调 Context（**已达成** ✓ · A-26 + Stage 4）· C-22 degraded 标记（⚠️ **归 Gateway 层** ✓ —— `ResultEvent.flags` 契约还没实现 ✗）· C-23 端到端回归（**已达成** ✓ —— `test_context_wiring.py` ✓）
 - [x] **C-24 停用打点 `_load_messages` / 四套模板 / `compact.py`**（前置 = **Agent A-26** ✓）→ **X8 / X9 / X10**（**调用点已归零** ✓ —— 实测 legacy 计数 0 ✓；台账行到 Stage 5 才标「已清理」✓）· C-25 自拼 messages 分支停用打点（**旧循环那半已达成** ✓ —— **删除归 Agent X17** ✓）
 - [ ] C-26 **删 `compact.py`** → **X9** · C-27 **删四套模板** → **X10**（前置 = Session S-33）· C-28 **删 `_load_messages`** → **X8** · C-29 **删 `budget.py`**
-- [ ] C-30 删 `metadata['rolling_summary']` 残留 · C-31 启用扫描脚本 Context 段 · C-32 更新台账 + 现状文档
+- [x] C-26 **删 `compact.py`** → **X9**（✅ 2026-10-30）· C-27 **删四套模板** → **X10**（✅ 随 Session S-33）· C-28 **删 `_load_messages`** → **X8**（✅ 2026-10-30）· C-29 **删 `budget.py`**（⚠️ **归 Agent Stage 7** ✓）
+- [x] C-30 删 `metadata['rolling_summary']` 残留（✅ 2026-10-30）· C-31 启用扫描脚本 Context 段（✅ 28 → 30 条规则 ✓）· C-32 更新台账 + 现状文档（✅）
 
 ### Memory 层（§3.5）—— **删除 X11 / X12 / X13 / X15 / X16，修复 X14**
 - [ ] M-01 **拆分 `MemoryService`** → **X16 拆分**（含 6 个管理写方法）· M-02 `memory/` 骨架 + 端口 · M-03 **迁移 0048**（含 **DROP 死表 X19**）· **M-03b 写入侧持久化 `owner_id`** · M-04 `RecallHit` 扩字段 + 生产返回改用 `RecallHit` · M-05 打点 X11–X16 · **X19 死表在 M-03 内已 DROP**

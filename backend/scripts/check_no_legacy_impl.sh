@@ -169,8 +169,8 @@ agent_turns;modules/;X4;X;off
 agent_session_messages;modules/;X4;X;off
 _fail_turn;modules/;X18;X;on
 _publish_chunk;modules/;X18;X;on
-compact.py;modules/;X9;C;off
-_load_messages;modules/;X8;C;off
+compact.py;modules/;X9;C;on
+_load_messages;modules/;X8;C;on
 build_system_prompt;modules/;X10;C;on
 layered.py;modules/;X12;M;off
 _remember;modules/;X11;M;off

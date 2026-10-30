@@ -19,12 +19,9 @@
 ⚠️ **优先级 6 永不降级**是硬规则 ✓ —— 用户这句话和工具结果丢了，模型就是
 在答空气 ✗✗；压缩只能动 3 / 4 / 5 ✓。
 
-⚠️ **本 Stage 只新建，不动调用点** ✓ —— 旧路径 ``_load_messages`` 仍在
-服役 ✓（它归 Context Stage 4 停用 ✓ —— 前置是 Agent Stage 5 的 A-26 ✗）。
-
 ⚠️ **2026-10-30 更新**：**A-26 已完成** ✓ —— 旧循环 ``runner._run_turn_inner``
-改调本 Builder ✓ → **Builder 现在有生产调用方** ✓（旧 ``_load_messages``
-**已无调用方** ✓ —— 删除归 Context Stage 5 ✓）。
+改调本 Builder ✓ → **Builder 现在有生产调用方** ✓；旧的上下文组装
+**已删除** ✓（Context Stage 5 ✓）。
 """
 
 from __future__ import annotations

@@ -17,7 +17,6 @@ from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
 from qzdap.modules.agent_runtime.adapter.graph.chat_model import complete_chat
-from qzdap.modules.agent_runtime.adapter.graph.compact import compact_messages
 from qzdap.modules.agent_runtime.adapter.graph.loop import (
     HARD_MAX_STEPS,
     apply_stall_guard,
@@ -279,13 +278,20 @@ async def test_memory_write_and_second_turn_recall() -> None:
     assert any("张三" in t for t in texts) or memory.facts
 
 
-def test_compact_emits_when_over_budget() -> None:
+@pytest.mark.asyncio
+async def test_the_compressor_folds_when_over_budget() -> None:
+    """**超预算就折叠** ✓ —— 走**新的** Compressor ✓（旧的
+    `compact_messages` 已删 ✓ —— Context Stage 5 ✓）。"""
+    from qzdap_agent_runtime.context.compressor import ContextCompressor
+
     history = [{"role": "user", "content": "x" * 800} for _ in range(40)]
     history.append({"role": "assistant", "content": "ok"})
-    compacted, summary, did = compact_messages(history, context_window=2000)
-    assert did is True
-    assert summary
-    assert len(compacted) < len(history)
+    outcome = await ContextCompressor(context_window=8000).compact(
+        messages=history
+    )
+    assert outcome.tokens_after < outcome.tokens_before
+    assert outcome.summary
+    assert len(outcome.messages) < len(history)
 
 
 @pytest.mark.asyncio

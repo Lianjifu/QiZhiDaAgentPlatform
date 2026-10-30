@@ -4,7 +4,7 @@
 测的是**已删的第二套 turn 实现**（``RunTurnUseCase`` 里的召回 ✓）—— 随那一套
 一起删（Session Stage 5b ✓）。
 
-这里覆盖**同一条链上的现行实现**：``SessionGraphRunner._load_messages`` ——
+这里覆盖**同一条链上的现行实现**：``SessionGraphRunner`` 的上下文装配 ——
 web / IM / 子代理 / 评估**都走它** ✓。要守住的行为有两个：
 
 1. 召回**按用户**过滤（``user_id``）—— 漏了就会把同工作区别人的记忆召回来 ✗；

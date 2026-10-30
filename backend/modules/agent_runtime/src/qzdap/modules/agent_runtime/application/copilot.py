@@ -139,7 +139,6 @@ class CopilotSessionService:
             "preview": "",
             "agentName": agent.name,
             "model": agent.model,
-            "rolling_summary": "",
             # 标题先占位, 用户说第一句话后换成真实标题.
             "title_auto": True,
         }
@@ -448,12 +447,10 @@ class CopilotSessionService:
             model=model_used,
             resume=resume,
             route_id=route_id,
-            # ⚠️ **摘要读新列** ✓（Context 方案 §5.1 ✓）—— 旧副本
-            # （``metadata`` 里的 ✓）**只作过渡回退** ✓（切换前写的行 ✓；
-            # 残留清理归 Context Stage 5 ✓）。
-            rolling_summary=str(
-                session.rolling_summary or session.metadata.get("rolling_summary") or ""
-            ),
+            # ⚠️ **摘要只读新列** ✓（Context 方案 §5.1 ✓）—— 旧副本
+            # （``metadata`` 里的 ✓）的读写点**已全部归零** ✓（迁移 0047
+            # 已把历史行回填 ✓）。
+            rolling_summary=session.rolling_summary,
             session_metadata=dict(session.metadata),
             graph_state=graph_state,
             # 路由决策随轮次留痕（``session_turns.route_decision``）——

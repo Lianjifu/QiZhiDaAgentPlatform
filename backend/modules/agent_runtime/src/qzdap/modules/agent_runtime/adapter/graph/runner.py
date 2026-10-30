@@ -198,8 +198,8 @@ class SessionGraphRunner:
 
         whitelist = await self._whitelist(agent)
         tools_schema = _openai_tools(whitelist)
-        # ⚠️ **走新的 ContextBuilder** ✓（A-26 ✓）—— 旧的 `_load_messages`
-        # 从此没有调用方 ✓（删它归 Context Stage 5 ✓）。
+        # ⚠️ **走新的 ContextBuilder** ✓（A-26 ✓）—— 旧的上下文组装
+        # **已删除** ✓（Context Stage 5 ✓ —— 台账 X8 ✓）。
         assembled, knowledge_hits = await self._assemble_context(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -574,10 +574,6 @@ class SessionGraphRunner:
     ) -> tuple[AssembledContext, list[dict[str, Any]]]:
         """**用新的 ContextBuilder 装配上下文** ✓（Agent Stage 5 · A-26 ✓）。
 
-        ⚠️ **旧的 `_load_messages` 至此没有调用方了** ✓ —— 它归 Context
-        Stage 5 删除 ✓（台账 X8 ✓）—— 但**这一步之前不能删** ✗（旧实现还在
-        服役的路径上 ✗）。
-
         返回 ``(装配结果, 知识召回原始结果)`` ✓ —— 后者给 `knowledge_search`
         事件用 ✓（不必再召回一次 ✗✗）；前者带着 **manifest** ✓（落库用 ✓）。
         """
@@ -756,87 +752,6 @@ class SessionGraphRunner:
         )
         record_new_call("X9")  # 新的上下文压缩已接管
         return outcome
-
-    async def _load_messages(
-        self,
-        *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        owner_id: UUID,
-        user_input: str,
-        history: list[dict[str, Any]],
-        agent: CatalogAgent | None,
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """Build the model input and report what knowledge was recalled."""
-        prompts = dict(agent.prompts) if agent is not None else {}
-        system_parts = [
-            prompts.get("soul") or "",
-            prompts.get("prompt") or "",
-            prompts.get("agents") or "",
-            prompts.get("tools") or "",
-            prompts.get("user") or "",
-        ]
-        system = "\n\n".join(part for part in system_parts if part).strip() or "你是企业助手，使用可用工具完成任务，最终给出中文回答。"
-        memories: list[dict] = []
-        if self._memory_port is not None:
-            try:
-                memories = await self._memory_port.recall(
-                    tenant_id=tenant_id,
-                    workspace_id=workspace_id,
-                    query=user_input,
-                    top_k=8,
-                    # ⚠️ 按当前用户过滤 —— 缺失这一项会把同工作区其他用户的
-                    # 记忆召回进本用户的上下文（X14 跨用户泄漏）。
-                    user_id=owner_id,
-                )
-            except Exception:  # noqa: BLE001
-                memories = []
-        knowledge: list[dict] = []
-        package_ids: tuple[UUID, ...] = ()
-        if agent is not None:
-            raw_ids = []
-            for ref in agent.knowledge_refs:
-                if not ref.get("enabled", True):
-                    continue
-                try:
-                    raw_ids.append(UUID(str(ref.get("id"))))
-                except ValueError:
-                    continue
-            package_ids = tuple(raw_ids)
-        if self._knowledge_port is not None:
-            try:
-                knowledge = await self._knowledge_port.search(
-                    tenant_id=tenant_id,
-                    workspace_id=workspace_id,
-                    query=user_input,
-                    top_k=6,
-                    package_ids=package_ids,
-                )
-            except Exception:  # noqa: BLE001
-                knowledge = []
-        if memories:
-            hits = "\n".join(
-                f"- ({item.get('score', 0):.2f}) {item.get('content') or item.get('value') or ''}"[:400]
-                for item in sorted(memories, key=lambda row: float(row.get("score") or 0), reverse=True)[:8]
-            )
-            system += f"\n\n相关记忆：\n{hits}"
-        if knowledge:
-            hits = "\n".join(
-                f"- ({item.get('score', 0):.2f}) {item.get('content') or ''}"[:400]
-                for item in sorted(knowledge, key=lambda row: float(row.get("score") or 0), reverse=True)[:6]
-            )
-            system += f"\n\n相关知识：\n{hits}"
-        record_legacy_call("X8")  # 旧上下文组装 _load_messages
-        if memories:
-            # L3 内容进「相关记忆」，knowledge 也进同一段 → 运行时双份注入。
-            record_legacy_call("X15")
-        messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
-        for item in history:
-            role = item.get("role")
-            if role in {"user", "assistant", "tool", "system"}:
-                messages.append(item)
-        messages.append({"role": "user", "content": user_input})
-        return messages, knowledge
 
     async def _price_of(
         self,

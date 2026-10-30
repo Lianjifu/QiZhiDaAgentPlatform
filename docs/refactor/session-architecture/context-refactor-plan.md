@@ -813,6 +813,25 @@ UPDATE agent_sessions s
 **旧代码减少**：§8.4 删除清单**归零** —— `adapter/graph/compact.py`（**53 行**）+ `adapter/llm/prompts.py` 四函数（~60 行）+ `runner.py` 的 `_load_messages`（~70 行）+ `runtimes/.../context/budget.py`（**384 行**）+ `metadata['rolling_summary']` 残留读写，**合计约 570 行**。
 **验收**：台账本层条目全部「已清理」；扫描脚本无命中。
 
+#### 实施记录（2026-10-30 · Stage 5：清理与封口）
+
+| 项 | 结果 |
+|---|---|
+| **删 `adapter/graph/compact.py`** | ✅ 文件已删 ✓（**53 行** ✓）—— 调用点随 Stage 4 换掉 ✓ → 扫描规则 `compact.py`（X9 ✓）**已启用** ✓ |
+| **删 `runner.py` 的 `_load_messages`** | ✅ 函数已删 ✓（**~70 行** ✓）—— 调用点随 A-26 换掉 ✓ → 扫描规则 `_load_messages`（X8 ✓）**已启用** ✓ |
+| **四套 prompt 模板** | ✅ 旧模板随 **Session Stage 5b** 删除 ✓；新渲染（`context/prompts.py` 单段式 ✓）随 Stage 4 接上生产 ✓ → 台账 **X10** 已清理 ✓ |
+| **删 `metadata['rolling_summary']` 残留** | ✅ Session 层**不再写** ✓、`copilot.py` **不再读** ✓（只读新列 `agent_sessions.rolling_summary` ✓ —— 迁移 0047 已回填历史行 ✓） |
+| **扫描脚本** | 启用规则 **28 → 30** 条 ✓（X8 / X9 ✓）—— 扫描通过 ✓ |
+| **台账** | **X8 / X9 / X10 → 已清理** ✓ |
+| **旧代码减少** | **~183 行**（`compact.py` 53 ✓ + `_load_messages` ~70 ✓ + 摘要残留少量 ✓ + 四套模板 ~60 ✓ —— 后者随 Session S-33 ✓） |
+
+⚠️ **本 Stage 有一项没做**（**不是漏了** ✓ —— 有前置 ✓）：
+
+| 项 | 状态 | 原因 |
+|---|---|---|
+| **C-29 删 `runtimes/.../context/budget.py`**（**384 行** ✓） | ⚠️ **未删** ✓ | 它的两个旧类（`Compactor` / `ContextAssembler` ✓）还被 **19 节点图的 `nodes.py`** import ✓ —— 那图**没有生产调用方** ✓（死代码 ✓）→ **删除归 Agent Stage 7** ✓（连 `nodes.py` 一起删 ✓ —— 免得两个 PR 互相冲突 ✗✗） |
+
+
 ### 阶段与「旧代码减少」对照
 
 | 阶段 | 删除/替换 | 旧代码减少（行） | **新写入量（估算）** | 旧路径状态 |
@@ -833,7 +852,7 @@ UPDATE agent_sessions s
 | **Stage 4 接线** | Agent Loop 改调 `context/builder.py` + `memory/writer.py` | ✅ **已达成**（2026-10-30）—— 装配那一半随 **Agent A-26** 接上 ✓；**压缩那一半随 Context Stage 4 接上** ✓（旧的 `compact.py` 已无调用方 ✓，实测 `X9` = 0 ✓） | Context 层（Stage 4 ✓ 已达成） |
 | **C-22 降级标记到前端** | `recall_degraded` 走 `ResultEvent.flags` | ⚠️ **`ResultEvent.flags` 契约还没实现** ✗（Gateway 层 §9.0 只在方案里 ✓）—— Context 侧**只产出 `degraded_flags`** ✓，没有可投递的通道 ✗ | **Gateway 层** |
 | **前端消费降级标记** | 读 `context_compacted.degraded` 与 `ResultEvent.flags` | ⚠️ 前端目前**零消费** `flags` ✓（§5.3.1 ✓）→ 独立工作项 ✓ | 前端 |
-| **Stage 5 清理** | 删 `compact.py` / `_load_messages` / `budget.py` / `metadata['rolling_summary']` 残留 | ① Stage 4 已停用 ✓ **（2026-10-30 ✓）**；② 台账 X8 / X9 / X10 全「已清理」✓ ✗（调用点已归零 ✓ —— 但台账行还没到「已清理」✗）；③ 扫描脚本 Context 段零命中 ✓ ✗ | 本层（Stage 5） |
+| **Stage 5 清理** | 删 `compact.py` / `_load_messages` / `budget.py` / `metadata['rolling_summary']` 残留 | ✅ **已达成**（2026-10-30）—— X8 / X9 / X10 已清理 ✓；扫描规则已启用 ✓；⚠️ **`budget.py`（384 行）未删** ✓ → **归 Agent Stage 7** ✓（`nodes.py` 还 import 它 ✓ —— 死代码 ✓） | 本层（Stage 5 ✓ 已达成 · `budget.py` 归 Agent） |
 | **X9 / X8 的扫描规则启用** | `compact.py` / `_load_messages` 两条规则 | 旧实现删掉后才开 ✓（X10 的规则**已开** ✓ —— 2026-10-30） | 本层（Stage 5） |
 | **前端消费降级标记** | 读 `context_compacted.degraded` 与 `ResultEvent.flags` | ⚠️ 前端目前**零消费** `flags` ✓（§5.3.1 ✓）→ 独立工作项 ✓ | 前端 |
 | **快照** | `session_context_snapshots` | 决策 #3：**先不做** ✓ | — |
@@ -847,9 +866,9 @@ Agent Stage 5 · A-26（旧循环改接新 Builder / Writer） ✓（2026-10-30�
         ↓
 Context Stage 4（接线：压缩 / manifest / 摘要落新列） ✓（2026-10-30）
         ↓
-Context Stage 5（清理：删 compact.py / _load_messages / budget.py / metadata 残留） ← **现在在这里**
+Context Stage 5（清理：删 compact.py / _load_messages / metadata 残留） ✓（2026-10-30）
         ↓
-Memory Stage 7（M-43 删 runner._remember）
+Memory Stage 7（M-43 删 runner._remember） ← **现在在这里**
 ```
 
 ---
