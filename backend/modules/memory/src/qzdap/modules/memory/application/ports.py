@@ -80,6 +80,20 @@ class MemoryCatalogRepository(ABC):
     async def update_l2(self, item: L2Fact) -> None: ...
 
     @abstractmethod
+    async def find_l2_by_hash(
+        self,
+        workspace_id: UUID,
+        *,
+        user_id: UUID,
+        content_hash: str,
+    ) -> L2Fact | None:
+        """按内容哈希查已有条目 ✓（**去重的依据** ✓ —— §4.4 ✓）。
+
+        ⚠️ **唯一约束只对有 hash 的行生效** ✓（存量行为 NULL ✓）。
+        """
+        ...
+
+    @abstractmethod
     async def add_l3(self, item: L3Entry) -> None: ...
 
     @abstractmethod

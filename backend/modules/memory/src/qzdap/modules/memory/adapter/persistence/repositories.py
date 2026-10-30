@@ -172,6 +172,14 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
                 usage_history=list(item.usage_history),
                 created_at=item.created_at,
                 updated_at=item.updated_at,
+                # ── 迁移 0048 之后新增的列 ✓ ──
+                content_hash=item.content_hash,
+                content_hash_version=item.content_hash_version,
+                source_turn_id=item.source_turn_id,
+                last_used_at=item.last_used_at,
+                used_count=item.used_count,
+                confidence_source=item.confidence_source,
+                version=item.version,
             )
         )
 
@@ -202,6 +210,14 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
         row.promoted_to_l3 = item.promoted_to_l3
         row.usage_history = list(item.usage_history)
         row.updated_at = item.updated_at
+        # ── 迁移 0048 之后新增的列 ✓（之前没被更新过 ✗）──
+        row.content_hash = item.content_hash
+        row.content_hash_version = item.content_hash_version
+        row.source_turn_id = item.source_turn_id
+        row.last_used_at = item.last_used_at
+        row.used_count = item.used_count
+        row.confidence_source = item.confidence_source
+        row.version = item.version
 
     async def add_l3(self, item: L3Entry) -> None:
         self._s.add(
@@ -234,6 +250,26 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
             select(MemoryL3ORM).where(MemoryL3ORM.workspace_id == workspace_id)
         )
         return [_l3(row) for row in result.scalars().all() if not _cross_tenant(row)]
+
+    async def find_l2_by_hash(
+        self,
+        workspace_id: UUID,
+        *,
+        user_id: UUID,
+        content_hash: str,
+    ) -> L2Fact | None:
+        """按内容哈希查 ✓（**下推到 SQL** ✓ —— §4.4 ✓）。"""
+        result = await self._s.execute(
+            select(MemoryL2ORM)
+            .where(MemoryL2ORM.workspace_id == workspace_id)
+            .where(MemoryL2ORM.user_id == user_id)
+            .where(MemoryL2ORM.content_hash == content_hash)
+            .limit(1)
+        )
+        row = result.scalars().first()
+        if row is None or _cross_tenant(row):
+            return None
+        return _l2(row)
 
     async def search_l2_by_keyword(
         self,

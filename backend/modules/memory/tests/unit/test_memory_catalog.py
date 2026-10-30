@@ -156,6 +156,23 @@ class InMemoryCatalog(MemoryCatalogRepository):
     async def list_l3(self, workspace_id: UUID) -> list[L3Entry]:
         return [item for item in self.l3.values() if item.workspace_id == workspace_id]
 
+    async def find_l2_by_hash(
+        self,
+        workspace_id: UUID,
+        *,
+        user_id: UUID,
+        content_hash: str,
+    ) -> L2Fact | None:
+        """按哈希查 ✓（与 SQL 实现同口径 ✓）。"""
+        for item in self.l2.values():
+            if (
+                item.workspace_id == workspace_id
+                and item.user_id == user_id
+                and item.content_hash == content_hash
+            ):
+                return item
+        return None
+
     async def search_l2_by_keyword(
         self,
         workspace_id: UUID,

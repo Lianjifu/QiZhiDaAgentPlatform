@@ -632,12 +632,12 @@
 | | M-13 provenance 补全 | ✅ **已达成** —— 每条命中带 `scope` / `used_count` / `version` / `created_at` / `content_hash` ✓；⚠️ **ORM 补上迁移 0048 已建但没映射的七列** ✓（领域实体同步 ✓）|
 | | M-14 **C10 读取侧降级** | ✅ **已达成** —— 向量库 / embedding 不可用 → **纯词法** ✓ + `degraded=True` ✓（降级可见 ✓）；没配向量**不算降级** ✓|
 | | M-15 **确认 `layered.py` 从未被接线** | ✅ **已核实** ✓（零生产引用 ✓）→ **没有停用阶段** ✓，删除在 Stage 7（M-44 ✓） | **X12**（关注点 #13） | 0 | M-10 ✓ |
-| Stage 3 · C1 Writer 重写 | M-16 `FactExtractor`（规则起步） | — | — | 0 | Stage 0 |
-| | M-17 敏感信息闸门 `Redactor` | — | — | 0 | M-16 |
-| | M-18 幂等（`content_hash`） | 唯一约束 + 更新而非插入 | — | 0 | M-17 |
-| | M-19 置信度分级 | 用户显式 / 规则 / LLM | — | 0 | M-16 |
-| | M-20 来源追溯 | `source_session` → `source_turn_id` | — | 0 | M-16 |
-| | M-21 **实现新 Writer，写新表** | ⚠️ **本 Stage 不停用 `runner._remember`** —— 它仍被 `runner._run_turn_inner` 调用（`runner.py:467`），停用会打断旧循环。**停用推迟到 Agent Stage 5 的 A-26 接线完成之后** | — | — | Stage 0 |
+| Stage 3 · C1 Writer 重写 | M-16 `FactExtractor`（规则起步） | ✅ **已达成**（2026-10-30，Memory Stage 3）—— `RuleFactExtractor` ✓（显式 0.95 ✓ / 陈述句 0.7 ✓ / 闲聊不记 ✓）| — | 0 | Stage 0 ✓ |
+| | M-17 敏感信息闸门 `Redactor` | ✅ **已达成** —— `RuleRedactor` ✓（身份证 / 手机号 / 银行卡 / 密码 / 密钥 ✓）；命中 → **整条拒绝** ✓ + **留审计** ✓；⚠️ 手机号用前后瞻（`\b` 在中文里会漏 ✗✗）| — | 0 | M-16 ✓ |
+| | M-18 幂等（`content_hash`） | ✅ **已达成** —— 规范化（NFKC + 折叠空白 + 小写 ✓，版本 1 ✓）+ 唯一约束 ✓；命中已有 hash → **更新用量而非插入** ✓ | — | 0 | M-17 ✓ |
+| | M-19 置信度分级 | ✅ **已达成** —— 用户显式 0.95 ✓ / 规则 0.7 ✓（LLM 一档**预留** ✓ —— 决策 #3 ✓）| — | 0 | M-16 ✓ |
+| | M-20 来源追溯 | ✅ **已达成** —— 每条记忆带 `user_id` ✓ + `source_turn_id` ✓ + `source_session` ✓ | — | 0 | M-16 ✓ |
+| | M-21 **实现新 Writer，写新表** | ✅ **已达成** —— `MemoryRuntimeService.write_turn()` ✓（写 **L2** ✓，不再写 L1 ✓）；⚠️ **`runner._remember` 未停用** ✓（仍被旧循环调用 ✓ → 停用归 Agent A-26 ✓）| — | — | Stage 0 ✓ |
 | Stage 4 · C6 策略绑定接线 | M-22 `enabled` | false → 不写记忆 | — | 0 | Stage 3 |
 | | M-23 `scope` | 决定存储层级与作用域（不再是标签） | — | 0 | M-22 |
 | | M-24 `policyLabel` | 绑定保留策略 | — | 0 | M-22 |
@@ -1178,8 +1178,8 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] M-01 **拆分 `MemoryService`** → **X16 拆分**（含 6 个管理写方法）· M-02 `memory/` 骨架 + 端口 · M-03 **迁移 0048**（含 **DROP 死表 X19**）· **M-03b 写入侧持久化 `owner_id`** · M-04 `RecallHit` 扩字段 + 生产返回改用 `RecallHit` · M-05 打点 X11–X16 · **X19 死表在 M-03 内已 DROP**
 - [ ] M-06 L2 `user_id` 过滤 · M-07 向量 payload 过滤 · M-08 历史向量回填 · M-09 L3 `visible_scope` ACL → **X14 修复完成即「已弃用」**
 - [x] M-10 向量优先 + 词法兜底 ✅ · M-11 候选集 `top_k×4` ✅ · M-12 去重/阈值/abstain ✅ · M-13 provenance ✅ · M-14 C10 降级 ✅ · M-15 **确认 `layered.py` 从未接线** ✅ · 2026-10-30（**无停用阶段**）→ **X12**
-- [ ] M-16 `FactExtractor` · M-17 `Redactor` · M-18 幂等 · M-19 置信度 · M-20 来源追溯
-- [ ] M-21 **实现新 Writer，写新表**（⚠️ **不停用 `_remember`** —— 它仍被 `runner._run_turn_inner` 调用）
+- [x] M-16 `FactExtractor` ✅ · M-17 `Redactor` ✅ · M-18 幂等 ✅ · M-19 置信度 ✅ · M-20 来源追溯 ✅ · 2026-10-30
+- [x] M-21 **实现新 Writer，写新表** ✅ 2026-10-30（⚠️ **不停用 `_remember`** —— 它仍被 `runner._run_turn_inner` 调用）
 - [ ] M-22 `enabled` · M-23 `scope` · M-24 `policyLabel` · M-25 `l3EntryIds`/`knowledge_refs`
 - [ ] M-26 向量统一走 embedding · M-27 异步补写 · M-28 `session_memory_buffer` · M-29 会话结束提炼（sweeper 触发）· M-30 提升规则
 - [ ] M-31 统计更新 · M-32 淘汰器 · M-33 `trend()` 真实统计 · M-34 接入 sweeper · M-35 **淘汰执行器**

@@ -18,7 +18,10 @@ from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap_agent_runtime.memory.extraction import RuleFactExtractor
+from qzdap_agent_runtime.memory.redaction import RuleRedactor
 from qzdap_agent_runtime.memory.retrieval import RetrievalPipeline
+from qzdap_agent_runtime.memory.writer import WriteOutcome, WriterPipeline
 from qzdap_agent_runtime.ports import RecallHit
 from qzdap_observability.metrics import record_legacy_call
 
@@ -26,6 +29,7 @@ from qzdap.modules.memory.adapter.candidates import (
     LexicalCandidateAdapter,
     VectorCandidateAdapter,
 )
+from qzdap.modules.memory.adapter.write_adapter import MemoryWriteAdapter
 from qzdap.modules.memory.application.embedding import embed_item
 from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
@@ -66,6 +70,14 @@ class MemoryRuntimeService:
         #: 上一次召回是否**降级** ✓（C10 ✓ —— 调用方要能知道 ✓）。
         self._last_recall_degraded = False
         self._last_recall_reason = ""
+        # ⚠️ **写入的编排归契约层** ✓ —— 这里只提供落库端口 ✓（§4.1 ✓）。
+        self._writer_pipeline = WriterPipeline(
+            extractor=RuleFactExtractor(),
+            redactor=RuleRedactor(),
+            store=MemoryWriteAdapter(
+                catalog, embedding=embedding, vectors=vectors
+            ),
+        )
 
     async def write(
         self,
@@ -143,6 +155,32 @@ class MemoryRuntimeService:
             user_id=owner_id,
         )
         return fact.to_admin_dict()
+
+    async def write_turn(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID,
+        session_id: UUID,
+        turn_id: UUID | None = None,
+        user_input: str,
+        assistant_reply: str = "",
+    ) -> WriteOutcome:
+        """**新 Writer** ✓ —— 走契约层的五步流水线 ✓（Memory Stage 3 ✓）。
+
+        ⚠️ **输入只有本轮对话** ✓（**不含召回结果** ✓ —— §4.6 ✓）；
+        ⚠️ **闸门拒绝的要记下来** ✓（`rejected` ✓ —— 审计用 ✓）。
+        """
+        return await self._writer_pipeline.write_turn(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            session_id=session_id,
+            turn_id=turn_id,
+            user_input=user_input,
+            assistant_reply=assistant_reply,
+        )
 
     async def recall(
         self,

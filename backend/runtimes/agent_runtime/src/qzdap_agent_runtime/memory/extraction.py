@@ -46,3 +46,64 @@ class FactExtractor(Protocol):
 
 
 __all__ = ["FactCandidate", "FactExtractor"]
+
+
+# ---------------------------------------------------------------------------
+# 规则抽取（决策 #3：(a) 规则起步 ✓，预留 (b) LLM 接口 ✓）
+# ---------------------------------------------------------------------------
+
+#: **显式**要求记住的模式 ✓（置信度 0.95 ✓ —— §4.5 ✓）。
+EXPLICIT_PATTERNS: tuple[str, ...] = ("记住", "记一下", "请记住", "备忘")
+
+#: 陈述句模式 ✓（置信度 0.7 ✓ —— §4.5 ✓：规则从陈述句抽取 0.6–0.8 ✓）。
+STATEMENT_PATTERNS: tuple[str, ...] = ("我是", "我叫", "我的", "我喜欢", "我不喜欢", "我需要")
+
+
+class RuleFactExtractor:
+    """规则抽取器 ✓（零成本、确定性强 ✓ —— §4.2 (a) ✓）。
+
+    ⚠️ **召回率低是有意的** ✓ —— 先保「不乱记」✓（宁可少记，不要记错 ✗✗）。
+    """
+
+    async def extract(
+        self,
+        *,
+        user_input: str,
+        assistant_reply: str = "",
+    ) -> list[FactCandidate]:
+        text = (user_input or "").strip()
+        if not text:
+            return []
+        candidates: list[FactCandidate] = []
+        for line in (part.strip() for part in text.splitlines()):
+            if not line:
+                continue
+            if any(pattern in line for pattern in EXPLICIT_PATTERNS):
+                candidates.append(
+                    FactCandidate(
+                        content=line,
+                        source="explicit",
+                        confidence=0.95,
+                        source_text=line,
+                    )
+                )
+                continue
+            if any(line.startswith(pattern) for pattern in STATEMENT_PATTERNS):
+                candidates.append(
+                    FactCandidate(
+                        content=line,
+                        source="rule",
+                        confidence=0.7,
+                        source_text=line,
+                    )
+                )
+        return candidates
+
+
+__all__ = [
+    "EXPLICIT_PATTERNS",
+    "STATEMENT_PATTERNS",
+    "FactCandidate",
+    "FactExtractor",
+    "RuleFactExtractor",
+]
