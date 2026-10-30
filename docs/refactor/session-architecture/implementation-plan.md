@@ -713,11 +713,11 @@
 - Agent 决策 #1 / #2 / #5 / #6 在 Stage 0 前拍完。
 
 | Stage | 工作项 | 产出 / 落点 | **删除的旧实现**（台账 / 关注点） | **旧代码减少** | 依赖 |
-|---|---|---|---|---|---|
-| Stage 0 · 契约与依赖 | A-01 补五个端口 | `LLMPort` / `ModelResolverPort` / **`ToolBindingPort`** / `AgentRouterPort` / `ToolRuntimePort` 写进 runtime 的 `ports.py`（**无 `ToolRouterPort`** —— 决策 #4 取消了「工具路由」这个概念） | — | 0 | — |
-| | A-02 `QZDAPChatModel` 骨架 | `BaseChatModel` 子类，`_stream` 走 `LLMClient.stream()`；**先只支持 mock 供应商** | — | 0 | A-01 |
-| | A-03 归一 `TaskKind` 与 `TaskClassifier` | `routing.py` → `agent_router/classifier.py`（含 confidence） | — | 0 | A-01 |
-| | A-04 依赖核对 | `langgraph` / `langgraph-prebuilt` / `langchain-core` 版本满足；`deepagents` 是否加（决策 #8） | — | 0 | — |
+| Stage 0 · 契约与依赖 | A-01 补五个端口 | ✅ **已达成**（2026-10-30，Agent Stage 0）—— `LLMPort` ✓ / `ModelResolverPort` ✓ / **`ToolBindingPort`** ✓ / `AgentRouterPort` ✓ / `ToolRuntimePort` ✓ 写进 runtime 的 `ports.py` ✓（**无 `ToolRouterPort`** ✓ —— 决策 #4 ✓）| — | 0 | — |
+| | A-02 `QZDAPChatModel` 骨架 | ✅ **已达成** —— `execution/chat_model.py` ✓（`BaseChatModel` 子类 ✓；`_astream` 走 `LLMClient.stream()` ✓ → `AIMessageChunk` ✓；**只做类型翻译** ✓）；⚠️ 同步路径**明确报错** ✓（平台客户端只有异步 ✓ —— 基类的同步 `_agenerate` 默认实现被覆盖 ✓）| — | 0 | A-01 |
+| | A-03 归一 `TaskKind` 与 `TaskClassifier` | ✅ **已达成** —— `graph/routing.py` **迁到** `agent_router/classifier.py` ✓（**不是新增一份** ✓）；返回值多了**置信度** ✓（`TaskClassification` ✓）；顺带把 `nodes.py` 里写死的 `confidence: 1.0` 换成**真实置信度** ✓ | — | 0（迁移 ✓） | A-01 |
+| | A-04 依赖核对 | ✅ **已达成** —— 版本与方案 §2.1 一致 ✓：`langgraph` 1.2.12 ✓ / `langgraph-prebuilt` 1.1.0 ✓ / `langchain-core` 1.6.6 ✓；`deepagents` **未安装** ✓（决策 #8：Stage 6 可选 ✓ → 不加 ✓）；⚠️ runtime 的 pyproject **显式声明**了这三个依赖 ✓（之前只靠传递引入 ✗）+ `uv.lock` 离线重锁 ✓ | — | 0 | — |
+| | A-05 打点 X5 旧入口 | ✅ **已有** ✓（`runner.py:104` 的 `record_legacy_call("X5")` ✓ —— 占位图 `compile_loop_graph` ✓）；扫描规则**仍关着** ✓（归 Agent Stage 7 与 X17 同批删 ✓） | — | 0 | 前置 C2 ✓ |
 | | A-05 打点 X5 旧入口 | `record_legacy_call("X5")` | — | 0 | 前置 C2 |
 | Stage 1 · LLM / SLM | A-06 `QZDAPChatModel` 落地 | `_stream` → `AIMessageChunk`；用量 → `usage_metadata` | — | 0 | Stage 0 |
 | | A-07 `LLMClient` 封装 | 失败转移链（primary → fallback） | — | 0 | A-06 |
@@ -1190,7 +1190,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] M-50 启用扫描脚本 Memory 段 · M-51 更新台账 + 现状文档（**X19 已在 M-03 落地**）
 
 ### Agent 层（§3.6）—— **删除 X5 / X1 + 关注点 #16 / #24–#29**
-- [ ] A-01 补五个端口 · A-02 `QZDAPChatModel` 骨架 · A-03 归一 `TaskKind`/`TaskClassifier` · A-04 依赖核对 · A-05 打点 X5
+- [x] A-01 补五个端口（✅ 2026-10-30）· A-02 `QZDAPChatModel` 骨架（✅）· A-03 归一 `TaskKind`/`TaskClassifier`（✅ —— `graph/routing.py` 迁到 `agent_router/classifier.py` ✓）· A-04 依赖核对（✅ —— 显式声明三个依赖 ✓）· A-05 打点 X5 旧入口（✅ 已有 ✓）
 - [ ] A-06 `QZDAPChatModel` 落地 · A-07 `LLMClient` 失败转移链 · A-08 `Reasoner`
 - [ ] A-09 **删 `chat_model.py` 的 `stream_chat`**
 - [ ] A-10 **工具绑定 + 治理过滤** · A-11 修 `list_tools` 空 schema · A-12 `governance` 接线真实 actor

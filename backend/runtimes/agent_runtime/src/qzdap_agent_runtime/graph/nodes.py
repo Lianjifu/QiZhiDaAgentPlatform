@@ -50,7 +50,11 @@ from ..observability import (
     UsageTracker,
 )
 from ..evaluation import OnlineEvaluator
-from .routing import AgentRouteConfig, TaskKind, classify_task_kind_heuristic
+from ..agent_router.classifier import (
+    AgentRouteConfig,
+    TaskKind,
+    classify_task_kind_heuristic,
+)
 from .state import SessionState
 
 logger = logging.getLogger(__name__)
@@ -583,12 +587,13 @@ def route(state: SessionState) -> dict[str, Any]:
     registry = get_default_tool_registry()
     tools_count = len(registry.list_by_risk("low")) + len(registry.list_by_risk("medium")) + len(registry.list_by_risk("high")) if registry else 0
 
-    kind = classify_task_kind_heuristic(
+    classification = classify_task_kind_heuristic(
         message_count=message_count,
         tools_count=tools_count,
         message_text=text,
         agent_config=cfg,
     )
+    kind = classification.kind
 
     return {
         "route": {
@@ -596,9 +601,10 @@ def route(state: SessionState) -> dict[str, Any]:
             "task_kind": kind.value,
             "rule_version": "stage-4-classifier",
             "classifier": "heuristic",
-            "confidence": 1.0,
+            # ⚠️ **置信度是分类器给的** ✓（之前写死 1.0 ✗ —— 那是假的 ✗✗）。
+            "confidence": classification.confidence,
             "candidates": [kind.value],
-            "reason": f"task_kind={kind.value}",
+            "reason": classification.reason,
         }
     }
 

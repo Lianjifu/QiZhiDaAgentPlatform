@@ -1,4 +1,8 @@
-"""Graph 层：StateGraph 节点、routing、checkpoint、Deep Agents 工厂。"""
+"""Graph 层：StateGraph 节点、checkpoint、Deep Agents 工厂。
+
+⚠️ **routing 已迁到 `agent_router/`** ✓（Agent Stage 0 · A-03 ✓）—— 分类器归
+**专家路由**那一侧 ✓（它不是图节点的附属品 ✓）。
+"""
 
 from __future__ import annotations
 
@@ -14,12 +18,6 @@ from .deep_agent import (
     InMemoryDeepAgentFactory,
     SubAgentSpec,
 )
-from .routing import (
-    AgentRouteConfig,
-    TaskKind,
-    classify_task_kind_heuristic,
-    is_deep_task,
-)
 from .state import (
     SCHEMA_VERSION,
     PendingApproval,
@@ -34,7 +32,6 @@ from .state import (
 )
 
 __all__ = [
-    "AgentRouteConfig",
     "DEEP_AGENT_BUDGET_EXCEEDED_ERROR_CODE",
     "DEEP_AGENT_FAILED_ERROR_CODE",
     "DeepAgent",
@@ -50,12 +47,9 @@ __all__ = [
     "SCHEMA_VERSION",
     "SessionState",
     "SubAgentSpec",
-    "TaskKind",
     "Todo",
     "ToolCallState",
     "ToolResultState",
     "UsageState",
     "build_session_graph",
-    "classify_task_kind_heuristic",
-    "is_deep_task",
 ]

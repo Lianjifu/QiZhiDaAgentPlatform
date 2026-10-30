@@ -11,13 +11,12 @@ from __future__ import annotations
 
 import pytest
 
-from qzdap_agent_runtime.graph import (
+from qzdap_agent_runtime.agent_router import (
     AgentRouteConfig,
     TaskKind,
     classify_task_kind_heuristic,
     is_deep_task,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -42,12 +41,13 @@ class TestClassifyTaskKindHeuristic:
     ) -> None:
         """规则 1：agent.deep_research=true 优先（即使消息很短）。"""
         cfg = AgentRouteConfig(agent_id="agt_deep", deep_research=True)
-        kind = classify_task_kind_heuristic(
+        classification = classify_task_kind_heuristic(
             message_count=1,
             tools_count=1,
             message_text="hello",
             agent_config=cfg,
         )
+        kind = classification.kind
         assert kind is TaskKind.DEEP_RESEARCH
         assert is_deep_task(kind) is True
 
@@ -55,12 +55,13 @@ class TestClassifyTaskKindHeuristic:
         self, default_config: AgentRouteConfig
     ) -> None:
         """规则 2：message_count > 20 且 tools_count > 5 → MULTI_STEP_CODE。"""
-        kind = classify_task_kind_heuristic(
+        classification = classify_task_kind_heuristic(
             message_count=21,
             tools_count=6,
             message_text="继续",
             agent_config=default_config,
         )
+        kind = classification.kind
         assert kind is TaskKind.MULTI_STEP_CODE
         assert is_deep_task(kind) is True
 
@@ -69,21 +70,23 @@ class TestClassifyTaskKindHeuristic:
     ) -> None:
         """规则 2 边界：message_count=20 或 tools_count=5 不触发。"""
         # message_count=20（不 > 20）→ 不触发 rule 2
-        kind = classify_task_kind_heuristic(
+        classification = classify_task_kind_heuristic(
             message_count=20,
             tools_count=10,
             message_text="继续",
             agent_config=default_config,
         )
+        kind = classification.kind
         assert kind is TaskKind.SIMPLE_QA
 
         # tools_count=5（不 > 5）→ 不触发 rule 2
-        kind = classify_task_kind_heuristic(
+        classification = classify_task_kind_heuristic(
             message_count=30,
             tools_count=5,
             message_text="继续",
             agent_config=default_config,
         )
+        kind = classification.kind
         assert kind is TaskKind.SIMPLE_QA
 
     def test_rule3_keyword_deep_chinese(
@@ -91,12 +94,13 @@ class TestClassifyTaskKindHeuristic:
     ) -> None:
         """规则 3：中文 deep 关键词 → DEEP_RESEARCH。"""
         for keyword in ("研究", "调研", "对比", "分析", "综述"):
-            kind = classify_task_kind_heuristic(
+            classification = classify_task_kind_heuristic(
                 message_count=5,
                 tools_count=3,
                 message_text=f"帮我{kw_safe(keyword)}一下这个项目",
                 agent_config=default_config,
             )
+            kind = classification.kind
             assert kind is TaskKind.DEEP_RESEARCH, f"keyword={keyword}"
 
     def test_rule3_keyword_deep_english(
@@ -104,12 +108,13 @@ class TestClassifyTaskKindHeuristic:
     ) -> None:
         """规则 3：英文 deep 关键词（大小写不敏感）→ DEEP_RESEARCH。"""
         for keyword in ("research", "compare", "investigate", "survey"):
-            kind = classify_task_kind_heuristic(
+            classification = classify_task_kind_heuristic(
                 message_count=5,
                 tools_count=3,
                 message_text=f"Please {keyword.upper()} this topic",
                 agent_config=default_config,
             )
+            kind = classification.kind
             assert kind is TaskKind.DEEP_RESEARCH, f"keyword={keyword}"
 
     def test_rule3_keyword_code_chinese(
@@ -117,12 +122,13 @@ class TestClassifyTaskKindHeuristic:
     ) -> None:
         """规则 3：中文 code 关键词 → MULTI_STEP_CODE。"""
         for keyword in ("写代码", "实现", "重构", "迁移"):
-            kind = classify_task_kind_heuristic(
+            classification = classify_task_kind_heuristic(
                 message_count=5,
                 tools_count=3,
                 message_text=f"帮我{kw_safe(keyword)}这个模块",
                 agent_config=default_config,
             )
+            kind = classification.kind
             assert kind is TaskKind.MULTI_STEP_CODE, f"keyword={keyword}"
 
     def test_rule3_keyword_code_english(
@@ -130,12 +136,13 @@ class TestClassifyTaskKindHeuristic:
     ) -> None:
         """规则 3：英文 code 关键词 → MULTI_STEP_CODE。"""
         for keyword in ("refactor", "implement", "migrate", "rewrite", "build"):
-            kind = classify_task_kind_heuristic(
+            classification = classify_task_kind_heuristic(
                 message_count=5,
                 tools_count=3,
                 message_text=f"Please {keyword} this module",
                 agent_config=default_config,
             )
+            kind = classification.kind
             assert kind is TaskKind.MULTI_STEP_CODE, f"keyword={keyword}"
 
     def test_rule3_deep_keyword_priority_over_code(
@@ -143,24 +150,26 @@ class TestClassifyTaskKindHeuristic:
     ) -> None:
         """规则 3：deep 关键词优先于 code 关键词（出现在 list 中时分类）。"""
         # 同时含 deep 与 code 关键词 → deep 胜出
-        kind = classify_task_kind_heuristic(
+        classification = classify_task_kind_heuristic(
             message_count=5,
             tools_count=3,
             message_text="帮我调研并重构这个模块",
             agent_config=default_config,
         )
+        kind = classification.kind
         assert kind is TaskKind.DEEP_RESEARCH
 
     def test_rule4_default_fallback(
         self, default_config: AgentRouteConfig
     ) -> None:
         """规则 4：默认 fallback → SIMPLE_QA（不允许 None）。"""
-        kind = classify_task_kind_heuristic(
+        classification = classify_task_kind_heuristic(
             message_count=3,
             tools_count=2,
             message_text="今天天气怎么样",
             agent_config=default_config,
         )
+        kind = classification.kind
         assert kind is TaskKind.SIMPLE_QA
         assert is_deep_task(kind) is False
 
@@ -168,12 +177,13 @@ class TestClassifyTaskKindHeuristic:
         self, default_config: AgentRouteConfig
     ) -> None:
         """规则 4：空消息 → SIMPLE_QA（不允许 None / 不允许抛异常）。"""
-        kind = classify_task_kind_heuristic(
+        classification = classify_task_kind_heuristic(
             message_count=0,
             tools_count=0,
             message_text="",
             agent_config=default_config,
         )
+        kind = classification.kind
         assert kind is TaskKind.SIMPLE_QA
 
 
@@ -190,14 +200,14 @@ class TestFallbackContract:
         for msg_count in (0, 1, 5, 20, 21, 100):
             for tools_count in (0, 1, 5, 6, 50):
                 for text in ("", "hello", "重构代码", "research this", "对比分析"):
-                    kind = classify_task_kind_heuristic(
+                    classification = classify_task_kind_heuristic(
                         message_count=msg_count,
                         tools_count=tools_count,
                         message_text=text,
                         agent_config=default_config,
                     )
-                    assert kind is not None
-                    assert isinstance(kind, TaskKind)
+                    assert classification.kind is not None
+                    assert isinstance(classification.kind, TaskKind)
 
     def test_no_exception_raised(self, default_config: AgentRouteConfig) -> None:
         """不允许抛异常：覆盖异常输入。"""
@@ -205,13 +215,13 @@ class TestFallbackContract:
         for msg_count in (-1, 0, 1):
             for tools_count in (-1, 0, 1):
                 for text in ("", " ", "\n", "🔥 emoji"):
-                    kind = classify_task_kind_heuristic(
+                    classification = classify_task_kind_heuristic(
                         message_count=msg_count,
                         tools_count=tools_count,
                         message_text=text,
                         agent_config=default_config,
                     )
-                    assert isinstance(kind, TaskKind)
+                    assert isinstance(classification.kind, TaskKind)
 
     def test_is_deep_task_is_bool(self) -> None:
         """is_deep_task 必须返回纯 bool（不允许 Optional[bool]）。"""

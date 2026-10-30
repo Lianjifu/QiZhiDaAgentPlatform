@@ -14,6 +14,13 @@ dependencies = [
     # Stage 2: Postgres checkpointer (langgraph 1.x 拆分独立包, §13.1 / §14.1)
     "langgraph-checkpoint-postgres>=3.0,<4.0",
     "psycopg[binary,pool]>=3.2",
+    # Agent Stage 0 (A-04 依赖核对): 方案 §2.1 的技术栈落位 ——
+    # langgraph = 图骨架, langgraph-prebuilt = ToolNode, langchain-core = 工具
+    # 与模型抽象 (BaseChatModel / BaseTool). 之前只靠 checkpointer 传递引入,
+    # 现在**显式声明** —— 直接 import 的依赖就该写出来.
+    "langgraph>=1.2,<2.0",
+    "langgraph-prebuilt>=1.1,<2.0",
+    "langchain-core>=1.6,<2.0",
 ]
 
 [build-system]

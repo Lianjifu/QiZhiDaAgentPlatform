@@ -991,6 +991,29 @@ ToolRuntimePort
 
 **旧代码减少**：无（纯新增）。
 **验收**：五个端口有契约测试；**`QZDAPChatModel` 是 `langchain_core.BaseChatModel` 的实例，且能作为 LangGraph 节点的 `model` 参数被调用**；`/metrics` 能查到 `qzdap_legacy_calls_total`。
+
+#### 实施记录（2026-10-30 · Stage 0：契约与依赖）
+
+| 项 | 结果 |
+|---|---|
+| **A-01 五个端口** | ✅ 写进 runtime 的 `ports.py` ✓ —— `LLMPort` ✓ / `ModelResolverPort` ✓ / `ToolBindingPort` ✓ / `AgentRouterPort` ✓ / `ToolRuntimePort` ✓（+ 它们要用的形状：`ToolBinding` ✓ / `AgentSelection` ✓ / `ToolInvocation` ✓ / `ToolInvocationResult` ✓）。⚠️ **没有 `ToolRouterPort`** ✓（决策 #4 ✓ —— 有一条测试专门断言它**不存在** ✓） |
+| **端口的语义边界** | ⚠️ **端口只「取」不「选」** ✓ —— `LLMPort` 只管调 ✓（模型是谁由 `ModelResolverPort` **查表** ✓）；`ToolBindingPort` 只把 agent 配置里声明的绑定集**取出来** ✓（治理过滤在 ⑨ Execution 那一侧 ✓ —— 端口不重复那份规则 ✗✗）；`AgentRouterPort` 只回答「这一步交给谁」✓ |
+| **A-02 `QZDAPChatModel` 骨架** | ✅ `execution/chat_model.py` ✓ —— `BaseChatModel` 子类 ✓；`_astream` → `LLMClient.stream()` ✓ → 逐个 yield `AIMessageChunk` ✓；**只做类型翻译** ✓（不碰供应商 ✓ / 不碰路由 ✓ / 不碰成本 ✓ —— §2.2 ✓）。⚠️ **同步路径明确报错** ✓（平台的客户端只有异步 ✓ —— 基类默认把同步 `_generate` 丢线程池 ✗ → `_agenerate` **必须覆盖** ✓ —— 由流式聚合 ✓） |
+| **A-03 归一 `TaskKind` 与 `TaskClassifier`** | ✅ **从 `graph/routing.py` 迁到 `agent_router/classifier.py`** ✓（分类器归**专家路由**那一侧 ✓ —— 它不是图节点的附属品 ✓）。⚠️ **返回值多了置信度** ✓（`TaskClassification(kind, confidence, reason)` ✓）—— 启发式的刻度 ✓（**不是概率** ✗✗ —— 别当校准过的概率用 ✗） |
+| **A-04 依赖核对** | ✅ 版本与方案 §2.1 一致 ✓：`langgraph` **1.2.12** ✓ / `langgraph-prebuilt` **1.1.0** ✓ / `langchain-core` **1.6.6** ✓；`deepagents` **未安装** ✓（决策 #8：Stage 6 可选 ✓ → **不加** ✓）。⚠️ **runtime 的 pyproject 之前只靠 checkpointer 传递引入** ✗ → **显式声明** ✓（直接 import 的依赖就该写出来 ✓）`uv.lock` 离线重锁 ✓（无版本变动 ✓） |
+| **A-05 打点 X5 旧入口** | ✅ 已有 ✓（`runner.py:104` 的 `record_legacy_call("X5")` ✓ —— 占位图 `compile_loop_graph` ✓）；扫描规则**仍关着** ✓（它归 Agent Stage 7 与 `X17` 同批删 ✓） |
+| **旧代码减少** | **0 行**（本 Stage 是纯新增 ✓ —— 方案 §9 的原话 ✓）；⚠️ **迁移了 `graph/routing.py`** ✓（→ `agent_router/classifier.py` ✓ —— **不是新增一份** ✗✗，「不能出现两套实现」✓），调用方跟着改 ✓（`nodes.py` ✓ / `engine.py` ✓ / `graph/__init__.py` 不再导出 ✓ / 测试 ✓） |
+| **顺带修掉的一个假数据** | ⚠️ `nodes.py` 的 route 节点把 **`confidence` 写死成 1.0** ✗（那是假的 ✗✗）→ 现在取分类器给的真实置信度 ✓ + 真实 `reason` ✓ |
+| 测试 | 新增 `runtimes/agent_runtime/tests/test_agent_contracts.py` ✓（11 条 ✓：五个端口的契约 ✓ + **没有 `ToolRouterPort`** ✓ + `QZDAPChatModel` 是 `BaseChatModel` 实例 ✓ + 能 `ainvoke` ✓ + 能 `astream` ✓ + 同步路径明确报错 ✓ + 分类器的置信度序 ✓）；`test_routing_heuristic.py` 跟着改 ✓（返回值多了置信度 ✓） |
+| 回归 | `pytest` **1870 passed** ✓（1 失败 + 4 error 与改动前一致 ✓ —— 环境问题 ✗）；mypy **无新增** ✓（前后同 20 条 ✓）；import-lint ✓ |
+
+⚠️ **本 Stage 之后仍未做的**（归后续 Stage ✓）：
+
+| 项 | 归属 |
+|---|---|
+| 五个端口的**模块侧实现**（`LLMPortAdapter` 实现 runtime 的 `LLMPort` ✓ / 模型解析 ✓ / 绑定集读取 ✓ / 专家路由 ✓ / 工具运行时 ✓） | **Stage 1–4** ✓ |
+| `QZDAPChatModel` 接**真实供应商**（解析 + 失败转移链 ✓ —— §5.2.1 的六条取值链 ✓） | **Stage 1** ✓ |
+| `nodes.py` / `engine.py`（19 节点图与新 engine）—— **没有生产调用方** ✓ | **Stage 7**（整体删 ✓） |
 > ⚠️ **不要用「能被 `ToolNode` 接受」当判据** —— `ToolNode` 接受的是**工具列表**，不是 chat model。工具侧的判据是「`BaseTool` 列表能被 `ToolNode` 接受」（Stage 2 的验收）。模型侧的判据是 `BaseChatModel` 实例 + 能作为 `model` 被接受 —— 这一条正是 Deep Agents（Stage 6）`create_deep_agent(model=...)` 的硬前置。
 
 ### Stage 1：LLM / SLM 调用（Execution 的模型侧）

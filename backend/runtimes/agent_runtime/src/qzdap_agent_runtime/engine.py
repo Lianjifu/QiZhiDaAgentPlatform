@@ -49,7 +49,7 @@ from .graph.nodes import (
     set_default_policy,
     set_default_tool_registry,
 )
-from .graph.routing import AgentRouteConfig
+from .agent_router.classifier import AgentRouteConfig
 from .memory.layered import InMemoryLayeredMemory, L1Source
 from .result.events import DoneEvent, ErrorEvent, MessageEvent, ResultEvent
 from .result.sink import InMemoryResultSink, ResultDispatcher, ResultSink

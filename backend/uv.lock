@@ -2562,7 +2562,10 @@ name = "qzdap-agent-runtime-runtime"
 version = "0.1.0"
 source = { editable = "runtimes/agent_runtime" }
 dependencies = [
+    { name = "langchain-core" },
+    { name = "langgraph" },
     { name = "langgraph-checkpoint-postgres" },
+    { name = "langgraph-prebuilt" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "qzdap-auth" },
     { name = "qzdap-kernel" },
@@ -2575,7 +2578,10 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "langchain-core", specifier = ">=1.6,<2.0" },
+    { name = "langgraph", specifier = ">=1.2,<2.0" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=3.0,<4.0" },
+    { name = "langgraph-prebuilt", specifier = ">=1.1,<2.0" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2" },
     { name = "qzdap-auth", editable = "libs/auth" },
     { name = "qzdap-kernel", editable = "libs/kernel" },

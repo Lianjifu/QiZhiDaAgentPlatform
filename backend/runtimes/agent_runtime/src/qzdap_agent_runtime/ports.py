@@ -10,13 +10,29 @@
 - LayeredMemory / RecallHit（§13.4）
 - PolicyGuard / ApprovalDecision（§5.7）
 - ActorContext（来自 qzdap_vault 的最小接口）
+
+⚠️ **Agent 层补的五个端口**（Agent 方案 §8.1 · A-01 ✓）：
+
+- ``LLMPort`` —— 模型调用 ✓（**不含模型选择** ✓ —— 决策 #4 ✓）
+- ``ModelResolverPort`` —— 上游模型名 → ``ModelId`` ✓（**查表** ✓）
+- ``ToolBindingPort`` —— 取**当前 agent 配置里**的绑定集 ✓（不做选择 ✓）
+- ``AgentRouterPort`` —— **这一步交给哪个专家** ✓
+- ``ToolRuntimePort`` —— 工具执行 ✓（幂等 / 重试 / 熔断在 ``modules/tool`` ✓）
+
+⚠️ **没有 ``ToolRouterPort``** ✓（决策 #4 取消了「工具路由」这个概念 ✓）。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
+from uuid import UUID
 
+from qzdap_llm.client import ChatRequest, LLMChunk
+from qzdap_schema.ids import ModelId
+
+from .agent_router.classifier import TaskKind
 
 # ---------------------------------------------------------------------------
 # Tool registry（§13.3）
@@ -52,7 +68,7 @@ class ToolRegistry(Protocol):
 
     def get(self, name: str) -> tuple[ToolMeta, Any]: ...
 
-    def schemas_for(self, actor: "ActorContext") -> list[dict[str, Any]]: ...
+    def schemas_for(self, actor: ActorContext) -> list[dict[str, Any]]: ...
 
     def list_by_risk(self, risk: Risk) -> list[str]: ...
 
@@ -175,15 +191,187 @@ class ToolExecutor(Protocol):
     ) -> dict[str, Any]: ...
 
 
+# ---------------------------------------------------------------------------
+# Agent 层（Agent 方案 §8.1 · A-01）
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class LLMPort(Protocol):
+    """模型调用 ✓ —— **只管「调」不管「选」** ✓（决策 #4 ✓）。
+
+    ⚠️ **模型是谁**由 ``ModelResolverPort`` 查表得到 ✓（§5.2.1 ✓）——
+    这个端口**不做任何模型选择** ✗✗（没有「按任务难度挑模型」这回事 ✓）。
+    """
+
+    def stream(
+        self,
+        request: ChatRequest,
+        *,
+        model_id: ModelId | None = None,
+        route_id: ModelId | None = None,
+        fallback_model_ids: list[ModelId] | None = None,
+        actor: ActorContext | None = None,
+    ) -> AsyncIterator[LLMChunk]:
+        """流式产出增量 ✓（工具调用的 delta 分片到达 ✓ —— §5.2.2 ✓）。"""
+        ...
+
+
+@runtime_checkable
+class ModelResolverPort(Protocol):
+    """上游模型名 → ``ModelId`` ✓（**查表** ✓ —— §5.2.1 ✓）。
+
+    ⚠️ **租户守卫在实现里** ✓ —— 查询条件必须含 ``tenant_id`` ✓。
+    """
+
+    async def resolve(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        upstream_model: str,
+    ) -> ModelId | None:
+        """查不到就返回 ``None`` ✓（调用方回退环境默认模型 ✓ —— §5.2.1 ✓）。"""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class ToolBinding:
+    """一个工具的**绑定声明** ✓ —— 「这份 agent 配置允许用它」✓。
+
+    ⚠️ **这里只声明「允许」** ✓ —— 治理过滤（风险 ∩ 作用域 ∩ 副作用 ✓）在
+    ⑨ Execution 那一侧做 ✓（§5.3.1 ✓）—— 端口不重复那份规则 ✗✗。
+    """
+
+    name: str
+    kind: Literal["tool", "mcp", "skill"] = "tool"
+    risk: Risk = "low"
+    requires_approval: bool = False
+    side_effect: bool = False
+    #: **是否受保护** ✓ —— `unprotected` 的**副作用工具**要被剔除 ✓（§5.3.1 ✓）。
+    protected: bool = True
+    #: 工具的**真实 spec** ✓（从 ``tools`` 表读 ✓ —— Stage 2 的空 schema 修复 ✓）。
+    spec: Mapping[str, Any] = field(default_factory=dict)
+
+
+@runtime_checkable
+class ToolBindingPort(Protocol):
+    """**取当前 agent 配置里的绑定集** ✓（§5.3.1 ✓）。
+
+    ⚠️ **不做「选择」** ✓（决策 #4 ✓）—— 只把配置里声明的东西**取出来** ✓
+    （挑哪个是执行期的事 ✗✗ —— 这里没有「挑」这个概念 ✓）。
+    """
+
+    async def bindings(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        agent_id: UUID,
+        agent_version: str,
+    ) -> list[ToolBinding]:
+        """返回该 agent 的绑定集 ✓（tool / mcp / skill 统一成一种形状 ✓）。"""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class AgentSelection:
+    """**这一步交给哪个专家** ✓（§4.1 ✓）。
+
+    ⚠️ **专家 = 一份 agent 配置** ✓（§4.2 ✓）—— 不是会话绑定 agent 的子集 ✓。
+    """
+
+    agent_id: UUID
+    agent_version: str
+    task_kind: TaskKind
+    confidence: float
+    #: 专家的指令片段 ✓（§4.1 的输出 ✓）。
+    instruction: str = ""
+    #: **是不是落回了会话绑定的 agent** ✓（§4.1 规则 2 ✓—— 没有专家可路由时
+    #: **落回**而不是报错 ✓）。
+    fell_back: bool = False
+
+
+@runtime_checkable
+class AgentRouterPort(Protocol):
+    """**每一步选专家** ✓（§4.1 ✓）。
+
+    ⚠️ **与 Router 层（⑤）的边界** ✓ —— 那是**会话入口**选「跟谁聊」✓，
+    这里是**每步**选「这一步交给谁」✓（§4.0 ✓）。
+    """
+
+    async def select(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        session_agent_id: UUID,
+        task_kind: TaskKind,
+        confidence: float,
+        tool_names: tuple[str, ...] = (),
+    ) -> AgentSelection:
+        """选出本步的专家 ✓（**没有专家就落回** ✓ —— §4.1 规则 2 ✓）。"""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class ToolInvocation:
+    """一次工具调用 ✓（**参数形状** ✓ —— 不是执行语义 ✓）。"""
+
+    name: str
+    arguments: Mapping[str, Any] = field(default_factory=dict)
+    call_id: str = ""
+    #: 幂等键 ✓（**由调用方给** ✓ —— `tool_executions` 的唯一权威 ✓）。
+    idempotency_key: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ToolInvocationResult:
+    """一次工具调用的结果 ✓。"""
+
+    ok: bool
+    output: str = ""
+    error_code: str | None = None
+    latency_ms: int = 0
+    is_error: bool = False
+
+
+@runtime_checkable
+class ToolRuntimePort(Protocol):
+    """工具执行 ✓。
+
+    ⚠️ **幂等 / 重试 / 熔断在 ``modules/tool`` 那一侧** ✓（决策 #6 ✓ ——
+    ``tool_executions`` 是唯一权威 ✓）—— 这里只是**调它** ✓。
+    """
+
+    async def invoke(
+        self,
+        invocation: ToolInvocation,
+        *,
+        actor: ActorContext,
+    ) -> ToolInvocationResult:
+        """执行一次调用 ✓（失败要有 ``error_code`` ✓ —— 不静默吞 ✓）。"""
+        ...
+
+
 __all__ = [
     "ActorContext",
+    "AgentRouterPort",
+    "AgentSelection",
     "ApprovalDecision",
+    "LLMPort",
     "LayeredMemory",
+    "ModelResolverPort",
     "PolicyGuard",
     "RecallHit",
     "RecallLayer",
     "Risk",
+    "ToolBinding",
+    "ToolBindingPort",
     "ToolExecutor",
+    "ToolInvocation",
+    "ToolInvocationResult",
     "ToolMeta",
     "ToolRegistry",
+    "ToolRuntimePort",
 ]
