@@ -1063,6 +1063,32 @@ ToolRuntimePort
 **旧代码减少**：`adapter/graph/runner.py` 的 `_run_turn_inner` 停用 + 打点（台账 **X17**）。
 **验收**：**存在一条端到端测试跑完整个循环**（不是逐节点单测）—— 2026-10-15 那次失败的直接教训；六个终止条件各有一条测试。
 
+#### 实施记录（2026-10-30 · Stage 5 的 **A-26**：旧循环改接新 Builder / Writer）
+
+> ⚠️ **只做 A-26 这一行** ✓ —— `AgentLoopRunner` / `Evaluator`（A-25）与端到端回归（A-27）**还没做** ✗。
+> 理由：**A-26 是解锁项** ✓ —— 它不做，Context Stage 4（停用 X8/X9/X10）与 Memory Stage 7（删 `_remember`）**都不能开始** ✗✗。
+
+| 项 | 结果 |
+|---|---|
+| 上下文装配 | `runner.py:184` 的 `_load_messages` → **新的 `ContextBuilder.build`** ✓（`context/builder.py` ✓）—— 固定优先级拼装 ✓、manifest ✓、`recall_degraded` 可见 ✓、知识命中**顺带带回**给 `knowledge_search` 事件 ✓（不必再召回一次 ✗✗） |
+| 记忆写入 | `runner.py:479` 的 `_remember` → **`MemoryPort.write_turn`** ✓（端口写进 `application/ports` ✓）→ `MemoryServiceAdapter.write_turn` ✓ → `MemoryRuntimeService.write_turn` ✓ → 契约层 `memory/writer.py` **五步流水线** ✓ |
+| **输入只有本轮对话** | `write_turn` 的入参**只有 `user_input` + `assistant_reply`** ✓ —— ⚠️ **不含召回结果** ✓（Memory 方案 §4.6 ✓：从召回结果反推 = 记忆的自我强化循环 ✗✗） |
+| 旧函数体 | `_load_messages` / `_remember` **函数体留着** ✓ —— ⚠️ **但已无调用方** ✓（grep 只剩注释与打点 ✗）→ 删除分别归 **Context Stage 5** 与 **Memory Stage 7** ✓（**删除责任按层分** ✓ —— 不在本层越界删 ✗） |
+| **旧路径变小（实测）** | 演示栈重启后发一轮真实请求：`qzdap_legacy_calls_total{entry="X8"}` = **0** ✓、`{entry="X11"}` = **0** ✓、`{entry="X9"}` = **1** ✓（压缩还没切 ✓）、`{entry="X17"}` = 1 ✓（旧循环本体仍在服役 ✓） |
+| 线上行为 | `knowledge_search` 事件**正常产出** ✓（命中 3 条 ✓）→ 随后 `TURN_FAILED` ✓ —— ⚠️ **演示库没配 LLM 供应商** ✓（不是回归 ✗） |
+| 端口 | `MemoryPort` 加 `write_turn` ✓（**不是新开一条写路径** ✗ —— 旧的 `write` 保留给管理面/旧调用 ✓，但轮次收尾**只走 `write_turn`** ✓） |
+| 契约层边界 | `ContextBuilder` / `write_turn` 的端口都在**契约层**（`qzdap_agent_runtime` ✓），模块侧只做适配 ✓ —— import-lint 通过 ✓ |
+| 测试 | 旧 fake 端口补 `write_turn` ✓（`test_graph_recall_hooks.py` / `test_loop_agent.py` ✓）—— 召回调用与写入调用**分开记录** ✓（否则「召回带 user_id」的断言会被写入调用污染 ✗） |
+| 全量回归 | `pytest` **1848 passed** ✓ —— 1 个失败（`modules/model` 的 `test_catalog_http_database`）与 4 个 error（testcontainers 拉镜像超时）**在改动前后完全一致** ✓（HEAD 上同样失败 ✓ —— 环境问题 ✗ 不是本次引入 ✗） |
+
+⚠️ **本 Stage 尚未完成的部分**（A-25 / A-27 / A-28 ✗）：
+
+| 项 | 状态 | 门禁 |
+|---|---|---|
+| **A-25 `AgentLoopRunner` + `Evaluator`** | ✗ 未做 | 六个终止条件的**单一判定点** —— 旧循环的终止判定还散在 `runner.py` 里 ✗ |
+| **A-27 端到端回归** | ✗ 未做 | ⚠️ **演示栈没有 LLM 供应商** ✓ → 端到端回归要么补一个 mock 供应商的测试环境 ✓，要么等真实环境 ✓ |
+| **A-28 停用 + 打点 `_run_turn_inner`** | ✗ 未做 | 旧循环**仍在服役** ✓（它是唯一在跑的循环 ✗）→ 归 Stage 7 ✗ |
+
 ### Stage 6：Deep Agents（决策 #8 采纳时才做）
 
 > **开工前置**：**Stage 1 已完成**（`QZDAPChatModel` 可用 —— Deep Agents 的模型参数必须是 LangChain 的 `BaseChatModel` 或 `Runnable`，见 §2.2）。**决策 #8 未采纳则本阶段整段跳过**，类型定义保留即可。

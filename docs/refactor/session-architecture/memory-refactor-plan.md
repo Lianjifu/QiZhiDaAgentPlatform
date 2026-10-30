@@ -1132,7 +1132,7 @@ ALTER TABLE admin_memory_policies
 | 幂等（`content_hash`） | 唯一约束 + 更新而非插入 |
 | 置信度分级 | 用户显式 / 规则 / LLM |
 | 来源追溯 | `source_session` → `source_turn_id` |
-| **不删、不停用** `runner._remember` | ⚠️ 它**仍被 `runner._run_turn_inner` 调用**（`runner.py:467`），此刻停用会打断旧循环。**停用与删除都推迟到 Agent Stage 5 的 A-26（接线旧循环）完成之后** —— 见台账 **X11** |
+| **不删、不停用** `runner._remember` | ✅ **本 Stage 当时成立** ✓ —— 它**仍被 `runner._run_turn_inner` 调用**（`runner.py:467`），此刻停用会打断旧循环。⚠️ **该状态已于 2026-10-30 改变** ✓（**Agent A-26** 把旧循环改接 `write_turn` ✓ → `_remember` **已无调用方** ✓）→ **删除归 Memory Stage 7** ✓（见台账 **X11** ✓） |
 
 **旧代码减少**：旧写入路径进入弃用状态。
 **验收**：重复内容不产生第二条；手机号类内容被拒绝写入并记审计；每条记忆可追溯到来源轮次。
@@ -1147,7 +1147,7 @@ ALTER TABLE admin_memory_policies
 | **M-18 幂等（`content_hash`）** | ✅ 规范化 = NFKC + 折叠空白 + 去首尾 + 小写 ✓（§4.4 的规则 ✓，**版本 1** ✓）；命中已有 hash → **不新增，只更新用量** ✓（`used_count` / `last_used_at` ✓） |
 | **M-19 置信度分级** | ✅ 用户显式 0.95 ✓ / 规则 0.7 ✓（**置信度来源一起落库** ✓ —— `confidence_source` ✓） |
 | **M-20 来源追溯** | ✅ 每条记忆带 `user_id` ✓ + `source_turn_id` ✓ + `source_session` ✓（**可追溯到来源轮次** ✓） |
-| **M-21 实现新 Writer，写新表** | ✅ `MemoryRuntimeService.write_turn()` ✓（写 **L2** ✓ —— **不再写 L1 缓冲表** ✓，决策 #5 的方向 ✓）；⚠️ **`runner._remember` 未停用** ✓（它**仍被旧循环调用** ✓ → 停用归 Agent Stage 5 的 A-26 ✓） |
+| **M-21 实现新 Writer，写新表** | ✅ `MemoryRuntimeService.write_turn()` ✓（写 **L2** ✓ —— **不再写 L1 缓冲表** ✓，决策 #5 的方向 ✓）；✅ **`runner._remember` 已停用** ✓（**Agent A-26 于 2026-10-30 完成** ✓ —— 旧循环改调 `write_turn` ✓，实测 `X11` 打点归零 ✓）→ **删除归 Memory Stage 7** ✓ |
 | ORM / 仓储补齐 | ✅ `add_l2` / `update_l2` 补上 0048 的七列 ✓（之前**只写不更新** ✗）；新增 `find_l2_by_hash` ✓ |
 | 测试 | 契约层 8 条 ✓（显式 / 陈述句 / 闲聊不记 ✓ / 手机号被拒且留审计 ✓ / 被拒的**不入库** ✓ / 重复只写一次且更新用量 ✓ / 格式化不影响 hash ✓ / 可追溯到轮次 ✓） |
 

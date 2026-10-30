@@ -265,6 +265,24 @@ class MemoryPort(Protocol):
         metadata: dict | None = None,
     ) -> dict: ...
 
+    async def write_turn(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID,
+        session_id: UUID,
+        turn_id: UUID | None = None,
+        user_input: str,
+        assistant_reply: str = "",
+    ) -> dict:
+        """**新 Writer** ✓ —— 沉淀**一轮**对话 ✓（Memory Stage 3 ✓）。
+
+        ⚠️ **输入只有本轮对话** ✓ —— 不含召回结果 ✓（Memory 方案 §4.6 ✓：
+        从召回结果反推会造成**记忆的自我强化循环** ✗✗）。
+        """
+        ...
+
 
 class SkillPort(Protocol):
     """Catalog skill invoke — runs published Skill.runtime in sandbox_runtime."""

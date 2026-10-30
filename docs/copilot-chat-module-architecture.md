@@ -1,6 +1,6 @@
 # 对话（Copilot）功能模块 — 架构梳理
 
-> 版本：1.1（2026-10-30 更新：Session Stage 4b–6d 之后的事实）
+> 版本：1.2（2026-10-30 更新：Session Stage 4b–6d + **Agent A-26（上下文装配改接 `ContextBuilder`、记忆写入改接 `write_turn`）**之后的事实）
 > 适用项目：`QiZhiDaAgentPlatform`
 > 状态：**现状（as-is）梳理**，描述当前代码已实现的行为，不含改造计划
 > 读者：需要理解「一次对话从点击发送到渲染完成」全链路的人
@@ -519,9 +519,12 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 
 ### 6.4 记忆与知识
 
-- **记忆**：`MemoryPort.recall(top_k=8)` 在**每轮开始时**按用户输入召回（`runner.py:513-524`），拼进 system prompt 的「相关记忆」段；轮末 `_remember()` 写入一条 `用户：… 助手：…` 的事实（`runner.py:664-700`），`autoSummarize` 为真时同时标记 L2。
-- **知识**：`KnowledgePort.search(top_k=6, package_ids=agent.knowledge_refs)` 召回，拼进 system prompt 的「相关知识」段。**注意**：真实召回路径只把内容拼进 prompt（`runner.py:526-545`），不下发 `knowledge_search` chunk——该 chunk 仅由 mock LLM 的 `synthetic_chunks` 旁路产生（`runner.py:671`）。所以生产链路里前端拿不到独立的召回事件与 `citations`。
-- 两者召回失败都被 `except Exception` 吞掉降级为空，不阻塞对话。
+上下文装配现在走**契约层的 `ContextBuilder`**（`backend/runtimes/agent_runtime/src/qzdap_agent_runtime/context/builder.py` ✓）—— 旧循环 `runner._run_turn_inner` 在 **2026-10-30（Agent A-26）** 起改调它 ✓，不再自己拼 system 段 ✓。
+
+- **记忆**：`MemoryPort.recall(top_k=8)` 在**每轮开始时**按用户输入召回，**按当前用户过滤**（`user_id` ✓），进「相关记忆」段。⚠️ **召回失败不再被静默吞掉** —— 置 `degraded_flags["recall_degraded"]` ✓（旧路径是 `except Exception: memories = []` ✗）。
+- **知识**：`KnowledgePort.search(top_k=6, package_ids=agent.knowledge_refs)` 召回 —— **只取 agent 绑定的且 enabled 的知识库** ✓，进「相关知识」段。✅ **现在会下发 `knowledge_search` chunk**（含 `hits` 与 `citations` ✓）—— 命中结果由 Builder **顺带带回** ✓（不必再召回一次 ✗✗）。**这是 2026-10-30 的变化** ✓：此前真实路径只把内容拼进 prompt，下发该 chunk 的只有 mock LLM 的 `synthetic_chunks` 旁路。
+- **轮末记忆写入**：走 `MemoryPort.write_turn(...)` ✓ → 契约层 `memory/writer.py` 的**五步流水线** ✓（抽取 → 敏感闸门 → 幂等去重 → 置信度 → 落库 L2 带 provenance ✓）。⚠️ **不再无条件写一条「用户：… 助手：…」** ✓（旧 `_remember` 每轮都写 ✗）—— 只写**抽出来的事实** ✓，手机号 / 密码类内容**整条拒绝** ✓（闸门 ✓）。
+- 上下文的**优先级与降级**由 Builder 统一决定 ✓（system → agent → 租户 → 摘要 → 召回 → 最近 → 本轮输入 ✓）；当前输入与工具结果**永不降级** ✓。
 
 ### 6.5 审计
 

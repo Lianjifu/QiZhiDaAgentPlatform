@@ -70,5 +70,32 @@ class MemoryServiceAdapter:
             metadata=metadata,
         )
 
+    async def write_turn(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID,
+        session_id: UUID,
+        turn_id: UUID | None = None,
+        user_input: str,
+        assistant_reply: str = "",
+    ) -> dict:
+        """**新 Writer** ✓ —— 走契约层的五步流水线 ✓（Memory Stage 3 ✓）。"""
+        outcome = await self._service.write_turn(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            session_id=session_id,
+            turn_id=turn_id,
+            user_input=user_input,
+            assistant_reply=assistant_reply,
+        )
+        return {
+            "written": len(outcome.written),
+            "rejected": len(outcome.rejected),
+            "deduplicated": len(outcome.deduplicated),
+        }
+
 
 __all__ = ["MemoryServiceAdapter"]

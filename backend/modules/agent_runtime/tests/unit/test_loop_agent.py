@@ -77,6 +77,13 @@ class RecordingMemory:
         self.facts.append(content)
         return {"ok": True}
 
+    async def write_turn(self, **kwargs: object) -> dict:
+        """新写入口 ✓（A-26 ✓）—— 轮次收尾用它沉淀记忆 ✓。"""
+        content = str(kwargs.get("user_input") or "")
+        self.writes.append(content)
+        self.facts.append(content)
+        return {"written": 1, "rejected": 0, "deduplicated": 0}
+
 
 class ConfirmSkill:
     async def list_executable(self) -> list[dict]:

@@ -149,7 +149,7 @@ Agent  Stage 5(循环)  ←  Session Stage 3(唯一 turn 实现)
 | Session Stage 3（唯一 turn 实现） | **Memory Stage 3**（Writer 重写） | 语义 | Memory §11 Stage 3 前置行 ✅ |
 | Session Stage 3（唯一 turn 实现） | **Memory Stage 3**（Writer 重写） | 语义 | Memory §11 Stage 3 ✅ |
 | Agent Stage 1（`QZDAPChatModel`） | Agent Stage 6（Deep Agents） | 依赖 | Agent §2.2 ✅ |
-| **Agent Stage 5 的 A-26**（`_run_turn_inner` 改接新 Builder / Writer） | **Context Stage 4**（停用 `_load_messages` / 四套模板 / `compact.py`）、**Memory Stage 7**（删 `_remember`） | **语义（删除顺序自底向上）** | 实施方案 §3.6 A-26 ✅ |
+| **Agent Stage 5 的 A-26**（`_run_turn_inner` 改接新 Builder / Writer） | **Context Stage 4**（停用 `_load_messages` / 四套模板 / `compact.py`）、**Memory Stage 7**（删 `_remember`） | **语义（删除顺序自底向上）** | 实施方案 §3.6 A-26 ✅ **（2026-10-30 已达成 ✓ —— 门禁已开 ✓）** |
 | **Session Stage 5b**（删 `use_cases/run_turn.py`） | **Context Stage 5**（删 `adapter/llm/prompts.py` —— `run_turn.py` import 那四个函数） | **语义** | 实施方案 §3.3 S-33 ✅ |
 | **`ErrorCode` 码收敛**（跨模块） | **Gateway Stage 0**（`ERROR_PROJECTION` 投影表建在枚举之上） | 契约 | 实施方案 §3.1 G-02b ✅ |
 | **`modules/channel` 新增 `qzdap-agent-runtime` 依赖** | **Gateway Stage 2**（验签迁出后，channel 的 webhook 端点调 `Gateway.accept`） | 依赖 | Gateway 方案 §9.2.1 ✅ |

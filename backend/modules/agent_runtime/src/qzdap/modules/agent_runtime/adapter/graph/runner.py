@@ -179,7 +179,9 @@ class SessionGraphRunner:
 
         whitelist = await self._whitelist(agent)
         tools_schema = _openai_tools(whitelist)
-        messages, knowledge_hits = await self._load_messages(
+        # ⚠️ **走新的 ContextBuilder** ✓（A-26 ✓）—— 旧的 `_load_messages`
+        # 从此没有调用方 ✓（删它归 Context Stage 5 ✓）。
+        messages, knowledge_hits = await self._assemble_context(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             owner_id=owner_id,
@@ -472,13 +474,17 @@ class SessionGraphRunner:
 
         self.last_loop_state = {**dict(state), "pending_approval": None, "rolling_summary": rolling_summary}
         final = str(state.get("final") or "")
-        writes = await self._remember(
+        # ⚠️ **走新的 Writer** ✓（A-26 ✓）—— 旧的 `_remember` 从此没有
+        # 调用方 ✓（删它归 Memory Stage 7 ✓）。
+        writes = await self._write_memories(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             owner_id=owner_id,
             agent=agent,
             user_input=user_input,
             final=final,
+            session_id=session_id,
+            turn_id=turn_id,
         )
         for layer, preview in writes:
             seq += 1
@@ -499,6 +505,59 @@ class SessionGraphRunner:
 
     def export_loop_state(self, pending: dict[str, Any] | None, messages: list[dict[str, Any]], step: int) -> dict[str, Any]:
         return {"pending_approval": pending, "messages": messages, "step": step}
+
+    async def _assemble_context(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        owner_id: UUID,
+        user_input: str,
+        history: list[dict[str, Any]],
+        agent: CatalogAgent | None,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """**用新的 ContextBuilder 装配上下文** ✓（Agent Stage 5 · A-26 ✓）。
+
+        ⚠️ **旧的 `_load_messages` 至此没有调用方了** ✓ —— 它归 Context
+        Stage 5 删除 ✓（台账 X8 ✓）—— 但**这一步之前不能删** ✗（旧实现还在
+        服役的路径上 ✗）。
+
+        返回 ``(消息, 知识召回原始结果)`` ✓ —— 后者给 ``knowledge_search``
+        事件用 ✓（不必再召回一次 ✗✗）。
+        """
+        from qzdap_agent_runtime.context.builder import ContextBuilder
+
+        builder = ContextBuilder(
+            memory_port=self._memory_port,
+            knowledge_port=self._knowledge_port,
+        )
+        assembled = await builder.build(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_id=owner_id,
+            user_input=user_input,
+            history=history,
+            agent_prompts=dict(agent.prompts) if agent is not None else {},
+            agent_version=agent.version if agent is not None else None,
+            tenant_context={
+                "tenant_id": str(tenant_id),
+                "workspace_id": str(workspace_id),
+                "user_id": str(owner_id),
+            },
+            # ⚠️ **agent 的知识库绑定要传下去** ✓ —— 漏了就是「agent 绑了
+            # 哪些知识库」这条约束**失效** ✗✗（旧路径按 `knowledge_refs`
+            # 过滤 ✓）。
+            knowledge_package_ids=_knowledge_package_ids(agent),
+        )
+        knowledge = list(assembled.recalled.get("knowledge") or [])
+        memories = list(assembled.recalled.get("memory") or [])
+        if memories:
+            # ⚠️ **X15 的打点跟着搬家** ✓ —— L3 内容进「相关记忆」、knowledge
+            # 另进「相关知识」→ **运行时双份注入** ✗（决策 #1 归 Memory
+            # Stage 7 ✓）。⚠️ **旧路径是「有记忆就记」** ✓ —— 口径保持一致
+            # ✓（否则指标中途变义 ✗✗）。
+            record_legacy_call("X15")
+        return list(assembled.messages), knowledge
 
     async def _load_messages(
         self,
@@ -677,6 +736,50 @@ class SessionGraphRunner:
         )
         return UUID(str(approval.id))
 
+    async def _write_memories(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        owner_id: UUID,
+        agent: CatalogAgent | None,
+        user_input: str,
+        final: str,
+        session_id: UUID | None = None,
+        turn_id: UUID | None = None,
+    ) -> list[tuple[str, str]]:
+        """**用新的 Writer 沉淀记忆** ✓（Agent Stage 5 · A-26 ✓）。
+
+        ⚠️ **旧的 `_remember` 从此没有调用方了** ✓ —— 它归 Memory Stage 7
+        删除 ✓（台账 X11 ✓）。
+
+        ⚠️ **输入只有本轮对话** ✓（**不含召回结果** ✓ —— Memory 方案 §4.6 ✓）。
+        """
+        policy = (
+            dict(agent.memory_policy)
+            if agent is not None
+            else {"enabled": True}
+        )
+        if not policy.get("enabled", True) or self._memory_port is None:
+            return []
+        if not user_input.strip() and not final.strip():
+            return []
+        result = await self._memory_port.write_turn(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            user_id=owner_id,
+            session_id=session_id or uuid4(),
+            turn_id=turn_id,
+            user_input=user_input,
+            assistant_reply=final,
+        )
+        written = int(result.get("written") or 0)
+        if not written:
+            return []
+        # ⚠️ **只报一层** ✓ —— 新 Writer 写的是 L2 ✓（旧的 L1/L2 两层报法是
+        # L1 缓冲表的产物 ✓，那张表要退役 ✓）。
+        return [("l2", final[:80])]
+
     async def _remember(
         self,
         *,
@@ -843,6 +946,25 @@ def _as_uuid(raw: Any) -> UUID:
         return UUID(str(raw))
     except (ValueError, TypeError):
         return uuid4()
+
+
+def _knowledge_package_ids(agent: CatalogAgent | None) -> tuple[UUID, ...]:
+    """agent 绑定的知识库 id ✓ —— **只取启用的** ✓（旧路径同口径 ✓）。
+
+    ⚠️ **这是 agent 的作用域约束** ✓ —— 漏传就是「agent 绑了哪些知识库」
+    这条约束**整个失效** ✗✗（它会搜到工作区里所有知识库 ✗）。
+    """
+    if agent is None:
+        return ()
+    ids: list[UUID] = []
+    for ref in agent.knowledge_refs:
+        if not ref.get("enabled", True):
+            continue
+        try:
+            ids.append(UUID(str(ref.get("id"))))
+        except ValueError:
+            continue
+    return tuple(ids)
 
 
 def _build_synthetic_chunk(raw: dict[str, Any], *, turn_id: UUID, seq: int) -> TurnChunk | None:

@@ -98,6 +98,9 @@ class AssembledContext:
     degraded_flags: dict[str, bool]
     #: 整段上下文的 token 估算 ✓（= manifest 的合计 ✓）。
     tokens_estimated: int = 0
+    #: **原始召回结果** ✓（记忆 / 知识 ✓）—— 调用方要单独下发
+    #: ``knowledge_search`` 事件时用 ✓（不必再召回一次 ✗✗）。
+    recalled: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
 __all__ = [

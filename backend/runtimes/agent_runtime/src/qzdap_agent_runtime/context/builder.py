@@ -21,6 +21,10 @@
 
 ⚠️ **本 Stage 只新建，不动调用点** ✓ —— 旧路径 ``_load_messages`` 仍在
 服役 ✓（它归 Context Stage 4 停用 ✓ —— 前置是 Agent Stage 5 的 A-26 ✗）。
+
+⚠️ **2026-10-30 更新**：**A-26 已完成** ✓ —— 旧循环 ``runner._run_turn_inner``
+改调本 Builder ✓ → **Builder 现在有生产调用方** ✓（旧 ``_load_messages``
+**已无调用方** ✓ —— 删除归 Context Stage 5 ✓）。
 """
 
 from __future__ import annotations
@@ -203,6 +207,9 @@ class ContextBuilder:
             manifest=manifest,
             degraded_flags=degraded,
             tokens_estimated=manifest.total_tokens,
+            # ⚠️ **原始召回**带出来 ✓ —— 调用方要单独下发 `knowledge_search`
+            # 事件 ✓（不用再召回一次 ✗✗）。
+            recalled={"memory": memories, "knowledge": knowledge},
         )
 
     # ── 召回 ────────────────────────────────────────────────────────────

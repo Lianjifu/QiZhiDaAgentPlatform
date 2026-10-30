@@ -552,6 +552,7 @@
 | | C-08 召回发起 | ✅ **已达成** —— Builder 主动调 `recall` / `search` ✓（契约层定义协议 ✓，模块侧适配器结构上满足 ✓）；**复刻旧路径三个参数** ✓（`top_k=8/6` ✓、按 `score` 降序 ✓、每条截 400 字 ✓）；记忆**按当前用户过滤** ✓（跨用户泄漏 X14 ✓）；**失败可见** ✓（`recall_degraded` ✓ —— 旧路径静默吞掉 ✗） | — | 0 | C-05 ✓ |
 | | C-09 manifest 生成 | ✅ **已达成** —— 每段一条 ✓：来源 / token / 版本 / **`ref_id`** / **`score`** / **`filtered_reason`** / `degraded` ✓；被超预算淘汰的片段**留记录** ✓（`filtered_reason='over_budget'` ✓） | — | 0 | C-05 ✓ |
 | | C-10 **只新建，不动调用点** | ✅ **已达成**（2026-10-30）—— 旧路径 `_load_messages` **仍在服役** ✓（本 Stage 没碰调用点 ✓）；⚠️ Builder 因此**暂时没有生产调用方** ✓ —— 接线归 Stage 4 ✓，前置 = **Agent Stage 5 的 A-26** ✗（归「未接管」表 ✓） | — | — | C-05 ✓ |
+| | **C-10b Builder 接上生产调用方** | ✅ **已达成**（2026-10-30，**Agent A-26**）—— `runner._run_turn_inner` 的上下文装配改调 `ContextBuilder.build` ✓；**C-10 的「只新建」约束到此解除** ✓ | — | 0 | C-10 · **Agent A-26** |
 | Stage 2 · Compressor | C-11 async 压缩器 | ✅ **已达成**（2026-10-30，Context Stage 2）—— `context/compressor.py` ✓ **async** ✓（摘要模型走异步端口 ✓，旧 runtime 的 `run_async_from_sync` 绕行路径不再需要 ✓） |
 | | C-12 结构化摘要 | ✅ **已达成** —— 提示词点名保留**决策 / 数字 / 承诺 / 未完成事项 / 来源 ID** ✓；输入**按 role 分组** ✓；系统提示不入摘要 ✓ |
 | | C-13 压缩后复验预算 | ✅ **已达成** —— 压缩后复验 ✓ → 仍超限 → 二级确定性窗口 ✓ → 仍超限 → **抛 `CONTEXT_TOO_LARGE`** ✓（明确错误 ✓ 不静默截断 ✓） |
@@ -561,11 +562,11 @@
 | | C-17 **只新建，不动调用点** | ✅ **已达成**（2026-10-30）—— 旧路径 `compact.py` **仍在服役** ✓；Compressor 因此**暂时没有生产调用方** ✓ → 接线归 Stage 4 ✓（前置 = Agent A-26 ✗，归「未接管」表 ✓） |
 | Stage 3 · Persistence | C-18 manifest 落库 | ✅ **已达成**（2026-10-30，Context Stage 3）—— `ContextManifestStore` 端口（契约层 ✓ 不引框架 ✓）+ `PostgresContextManifestStore`（模块侧 ✓）；按 `(turn_id, step)` ✓（一次模型调用一条 ✓）；**同 step 冲突即抛错** ✓（落库后立刻 flush ✓）；**不进 outbox** ✓ |
 | | C-19 `rolling_summary` 读写迁移 | ✅ **新写入已改到新列** ✓（`save_rolling_summary` ✓）—— ⚠️ 旧写入点（`copilot.py:379-380` 与 `runner.py`）**仍写 `metadata`** ✓ → 归零要等 Stage 4 停用旧循环 ✓ |
-| | C-20 交付前落库 | ⚠️ **端口已就位** ✓（写入时机的约束写进了端口的契约 ✓）—— **真正的「交付前落库」是接线阶段的责任** ✓ → 随 Stage 4 一起做 ✓（前置 = Agent A-26 ✗） |
+| | C-20 交付前落库 | ⚠️ **端口已就位** ✓（写入时机的约束写进了端口的契约 ✓）—— **真正的「交付前落库」是接线阶段的责任** ✓ → 随 Stage 4 一起做 ✓（前置 = Agent A-26 ✅ **已满足** ✓） |
 | Stage 4 · 接线与端到端 | C-21 Agent Loop 调 Context | 替换「自己拼 messages」 | — | 0 | **Agent Stage 5** |
 | | C-22 召回失败的 degraded 标记 | `recall_degraded` 传到前端（键已在 Gateway §9.0 登记）；⚠️ **前端目前零消费 `flags`** → 需一个前端工作项（Stage 4） | — | 0 | C-08 |
 | | C-23 端到端回归 | 长会话、混合中英文、召回为空、摘要模型故障 | — | 0 | C-21 |
-| | **C-24 停用 + 打点 `_load_messages` / 四套模板 / `compact.py`** | **前置（硬）= Agent Stage 5 的 A-26 已完成** —— 旧循环 `_run_turn_inner` 已改接 `context/builder.py` + `memory/writer.py`，这三个旧实现才真正没有调用方 | **X8 / X9 / X10 → 已弃用**（关注点 #9、#10、#11） | — | C-21 · **Agent A-26** |
+| | **C-24 停用 + 打点 `_load_messages` / 四套模板 / `compact.py`** | ⚠️ **前置（硬）已满足**（Agent A-26 ✅ 2026-10-30）—— 旧循环 `_run_turn_inner` 已改接 `context/builder.py` + `memory/writer.py` ✓；**X8 的调用点已归零** ✓（演示栈实测 ✓）—— 剩下的「停用 + 打点 + 删除」归 **Context Stage 4 / Stage 5** ✓ | **X8 / X9 / X10 → 已弃用**（关注点 #9、#10、#11） | — | C-21 · **Agent A-26 ✓** |
 | | C-25 Agent Loop 内自拼 messages 分支停用 + 打点 | ⚠️ **删除归 Agent Stage 7（X17）**，本层只停用 + 确认无残留调用方 | — | — | C-21 |
 | Stage 5 · 清理 | **C-26 删 `adapter/graph/compact.py`** | — | **X9**（关注点 #10） | **~53 行** | 归零判据满足 + **C-24 已停用打点** |
 | | **C-27 删 `adapter/llm/prompts.py` 四函数** | ⚠️ 前置：**Session Stage 5b 已删 `use_cases/run_turn.py`**（它 import 这四个函数） | **X10**（关注点 #11） | **~60 行** | 同上 + **Session S-33** |
@@ -739,7 +740,7 @@
 | | A-23 **工具绑定接线** | 把**选中专家**的绑定集交给 Execution 的工具绑定（Agent 层方案 §5.3.1）→ 统一成 `BaseTool` + 治理过滤 | — | 0 | A-21 |
 | | A-24 路由留痕 | 专家选择 + 模型 / 工具的**取值结果**写进 `session_turns.agent_decision`（**记「用了什么」，不记「为什么挑了它」**）。⚠️ **不写 `route_decision`** —— 那是 Router 的列（会话入口策略决策），**两列两写者** | — | 0 | A-21 · 0046 已落 |
 | Stage 5 · 循环与终止 | A-25 `AgentLoopRunner` + `Evaluator` | Reason → Observe → Evaluate；**六个终止条件的单一判定点** | — | 0 | **Session Stage 3（硬）** |
-| | **A-26 把 `_run_turn_inner` 改接新 Builder / Writer** | ⚠️ **旧循环的最后一次改造**：`runner.py:179` 的 `_load_messages` 与 `runner.py:467` 的 `_remember` 换成对 `context/builder.py` + `memory/writer.py` 的调用。**这一步做完，X8 / X10 / X11 才真正无调用方**，Context Stage 4 与 Memory Stage 7 才能删 | — | 0 | A-25 · **Context Stage 1–3 + Memory Stage 3** |
+| | **A-26 把 `_run_turn_inner` 改接新 Builder / Writer** | ✅ **已达成**（2026-10-30）—— `runner.py:184` 的 `_load_messages` → `ContextBuilder.build` ✓；`runner.py:479` 的 `_remember` → `MemoryPort.write_turn`（走 `memory/writer.py` 五步流水线 ✓）。**X8 / X11 现在没有调用方** ✓（演示栈实测：`qzdap_legacy_calls_total{entry="X8"}` 与 `X11` 均为 0 ✓，X9 仍为 1 ✓）→ **Context Stage 4 与 Memory Stage 7 解锁** ✓ | — | 0（**旧代码减少 0 行** ✓ —— 函数体留着归各层的 Stage 5 / Stage 7 删 ✓） | A-25 · **Context Stage 1–3 + Memory Stage 3** |
 | | A-27 端到端回归 | 简单问答 / 多工具 / 工具失败 / 审批挂起恢复 / 取消 / 超预算 / 专家路由 | — | 0 | A-26 |
 | | **A-28 停用 + 打点 `_run_turn_inner`** | — | **X17 → 已弃用**（关注点 #18） | — | A-26 |
 | Stage 6 · Deep Agents（可选） | **A-28b 加依赖** | `deepagents` 进 `pyproject.toml` + 更新 `uv.lock` | — | 0 | **决策 #8 采纳** · Stage 1 完成 |
@@ -1195,7 +1196,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] A-13 **在新 AgentLoop 侧注入真实 actor**（⚠️ 不改 `nodes.py` —— 那是死代码，Stage 7 整体删）
 - [ ] A-14 `tool_executions` 开始写 · A-15 `request_hash` 冲突拒绝 · A-16 重试/熔断 · A-17 **修 async** · A-18 沙箱接入 · A-19 成本结算 · A-20 进程内幂等降级为快速路径 · **A-20b `modules/tool` 的 `InvokeToolUseCase` 补幂等 / 重试 / 熔断**（✅ 归属已定：**改 `modules/tool`**）
 - [ ] A-21 `AgentRouter`（选专家） · A-22 **模型解析接线** · A-23 **工具绑定接线** · A-24 路由留痕 `route_decision`
-- [ ] A-25 `AgentLoopRunner` + `Evaluator` · **A-26 把 `_run_turn_inner` 改接新 Builder / Writer**（旧循环的最后一次改造）· A-27 端到端回归 · A-28 停用打点 `_run_turn_inner` → **X17**
+- [ ] A-25 `AgentLoopRunner` + `Evaluator` · **✅ A-26 把 `_run_turn_inner` 改接新 Builder / Writer**（旧循环的最后一次改造 · **2026-10-30 已达成** ✓）· A-27 端到端回归 · A-28 停用打点 `_run_turn_inner` → **X17**
 - [ ] A-28 加 `deepagents` 依赖 · A-29 `deep/factory.py` · A-30 `deep/planner.py` · A-31 预算 · A-32 删 deep 空壳（**可选，决策 #8**）
 - [ ] A-33 **删 `nodes.py` 13 节点** · A-34 **改 `builder.py` 为 6 节点版** · A-35 **删 `runner.py` ReAct 循环** · A-36 **删 `compile_loop_graph`** → **X5**
 - [ ] A-37 **删 `InMemoryToolExecutor`** → **#16** · A-38 **删 `InMemoryToolRegistry`** → **#29**
