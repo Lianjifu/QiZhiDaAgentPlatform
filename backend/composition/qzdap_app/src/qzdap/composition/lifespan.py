@@ -994,14 +994,48 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     memory_embedding = container.memory_embedding_adapter()
 
+    # ⚠️ **向量补写队列 + 后台 worker** ✓（C5 ✓ —— Memory 方案 §5.4 ✓）——
+    # **应用级** ✓（每请求一个队列 = 队列就没了 ✗✗）。
+    from qzdap.modules.memory.adapter.vectorize import (
+        MemoryVectorBackfill,
+        MemoryVectorizeAdapter,
+    )
+    from qzdap_agent_runtime.memory.vectorize import (
+        InMemoryVectorWriteQueue,
+        VectorizeWorker,
+    )
+
+    memory_vector_queue = InMemoryVectorWriteQueue()
+    memory_vector_worker = VectorizeWorker(
+        queue=memory_vector_queue,
+        store=MemoryVectorizeAdapter(
+            embedding=memory_embedding, vectors=memory_vectors
+        ),
+        backfill=MemoryVectorBackfill(container.session_factory()),
+    )
+    app.state.memory_vector_queue = memory_vector_queue
+    app.state.memory_vector_worker = memory_vector_worker
+
     class _MemoryRuntimeFactory:
         """**运行面** ✓ —— 对话路径用它 ✓（召回 / 写入 ✓）。"""
 
         def for_session(self, session):  # type: ignore[no-untyped-def]
+            from qzdap.modules.agent_runtime.adapter.persistence.session_activity import (
+                PostgresSessionActivity,
+            )
+            from qzdap.modules.memory.adapter.persistence.buffer_repository import (
+                SqlMemoryBufferRepository,
+            )
+
             return MemoryRuntimeService(
                 SqlMemoryCatalogRepository(session),
                 embedding=memory_embedding,
                 vectors=memory_vectors,
+                # ⚠️ **落库后异步补向量** ✓（C5 ✓ —— 写路径不等 embedding ✓）。
+                vector_queue=memory_vector_queue,
+                # ⚠️ **会话缓冲 + 活跃度** ✓（决策 #5 ✓ —— 会话级策略 ✓）。
+                buffer=SqlMemoryBufferRepository(session),
+                activity=PostgresSessionActivity(session),
             )
 
         def __call__(self, session):  # type: ignore[no-untyped-def]
@@ -1011,10 +1045,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         """**管理面** ✓ —— 管理端接口用它 ✓（目录 / 策略 / 审核 / 趋势 ✓）。"""
 
         def for_session(self, session):  # type: ignore[no-untyped-def]
+            from qzdap.modules.knowledge.adapter.promotion import (
+                KnowledgeCandidateAdapter,
+            )
+
             return MemoryAdminService(
                 SqlMemoryCatalogRepository(session),
                 embedding=memory_embedding,
                 vectors=memory_vectors,
+                # ⚠️ **团队知识候选** ✓（决策 #1 ✓ —— L3 退役 ✓）——
+                # 提升的终点是 knowledge ✓（**人工审核发布** ✓）。
+                knowledge=KnowledgeCandidateAdapter(
+                    app.state.knowledge_service_factory.for_session(session)
+                ),
             )
 
         def __call__(self, session):  # type: ignore[no-untyped-def]
@@ -1438,10 +1481,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ── Session 生命周期（Session Stage 0/1）─────────────────────────────
     # ① 超时清扫器 —— **幂等键过期是 Gateway 的硬依赖**（过期行留在表里，
     #    同一个键重发仍会命中冲突 → 表无限膨胀）✓
-    app.state.session_sweeper_stop = await _start_session_sweeper(container)
+    app.state.session_sweeper_stop = await _start_session_sweeper(container, app)
     # ③ 出站队列 worker —— **IM 的回复先入队、投递失败可重试** ✓
     #    （Session 方案 §7；台账 S-24 / S-26）
     app.state.outbox_worker_stop = await _start_outbox_worker(container)
+    # ④ 向量补写 worker —— **落库后异步补向量** ✓（C5 ✓ —— Memory §5.4 ✓）
+    app.state.memory_vector_stop = _start_memory_vector_worker(app.state)
+
     # ② checkpoint saver —— **异步**版；同步版会阻塞事件循环 ✗
     app.state.checkpointer_cm, app.state.checkpointer = await _start_checkpointer(
         container
@@ -1461,6 +1507,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         stop_outbox = getattr(app.state, "outbox_worker_stop", None)
         if stop_outbox is not None:
             await stop_outbox()
+        stop_vector = getattr(app.state, "memory_vector_stop", None)
+        if stop_vector is not None:
+            await stop_vector()
         checkpointer_cm = getattr(app.state, "checkpointer_cm", None)
         if checkpointer_cm is not None:
             await checkpointer_cm.__aexit__(None, None, None)
@@ -1470,7 +1519,62 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await sandbox.shutdown()
 
 
-async def _start_session_sweeper(container: Container) -> Callable[[], Awaitable[None]]:
+def _start_memory_vector_worker(app: Any) -> Callable[[], Awaitable[None]]:
+    """起**向量补写**的后台任务 ✓（C5 ✓ —— Memory 方案 §5.4 ✓）。
+
+    ⚠️ **写路径不等它** ✓ —— 队列是应用级的 ✓（每请求一个队列 = 队列就没了 ✗✗）。
+    ⚠️ **补不上由兜底补写捡回来** ✓（worker 自己定期扫「最近更新过的」✓）。
+    """
+    worker = getattr(app.state, "memory_vector_worker", None)
+    if worker is None:
+        async def _noop() -> None:
+            return None
+
+        return _noop
+
+    interval = max(1, int(os.environ.get("QZDAP_MEMORY_VECTOR_INTERVAL", "30")))
+
+    async def _loop() -> None:
+        await worker.run(interval_s=interval)
+
+    task = asyncio.create_task(_loop())
+    _log.info("memory_vector_worker_started interval=%ds", interval)
+
+    async def _stop() -> None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    return _stop
+
+
+async def _refine_memory_buffers(app: Any, container: Container) -> None:
+    """**会话缓冲的提炼** ✓（M-29 ✓ —— 由 sweeper 触发 ✓）。
+
+    ⚠️ **失败不拖垮清扫** ✓ —— 提炼失败下一轮再来 ✓。
+    """
+    if app is None:
+        return
+    factory = getattr(app.state, "memory_runtime_service_factory", None)
+    if factory is None:
+        return
+    try:
+        async with container.session_factory() as session:
+            service = factory.for_session(session)
+            report = await service.refine_buffers(now=datetime.now(UTC))
+            await session.commit()
+    except Exception:  # noqa: BLE001
+        _log.exception("memory buffer refinement failed; will retry next tick")
+        return
+    if report.total:
+        _log.info("memory buffer refine: %s", report)
+
+
+async def _start_session_sweeper(
+    container: Container, app: Any = None
+) -> Callable[[], Awaitable[None]]:
     """起超时清扫的后台任务 —— **幂等键过期**是 Gateway 的硬依赖 ✓。
 
     ⚠️ 只清扫两类（Session 方案 §3.3）：僵尸轮次 + 幂等键过期。
@@ -1502,6 +1606,10 @@ async def _start_session_sweeper(container: Container) -> Callable[[], Awaitable
                 continue
             if report.total:
                 _log.info("session sweep: %s", report)
+            # ⚠️ **会话缓冲的提炼** ✓（M-29 ✓）—— **同批调度** ✓
+            # （Memory 方案 Stage 5 ✓ —— 「由 sweeper 触发」✓ —— 没有触发者
+            # = 这个能力不存在 ✗✗）。
+            await _refine_memory_buffers(app, container)
 
     task = asyncio.create_task(_loop())
     _log.info("session_sweeper_started interval=%ds", interval)

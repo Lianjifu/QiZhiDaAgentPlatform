@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from qzdap_persistence.tenant_guard import current_tenant_id
@@ -271,6 +272,24 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
             return None
         return _l2(row)
 
+    async def list_l2_updated_since(
+        self, since: datetime, *, limit: int = 100
+    ) -> list[L2Fact]:
+        """**最近更新过的 L2** ✓（兜底补写的来源 ✓ —— §5.4 ✓）。
+
+        ⚠️ **不比对向量表** ✓ —— 全表扫描代价太大 ✗✗；代价是**重复补写** ✓
+        （``upsert`` 幂等 ✓ —— 不产生副本 ✓）。
+        """
+        stmt = (
+            select(MemoryL2ORM)
+            .where(MemoryL2ORM.updated_at >= since)
+            .where(MemoryL2ORM.status != "retired")
+            .order_by(MemoryL2ORM.updated_at.desc())
+            .limit(max(1, limit))
+        )
+        result = await self._s.execute(stmt)
+        return [_l2(row) for row in result.scalars().all() if not _cross_tenant(row)]
+
     async def search_l2_by_keyword(
         self,
         workspace_id: UUID,
@@ -371,6 +390,9 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
                 label=item.label,
                 operator=item.operator,
                 target_id=item.target_id,
+                from_layer=item.from_layer,
+                to_layer=item.to_layer,
+                reason=item.reason,
                 created_at=item.created_at,
                 updated_at=item.created_at,
             )
@@ -391,6 +413,9 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
                 label=row.label,
                 operator=row.operator,
                 target_id=row.target_id,
+                from_layer=row.from_layer,
+                to_layer=row.to_layer,
+                reason=row.reason,
                 created_at=row.created_at,
             )
             for row in result.scalars().all()

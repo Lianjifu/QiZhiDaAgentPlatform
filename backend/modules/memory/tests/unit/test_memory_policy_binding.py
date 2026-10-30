@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from qzdap_agent_runtime.memory.policy import MemoryPolicy, MemoryRef, MemoryRefKind
+from qzdap_agent_runtime.memory.refine import BufferRow
 from qzdap_agent_runtime.memory.scope import MemoryScope
 
 from qzdap.modules.memory.application.services import MemoryRuntimeService
@@ -219,3 +220,40 @@ async def test_the_pinned_entry_of_another_user_is_not_leaked() -> None:
         ),
     )
     assert hits == []
+
+
+class _FakeBuffer:
+    """**会话缓冲**的替身 ✓。"""
+
+    def __init__(self) -> None:
+        self.rows: list[BufferRow] = []
+
+    async def add(self, row: BufferRow) -> None:
+        self.rows.append(row)
+
+    async def list_pending(self, *, before, limit: int = 100):  # type: ignore[no-untyped-def]
+        return [row for row in self.rows if row.created_at <= before][:limit]
+
+    async def delete(self, row_ids) -> None:  # type: ignore[no-untyped-def]
+        self.rows = [row for row in self.rows if row.id not in row_ids]
+
+
+@pytest.mark.asyncio
+async def test_the_session_scope_lands_in_the_buffer() -> None:
+    """**会话级策略 → 落会话缓冲** ✓（不是 L2 ✓ —— 决策 #5 ✓）。"""
+    catalog = InMemoryCatalog()
+    buffer = _FakeBuffer()
+    service = MemoryRuntimeService(catalog, buffer=buffer)
+    outcome = await service.write_turn(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        user_id=USER,
+        session_id=uuid4(),
+        user_input="记住：我在上海办公",
+        policy=MemoryPolicy(scope=MemoryScope.SESSION),
+    )
+    assert outcome.written
+    # ⚠️ **L2 里没有** ✓（它还在缓冲里 ✓ —— 会话结束才提炼 ✓）。
+    assert catalog.l2 == {}
+    assert len(buffer.rows) == 1
+    assert buffer.rows[0].content == "记住：我在上海办公"

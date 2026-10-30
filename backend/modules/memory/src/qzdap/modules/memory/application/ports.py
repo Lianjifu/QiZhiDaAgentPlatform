@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -101,6 +102,13 @@ class MemoryCatalogRepository(ABC):
 
     @abstractmethod
     async def list_l3(self, workspace_id: UUID) -> list[L3Entry]: ...
+
+    @abstractmethod
+    async def list_l2_updated_since(
+        self, since: datetime, *, limit: int = 100
+    ) -> list[L2Fact]:
+        """**最近更新过的 L2** ✓（兜底补写的来源 ✓ —— §5.4 ✓）。"""
+        ...
 
     @abstractmethod
     async def search_l2_by_keyword(

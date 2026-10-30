@@ -646,11 +646,11 @@
 | | M-23 `scope` | ✅ **已达成** —— **会话级 → 只召回本会话** ✓（过滤**下推到 SQL** ✓ + 向量 payload 带 session ✓）；**用户级 → 跨会话可见** ✓（默认 ✓）；**工作区级 → 明确不支持** ✓（不静默降级 ✓ —— 团队知识待 M-47 ✓） | — | 0 | M-22 |
 | | M-24 `policyLabel` | ✅ **已达成** —— 标签**解析成保留策略** ✓（模块侧只读端口 ✓ —— `get_policy_by_label` ✓）→ 写在写入结果里 ✓（`retention_label` ✓ —— **绑定看得见** ✓）；⚠️ **执行者是淘汰器** ✓ → 归 **Stage 6（M-35）** ✓ | — | 0 | M-22 |
 | | M-25 `l3EntryIds` / `knowledge_refs` | ✅ **已达成** —— 召回时**额外纳入** ✓（**绕过阈值** ✓ —— 绑定的不是搜出来的 ✓）；**按 id 取** ✓（`PinnedCandidateAdapter` ✓）；**别人的记忆看不见** ✓（不串号 ✓） | — | 0 | M-22 |
-| Stage 5 · C5 向量化 + C3 提升 | M-26 向量写入统一走 embedding 服务 | 决策 #6 | — | 0 | Stage 2 |
-| | M-27 异步补写 + 删除同步 | 写路径不再内联 embedding 调用 | — | **~40 行** | M-26 |
-| | M-28 `session_memory_buffer`（STM 缓冲） | — | — | 0 | M-03 |
-| | M-29 会话结束提炼 | **由 sweeper 触发**（无触发者 = 能力不存在） | — | 0 | M-28 · Session sweeper |
-| | M-30 提升规则 + `PromotionEvent` 补字段 | 按决策 #1 的终点 | — | 0 | M-29 |
+| Stage 5 · C5 向量化 + C3 提升 | M-26 向量写入统一走 embedding 服务 | ✅ **已达成**（2026-10-31，Memory Stage 5 ✓）—— embedding 调用集中在**模块侧适配器** ✓（`MemoryVectorizeAdapter` ✓）；契约层只编排 ✓ | — | 0 | Stage 2 |
+| | M-27 异步补写 + 删除同步 | ✅ **已达成** —— **写路径不再内联 embedding** ✓（排进**应用级队列** ✓ —— 不阻塞对话 ✓）；**兜底补写** ✓（worker 定期扫「最近更新过的」✓ —— 丢掉的向量会被捡回来 ✓）；**删除同步删向量** ✓（端口就位 ✓ —— **调用方是 Stage 6 的淘汰器** ✓） | — | **~40 行** | M-26 |
+| | M-28 `session_memory_buffer`（STM 缓冲） | ✅ **已达成** —— 表（迁移 0048 ✓）+ ORM ✓ + 仓储 ✓；**会话级策略写这里** ✓（不再写 L2 ✓ —— 决策 #5 ✓） | — | 0 | M-03 |
+| | M-29 会话结束提炼 | ✅ **已达成** —— **由 sweeper 触发** ✓（与 Session 清扫器**同批调度** ✓）；**会话还在跑 → 不动** ✓（活跃度由 Session 层回答 ✓ —— Memory 不查会话表 ✓）；**过期 → 丢弃** ✓；提炼走**同一套闸门 / 去重** ✓ | — | 0 | M-28 · Session sweeper |
+| | M-30 提升规则 + `PromotionEvent` 补字段 | ✅ **已达成** —— **终点是 knowledge 的候选** ✓（决策 #1 ✓ —— **不再写 L3 表** ✓ —— 台账 X15 ✓）；`PromotionEvent` 补 `from_layer` / `to_layer` / `reason` ✓（迁移 0048 建了列 ✓ —— ORM 当时没映射 ✗ → 现在映射 ✓） | — | 0 | M-29 |
 | Stage 6 · C7 统计 + C4 淘汰 | M-31 统计更新 | `used_count` / `last_used_at` / `usage_history` / `hits` | — | 0 | Stage 5 |
 | | M-32 淘汰器 | TTL / max_items / storage_mb / LRU | — | 0 | M-31 |
 | | M-33 `trend()` 改真实统计 | — | — | 0 | M-31 |
@@ -1184,7 +1184,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] M-10 向量优先 + 词法兜底 ✓ · M-11 候选集 `top_k×4` ✓ · M-12 去重/阈值/abstain ✓ · M-13 provenance ✓ · M-14 C10 降级 ✓ · M-15 **确认 `layered.py` 从未接线** ✓ → **X12**
 - [x] M-16 `FactExtractor` ✓ · M-17 `Redactor` ✓ · M-18 幂等 ✓ · M-19 置信度 ✓ · M-20 来源追溯 ✓ · M-21 **实现新 Writer，写新表** ✓
 - [x] **M-22 `enabled`** ✓ · [x] **M-23 `scope`** ✓ · [x] **M-24 `policyLabel`** ✓ · [x] **M-25 `l3EntryIds`/`knowledge_refs`** ✓ —— ✅ **Stage 4 已达成**（2026-10-31 ✓ —— 管理端绑的东西运行面**真的读到** ✓：关掉就一条不写 ✓ / 会话级只召回本会话 ✓ / 绑定的条目一定被召回 ✓ / 保留策略标签解析出来 ✓）
-- [ ] **M-26 向量统一走 embedding** · [ ] **M-27 异步补写** · [ ] **M-28 `session_memory_buffer`** · [ ] **M-29 会话结束提炼（sweeper 触发）** · [ ] **M-30 提升规则** —— ⬜ **Stage 5 未做**
+- [x] **M-26 向量统一走 embedding** ✓ · [x] **M-27 异步补写** ✓ · [x] **M-28 `session_memory_buffer`** ✓ · [x] **M-29 会话结束提炼（sweeper 触发）** ✓ · [x] **M-30 提升规则** ✓ —— ✅ **Stage 5 已达成**（2026-10-31 ✓）
 - [ ] **M-31 统计更新** · [ ] **M-32 淘汰器** · [ ] **M-33 `trend()` 真实统计** · [ ] **M-34 接入 sweeper** · [ ] **M-35 淘汰执行器** —— ⬜ **Stage 6 未做**
 - [ ] **M-36 B1 管理接口** · [ ] **M-37 B2 管理服务** · [ ] **M-38 B3 管理策略** · [ ] **M-39 C9 治理 provider** · [ ] **M-40 乐观并发 409** · [ ] **M-41 敏感闸门补齐** · [ ] **M-42 管理端直写停用打点** —— ⬜ **Stage 6b 未做**（⚠️ **X16 的后半段**（管理端绕过脱敏与去重 ✓）**就归这里** ✗）
 - [x] M-43 **删 `_remember`** → **X11** ✓ · [ ] M-44 **删 `layered.py`** → **X12**（⚠️ **归 Agent Stage 7** ✓）· [ ] M-45 **删 `remember` 节点** → **X12**（⚠️ **归 Agent Stage 7** ✓）· [ ] M-46 **退役 `admin_memory_l1`** → **X13**（⚠️ **写侧已退役 ✓，表未 DROP** ✓ —— 管理端 4 个 L1 端点还读它 ✓）· [ ] M-47 **退役 `admin_memory_l3`** → **X15**（⚠️ **数据要先迁 knowledge** ✓）· M-48 清理 `memory_policy` 无效语义 ✓ · M-49 **删原 `MemoryService` 单类** → **X16** ✓（已拆 ✓ —— 两个服务类**必须保留** ✓）

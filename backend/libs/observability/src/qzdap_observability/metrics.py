@@ -130,6 +130,14 @@ ROUTER_CONCURRENCY_REJECTED_TOTAL = Counter(
     labelnames=("reason",),
     registry=metrics_registry,
 )
+# ⚠️ **向量补写** ✓（Memory 方案 §5.4 ✓）—— 标签是结果 ✓（``enqueued`` ✓ /
+# ``dropped`` ✓ —— **队列满了被丢** ✓ —— 丢了要看得见 ✓）。
+MEMORY_VECTOR_ENQUEUED_TOTAL = Counter(
+    "qzdap_memory_vector_enqueued_total",
+    "Vector write jobs accepted (or dropped when the queue is full)",
+    labelnames=("outcome",),
+    registry=metrics_registry,
+)
 # ⚠️ **会话 key 派生次数** ✓（Router 方案 §12.2 ✓）—— **不记录 key 本身** ✓
 # （避免泄漏身份 ✓ —— key 会进日志 / 审计 / 数据库 ✓）。
 ROUTER_SESSION_KEY_HASH_TOTAL = Counter(
@@ -200,6 +208,17 @@ def record_router_concurrency_rejected(*, reason: str) -> None:
     而是把这一轮落成终态并报上来 ✓。
     """
     ROUTER_CONCURRENCY_REJECTED_TOTAL.labels(reason=str(reason)).inc()
+
+
+def record_memory_vector_enqueue(*, dropped: bool = False) -> None:
+    """**记一次向量补写排队** ✓（Memory 方案 §5.4 ✓）。
+
+    ⚠️ **队列满了被丢** ✓ —— 那是**要看得见**的事件 ✓（补写兜底会捡回来 ✓，
+    但一直丢说明队列不够用 ✗✗）。
+    """
+    MEMORY_VECTOR_ENQUEUED_TOTAL.labels(
+        outcome="dropped" if dropped else "enqueued"
+    ).inc()
 
 
 def record_router_session_key_hash() -> None:

@@ -127,8 +127,13 @@ class MemoryWritePort(Protocol):
         confidence: float,
         confidence_source: str,
         category: str,
+        target: str = "l2",
     ) -> dict[str, Any]:
-        """落一条记忆 ✓（带来源与版本 ✓ —— §4.1 ✓）。"""
+        """落一条记忆 ✓（带来源与版本 ✓ —— §4.1 ✓）。
+
+        ⚠️ **``target`` 决定落哪** ✓（§7.1 ✓）—— ``l2`` ✓（用户级 ✓）/
+        ``buffer`` ✓（会话缓冲 ✓ —— 决策 #5 ✓）。
+        """
         ...
 
     async def touch(self, *, item_id: str) -> None:
@@ -155,6 +160,63 @@ class WriterPipeline:
         self._extractor = extractor
         self._redactor = redactor
         self._store = store
+
+    async def write_fact(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID,
+        session_id: UUID,
+        turn_id: UUID | None = None,
+        content: str,
+        confidence: float = 0.7,
+        confidence_source: str = "rule",
+        category: str = "fact",
+        target: str = "l2",
+    ) -> WriteOutcome:
+        """**落一条已经抽好的事实** ✓（会话缓冲的提炼 ✓ —— M-29 ✓）。
+
+        ⚠️ **与写入流水线同一套闸门 / 去重** ✓（§4.1 ✓ —— 缓冲里的内容
+        也要过敏感闸门 ✓ —— 绕过去就是漏洞 ✗✗）。
+        """
+        verdict = self._redactor.redact(content)
+        if verdict.blocked:
+            return WriteOutcome(
+                rejected=[
+                    {
+                        "content": content,
+                        "kinds": list(verdict.kinds),
+                        "reason": verdict.reason,
+                    }
+                ]
+            )
+        digest = content_hash(content)
+        existing = await self._store.find_by_hash(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            content_hash=digest,
+        )
+        if existing is not None:
+            await self._store.touch(item_id=str(existing.get("id") or ""))
+            return WriteOutcome(
+                deduplicated=[{"id": existing.get("id"), "content": content}]
+            )
+        saved = await self._store.save(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            session_id=session_id,
+            turn_id=turn_id,
+            content=content,
+            content_hash=digest,
+            confidence=confidence,
+            confidence_source=confidence_source,
+            category=category,
+            target=target,
+        )
+        return WriteOutcome(written=[saved])
 
     async def write_turn(
         self,
@@ -225,6 +287,8 @@ class WriterPipeline:
                 confidence=candidate.confidence,
                 confidence_source=candidate.source,
                 category=candidate.category,
+                # ⚠️ **写到哪一层** ✓（§7.1 ✓）—— 会话级 → 缓冲 ✓。
+                target=policy.target if policy is not None else "l2",
             )
             written.append(saved)
 

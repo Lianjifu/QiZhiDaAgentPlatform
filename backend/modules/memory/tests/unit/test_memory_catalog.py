@@ -181,6 +181,18 @@ class InMemoryCatalog(MemoryCatalogRepository):
                 return item
         return None
 
+    async def list_l2_updated_since(
+        self, since: datetime, *, limit: int = 100
+    ) -> list[L2Fact]:
+        """**最近更新过的 L2** ✓（与 SQL 实现同口径 ✓）。"""
+        rows = [
+            item
+            for item in self.l2.values()
+            if item.updated_at >= since and item.status != "retired"
+        ]
+        rows.sort(key=lambda item: item.updated_at, reverse=True)
+        return rows[:limit]
+
     async def search_l2_by_keyword(
         self,
         workspace_id: UUID,
@@ -260,6 +272,25 @@ class InMemoryCatalog(MemoryCatalogRepository):
         return None
 
 
+class _FakeKnowledge:
+    """**团队知识候选**的替身 ✓（决策 #1 ✓ —— 落点是 knowledge ✓）。"""
+
+    def __init__(self) -> None:
+        self.candidates: list[dict] = []
+
+    async def create_candidate(self, **kwargs) -> dict:  # type: ignore[no-untyped-def]
+        candidate = {
+            "id": str(uuid4()),
+            "kbId": str(uuid4()),
+            "title": kwargs["title"],
+            "summary": kwargs["summary"],
+            "content": kwargs["content"],
+            "sourceIds": list(kwargs["source_ids"]),
+        }
+        self.candidates.append(candidate)
+        return candidate
+
+
 def _svc() -> tuple[MemoryRuntimeService, MemoryAdminService, InMemoryCatalog]:
     """两个平面各一个服务，**共用同一份目录** ✓（模拟生产的两条路 ✓）。
 
@@ -272,7 +303,10 @@ def _svc() -> tuple[MemoryRuntimeService, MemoryAdminService, InMemoryCatalog]:
             catalog, embedding=HashEmbedding(), vectors=InMemoryVectors()
         ),
         MemoryAdminService(
-            catalog, embedding=HashEmbedding(), vectors=InMemoryVectors()
+            catalog,
+            embedding=HashEmbedding(),
+            vectors=InMemoryVectors(),
+            knowledge=_FakeKnowledge(),
         ),
         catalog,
     )
@@ -480,7 +514,8 @@ async def test_update_l2_confirms_and_validates_status() -> None:
 
 
 @pytest.mark.asyncio
-async def test_promote_l2_creates_l3_and_marks_facts() -> None:
+async def test_promote_l2_creates_a_knowledge_candidate_and_marks_facts() -> None:
+    """**提升 → 团队知识候选** ✓（决策 #1 ✓ —— **不再写 L3 表** ✓）。"""
     _, admin, catalog = _svc()
     await _seed_l2(
         catalog,
@@ -490,7 +525,7 @@ async def test_promote_l2_creates_l3_and_marks_facts() -> None:
     )
     facts = await admin.list_l2(workspace_id=WORKSPACE)
     fact_id = UUID(facts[0]["id"])
-    entry = await admin.promote_l2(
+    candidate = await admin.promote_l2(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         ids=[fact_id],
@@ -499,13 +534,16 @@ async def test_promote_l2_creates_l3_and_marks_facts() -> None:
         summary="退款需在 7 天内申请",
         operator="张文佳",
     )
-    assert entry["status"] == "draft"
-    assert entry["team"] == "售后组"
-    assert entry["contributor"] == "张文佳"
-    assert entry["promotedFromL2Ids"] == [str(fact_id)]
+    assert candidate["target"] == "knowledge"
+    assert candidate["title"] == "退款规则"
+    assert candidate["promoted"] == 1
+    # ⚠️ **L3 表不再被写** ✓（L3 已定退役 ✓ —— 台账 X15 ✓）。
+    assert catalog.l3 == {}
     assert (await admin.get_l2(fact_id))["promotedToL3"] is True
     events = await admin.list_promotions(workspace_id=WORKSPACE)
-    assert any(event["layer"] == "l2→l3" for event in events)
+    assert any(event["layer"] == "l2→knowledge" for event in events)
+    assert any(event["fromLayer"] == "l2" for event in events)
+    assert any(event["toLayer"] == "knowledge" for event in events)
 
 
 @pytest.mark.asyncio

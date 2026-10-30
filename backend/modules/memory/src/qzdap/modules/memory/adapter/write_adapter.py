@@ -12,6 +12,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap_agent_runtime.memory.refine import BufferPort, BufferRow
+from qzdap_agent_runtime.memory.vectorize import (
+    VectorWriteQueuePort,
+    VectorWriteRequest,
+)
 from qzdap_agent_runtime.memory.writer import CONTENT_HASH_VERSION
 
 from qzdap.modules.memory.application.ports import (
@@ -31,10 +36,18 @@ class MemoryWriteAdapter:
         *,
         embedding: EmbeddingPort | None = None,
         vectors: VectorSearchPort | None = None,
+        vector_queue: VectorWriteQueuePort | None = None,
+        buffer: BufferPort | None = None,
     ) -> None:
         self._catalog = catalog
         self._embedding = embedding
         self._vectors = vectors
+        #: ⚠️ **会话缓冲** ✓（决策 #5 ✓）—— 会话级策略写这里 ✓。
+        self._buffer = buffer
+        #: ⚠️ **向量补写队列** ✓（C5 ✓ —— §5.4 ✓）—— 有它就**不内联调
+        #: embedding** ✓（不阻塞对话 ✓）；没有它就退回**内联补写** ✓
+        #: （测试与单进程场景 ✓ —— 行为一致 ✓，只是慢一点 ✓）。
+        self._vector_queue = vector_queue
 
     async def find_by_hash(
         self,
@@ -66,9 +79,58 @@ class MemoryWriteAdapter:
         confidence: float,
         confidence_source: str,
         category: str,
+        target: str = "l2",
     ) -> dict[str, Any]:
-        """落一条 L2 记忆 ✓（带 provenance ✓）。"""
+        """落一条记忆 ✓（带 provenance ✓）。
+
+        ⚠️ **``target='buffer'`` → 落会话缓冲** ✓（§7.1 ✓ —— 会话级策略 ✓）——
+        会话结束后**提炼成 L2** ✓（``memory/refine.py`` ✓）。
+        """
         now = datetime.now(UTC)
+        if target == "buffer":
+            return await self._save_to_buffer(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                user_id=user_id,
+                session_id=session_id,
+                turn_id=turn_id,
+                content=content,
+                content_hash=content_hash,
+                confidence=confidence,
+                confidence_source=confidence_source,
+                category=category,
+                now=now,
+            )
+        return await self._save_to_l2(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            session_id=session_id,
+            turn_id=turn_id,
+            content=content,
+            content_hash=content_hash,
+            confidence=confidence,
+            confidence_source=confidence_source,
+            category=category,
+            now=now,
+        )
+
+    async def _save_to_l2(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID,
+        session_id: UUID,
+        turn_id: UUID | None,
+        content: str,
+        content_hash: str,
+        confidence: float,
+        confidence_source: str,
+        category: str,
+        now: datetime,
+    ) -> dict[str, Any]:
+        """**落一条 L2 记忆** ✓（带 provenance ✓）。"""
         fact = L2Fact(
             id=uuid4(),
             tenant_id=tenant_id,
@@ -101,6 +163,61 @@ class MemoryWriteAdapter:
         )
         return fact.to_admin_dict()
 
+    async def _save_to_buffer(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID,
+        session_id: UUID,
+        turn_id: UUID | None,
+        content: str,
+        content_hash: str,
+        confidence: float,
+        confidence_source: str,
+        category: str,
+        now: datetime,
+    ) -> dict[str, Any]:
+        """**落会话缓冲** ✓（决策 #5 ✓）。
+
+        ⚠️ **没有缓冲口就退回 L2** ✓ —— 不静默丢弃 ✓（否则会话级策略的记忆
+        就没了 ✗✗）。
+        """
+        if self._buffer is None:
+            return await self._save_to_l2(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                user_id=user_id,
+                session_id=session_id,
+                turn_id=turn_id,
+                content=content,
+                content_hash=content_hash,
+                confidence=confidence,
+                confidence_source=confidence_source,
+                category=category,
+                now=now,
+            )
+        row = BufferRow(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            session_id=session_id,
+            user_id=user_id,
+            turn_id=turn_id,
+            content=content,
+            content_hash=content_hash,
+            created_at=now,
+        )
+        await self._buffer.add(row)
+        return {
+            "id": str(row.id),
+            "layer": "buffer",
+            "content": content,
+            "confidence": confidence,
+            "confidence_source": confidence_source,
+            "category": category,
+        }
+
     async def touch(self, *, item_id: str) -> None:
         """命中重复 → **只更新用量** ✓（不新增 ✓ —— §4.4 ✓）。"""
         from uuid import UUID as _UUID
@@ -126,11 +243,29 @@ class MemoryWriteAdapter:
         workspace_id: UUID,
         session_id: UUID | None = None,
     ) -> None:
-        """向量补写 ✓（失败不阻塞 ✓ —— 降级 ✓）。"""
+        """**排一条向量补写** ✓（C5 ✓ —— §5.4 ✓）。
+
+        ⚠️ **有队列就排队** ✓ —— 写路径**不等 embedding** ✓（不阻塞对话 ✓）；
+        ⚠️ **没队列就内联补写** ✓（行为一致 ✓ —— 只是慢 ✓）。
+        ⚠️ **补不上不影响记忆落库** ✓（§5.4 的降级口径 ✓ —— 召回侧降级为
+        纯词法 ✓，兜底补写会把它捡回来 ✓）。
+        """
         if self._embedding is None or self._vectors is None:
             return
+        request = VectorWriteRequest(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            item_id=fact.id,
+            layer="l2",
+            content=fact.recall_text(),
+            user_id=fact.user_id,
+            session_id=session_id,
+        )
+        if self._vector_queue is not None:
+            self._vector_queue.enqueue(request)
+            return
         try:
-            [vector] = await self._embedding.embed([fact.recall_text()])
+            [vector] = await self._embedding.embed([request.content])
         except Exception:  # noqa: BLE001
             return
         await self._vectors.upsert(
@@ -138,7 +273,7 @@ class MemoryWriteAdapter:
             workspace_id=workspace_id,
             item_id=fact.id,
             layer="l2",
-            content=fact.recall_text(),
+            content=request.content,
             embedding=vector,
             user_id=fact.user_id,
             # ⚠️ **会话作用域要进向量 payload** ✓（§7.1 ✓）—— 否则会话级

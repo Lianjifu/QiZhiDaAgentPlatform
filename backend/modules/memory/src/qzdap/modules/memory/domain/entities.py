@@ -215,6 +215,12 @@ class PromotionEvent:
     operator: str
     target_id: str
     created_at: datetime
+    #: **从哪一层来** ✓（迁移 0048 建的列 ✓ —— M-30 ✓）。
+    from_layer: str = "l1"
+    #: **到哪一层去** ✓（迁移 0048 建的列 ✓ —— M-30 ✓）。
+    to_layer: str = "l2"
+    #: **为什么提升** ✓（迁移 0048 建的列 ✓ —— M-30 ✓）。
+    reason: str = ""
 
     def to_admin_dict(self) -> dict[str, Any]:
         return {
@@ -224,6 +230,9 @@ class PromotionEvent:
             "at": format_last_update(self.created_at),
             "operator": self.operator,
             "targetId": self.target_id,
+            "fromLayer": self.from_layer,
+            "toLayer": self.to_layer,
+            "reason": self.reason,
         }
 
 

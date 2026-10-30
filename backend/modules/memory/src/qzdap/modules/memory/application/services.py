@@ -14,14 +14,22 @@ Stage 0 只做**平面分离** ✓（纯重构 ✓，行为不变 ✓）。
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime
 from logging import getLogger
 from uuid import UUID
 
 from qzdap_agent_runtime.memory.extraction import RuleFactExtractor
 from qzdap_agent_runtime.memory.policy import MemoryPolicy, RetentionPolicyView
 from qzdap_agent_runtime.memory.redaction import RuleRedactor
+from qzdap_agent_runtime.memory.refine import (
+    BufferPort,
+    BufferRefiner,
+    RefineReport,
+    SessionActivityPort,
+)
 from qzdap_agent_runtime.memory.retrieval import RetrievalPipeline
 from qzdap_agent_runtime.memory.scope import MemoryScope
+from qzdap_agent_runtime.memory.vectorize import VectorWriteQueuePort
 from qzdap_agent_runtime.memory.writer import WriteOutcome, WriterPipeline
 from qzdap_agent_runtime.ports import RecallHit
 
@@ -50,11 +58,21 @@ class MemoryRuntimeService:
         *,
         embedding: EmbeddingPort | None = None,
         vectors: VectorSearchPort | None = None,
+        vector_queue: VectorWriteQueuePort | None = None,
+        buffer: BufferPort | None = None,
+        activity: SessionActivityPort | None = None,
         threshold: float = 0.15,
     ) -> None:
         self._catalog = catalog
         self._embedding = embedding
         self._vectors = vectors
+        #: ⚠️ **向量补写队列** ✓（C5 ✓ —— §5.4 ✓）—— **应用级** ✓
+        #: （每请求一个服务 ✓ —— 队列不能每请求一个 ✗✗）。
+        self._vector_queue = vector_queue
+        #: ⚠️ **会话缓冲** ✓（决策 #5 ✓）—— 会话级策略写这里 ✓。
+        self._buffer = buffer
+        #: ⚠️ **会话活跃度** ✓（由 Session 层回答 ✓ —— Memory 不查会话表 ✓）。
+        self._activity = activity
         # ⚠️ **检索的编排归契约层** ✓ —— 这里只提供候选端口 ✓
         # （§3.1 的七步流水线 ✓）。
         self._pipeline = RetrievalPipeline(
@@ -72,7 +90,13 @@ class MemoryRuntimeService:
             extractor=RuleFactExtractor(),
             redactor=RuleRedactor(),
             store=MemoryWriteAdapter(
-                catalog, embedding=embedding, vectors=vectors
+                catalog,
+                embedding=embedding,
+                vectors=vectors,
+                # ⚠️ **落库后异步补向量** ✓（C5 ✓ —— 写路径不等 embedding ✓）。
+                vector_queue=vector_queue,
+                # ⚠️ **会话缓冲** ✓（决策 #5 ✓）。
+                buffer=buffer,
             ),
         )
 
@@ -138,6 +162,23 @@ class MemoryRuntimeService:
             storage_mb=int(policy.storage_mb or 0),
             eviction=str(policy.eviction),
         )
+
+    async def refine_buffers(
+        self, *, now: datetime, limit: int = 100
+    ) -> RefineReport:
+        """**会话缓冲的提炼** ✓（M-29 ✓ —— 由 sweeper 触发 ✓）。
+
+        ⚠️ **没有缓冲或没有活跃度端口就什么都不做** ✓（不猜 ✓）——
+        「没有触发者 = 这个能力不存在」✓。
+        """
+        if self._buffer is None or self._activity is None:
+            return RefineReport()
+        refiner = BufferRefiner(
+            buffer=self._buffer,
+            activity=self._activity,
+            writer=self._writer_pipeline,
+        )
+        return await refiner.refine(now=now, limit=limit)
 
     async def recall(
         self,

@@ -176,6 +176,36 @@ class MemoryL3ORM(TenantScopedMixin, Base):
     )
 
 
+class SessionMemoryBufferORM(TenantScopedMixin, Base):
+    """**会话缓冲** ✓（决策 #5 ✓ —— L1 退役的落点 ✓）。
+
+    ⚠️ **会话级策略的记忆先落这里** ✓（§7.1 ✓）—— 会话结束后**提炼成
+    用户级 L2** ✓（或按 TTL 丢弃 ✓）。
+    """
+
+    __tablename__ = "session_memory_buffer"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id", "content_hash", name="uq_session_memory_buffer_hash"
+        ),
+    )
+
+    workspace_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), nullable=False, index=True
+    )
+    session_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
+    turn_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    candidates: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="buffer", server_default=text("'buffer'")
+    )
+
+
 class MemoryPromotionORM(TenantScopedMixin, Base):
     __tablename__ = "admin_memory_promotions"
 
@@ -191,6 +221,16 @@ class MemoryPromotionORM(TenantScopedMixin, Base):
     )
     target_id: Mapped[str] = mapped_column(
         String(64), nullable=False, default="", server_default=text("''")
+    )
+    # ⚠️ **补三列** ✓（迁移 0048 建了 ✓ —— ORM 当时没映射 ✗ —— M-30 ✓）。
+    from_layer: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="l1", server_default=text("'l1'")
+    )
+    to_layer: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="l2", server_default=text("'l2'")
+    )
+    reason: Mapped[str] = mapped_column(
+        String(256), nullable=False, default="", server_default=text("''")
     )
 
 

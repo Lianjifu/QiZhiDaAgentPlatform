@@ -95,6 +95,21 @@ class MemoryPolicy:
         return self.scope is not MemoryScope.WORKSPACE
 
     @property
+    def target(self) -> str:
+        """**写到哪** ✓（§7.1 的「scope 决定存储层级」✓）。
+
+        - ``l2`` ✓ —— 用户级记忆 ✓（默认 ✓）；
+        - ``buffer`` ✓ —— **会话缓冲** ✓（会话级策略 ✓ —— 决策 #5 ✓）→
+          会话结束后**提炼成 L2** ✓（或按 TTL 丢弃 ✓）。
+
+        ⚠️ **工作区级没有目标** ✓ —— L3 已定退役 ✓（决策 #1 ✓）→ 明确拒绝 ✓
+        （``write_supported`` ✓）。
+        """
+        if self.scope is MemoryScope.SESSION:
+            return "buffer"
+        return "l2"
+
+    @property
     def pinned_ids(self) -> tuple[str, ...]:
         """**召回时必须额外纳入的条目 id** ✓（``l3EntryIds`` + 引用 ✓）。
 

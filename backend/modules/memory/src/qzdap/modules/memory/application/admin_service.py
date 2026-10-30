@@ -16,6 +16,7 @@ from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap_agent_runtime.memory.promotion import KnowledgePromotionPort
 from qzdap_kernel.errors import ValidationError
 from qzdap_observability.metrics import record_legacy_call
 
@@ -47,10 +48,14 @@ class MemoryAdminService:
         *,
         embedding: EmbeddingPort | None = None,
         vectors: VectorSearchPort | None = None,
+        knowledge: KnowledgePromotionPort | None = None,
     ) -> None:
         self._catalog = catalog
         self._embedding = embedding
         self._vectors = vectors
+        #: ⚠️ **团队知识候选的落点** ✓（决策 #1 ✓ —— L3 退役 ✓）——
+        #: 没有它 = **提升走不了** ✓（明确失败 ✓ —— 不静默写 L3 ✗✗）。
+        self._knowledge = knowledge
 
     async def list_l1(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
         items = await self._catalog.list_l1(workspace_id)
@@ -147,8 +152,17 @@ class MemoryAdminService:
         summary: str,
         operator: str = "管理员",
         category: str = "knowledge",
+        kb_id: UUID | None = None,
+        reason: str = "",
     ) -> dict[str, Any]:
-        """把选中的 L2 事实晋升为一条 L3 团队知识。"""
+        """**事实 → 团队知识候选** ✓（决策 #1 ✓ —— 终点是 knowledge ✓）。
+
+        ⚠️ **不再写 L3 表** ✓（L3 已定退役 ✓ —— 台账 X15 ✓）—— 落点是
+        knowledge 模块的**候选** ✓（**人工审核发布** ✓ —— 决策 #1 ✓）。
+
+        ⚠️ **没有候选落点就明确失败** ✓（不静默写回 L3 ✗✗ —— 那等于把
+        「退役的表」又用起来 ✗✗）。
+        """
         facts: list[L2Fact] = []
         for item_id in ids:
             fact = await self._catalog.get_l2(item_id)
@@ -157,41 +171,52 @@ class MemoryAdminService:
             facts.append(fact)
         if not facts:
             raise ValidationError("没有可晋升的长期记忆")
+        if self._knowledge is None:
+            raise ValidationError(
+                "团队知识候选未接线（knowledge 模块不可用）—— 提升走不了"
+            )
         now = datetime.now(UTC)
+        content = "\n".join(fact.value for fact in facts)
+        candidate = await self._knowledge.create_candidate(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            kb_id=kb_id,
+            title=title,
+            summary=summary,
+            content=content,
+            contributor=operator,
+            source_ids=tuple(str(fact.id) for fact in facts),
+        )
         for fact in facts:
+            # ⚠️ **列名还是老名字** ✓（``promoted_to_l3`` ✓ —— 迁移里就是它 ✓
+            # —— 改名要迁移 ✗）→ **语义是「已提升为团队知识候选」** ✓。
             fact.promoted_to_l3 = True
             fact.updated_at = now
             await self._catalog.update_l2(fact)
-        entry = L3Entry.create(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            team=team,
-            title=title,
-            summary=summary,
-            category=category,
-            contributor=operator,
-            status="draft",
-            promoted_from_l2_ids=[str(fact.id) for fact in facts],
-        )
-        # ⚠️ **L3 表在用** ✓（台账 X15 —— 决策 #1：L3 退役 ✓）→ 打点 ✓
-        record_legacy_call("X15")
-        await self._catalog.add_l3(entry)
         await self._catalog.add_promotion(
             PromotionEvent(
                 id=uuid4(),
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
-                layer="l2→l3",
+                layer="l2→knowledge",
                 label=f"{team} · {title}: {summary[:24]}",
                 operator=operator,
-                target_id=str(entry.id),
+                target_id=str(candidate.get("id") or ""),
+                from_layer="l2",
+                to_layer="knowledge",
+                reason=reason or f"管理员从 {team} 提升",
                 created_at=now,
             )
         )
-        await self._embed_item(
-            entry.id, "l3", entry.recall_text(), tenant_id, workspace_id
-        )
-        return entry.to_admin_dict()
+        return {
+            "id": str(candidate.get("id") or ""),
+            "title": title,
+            "summary": summary,
+            "team": team,
+            "category": category,
+            "promoted": len(facts),
+            "target": "knowledge",
+        }
 
     async def create_l3(
         self,

@@ -190,6 +190,18 @@ class InMemoryCatalog(MemoryCatalogRepository):
                 return item
         return None
 
+    async def list_l2_updated_since(
+        self, since: datetime, *, limit: int = 100
+    ) -> list[L2Fact]:
+        """**最近更新过的 L2** ✓（与 SQL 实现同口径 ✓）。"""
+        rows = [
+            item
+            for item in self.l2.values()
+            if item.updated_at >= since and item.status != "retired"
+        ]
+        rows.sort(key=lambda item: item.updated_at, reverse=True)
+        return rows[:limit]
+
     async def search_l2_by_keyword(
         self,
         workspace_id: UUID,
