@@ -29,6 +29,7 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
+from ..memory.policy import MemoryPolicy
 from .prompts import (
     DEFAULT_SYSTEM_PROMPT,
     render_agent_prompts,
@@ -57,6 +58,8 @@ class MemoryRecallPort(Protocol):
         query: str,
         top_k: int,
         user_id: UUID | None = None,
+        session_id: UUID | None = None,
+        policy: MemoryPolicy | None = None,
     ) -> list[dict[str, Any]]: ...
 
 
@@ -109,8 +112,14 @@ class ContextBuilder:
         tenant_context: dict[str, Any] | None = None,
         summary: str = "",
         knowledge_package_ids: tuple[UUID, ...] = (),
+        memory_policy: MemoryPolicy | None = None,
+        session_id: UUID | None = None,
     ) -> AssembledContext:
-        """拼一次上下文 ✓ —— 返回**可直接喂 LLM** 的消息列表 + manifest ✓。"""
+        """拼一次上下文 ✓ —— 返回**可直接喂 LLM** 的消息列表 + manifest ✓。
+
+        ⚠️ **记忆策略绑定要传下去** ✓（§7.1 ✓）—— 否则「agent 绑了作用域 /
+        条目」运行时读不到 ✗✗（= §1.7 那个问题原地不动 ✗）。
+        """
         history = list(history or [])
         degraded: dict[str, bool] = {}
 
@@ -120,6 +129,8 @@ class ContextBuilder:
             owner_id=owner_id,
             user_input=user_input,
             degraded=degraded,
+            memory_policy=memory_policy,
+            session_id=session_id,
         )
         knowledge = await self._recall_knowledge(
             tenant_id=tenant_id,
@@ -219,6 +230,8 @@ class ContextBuilder:
         owner_id: UUID | None,
         user_input: str,
         degraded: dict[str, bool],
+        memory_policy: MemoryPolicy | None = None,
+        session_id: UUID | None = None,
     ) -> list[dict[str, Any]]:
         if self._memory is None:
             return []
@@ -231,6 +244,10 @@ class ContextBuilder:
                 # ⚠️ **按当前用户过滤** ✓ —— 缺这一项会把同工作区其他用户的
                 # 记忆召回进本用户的上下文 ✓（跨用户泄漏 ✓ —— X14 ✓）。
                 user_id=owner_id,
+                # ⚠️ **会话作用域** ✓（§7.1 ✓）—— 会话级策略时只看本会话 ✓。
+                session_id=session_id,
+                # ⚠️ **策略绑定** ✓（§7.1 ✓）—— 作用域 + 显式绑定的条目 ✓。
+                policy=memory_policy,
             )
         except Exception:  # noqa: BLE001
             # ⚠️ **失败必须可见** ✓（旧路径静默吞掉 ✗✗）。

@@ -278,6 +278,7 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
         user_id: UUID | None = None,
         keyword: str,
         limit: int,
+        session_id: UUID | None = None,
     ) -> list[L2Fact]:
         """L2 的词法候选 ✓ —— **过滤下推到 SQL** ✓（§3.1 ✓）。
 
@@ -305,6 +306,10 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
         )
         if user_id is not None:
             stmt = stmt.where(MemoryL2ORM.user_id == user_id)
+        if session_id is not None:
+            # ⚠️ **会话作用域过滤下推到 SQL** ✓（§7.1 ✓）—— 只看**本会话**
+            # 写的记忆 ✓（不是 Python 侧逐行过滤 ✗✗ —— 那是现状的缺陷 ✗）。
+            stmt = stmt.where(MemoryL2ORM.source_session == str(session_id))
         stmt = stmt.order_by(MemoryL2ORM.updated_at.desc()).limit(max(1, limit))
         result = await self._s.execute(stmt)
         return [_l2(row) for row in result.scalars().all() if not _cross_tenant(row)]

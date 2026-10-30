@@ -110,6 +110,7 @@ class MemoryCatalogRepository(ABC):
         user_id: UUID | None = None,
         keyword: str,
         limit: int,
+        session_id: UUID | None = None,
     ) -> list[L2Fact]:
         """**词法候选** ✓ —— 过滤与截断**下推到 SQL** ✓（§3.1 第 2 步 ✓）。
 

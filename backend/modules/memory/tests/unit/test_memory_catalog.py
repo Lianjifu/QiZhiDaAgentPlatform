@@ -62,6 +62,7 @@ class InMemoryVectors(VectorSearchPort):
         content: str,
         embedding: list[float],
         user_id: UUID | None = None,
+        session_id: UUID | None = None,
     ) -> None:
         _ = tenant_id
         payload = {
@@ -71,6 +72,8 @@ class InMemoryVectors(VectorSearchPort):
         }
         if user_id is not None:
             payload["user_id"] = str(user_id)
+        if session_id is not None:
+            payload["session_id"] = str(session_id)
         self.items[item_id] = (list(embedding), payload)
 
     async def delete(self, ids: list[UUID]) -> None:
@@ -85,6 +88,7 @@ class InMemoryVectors(VectorSearchPort):
         query_embedding: list[float],
         top_k: int,
         user_id: UUID | None = None,
+        session_id: UUID | None = None,
     ) -> list[VectorHit]:
         _ = tenant_id
         qn = math.sqrt(sum(value * value for value in query_embedding)) or 1.0
@@ -94,6 +98,9 @@ class InMemoryVectors(VectorSearchPort):
                 continue
             if user_id is not None and payload.get("user_id") != str(user_id):
                 # 对齐 pgvector：`payload->>'user_id'` 为 NULL 时不匹配。
+                continue
+            if session_id is not None and payload.get("session_id") != str(session_id):
+                # 对齐 pgvector：没有 session payload 的向量**匹配不上** ✓。
                 continue
             vn = math.sqrt(sum(value * value for value in vector)) or 1.0
             score = sum(a * b for a, b in zip(query_embedding, vector, strict=True)) / (
@@ -181,8 +188,13 @@ class InMemoryCatalog(MemoryCatalogRepository):
         user_id: UUID | None = None,
         keyword: str,
         limit: int,
+        session_id: UUID | None = None,
     ) -> list[L2Fact]:
-        """词法候选 ✓ —— 与 SQL 实现**同口径** ✓（含用户过滤 ✓）。"""
+        """词法候选 ✓ —— 与 SQL 实现**同口径** ✓（含用户过滤 ✓）。
+
+        ⚠️ **会话作用域** ✓（§7.1 ✓）—— 与 SQL 的 ``source_session`` 过滤
+        同口径 ✓。
+        """
         tokens = [part for part in keyword.strip().lower().split() if part]
         rows = [
             item
@@ -190,6 +202,7 @@ class InMemoryCatalog(MemoryCatalogRepository):
             if item.workspace_id == workspace_id
             and item.status != "retired"
             and (user_id is None or item.user_id == user_id)
+            and (session_id is None or item.source_session == str(session_id))
             and any(
                 token in item.key.lower() or token in item.value.lower()
                 for token in tokens

@@ -24,6 +24,7 @@ class PgMemoryVectorAdapter(VectorSearchPort):
         content: str,
         embedding: list[float],
         user_id: UUID | None = None,
+        session_id: UUID | None = None,
     ) -> None:
         payload: dict[str, str] = {
             "workspace_id": str(workspace_id),
@@ -33,6 +34,10 @@ class PgMemoryVectorAdapter(VectorSearchPort):
         if user_id is not None:
             # 决策 #2：向量 payload 带 user_id，让过滤能下推到 pgvector。
             payload["user_id"] = str(user_id)
+        if session_id is not None:
+            # ⚠️ **会话作用域也要下推到向量过滤** ✓（§7.1 ✓）—— 否则会话级
+            # 召回会看到别的会话的记忆 ✗✗。
+            payload["session_id"] = str(session_id)
         await self._store.upsert(
             [
                 VectorItem(
@@ -56,6 +61,7 @@ class PgMemoryVectorAdapter(VectorSearchPort):
         query_embedding: list[float],
         top_k: int,
         user_id: UUID | None = None,
+        session_id: UUID | None = None,
     ) -> list[VectorHit]:
         query = VectorItem(
             id=UUID(int=0),
@@ -65,6 +71,10 @@ class PgMemoryVectorAdapter(VectorSearchPort):
             payload={"workspace_id": str(workspace_id)},
         )
         filters: dict[str, str] = {"workspace_id": str(workspace_id)}
+        if session_id is not None:
+            # ⚠️ **存量向量没有 session_id payload** → 匹配不上 → 被排除 ✓
+            # （与 user_id 同一口径 ✓ —— 不可见，好过串会话 ✗✗）。
+            filters["session_id"] = str(session_id)
         if user_id is not None:
             # ⚠️ 存量向量没有 user_id payload → `payload->>'user_id'` 为 NULL →
             # 不匹配 → 被排除。这正是决策 #11 要的方向（不可见，不要串号）。

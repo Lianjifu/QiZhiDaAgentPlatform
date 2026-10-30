@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator
 from typing import Any, Protocol
 from uuid import UUID
 
+from qzdap_agent_runtime.memory.policy import MemoryPolicy
 from qzdap_kernel.events import DomainEvent
 from qzdap_llm.client import ChatRequest, LLMChunk
 from qzdap_schema.ids import ModelId
@@ -267,6 +268,8 @@ class MemoryPort(Protocol):
         query: str,
         top_k: int,
         user_id: UUID | None = None,
+        session_id: UUID | None = None,
+        policy: MemoryPolicy | None = None,
     ) -> list[dict]: ...
 
     async def write_turn(
@@ -279,6 +282,7 @@ class MemoryPort(Protocol):
         turn_id: UUID | None = None,
         user_input: str,
         assistant_reply: str = "",
+        policy: MemoryPolicy | None = None,
     ) -> dict:
         """**新 Writer** ✓ —— 沉淀**一轮**对话 ✓（Memory Stage 3 ✓）。
 

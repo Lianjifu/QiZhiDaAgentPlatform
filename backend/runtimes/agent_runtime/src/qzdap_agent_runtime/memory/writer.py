@@ -20,6 +20,7 @@ from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 from qzdap_agent_runtime.memory.extraction import FactExtractor
+from qzdap_agent_runtime.memory.policy import MemoryPolicy
 from qzdap_agent_runtime.memory.redaction import Redactor
 
 
@@ -33,6 +34,13 @@ class WriteOutcome:
     rejected: list[dict] = field(default_factory=list)
     #: 因**重复**被跳过（改为更新用量）的几条 ✓（§4.4 ✓）。
     deduplicated: list[dict] = field(default_factory=list)
+    #: **整轮被跳过**的原因 ✓（§7.1 的策略绑定 ✓）—— 空串 = 没跳过 ✓。
+    #: - ``policy_disabled`` ✓ —— agent 关了记忆 ✓；
+    #: - ``scope_unsupported`` ✓ —— 作用域当前**没有可写的层** ✓（团队知识
+    #:   还没迁走 ✓ —— 决策 #1 / M-47 ✓）—— **不静默降级**成写个人层 ✗✗。
+    skipped: str = ""
+    #: 这次写入用的**保留策略标签** ✓（``policyLabel`` ✓ —— 绑定要看得见 ✓）。
+    retention_label: str = ""
 
 
 @runtime_checkable
@@ -158,8 +166,19 @@ class WriterPipeline:
         turn_id: UUID | None = None,
         user_input: str,
         assistant_reply: str = "",
+        policy: MemoryPolicy | None = None,
     ) -> WriteOutcome:
-        """沉淀一轮对话 ✓。"""
+        """沉淀一轮对话 ✓。
+
+        ⚠️ **策略绑定在这一步生效** ✓（§7.1 ✓）—— ``enabled=False`` →
+        **完全不写** ✓；作用域当前没有可写的层 → **明确跳过** ✓
+        （**不静默降级** ✓ —— 悄悄改成写个人层 = 改了语义 ✗✗）。
+        """
+        if policy is not None:
+            if not policy.enabled:
+                return WriteOutcome(skipped="policy_disabled")
+            if not policy.write_supported:
+                return WriteOutcome(skipped="scope_unsupported")
         candidates = await self._extractor.extract(
             user_input=user_input, assistant_reply=assistant_reply
         )

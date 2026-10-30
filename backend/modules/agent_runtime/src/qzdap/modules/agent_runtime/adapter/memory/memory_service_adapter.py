@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from qzdap_agent_runtime.memory.policy import MemoryPolicy
+
 from qzdap.modules.memory.application.services import MemoryRuntimeService
 
 
@@ -24,6 +26,8 @@ class MemoryServiceAdapter:
         query: str,
         top_k: int,
         user_id: UUID | None = None,
+        session_id: UUID | None = None,
+        policy: MemoryPolicy | None = None,
     ) -> list[dict]:
         """召回 → **dict 形状** ✓（调用方要 dict ✓）。
 
@@ -36,6 +40,8 @@ class MemoryServiceAdapter:
             query=query,
             top_k=top_k,
             user_id=user_id,
+            session_id=session_id,
+            policy=policy,
         )
         return [
             {
@@ -63,8 +69,13 @@ class MemoryServiceAdapter:
         turn_id: UUID | None = None,
         user_input: str,
         assistant_reply: str = "",
+        policy: MemoryPolicy | None = None,
     ) -> dict:
-        """**新 Writer** ✓ —— 走契约层的五步流水线 ✓（Memory Stage 3 ✓）。"""
+        """**新 Writer** ✓ —— 走契约层的五步流水线 ✓（Memory Stage 3 ✓）。
+
+        ⚠️ **策略绑定在这一步生效** ✓（§7.1 ✓）—— ``enabled=False`` →
+        **一条都不写** ✓（``written=0`` + ``skipped`` ✓ —— 调用方能知道原因 ✓）。
+        """
         outcome = await self._service.write_turn(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -73,11 +84,16 @@ class MemoryServiceAdapter:
             turn_id=turn_id,
             user_input=user_input,
             assistant_reply=assistant_reply,
+            policy=policy,
         )
         return {
             "written": len(outcome.written),
             "rejected": len(outcome.rejected),
             "deduplicated": len(outcome.deduplicated),
+            # ⚠️ **跳过原因要看得见** ✓（否则「agent 关了记忆」没人知道 ✗✗）。
+            "skipped": outcome.skipped,
+            # ⚠️ **绑定的保留策略标签** ✓（§7.1 ✓ —— 绑定要看得见 ✓）。
+            "retention_label": outcome.retention_label,
         }
 
 

@@ -93,7 +93,12 @@ class MemoryWriteAdapter:
             version=1,
         )
         await self._catalog.add_l2(fact)
-        await self._embed(fact, tenant_id=tenant_id, workspace_id=workspace_id)
+        await self._embed(
+            fact,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            session_id=session_id,
+        )
         return fact.to_admin_dict()
 
     async def touch(self, *, item_id: str) -> None:
@@ -114,7 +119,12 @@ class MemoryWriteAdapter:
         await self._catalog.update_l2(fact)
 
     async def _embed(
-        self, fact: L2Fact, *, tenant_id: UUID, workspace_id: UUID
+        self,
+        fact: L2Fact,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        session_id: UUID | None = None,
     ) -> None:
         """向量补写 ✓（失败不阻塞 ✓ —— 降级 ✓）。"""
         if self._embedding is None or self._vectors is None:
@@ -131,6 +141,9 @@ class MemoryWriteAdapter:
             content=fact.recall_text(),
             embedding=vector,
             user_id=fact.user_id,
+            # ⚠️ **会话作用域要进向量 payload** ✓（§7.1 ✓）—— 否则会话级
+            # 召回会看到别的会话的记忆 ✗✗。
+            session_id=session_id,
         )
 
 

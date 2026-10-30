@@ -82,13 +82,18 @@ class LexicalCandidateAdapter:
         user_id: UUID | None,
         query: str,
         limit: int,
+        session_id: UUID | None = None,
     ) -> list[Candidate]:
         _ = tenant_id  # 租户过滤由 ORM 的租户作用域承担 ✓
         needle = query.strip().lower()
         if not needle:
             return []
         facts = await self._catalog.search_l2_by_keyword(
-            workspace_id, user_id=user_id, keyword=needle, limit=limit
+            workspace_id,
+            user_id=user_id,
+            keyword=needle,
+            limit=limit,
+            session_id=session_id,
         )
         entries = await self._catalog.search_l3_by_keyword(
             workspace_id, keyword=needle, limit=limit
@@ -129,6 +134,7 @@ class VectorCandidateAdapter:
         user_id: UUID | None,
         query: str,
         limit: int,
+        session_id: UUID | None = None,
     ) -> list[Candidate]:
         if self._embedding is None or self._vectors is None:
             raise RuntimeError("vector search is not available")
@@ -139,6 +145,7 @@ class VectorCandidateAdapter:
             query_embedding=query_vec,
             top_k=limit,
             user_id=user_id,
+            session_id=session_id,
         )
         return [
             Candidate(
@@ -152,8 +159,46 @@ class VectorCandidateAdapter:
         ]
 
 
+class PinnedCandidateAdapter:
+    """**显式绑定**的条目 ✓（§7.1 ✓）—— 按 id 取 ✓（不靠搜索 ✓）。
+
+    ⚠️ **用户过滤照旧** ✓ —— 绑定的是「这个用户的记忆」✓ —— 别人的记忆
+    绑过来也看不见 ✓（**不串号** ✓ —— 决策 #11 ✓）。
+    """
+
+    def __init__(self, catalog: MemoryCatalogRepository) -> None:
+        self._catalog = catalog
+
+    async def get_by_ids(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID | None,
+        ids: tuple[str, ...],
+    ) -> list[Candidate]:
+        _ = (tenant_id, workspace_id)
+        candidates: list[Candidate] = []
+        for raw_id in ids:
+            try:
+                item_id = UUID(str(raw_id))
+            except (TypeError, ValueError):
+                continue
+            fact = await self._catalog.get_l2(item_id)
+            if fact is not None:
+                if user_id is not None and fact.user_id != user_id:
+                    continue
+                candidates.append(_l2_candidate(fact, 1.0))
+                continue
+            entry = await self._catalog.get_l3(item_id)
+            if entry is not None:
+                candidates.append(_l3_candidate(entry, 1.0))
+        return candidates
+
+
 __all__ = [
     "LexicalCandidateAdapter",
+    "PinnedCandidateAdapter",
     "VectorCandidateAdapter",
     "keyword_score",
 ]

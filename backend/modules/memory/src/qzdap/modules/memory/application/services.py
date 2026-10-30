@@ -13,17 +13,21 @@ Stage 0 只做**平面分离** ✓（纯重构 ✓，行为不变 ✓）。
 
 from __future__ import annotations
 
+from dataclasses import replace
 from logging import getLogger
 from uuid import UUID
 
 from qzdap_agent_runtime.memory.extraction import RuleFactExtractor
+from qzdap_agent_runtime.memory.policy import MemoryPolicy, RetentionPolicyView
 from qzdap_agent_runtime.memory.redaction import RuleRedactor
 from qzdap_agent_runtime.memory.retrieval import RetrievalPipeline
+from qzdap_agent_runtime.memory.scope import MemoryScope
 from qzdap_agent_runtime.memory.writer import WriteOutcome, WriterPipeline
 from qzdap_agent_runtime.ports import RecallHit
 
 from qzdap.modules.memory.adapter.candidates import (
     LexicalCandidateAdapter,
+    PinnedCandidateAdapter,
     VectorCandidateAdapter,
 )
 from qzdap.modules.memory.adapter.write_adapter import MemoryWriteAdapter
@@ -56,6 +60,8 @@ class MemoryRuntimeService:
         self._pipeline = RetrievalPipeline(
             lexical=LexicalCandidateAdapter(catalog),
             vector=VectorCandidateAdapter(embedding=embedding, vectors=vectors),
+            # ⚠️ **显式绑定的取法** ✓（§7.1 ✓）—— 没有它 = 管理端绑了没用 ✗✗。
+            pinned=PinnedCandidateAdapter(catalog),
             threshold=threshold,
         )
         #: 上一次召回是否**降级** ✓（C10 ✓ —— 调用方要能知道 ✓）。
@@ -80,13 +86,17 @@ class MemoryRuntimeService:
         turn_id: UUID | None = None,
         user_input: str,
         assistant_reply: str = "",
+        policy: MemoryPolicy | None = None,
     ) -> WriteOutcome:
         """**新 Writer** ✓ —— 走契约层的五步流水线 ✓（Memory Stage 3 ✓）。
 
         ⚠️ **输入只有本轮对话** ✓（**不含召回结果** ✓ —— §4.6 ✓）；
         ⚠️ **闸门拒绝的要记下来** ✓（`rejected` ✓ —— 审计用 ✓）。
+
+        ⚠️ **策略绑定在这一步生效** ✓（§7.1 ✓）—— ``enabled=False`` →
+        **完全不写** ✓；作用域没有可写的层 → **明确跳过** ✓。
         """
-        return await self._writer_pipeline.write_turn(
+        outcome = await self._writer_pipeline.write_turn(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             user_id=user_id,
@@ -94,6 +104,39 @@ class MemoryRuntimeService:
             turn_id=turn_id,
             user_input=user_input,
             assistant_reply=assistant_reply,
+            policy=policy,
+        )
+        if outcome.skipped or policy is None or not policy.policy_label:
+            return outcome
+        # ⚠️ **保留策略的绑定要看得见** ✓（§7.1 ✓）—— 标签解析成策略 ✓
+        # （**执行者是淘汰器** ✓ —— Stage 6 ✓ —— 这里只把绑定解析出来 ✓）。
+        retention = await self._resolve_retention(
+            tenant_id=tenant_id, workspace_id=workspace_id, label=policy.policy_label
+        )
+        return replace(outcome, retention_label=retention.label if retention else "")
+
+    async def _resolve_retention(
+        self, *, tenant_id: UUID, workspace_id: UUID, label: str
+    ) -> RetentionPolicyView | None:
+        """``policyLabel`` → **保留策略** ✓（§7.1 ✓ —— 只读 ✓）。
+
+        ⚠️ **查不到就是查不到** ✓ —— 不猜 ✓（没有默认策略兜底 ✗✗ ——
+        猜一个 TTL 比没有更危险 ✓）。
+        """
+        try:
+            policy = await self._catalog.get_policy_by_label(workspace_id, label)
+        except Exception:  # noqa: BLE001
+            _log.warning("memory retention policy lookup failed", extra={"label": label})
+            return None
+        if policy is None:
+            return None
+        return RetentionPolicyView(
+            label=policy.label,
+            layer=str(policy.layer),
+            ttl_minutes=int(policy.ttl_minutes or 0),
+            max_items=int(policy.max_items or 0),
+            storage_mb=int(policy.storage_mb or 0),
+            eviction=str(policy.eviction),
         )
 
     async def recall(
@@ -105,6 +148,8 @@ class MemoryRuntimeService:
         top_k: int = 10,
         scope_filter: str | None = None,
         user_id: UUID | None = None,
+        session_id: UUID | None = None,
+        policy: MemoryPolicy | None = None,
     ) -> list[RecallHit]:
         """召回 ✓ —— **走契约层的七步流水线** ✓（Memory Stage 2 ✓）。
 
@@ -113,12 +158,20 @@ class MemoryRuntimeService:
         ⚠️ **降级可见** ✓（C10 ✓）—— 向量不可用 → 纯词法 ✓ + ``degraded`` ✓。
         """
         _ = scope_filter
+        # ⚠️ **作用域由策略决定** ✓（§7.1 ✓）—— **不再只是标签** ✗✗：
+        # - 会话级 → 只看**本会话**写的记忆 ✓；
+        # - 用户级 → 该用户的记忆**跨会话可见** ✓（默认 ✓）。
+        effective_session: UUID | None = None
+        if policy is not None and policy.scope is MemoryScope.SESSION:
+            effective_session = session_id
         outcome = await self._pipeline.recall(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             user_id=user_id,
             query=query,
             top_k=max(1, top_k),
+            session_id=effective_session,
+            extra_l3_entry_ids=policy.pinned_ids if policy is not None else (),
         )
         self._last_recall_degraded = outcome.degraded
         self._last_recall_reason = outcome.degraded_reason

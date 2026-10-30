@@ -33,6 +33,7 @@ from qzdap_agent_runtime.context.compressor import (
 from qzdap_agent_runtime.context.persistence import ContextManifestStore
 from qzdap_agent_runtime.context.tokens import estimate_tokens as estimate_text_tokens
 from qzdap_agent_runtime.context.types import AssembledContext, ManifestEntry
+from qzdap_agent_runtime.memory.policy import MemoryPolicy, PolicyBinding
 from qzdap_observability.metrics import record_legacy_call, record_new_call
 from qzdap_observability.tracing import get_tracer
 from qzdap_schema.dtos.turn import (
@@ -233,6 +234,7 @@ class SessionGraphRunner:
             user_input=user_input,
             history=history,
             agent=agent,
+            session_id=session_id,
         )
         if knowledge_hits:
             seq += 1
@@ -605,6 +607,7 @@ class SessionGraphRunner:
         user_input: str,
         history: list[dict[str, Any]],
         agent: CatalogAgent | None,
+        session_id: UUID | None = None,
     ) -> tuple[AssembledContext, list[dict[str, Any]]]:
         """**用新的 ContextBuilder 装配上下文** ✓（Agent Stage 5 · A-26 ✓）。
 
@@ -634,6 +637,10 @@ class SessionGraphRunner:
             # 哪些知识库」这条约束**失效** ✗✗（旧路径按 `knowledge_refs`
             # 过滤 ✓）。
             knowledge_package_ids=_knowledge_package_ids(agent),
+            # ⚠️ **记忆策略绑定** ✓（§7.1 ✓）—— 作用域 / 显式绑定的条目 ✓
+            # —— 不传 = agent 绑了没用 ✗✗（§1.7 那个问题 ✗）。
+            memory_policy=_memory_policy(agent),
+            session_id=session_id,
         )
         knowledge = list(assembled.recalled.get("knowledge") or [])
         memories = list(assembled.recalled.get("memory") or [])
@@ -996,12 +1003,8 @@ class SessionGraphRunner:
 
         ⚠️ **输入只有本轮对话** ✓（**不含召回结果** ✓ —— Memory 方案 §4.6 ✓）。
         """
-        policy = (
-            dict(agent.memory_policy)
-            if agent is not None
-            else {"enabled": True}
-        )
-        if not policy.get("enabled", True) or self._memory_port is None:
+        policy = _memory_policy(agent)
+        if not policy.enabled or self._memory_port is None:
             return []
         if not user_input.strip() and not final.strip():
             return []
@@ -1013,6 +1016,8 @@ class SessionGraphRunner:
             turn_id=turn_id,
             user_input=user_input,
             assistant_reply=final,
+            # ⚠️ **策略绑定** ✓（§7.1 ✓）—— 关了记忆就一条不写 ✓。
+            policy=policy,
         )
         written = int(result.get("written") or 0)
         if not written:
@@ -1196,6 +1201,24 @@ def _did_compact(outcome: CompactionOutcome) -> bool:
     只是结果 ✓（摘要本身也可能让 token 变多 ✗）。
     """
     return bool(outcome.removed_ids) or outcome.tokens_after < outcome.tokens_before
+
+
+def _memory_policy(agent: CatalogAgent | None) -> MemoryPolicy:
+    """agent 的**记忆策略绑定** ✓（§7.1 ✓ —— C6 ✓）。
+
+    ⚠️ **管理端绑的东西运行时要真的读到** ✓ —— 否则「后台改了绑定，行为
+    不变」✗✗（= §1.7 那个问题原地不动 ✗）。
+
+    ⚠️ **没有 agent 就用默认** ✓（允许写 ✓ / 用户级 ✓ —— 与旧路径一致 ✓）。
+    """
+    if agent is None:
+        return PolicyBinding().to_policy()
+    return PolicyBinding(
+        raw=dict(agent.memory_policy),
+        refs=tuple(
+            ref for ref in agent.knowledge_refs if isinstance(ref, dict)
+        ),
+    ).to_policy()
 
 
 def _knowledge_package_ids(agent: CatalogAgent | None) -> tuple[UUID, ...]:

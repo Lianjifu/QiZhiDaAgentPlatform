@@ -120,6 +120,10 @@ class Candidate:
     content_hash: str = ""
     #: 创建时间 ✓（provenance ✓）。
     created_at: str = ""
+    #: 来源会话 ✓（**会话作用域过滤的依据** ✓ —— §7.1 ✓）。
+    session_id: str = ""
+    #: **显式绑定**的条目 ✓（§7.1 ✓）—— 它**绕过阈值** ✓（绑定的不是搜出来的 ✓）。
+    pinned: bool = False
 
 
 @runtime_checkable
@@ -134,6 +138,7 @@ class LexicalCandidatePort(Protocol):
         user_id: UUID | None,
         query: str,
         limit: int,
+        session_id: UUID | None = None,
     ) -> list[Candidate]: ...
 
 
@@ -149,6 +154,25 @@ class VectorCandidatePort(Protocol):
         user_id: UUID | None,
         query: str,
         limit: int,
+        session_id: UUID | None = None,
+    ) -> list[Candidate]: ...
+
+
+@runtime_checkable
+class PinnedCandidatePort(Protocol):
+    """**显式绑定**的条目 ✓（§7.1 ✓）—— 按 id 取 ✓（不靠搜索 ✓）。
+
+    ⚠️ **绑定的条目一定要召回** ✓ —— 它不是「搜出来的」✓ → **绕过阈值** ✓
+    （管理端绑了就该生效 ✗✗ —— 否则「绑了没用」又变成一句空话 ✓）。
+    """
+
+    async def get_by_ids(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID | None,
+        ids: tuple[str, ...],
     ) -> list[Candidate]: ...
 
 
@@ -172,11 +196,14 @@ class RetrievalPipeline:
         *,
         lexical: LexicalCandidatePort,
         vector: VectorCandidatePort | None = None,
+        pinned: PinnedCandidatePort | None = None,
         threshold: float = 0.15,
         candidate_multiplier: int = 4,
     ) -> None:
         self._lexical = lexical
         self._vector = vector
+        #: **显式绑定**的取法 ✓（§7.1 ✓）—— 没有它 = 绑定不生效 ✗✗。
+        self._pinned = pinned
         self._threshold = threshold
         self._multiplier = candidate_multiplier
 
@@ -188,8 +215,18 @@ class RetrievalPipeline:
         user_id: UUID | None,
         query: str,
         top_k: int = 8,
+        session_id: UUID | None = None,
+        extra_l3_entry_ids: tuple[str, ...] = (),
     ) -> RetrievalOutcome:
-        """跑一次检索 ✓ —— 返回**统一形状** ✓。"""
+        """跑一次检索 ✓ —— 返回**统一形状** ✓。
+
+        ⚠️ **会话作用域** ✓（§7.1 ✓）—— ``session_id`` 给定时**只召回本会话
+        的记忆** ✓（作用域过滤**下推到存储层** ✓ —— Python 侧再过滤一次是
+        兜底 ✓，不是主要手段 ✗✗）。
+
+        ⚠️ **显式绑定的条目一定会被召回** ✓（§7.1 ✓）—— 它们**绕过阈值** ✓
+        （绑定不是搜索 ✓）。
+        """
         normalized = (query or "").strip().lower()
         if not normalized:
             return RetrievalOutcome(hits=[], abstained=True)
@@ -208,6 +245,7 @@ class RetrievalPipeline:
                     user_id=user_id,
                     query=normalized,
                     limit=limit,
+                    session_id=session_id,
                 )
             except Exception:  # noqa: BLE001
                 # ⚠️ **C10 读取侧降级** ✓ —— 向量库 / embedding 不可用 → 纯词法 ✓
@@ -222,11 +260,21 @@ class RetrievalPipeline:
             user_id=user_id,
             query=normalized,
             limit=limit,
+            session_id=session_id,
         )
 
         # 融合：向量分为主 ✓ + 词法分为辅 ✓（**与旧路径同口径** ✓ ——
         # 旧路径是 0.7*向量 + 0.3*词法 ✓）。
         candidates = _fuse(vector_candidates, lexical_candidates)
+
+        # ⚠️ **显式绑定的条目** ✓（§7.1 ✓）—— 额外纳入 ✓ + **绕过阈值** ✓。
+        pinned_candidates = await self._pinned_candidates(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            ids=extra_l3_entry_ids,
+        )
+        candidates = [*pinned_candidates, *candidates]
 
         # ── ④ 去重（ref_id + content_hash ✓）────────────────────────
         seen_refs: set[str] = set()
@@ -244,8 +292,12 @@ class RetrievalPipeline:
             deduped.append(candidate)
 
         # ── ⑥ 阈值 + top-k ✓ ─────────────────────────────────────────
-        passed = [c for c in deduped if c.score >= self._threshold]
-        passed.sort(key=lambda c: c.score, reverse=True)
+        # ⚠️ **绑定的条目绕过阈值** ✓（§7.1 ✓）—— 其余照常过滤 ✓。
+        passed = [
+            c for c in deduped if c.pinned or c.score >= self._threshold
+        ]
+        # ⚠️ **绑定的排前面** ✓ —— 管理端显式指定的东西优先 ✓。
+        passed.sort(key=lambda c: (c.pinned, c.score), reverse=True)
         selected = passed[: max(1, top_k)]
 
         # ── ⑦ provenance ✓ ───────────────────────────────────────────
@@ -270,3 +322,35 @@ class RetrievalPipeline:
             degraded=degraded,
             degraded_reason=degraded_reason,
         )
+
+    async def _pinned_candidates(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID | None,
+        ids: tuple[str, ...],
+    ) -> list[Candidate]:
+        """**显式绑定的条目** ✓（§7.1 ✓）。
+
+        ⚠️ **取不到就不取** ✓ —— 绑定的条目可能已被删 ✓（**不报错** ✓ ——
+        绑定是配置 ✓，配置指向的行没了不该让整轮对话失败 ✗✗）。
+        """
+        wanted = tuple(dict.fromkeys(item for item in ids if item))
+        if not wanted or self._pinned is None:
+            return []
+        try:
+            found = await self._pinned.get_by_ids(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                user_id=user_id,
+                ids=wanted,
+            )
+        except Exception:  # noqa: BLE001
+            # ⚠️ **绑定取不到不拖垮召回** ✓ —— 降级成「没绑到」✓。
+            return []
+        return [
+            replace(candidate, pinned=True)
+            for candidate in found
+            if candidate.content
+        ]
