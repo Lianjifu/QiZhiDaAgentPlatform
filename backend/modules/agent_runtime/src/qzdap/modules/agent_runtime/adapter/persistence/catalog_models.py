@@ -152,7 +152,16 @@ class CatalogAgentUserStateORM(TenantScopedMixin, Base):
     )
 
 
-class SessionMessageORM(TenantScopedMixin, Base):
+class LegacySessionMessageORM(TenantScopedMixin, Base):
+    """**旧表** ``agent_session_messages``（台账 X4）—— 只在**双写期**被写。
+
+    ⚠️ 规范真相是**新表** ``session_messages``（见 ``models.py`` 的
+    :class:`SessionMessageORM`）—— 旧表在 Session Stage 6 被 DROP。
+
+    改名理由：新旧两张表都叫「会话消息」，同名 ORM 会让读代码的人以为
+    只有一张表 ✗。
+    """
+
     __tablename__ = "agent_session_messages"
 
     workspace_id: Mapped[UUID] = mapped_column(

@@ -795,6 +795,25 @@ DROP TABLE IF EXISTS checkpoints;
 **旧代码减少**：旧表写入点归零（读还在，用于迁移）。
 **验收**：会话消息序列可单表有序取出；进程重启后 checkpoint 可恢复。
 
+#### 实施记录（2026-10-30 · Stage 2）
+
+| 项 | 结果 |
+|---|---|
+| 契约 | `session/sequence.py`（`SessionSequencePort` + `checkpoint_thread_id`）· `session/message.py`（`SessionMessagePort`） |
+| 迁移 | **0052**：`agent_sessions.next_message_seq`（Session 层 DDL ✓）；⚠️ **DDL 必须在代码之前落地** —— 代码依赖该列 |
+| 适配器 | `session_sequence.py`（`PostgresSessionSequence`：两个序列的**原子自增**）· `session_messages.py`（`PostgresSessionMessageStore`：**写双表、读旧表**） |
+| 接线 | composition 注入 `PostgresSessionMessageStore`（copilot **不再直接依赖旧表 repo** ✓）+ `app.state.session_sequence_factory`（Router Stage 3 消费） |
+| 命名收敛 | 旧表 ORM 改名 `LegacySessionMessageORM` —— 新旧两张表都叫「会话消息」，同名会让人以为只有一张 ✗ |
+
+**偏差与未接管**：
+
+| # | 事项 | 原因 | 归属 |
+|---|---|---|---|
+| **S-14** | checkpoint 的**图接线** | saver 已在 lifespan ✓、`thread_id` 契约已给 ✓ —— 但 **langgraph 的 19 节点图没有生产调用方**（生产走 `modules` 的 `SessionGraphRunner`）→ 那是 Agent Loop 层的 A-26 | **Agent 层**（A-26） |
+| **S-15a / S-15b** | 切读新表 / 停旧写 | 要等**对账窗口**（新旧全量对账差异 = 0 + 只读窗口 ≥7 天）—— 本轮**读仍走旧表**、旧表仍在写 | Stage 2 后续 · Stage 6 封口 |
+| **轮次序的消费方** | `ingress_seq` 的**分配器**归 Session ✓，但**调用方是 Router**（入站顺序 = FIFO 顺序） | Router Stage 3（FIFO 放行判定） | **Router Stage 3** |
+| **demo 种子数据** | `seeds.py` 的演示会话**只写旧表**（新表有指向 `session_turns` 的外键，种子不造轮次行） | 演示数据是 demo profile 的产物（独立库）；切读之前不影响 | 切读（S-15a）之前 |
+
 ### Stage 3：唯一 turn 实现
 
 | 动作 | 细节 |

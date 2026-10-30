@@ -227,7 +227,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from qzdap.modules.agent_runtime.adapter.persistence.catalog_repositories import (
         SqlCatalogAgentRepository,
         SqlCatalogAgentUserStateRepository,
-        SqlSessionMessageRepository,
+    )
+    from qzdap.modules.agent_runtime.adapter.persistence.session_messages import (
+        PostgresSessionMessageStore,
     )
     from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
     from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
@@ -265,6 +267,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             return SessionManager(store=PostgresSessionStore(session))
 
     app.state.session_manager_factory = _SessionManagerFactory()
+
+    # ── 会话内的两个序列（Session Stage 2）──────────────────────────────
+    # 轮次序 ``ingress_seq`` 的**调用方是 Router**（入站顺序 = FIFO 顺序），
+    # 消息序 ``session_seq`` 由 Session 自己用 —— 但**分配器只有这一份**
+    # （两处各写一个原子自增，阈值迟早不一致 ✗）。
+    class _SessionSequenceFactory:
+        def for_session(self, session):  # type: ignore[no-untyped-def]
+            from qzdap.modules.agent_runtime.adapter.persistence.session_sequence import (
+                PostgresSessionSequence,
+            )
+
+            return PostgresSessionSequence(session)
+
+    app.state.session_sequence_factory = _SessionSequenceFactory()
 
     # ── Router 策略（Router Stage 1）────────────────────────────────────
     # 建会话的 agent 由**规则链**选出 —— 旧的 `agentId` 直取已下线
@@ -366,7 +382,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             return CopilotSessionService(
                 sessions=SqlSessionRepository(session),
                 turns=SqlTurnRepository(session),
-                messages=SqlSessionMessageRepository(session),
+                # 消息存取归 Session 层（新表 + 旧表双写，Stage 2）——
+                # 调用方不再直接依赖旧表 repo ✓（切读/停旧写只改实现）。
+                messages=PostgresSessionMessageStore(session),
                 catalog=catalog,
                 events=AgentRuntimeEventPublisher(container.bus()),
                 graph=graph,

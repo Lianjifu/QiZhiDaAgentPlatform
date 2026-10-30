@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from qzdap.modules.agent_runtime.adapter.persistence.catalog_models import (
     CatalogAgentORM,
     CatalogAgentUserStateORM,
-    SessionMessageORM,
+    LegacySessionMessageORM,
 )
 from qzdap.modules.agent_runtime.application.catalog_ports import (
     CatalogAgentRepository,
@@ -184,9 +184,9 @@ class SqlSessionMessageRepository:
 
     async def list_for_session(self, session_id: UUID) -> list[dict]:
         result = await self._s.execute(
-            select(SessionMessageORM)
-            .where(SessionMessageORM.session_id == session_id)
-            .order_by(SessionMessageORM.seq.asc())
+            select(LegacySessionMessageORM)
+            .where(LegacySessionMessageORM.session_id == session_id)
+            .order_by(LegacySessionMessageORM.seq.asc())
         )
         out = []
         for row in result.scalars().all():
@@ -219,7 +219,7 @@ class SqlSessionMessageRepository:
     ) -> None:
         record_legacy_call("X4")  # 旧表 agent_session_messages
         self._s.add(
-            SessionMessageORM(
+            LegacySessionMessageORM(
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 session_id=session_id,

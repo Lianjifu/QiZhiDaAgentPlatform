@@ -82,6 +82,17 @@ class SessionORM(TenantScopedMixin, Base):
     channel_session_key: Mapped[str | None] = mapped_column(
         String(512), nullable=True, index=True
     )
+    # 会话内的两个序列的**计数器**（Session 方案 §5.2）——
+    #   next_ingress_seq：轮次序（DDL 归 Router，迁移 0045）；
+    #   next_message_seq：消息序（DDL 归 Session，迁移 0052）。
+    # ⚠️ 分配方式是**原子自增**（``UPDATE ... SET x = x + 1 RETURNING``）——
+    # ``MAX(x) + 1`` 在两个写者之间会撞唯一索引 ✗✗。
+    next_ingress_seq: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    next_message_seq: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
 
     __table_args__ = (
         make_composite_index("owner_id", "status"),
@@ -195,6 +206,46 @@ class SessionTurnORM(TenantScopedMixin, Base):
             "status IN ('queued','running','waiting','succeeded','failed','cancelled')",
             name="status_enum",
         ),
+    )
+
+
+class SessionMessageORM(Base):
+    """**新表** ``session_messages``（迁移 0035 + 0046）—— 会话消息的**规范真相**。
+
+    ⚠️ **这张表没有 ``tenant_id`` 列** —— 租户归属由它的**轮次**决定
+    （``session_turns.tenant_id``），读它必须按租户过滤 ✓。
+
+    ⚠️ **不继承 ``TenantScopedMixin``** —— 那会凭空多出 ``id`` / ``tenant_id``
+    两个表里没有的列（同 ``session_events`` ✓）。
+
+    **两个序号**（Session 方案 §5.2）：
+    - ``seq``：**轮次内**序号（PK 的一部分 → ``(turn_id, seq)``）；
+    - ``session_seq``：**会话内**序号（唯一索引 ``(session_id, session_seq)``）
+      → 上下文重建与重放靠它单表有序扫描 ✓。
+    """
+
+    __tablename__ = "session_messages"
+
+    turn_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("session_turns.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    metadata_: Mapped[dict | None] = mapped_column(
+        "metadata_", JSONB, nullable=True
+    )
+    session_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), nullable=False, index=True
+    )
+    session_seq: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
 
 

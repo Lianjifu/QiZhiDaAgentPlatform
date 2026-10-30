@@ -20,6 +20,7 @@ from qzdap_agent_runtime.gateway.idempotency import (
 from qzdap_agent_runtime.gateway.normalizer import resolve_idempotency_key
 from qzdap_agent_runtime.gateway.types import ChannelType, IdempotencyKey
 from qzdap_agent_runtime.router.types import RouteDecision
+from qzdap_agent_runtime.session.message import SessionMessagePort
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_observability.metrics import record_legacy_call
 from qzdap_schema.dtos.errors import ErrorCode, project_error_message
@@ -41,9 +42,6 @@ from qzdap_schema.ids import (
 )
 
 from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
-from qzdap.modules.agent_runtime.adapter.persistence.catalog_repositories import (
-    SqlSessionMessageRepository,
-)
 from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
 from qzdap.modules.agent_runtime.application.ports import (
     EventPublisher,
@@ -76,7 +74,7 @@ class CopilotSessionService:
         *,
         sessions: SessionRepository,
         turns: TurnRepository,
-        messages: SqlSessionMessageRepository,
+        messages: SessionMessagePort,
         catalog: AgentCatalogService,
         events: EventPublisher,
         graph: SessionGraphRunner,

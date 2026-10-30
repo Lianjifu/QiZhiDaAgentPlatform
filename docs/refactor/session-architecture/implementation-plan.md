@@ -457,12 +457,12 @@
 | | S-10 sweeper 骨架 + 僵尸轮次接管 | ✅ **已实施**（2026-10-30）：`session/sweeper.py` + `PostgresSessionSweeper`；僵尸轮次阈值**复用同一个来源** `CLAIM_STALE_MINUTES`（两处各写一个数字迟早不一致）；转移 `running → failed` **由状态机判定**（`assert_turn_transition`） | — | 0 | S-08 |
 | | **S-10b sweeper 第四类清扫** | ✅ **已实施**（2026-10-30）：删 `session_inbox` 中 `expires_at <= now()` 的行（单批 ≤1000）—— **Gateway 幂等 TTL 依赖它**（Gateway 方案 §4.3.1）；不清理则 Gateway 在 TTL 之后持续误杀。⚠️ **调度归 composition**：lifespan 里的周期任务（`QZDAP_SESSION_SWEEPER_INTERVAL`，默认 300s），**一次失败不杀任务**（下一轮继续） | — | 0 | S-10 · **Gateway Stage 0 的迁移 0044** |
 | | **S-11 删 `try_claim` 的 `wait_status` 分支** | ⚠️ **未达成**（2026-10-30）—— 与 S-06 同一个阻塞：第二套 turn 实现（**X2**）还在用 `try_claim` 的 CAS，删了 IM 侧就没有互斥。**必须等 Stage 3 的唯一 turn 实现**（`session_turns.status` 的 CAS）| — | **~20 行** —— **未达成** | S-08 |
-| Stage 2 · Thread | S-12 轮次序列 `ingress_seq` | 与 Router 合并（DDL 归 0046，本层拥有） | — | 0 | S-02 |
-| | S-13 消息序列 `session_seq` | 会话内单调 | — | 0 | S-02 |
-| | S-14 checkpoint 接线 | Postgres saver，`thread_id=session_id` | — | 0 | S-05 |
-| | S-15 **双写启用**：`session_turns` / `session_messages` 开始写 | 旧表**同时写**，用于迁移对账 | — | 写入点切换 | S-12 |
-| | S-15a **切读新表** | 读路径改读新表；旧表仅留作对账 | — | 读路径切换 | S-15 · 双写期对账无差异 |
-| | S-15b **停旧写（双写结束）** | 旧表**只读不写**，进入只读窗口（≥7 天） | — | 旧表写入归零 | S-15a |
+| Stage 2 · Thread | S-12 轮次序列 `ingress_seq` | ✅ **已实施**（2026-10-30）：契约 `session/sequence.py`（`SessionSequencePort.next_ingress_seq`）+ `PostgresSessionSequence`（**原子自增** `UPDATE ... RETURNING`，跨 worker 有效）；DDL 是 0045 的 `next_ingress_seq` 列（Router 拥有）⚠️ **调用方是 Router**（入站顺序 = FIFO 顺序）—— 消费在 **Router Stage 3** | — | 0 | S-02 |
+| | S-13 消息序列 `session_seq` | ✅ **已实施**（2026-10-30）：新表 `session_messages` 的 ORM（`SessionMessageORM`）+ **计数器列** `agent_sessions.next_message_seq`（**迁移 0052**，Session 层 DDL）；分配同样是原子自增 —— ⚠️ `MAX(session_seq)+1` 在两个写者之间会撞唯一索引 ✗✗ | — | 0 | S-02 |
+| | S-14 checkpoint 接线 | ⚠️ **未达成**（2026-10-30）：** saver 已在 lifespan**（Stage 0 ✓）+ **thread_id 契约已给**（`session/sequence.py::checkpoint_thread_id` = `session_id` ✓）—— 但「真正用它跑图」**阻塞在 langgraph 的 19 节点图没有生产调用方**（生产走的是 `modules` 的 `SessionGraphRunner`）→ 那是 **Agent Loop 层**的接线（A-26） | — | 0 | S-05 |
+| | S-15 **双写启用**：`session_turns` / `session_messages` 开始写 | ✅ **已实施**（2026-10-30）：`session_turns` 的轮次双写早于本轮（Gateway Stage 4b ✓）；`session_messages` 的**消息双写**本轮落地 —— `PostgresSessionMessageStore`（新表 + 旧表都写），**调用方（copilot）改为依赖 `SessionMessagePort` 契约**（不再直接依赖旧表 repo ✓） | — | 写入点切换 | S-12 |
+| | S-15a **切读新表** | ⚠️ **未接管**（2026-10-30）：切读要等**对账窗口**（新旧全量对账差异 = 0）—— 本轮**读仍走旧表**（`PostgresSessionMessageStore.list_for_session` 委托旧 repo）✓ 行为不变 | — | 读路径切换 | S-15 · 双写期对账无差异 |
+| | S-15b **停旧写（双写结束）** | ⚠️ **未接管**（2026-10-30）：前置是 S-15a（切读 + 对账）—— 本轮**旧表仍在写**（双写期）| — | 旧表写入归零 | S-15a |
 | Stage 3 · 唯一 turn 实现 | S-16 `turn_runner.py` 落地 | **合并两套的治理语义**（claim / 幂等 / 取消 / 审批） | — | 0 | Stage 1–2 |
 | | S-17 轮次幂等 | `session_turns.idempotency_key` 唯一约束 | — | 0 | S-16 |
 | | S-18 取消 | 独立列 `cancel_requested` + 轮询 | — | 0 | S-16 |
