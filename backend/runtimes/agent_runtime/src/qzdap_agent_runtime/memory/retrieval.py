@@ -16,7 +16,7 @@ Python 侧逐行过滤是**现状的缺陷** ✗✗。
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -57,4 +57,216 @@ class Retrieval(Protocol):
         ...
 
 
-__all__ = ["Retrieval", "RetrievalOutcome"]
+def _fuse(
+    vector_candidates: list[Candidate],
+    lexical_candidates: list[Candidate],
+) -> list[Candidate]:
+    """向量分 + 词法分**融合** ✓（0.7 / 0.3 ✓ —— 与旧路径同口径 ✓）。
+
+    ⚠️ **向量优先** ✓ —— 同一条命中两边都有时，取向量的内容与 metadata ✓，
+    分数按融合算 ✓。
+    """
+    lexical_by_ref = {c.ref_id: c for c in lexical_candidates}
+    fused: dict[str, Candidate] = {}
+    for candidate in vector_candidates:
+        keyword = lexical_by_ref.get(candidate.ref_id)
+        if keyword is not None:
+            fused[candidate.ref_id] = replace(
+                candidate,
+                score=0.7 * candidate.score + 0.3 * keyword.score,
+            )
+        else:
+            fused[candidate.ref_id] = candidate
+    for candidate in lexical_candidates:
+        if candidate.ref_id not in fused:
+            fused[candidate.ref_id] = candidate
+    return list(fused.values())
+
+
+__all__ = [
+    "Candidate",
+    "LexicalCandidatePort",
+    "Retrieval",
+    "RetrievalOutcome",
+    "RetrievalPipeline",
+    "VectorCandidatePort",
+]
+
+
+# ---------------------------------------------------------------------------
+# 候选端口与七步流水线（§3.1 ✓）
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Candidate:
+    """一个候选命中 ✓（检索流水线的中间产物 ✓）。"""
+
+    #: 命中项 ID ✓（去重与 provenance 都用它 ✓）。
+    ref_id: str
+    #: 层级 ✓（`l1` / `l2` / `l3` ✓）。
+    layer: str
+    #: 命中内容 ✓。
+    content: str
+    #: 得分 ✓（向量分或词法分 ✓）。
+    score: float
+    #: 作用域 ✓（session / user / workspace ✓）。
+    scope: str = "user"
+    #: 用过几次 ✓（provenance ✓）。
+    used_count: int = 0
+    #: 版本 ✓（provenance ✓ —— Context manifest 用 ✓）。
+    version: str = ""
+    #: 内容哈希 ✓（**语义去重用** ✓ —— §4.4 ✓）。
+    content_hash: str = ""
+    #: 创建时间 ✓（provenance ✓）。
+    created_at: str = ""
+
+
+@runtime_checkable
+class LexicalCandidatePort(Protocol):
+    """词法候选 ✓ —— **过滤与打分都在存储层做** ✓（不下推 = 全量扫描 ✗✗）。"""
+
+    async def search(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID | None,
+        query: str,
+        limit: int,
+    ) -> list[Candidate]: ...
+
+
+@runtime_checkable
+class VectorCandidatePort(Protocol):
+    """向量候选 ✓ —— **查询向量的生成也在这一侧** ✓（契约层不碰 embedding ✓）。"""
+
+    async def search(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID | None,
+        query: str,
+        limit: int,
+    ) -> list[Candidate]: ...
+
+
+class RetrievalPipeline:
+    """记忆检索的**七步流水线** ✓（§3.1 ✓）。
+
+    ① query 归一化 → ② 作用域过滤（在端口里 ✓ 下推到存储 ✓）→
+    ③ 候选检索（**向量优先** ✓，词法兜底 ✓）→ ④ 去重（ref_id + content_hash ✓）→
+    ⑤ rerank（**暂不做** ✓ —— 可选步骤 ✓）→ ⑥ 阈值 + top-k ✓ →
+    ⑦ provenance ✓。
+
+    ⚠️ **向量不可用 → 降级为纯词法** ✓（C10 ✓）—— 且 **degraded=True**
+    ✓（调用方要能知道「这次召回是打折的」✗✗）。
+
+    ⚠️ **abstain** ✓（§3.4 ✓）—— 阈值过滤后一条不剩 → ``abstained=True``
+    ✓（「没找到够格的」≠「没有相关知识」✗✗）。
+    """
+
+    def __init__(
+        self,
+        *,
+        lexical: LexicalCandidatePort,
+        vector: VectorCandidatePort | None = None,
+        threshold: float = 0.15,
+        candidate_multiplier: int = 4,
+    ) -> None:
+        self._lexical = lexical
+        self._vector = vector
+        self._threshold = threshold
+        self._multiplier = candidate_multiplier
+
+    async def recall(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID | None,
+        query: str,
+        top_k: int = 8,
+    ) -> RetrievalOutcome:
+        """跑一次检索 ✓ —— 返回**统一形状** ✓。"""
+        normalized = (query or "").strip().lower()
+        if not normalized:
+            return RetrievalOutcome(hits=[], abstained=True)
+
+        limit = max(1, top_k) * self._multiplier
+        degraded = False
+        degraded_reason = ""
+
+        # ── ③ 候选检索：向量优先 ✓ ───────────────────────────────────
+        vector_candidates: list[Candidate] = []
+        if self._vector is not None:
+            try:
+                vector_candidates = await self._vector.search(
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    user_id=user_id,
+                    query=normalized,
+                    limit=limit,
+                )
+            except Exception:  # noqa: BLE001
+                # ⚠️ **C10 读取侧降级** ✓ —— 向量库 / embedding 不可用 → 纯词法 ✓
+                degraded = True
+                degraded_reason = "vector_unavailable"
+                vector_candidates = []
+
+        # 词法候选**始终**取 ✓ —— 它给融合分补权重 ✓（不是只在向量没结果时取 ✓）
+        lexical_candidates = await self._lexical.search(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            query=normalized,
+            limit=limit,
+        )
+
+        # 融合：向量分为主 ✓ + 词法分为辅 ✓（**与旧路径同口径** ✓ ——
+        # 旧路径是 0.7*向量 + 0.3*词法 ✓）。
+        candidates = _fuse(vector_candidates, lexical_candidates)
+
+        # ── ④ 去重（ref_id + content_hash ✓）────────────────────────
+        seen_refs: set[str] = set()
+        seen_hashes: set[str] = set()
+        deduped: list[Candidate] = []
+        for candidate in candidates:
+            if candidate.ref_id and candidate.ref_id in seen_refs:
+                continue
+            if candidate.content_hash and candidate.content_hash in seen_hashes:
+                continue
+            if candidate.ref_id:
+                seen_refs.add(candidate.ref_id)
+            if candidate.content_hash:
+                seen_hashes.add(candidate.content_hash)
+            deduped.append(candidate)
+
+        # ── ⑥ 阈值 + top-k ✓ ─────────────────────────────────────────
+        passed = [c for c in deduped if c.score >= self._threshold]
+        passed.sort(key=lambda c: c.score, reverse=True)
+        selected = passed[: max(1, top_k)]
+
+        # ── ⑦ provenance ✓ ───────────────────────────────────────────
+        hits = [
+            {
+                "ref_id": c.ref_id,
+                "id": c.ref_id,
+                "layer": c.layer,
+                "content": c.content,
+                "score": c.score,
+                "scope": c.scope,
+                "used_count": c.used_count,
+                "version": c.version,
+                "created_at": c.created_at,
+                "content_hash": c.content_hash,
+            }
+            for c in selected
+        ]
+        return RetrievalOutcome(
+            hits=hits,
+            abstained=not hits,
+            degraded=degraded,
+            degraded_reason=degraded_reason,
+        )

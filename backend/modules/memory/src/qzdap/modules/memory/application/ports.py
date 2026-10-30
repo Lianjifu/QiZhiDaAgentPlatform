@@ -89,6 +89,33 @@ class MemoryCatalogRepository(ABC):
     async def list_l3(self, workspace_id: UUID) -> list[L3Entry]: ...
 
     @abstractmethod
+    async def search_l2_by_keyword(
+        self,
+        workspace_id: UUID,
+        *,
+        user_id: UUID | None = None,
+        keyword: str,
+        limit: int,
+    ) -> list[L2Fact]:
+        """**词法候选** ✓ —— 过滤与截断**下推到 SQL** ✓（§3.1 第 2 步 ✓）。
+
+        ⚠️ **不是全量扫描** ✗✗ —— Python 侧逐行过滤是现状的缺陷 ✗
+        （1 万条 L2 时召回延迟随 N 线性增长 ✗）。
+        """
+        ...
+
+    @abstractmethod
+    async def search_l3_by_keyword(
+        self,
+        workspace_id: UUID,
+        *,
+        keyword: str,
+        limit: int,
+    ) -> list[L3Entry]:
+        """L3 的词法候选 ✓ —— 同样**下推到 SQL** ✓。"""
+        ...
+
+    @abstractmethod
     async def update_l3(self, item: L3Entry) -> None: ...
 
     @abstractmethod

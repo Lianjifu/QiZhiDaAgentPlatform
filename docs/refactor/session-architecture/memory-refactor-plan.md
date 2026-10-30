@@ -1103,6 +1103,24 @@ ALTER TABLE admin_memory_policies
 **旧代码减少**：无（重写替换）。
 **验收**：1 万条 L2 下召回延迟不随 N 线性增长；`recall_degraded` 正确传递到 Context。
 
+#### 实施记录（2026-10-30 · Stage 2：C2 Retrieval 重写）
+
+| 项 | 结果 |
+|---|---|
+| **七步流水线归契约层** | ✅ `memory/retrieval.py` 的 `RetrievalPipeline` ✓ —— ① 归一化 → ② 作用域过滤（**下推到端口** ✓）→ ③ 候选检索（**向量优先** ✓）→ ④ 去重 → ⑤ rerank（暂不做 ✓）→ ⑥ 阈值 + top-k → ⑦ provenance ✓ |
+| **M-10 向量优先 + 词法兜底** | ✅ **向量分为主 + 词法分补权重** ✓（0.7 / 0.3 ✓ —— **与旧路径同口径** ✓）；词法候选**始终**取 ✓（只在向量没结果时取会让「向量分低但词法命中」的记忆**召不回** ✗✗） |
+| **M-11 候选集 `top_k × 4`** | ✅ 端口的 `limit` = `top_k × 4` ✓（与 Context 的降级序一致 ✓） |
+| **M-12 去重 + 阈值 + abstain** | ✅ 去重按 **`ref_id` + `content_hash`** ✓（两道 ✓ —— §4.4 ✓）；阈值默认 0.15 ✓；**没找到够格的 → `abstained=True`** ✓（「没召回」≠「没有相关知识」✗✗） |
+| **M-13 provenance 补全** | ✅ 每条命中带 `scope` / `used_count` / `version` / `created_at` / `content_hash` ✓ |
+| **M-14 C10 读取侧降级** | ✅ 向量库 / embedding 不可用 → **纯词法** ✓ + `degraded=True` ✓（**降级可见** ✓ —— 静默降级会让「模型少了记忆」没人知道 ✗✗）；⚠️ 没配向量**不算降级** ✓（那只是没有向量这一路 ✓） |
+| **不再全量扫描** | ✅ 词法候选**下推到 SQL**（`ILIKE` ✓ **按词匹配** ✓ —— 整串匹配会让「额度 名单」这种多词查询一条都命中不了 ✗✗）；新增 `search_l2_by_keyword` / `search_l3_by_keyword` ✓ |
+| **ORM 补列** | ✅ 迁移 0048 建好的七列（`content_hash` / `content_hash_version` / `source_turn_id` / `last_used_at` / `used_count` / `confidence_source` / `version`）**ORM 当时没映射** ✗ → 现在补上 ✓（领域实体 `L2Fact` 同步 ✓） |
+| **M-15 `layered.py` 从未被接线** | ✅ 已核实 ✓（零生产引用 ✓）—— 删除归 Stage 7 ✓（不是「停用」型 ✓） |
+| 测试 | 契约层 12 条 ✓（向量优先 ✓ / 融合分 ✓ / 作用域下推 ✓ / 候选集 ✓ / 阈值 ✓ / abstain ✓ / 两道去重 ✓ / provenance ✓ / 降级 ✓） |
+
+⚠️ **生产路径的召回行为变了** ✓（阈值 + abstain + 融合分 ✓）—— 这是**有意的** ✓：
+旧的实现**没有阈值** ✗（什么都往模型嘴里塞 ✗✗）。
+
 ### Stage 3：C1 Writer 重写
 
 > **开工前置（硬）**：**Session Stage 3（唯一 turn 实现）已落地** —— 旧写入点 `runner._remember` 属于旧 turn 实现的一部分，新 turn 实现接管后才有「停用旧写入点」这件事可做。详见 `README.md` §3.3。

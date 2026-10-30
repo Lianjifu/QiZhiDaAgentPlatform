@@ -13,15 +13,19 @@ Stage 0 只做**平面分离** ✓（纯重构 ✓，行为不变 ✓）。
 
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import UTC, datetime
 from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap_agent_runtime.memory.retrieval import RetrievalPipeline
 from qzdap_agent_runtime.ports import RecallHit
 from qzdap_observability.metrics import record_legacy_call
 
+from qzdap.modules.memory.adapter.candidates import (
+    LexicalCandidateAdapter,
+    VectorCandidateAdapter,
+)
 from qzdap.modules.memory.application.embedding import embed_item
 from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
@@ -47,10 +51,21 @@ class MemoryRuntimeService:
         *,
         embedding: EmbeddingPort | None = None,
         vectors: VectorSearchPort | None = None,
+        threshold: float = 0.15,
     ) -> None:
         self._catalog = catalog
         self._embedding = embedding
         self._vectors = vectors
+        # ⚠️ **检索的编排归契约层** ✓ —— 这里只提供候选端口 ✓
+        # （§3.1 的七步流水线 ✓）。
+        self._pipeline = RetrievalPipeline(
+            lexical=LexicalCandidateAdapter(catalog),
+            vector=VectorCandidateAdapter(embedding=embedding, vectors=vectors),
+            threshold=threshold,
+        )
+        #: 上一次召回是否**降级** ✓（C10 ✓ —— 调用方要能知道 ✓）。
+        self._last_recall_degraded = False
+        self._last_recall_reason = ""
 
     async def write(
         self,
@@ -129,7 +144,6 @@ class MemoryRuntimeService:
         )
         return fact.to_admin_dict()
 
-
     async def recall(
         self,
         *,
@@ -139,76 +153,38 @@ class MemoryRuntimeService:
         top_k: int = 10,
         scope_filter: str | None = None,
         user_id: UUID | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[RecallHit]:
+        """召回 ✓ —— **走契约层的七步流水线** ✓（Memory Stage 2 ✓）。
+
+        ⚠️ **向量优先 + 词法兜底** ✓（§3.1 ✓）—— 不再全量扫描 ✓；
+        ⚠️ **阈值 + abstain** ✓（§3.4 ✓）；
+        ⚠️ **降级可见** ✓（C10 ✓）—— 向量不可用 → 纯词法 ✓ + ``degraded`` ✓。
+        """
         _ = scope_filter
-        limit = max(1, top_k)
-        needle = query.strip().lower()
-        # ⚠️ 用户级作用域过滤（X14 跨用户泄漏修复）：user_id 给定时只召回
-        # **该用户自己**的记忆；归属不明（user_id IS NULL）的存量行**不召回**
-        # —— 宁可不可见，也不要把别人的记忆返回给当前用户。
-        facts = [
-            item
-            for item in await self._catalog.list_l2(workspace_id, user_id=user_id)
-            if item.status != "retired"
-        ]
-        knowledge = [
-            item
-            for item in await self._catalog.list_l3(workspace_id)
-            if item.status == "published"
-        ]
-        # ⚠️ L3 **不按用户过滤**，这是设计如此：L3 是**工作区级的团队知识**，
-        #    对工作区内所有人可见（决策 #1：L3 退役后由 modules/knowledge 接管）。
-        #    用户级隔离只作用于 L2（个人事实）与向量检索 —— 那两条才是 X14 的泄漏面。
-        keyword: list[tuple[float, RecallHit]] = []
-        for fact in facts:
-            hay = fact.recall_text().lower()
-            keyword.append(
-                (
-                    _keyword_score(needle, hay),
-                    _hit(
-                        fact.id,
-                        fact.recall_text(),
-                        "l2",
-                        0.0,
-                        used_count=int(getattr(fact, "used_count", 0) or 0),
-                        version=str(getattr(fact, "version", "") or ""),
-                    ),
-                )
+        outcome = await self._pipeline.recall(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            query=query,
+            top_k=max(1, top_k),
+        )
+        self._last_recall_degraded = outcome.degraded
+        self._last_recall_reason = outcome.degraded_reason
+        return [
+            RecallHit(
+                layer=str(hit.get("layer") or "l2"),  # type: ignore[arg-type]
+                content=str(hit.get("content") or ""),
+                score=float(hit.get("score") or 0.0),
+                source_id=str(hit.get("ref_id") or hit.get("id") or ""),
+                citation=None,
+                metadata={},
+                scope=str(hit.get("scope") or "user"),
+                used_count=int(hit.get("used_count") or 0),
+                ref_id=str(hit.get("ref_id") or hit.get("id") or ""),
+                version=str(hit.get("version") or ""),
             )
-        for entry in knowledge:
-            hay = entry.recall_text().lower()
-            keyword.append(
-                (
-                    _keyword_score(needle, hay),
-                    _hit(entry.id, entry.recall_text(), "l3", 0.0),
-                )
-            )
-        vector_hits: list[tuple[float, RecallHit]] = []
-        if self._embedding is not None and self._vectors is not None and needle:
-            [query_vec] = await self._embedding.embed([query.strip()])
-            for hit in await self._vectors.search(
-                tenant_id=tenant_id,
-                workspace_id=workspace_id,
-                query_embedding=query_vec,
-                top_k=limit * 4,
-                user_id=user_id,
-            ):
-                vector_hits.append(
-                    (
-                        hit.score,
-                        _hit(hit.item_id, hit.content, hit.layer, hit.score),
-                    )
-                )
-        merged: dict[str, RecallHit] = {}
-        keyword_by_id = {item[1].source_id: item[0] for item in keyword}
-        for score, hit in vector_hits:
-            kw = keyword_by_id.get(hit.source_id, 0.05)
-            merged[hit.source_id] = replace(hit, score=0.7 * score + 0.3 * kw)
-        for score, hit in keyword:
-            if hit.source_id not in merged:
-                merged[hit.source_id] = replace(hit, score=0.3 * score)
-        ranked = sorted(merged.values(), key=lambda item: float(item.score), reverse=True)
-        return ranked[:limit]
+            for hit in outcome.hits
+        ]
 
     async def _embed_item(
         self,

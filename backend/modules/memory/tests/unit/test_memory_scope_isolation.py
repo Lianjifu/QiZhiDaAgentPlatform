@@ -166,6 +166,49 @@ class InMemoryCatalog(MemoryCatalogRepository):
     async def list_l3(self, workspace_id: UUID) -> list[L3Entry]:
         return [item for item in self.l3.values() if item.workspace_id == workspace_id]
 
+    async def search_l2_by_keyword(
+        self,
+        workspace_id: UUID,
+        *,
+        user_id: UUID | None = None,
+        keyword: str,
+        limit: int,
+    ) -> list[L2Fact]:
+        """词法候选 ✓ —— 与 SQL 实现**同口径** ✓（含用户过滤 ✓）。"""
+        tokens = [part for part in keyword.strip().lower().split() if part]
+        rows = [
+            item
+            for item in self.l2.values()
+            if item.workspace_id == workspace_id
+            and item.status != "retired"
+            and (user_id is None or item.user_id == user_id)
+            and any(
+                token in item.key.lower() or token in item.value.lower()
+                for token in tokens
+            )
+        ]
+        return rows[:limit]
+
+    async def search_l3_by_keyword(
+        self,
+        workspace_id: UUID,
+        *,
+        keyword: str,
+        limit: int,
+    ) -> list[L3Entry]:
+        tokens = [part for part in keyword.strip().lower().split() if part]
+        rows = [
+            item
+            for item in self.l3.values()
+            if item.workspace_id == workspace_id
+            and item.status == "published"
+            and any(
+                token in item.title.lower() or token in item.summary.lower()
+                for token in tokens
+            )
+        ]
+        return rows[:limit]
+
     async def update_l3(self, item: L3Entry) -> None:
         self.l3[item.id] = item
 

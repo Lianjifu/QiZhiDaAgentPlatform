@@ -628,10 +628,10 @@
 | | **X14 修复完成即「已弃用」** | — | **X14**（**修复类条目，不是删除类**） | — | M-06 |
 | Stage 2 · C2 Retrieval 重写 | M-10 向量优先 + 词法兜底 | 替代全量扫描 | — | 0 | Stage 1 |
 | | M-11 候选集 `top_k × 4` | 替代全量 | — | 0 | M-10 |
-| | M-12 去重 + 阈值 + abstain | — | — | 0 | M-11 |
-| | M-13 provenance 补全 | `scope` / `used_count` / `created_at` | — | 0 | M-12 |
-| | M-14 **C10 读取侧降级** | embedding / 向量库不可用 → 纯词法 + `recall_degraded` | — | 0 | M-10 |
-| | M-15 **确认 `layered.py` 从未被接线** | 它在 `runtimes/` 未接线包内（零生产引用）→ **没有停用阶段**，删除在 Stage 7（M-44） | **X12**（关注点 #13） | 0 | M-10 |
+| | M-12 去重 + 阈值 + abstain | ✅ **已达成** —— 去重按 `ref_id` + **`content_hash`** ✓（两道 ✓）；阈值 0.15 ✓；**abstained** ✓（「没召回」≠「没有相关知识」✓）|
+| | M-13 provenance 补全 | ✅ **已达成** —— 每条命中带 `scope` / `used_count` / `version` / `created_at` / `content_hash` ✓；⚠️ **ORM 补上迁移 0048 已建但没映射的七列** ✓（领域实体同步 ✓）|
+| | M-14 **C10 读取侧降级** | ✅ **已达成** —— 向量库 / embedding 不可用 → **纯词法** ✓ + `degraded=True` ✓（降级可见 ✓）；没配向量**不算降级** ✓|
+| | M-15 **确认 `layered.py` 从未被接线** | ✅ **已核实** ✓（零生产引用 ✓）→ **没有停用阶段** ✓，删除在 Stage 7（M-44 ✓） | **X12**（关注点 #13） | 0 | M-10 ✓ |
 | Stage 3 · C1 Writer 重写 | M-16 `FactExtractor`（规则起步） | — | — | 0 | Stage 0 |
 | | M-17 敏感信息闸门 `Redactor` | — | — | 0 | M-16 |
 | | M-18 幂等（`content_hash`） | 唯一约束 + 更新而非插入 | — | 0 | M-17 |
@@ -1177,7 +1177,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 ### Memory 层（§3.5）—— **删除 X11 / X12 / X13 / X15 / X16，修复 X14**
 - [ ] M-01 **拆分 `MemoryService`** → **X16 拆分**（含 6 个管理写方法）· M-02 `memory/` 骨架 + 端口 · M-03 **迁移 0048**（含 **DROP 死表 X19**）· **M-03b 写入侧持久化 `owner_id`** · M-04 `RecallHit` 扩字段 + 生产返回改用 `RecallHit` · M-05 打点 X11–X16 · **X19 死表在 M-03 内已 DROP**
 - [ ] M-06 L2 `user_id` 过滤 · M-07 向量 payload 过滤 · M-08 历史向量回填 · M-09 L3 `visible_scope` ACL → **X14 修复完成即「已弃用」**
-- [ ] M-10 向量优先 + 词法兜底 · M-11 候选集 `top_k×4` · M-12 去重/阈值/abstain · M-13 provenance · M-14 C10 降级 · M-15 **确认 `layered.py` 从未接线**（**无停用阶段**）→ **X12**
+- [x] M-10 向量优先 + 词法兜底 ✅ · M-11 候选集 `top_k×4` ✅ · M-12 去重/阈值/abstain ✅ · M-13 provenance ✅ · M-14 C10 降级 ✅ · M-15 **确认 `layered.py` 从未接线** ✅ · 2026-10-30（**无停用阶段**）→ **X12**
 - [ ] M-16 `FactExtractor` · M-17 `Redactor` · M-18 幂等 · M-19 置信度 · M-20 来源追溯
 - [ ] M-21 **实现新 Writer，写新表**（⚠️ **不停用 `_remember`** —— 它仍被 `runner._run_turn_inner` 调用）
 - [ ] M-22 `enabled` · M-23 `scope` · M-24 `policyLabel` · M-25 `l3EntryIds`/`knowledge_refs`

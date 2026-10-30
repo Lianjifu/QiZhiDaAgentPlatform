@@ -95,6 +95,21 @@ class L2Fact:
     # 归属用户（决策 #11）。None = 归属不明（存量自动沉淀的记忆）——
     # 这类行在用户级作用域过滤下**不可见**，宁可不可见也不能串号。
     user_id: UUID | None = None
+    # ── 以下字段对应迁移 0048 已建的列 ✓（去重 / 追溯 / 统计 ✓）──
+    #: 内容哈希 ✓（去重用 ✓ —— §4.4 ✓）；**存量行是 None** ✓（存量不参与去重 ✓）
+    content_hash: str | None = None
+    #: 哈希的规范化规则版本 ✓（§4.4 ✓）
+    content_hash_version: int = 1
+    #: 来源轮次 ✓（可追溯 ✓ —— §4.1 ✓）
+    source_turn_id: UUID | None = None
+    #: 最后一次被用到的时刻 ✓（统计 ✓）
+    last_used_at: datetime | None = None
+    #: 被用过多少次 ✓（统计 ✓ —— §3.5 ✓）
+    used_count: int = 0
+    #: 置信度来源 ✓（`explicit` / `rule` / `llm` ✓ —— §4.5 ✓）
+    confidence_source: str = "rule"
+    #: 版本 ✓（召回要带出去 ✓ —— Context manifest 用 ✓）
+    version: int = 1
 
     def recall_text(self) -> str:
         return f"{self.key}: {self.value}".strip()
@@ -243,7 +258,9 @@ class RetentionPolicy:
     @classmethod
     def defaults(cls, *, tenant_id: UUID, workspace_id: UUID) -> list[Self]:
         now = _utcnow()
-        specs: list[tuple[MemoryLayer, str, str, int, int, int, EvictionStrategy, float]] = [
+        specs: list[
+            tuple[MemoryLayer, str, str, int, int, int, EvictionStrategy, float]
+        ] = [
             ("l1", "短期记忆", "会话上下文窗口", 60, 50, 8, "fifo", 0.94),
             ("l2", "长期记忆", "用户偏好与事实", 60 * 24 * 90, 200, 32, "lru", 0.88),
             ("l3", "知识记忆", "团队级共享知识", 60 * 24 * 365, 500, 128, "lru", 0.92),

@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from qzdap_persistence.tenant_guard import current_tenant_id
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from qzdap.modules.memory.adapter.persistence.models import (
@@ -48,6 +48,20 @@ def _l1(row: MemoryL1ORM) -> L1Session:
     )
 
 
+#: 词法检索最多拆多少个词 ✓（避免超长查询拖慢 SQL ✓）。
+MAX_KEYWORD_TOKENS = 8
+
+
+def _keyword_tokens(keyword: str) -> list[str]:
+    """把查询拆成**词** ✓（空白分隔 ✓）—— 与旧的关键词打分**同口径** ✓。
+
+    ⚠️ **按词匹配而不是整串** ✓ —— 整串匹配会让「额度 名单」这种多词查询
+    一条都命中不了 ✗✗（旧路径是逐词打分 ✓）。
+    """
+    tokens = [part for part in keyword.strip().lower().split() if part]
+    return tokens[:MAX_KEYWORD_TOKENS]
+
+
 def _l2(row: MemoryL2ORM) -> L2Fact:
     return L2Fact(
         id=row.id,
@@ -65,6 +79,13 @@ def _l2(row: MemoryL2ORM) -> L2Fact:
         updated_at=row.updated_at,
         created_at=row.created_at,
         usage_history=list(row.usage_history or []),
+        content_hash=row.content_hash,
+        content_hash_version=int(row.content_hash_version or 1),
+        source_turn_id=row.source_turn_id,
+        last_used_at=row.last_used_at,
+        used_count=int(row.used_count or 0),
+        confidence_source=str(row.confidence_source or "rule"),
+        version=int(row.version or 1),
     )
 
 
@@ -214,6 +235,79 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
         )
         return [_l3(row) for row in result.scalars().all() if not _cross_tenant(row)]
 
+    async def search_l2_by_keyword(
+        self,
+        workspace_id: UUID,
+        *,
+        user_id: UUID | None = None,
+        keyword: str,
+        limit: int,
+    ) -> list[L2Fact]:
+        """L2 的词法候选 ✓ —— **过滤下推到 SQL** ✓（§3.1 ✓）。
+
+        ⚠️ **用户过滤** ✓ —— ``user_id`` 给定时只看**该用户自己的** ✓
+        （归属不明的行不可见 ✓ —— 决策 #11 ✓）。
+        """
+        tokens = _keyword_tokens(keyword)
+        if not tokens:
+            return []
+        stmt = (
+            select(MemoryL2ORM)
+            .where(MemoryL2ORM.workspace_id == workspace_id)
+            .where(MemoryL2ORM.status != "retired")
+            .where(
+                or_(
+                    *(
+                        or_(
+                            MemoryL2ORM.key.ilike(f"%{token}%"),
+                            MemoryL2ORM.value.ilike(f"%{token}%"),
+                        )
+                        for token in tokens
+                    )
+                )
+            )
+        )
+        if user_id is not None:
+            stmt = stmt.where(MemoryL2ORM.user_id == user_id)
+        stmt = stmt.order_by(MemoryL2ORM.updated_at.desc()).limit(max(1, limit))
+        result = await self._s.execute(stmt)
+        return [_l2(row) for row in result.scalars().all() if not _cross_tenant(row)]
+
+    async def search_l3_by_keyword(
+        self,
+        workspace_id: UUID,
+        *,
+        keyword: str,
+        limit: int,
+    ) -> list[L3Entry]:
+        """L3 的词法候选 ✓ —— 同样下推到 SQL ✓。
+
+        ⚠️ **L3 不按用户过滤** ✓ —— 它是**工作区级的团队知识** ✓（决策 #1 ✓）。
+        """
+        tokens = _keyword_tokens(keyword)
+        if not tokens:
+            return []
+        stmt = (
+            select(MemoryL3ORM)
+            .where(MemoryL3ORM.workspace_id == workspace_id)
+            .where(MemoryL3ORM.status == "published")
+            .where(
+                or_(
+                    *(
+                        or_(
+                            MemoryL3ORM.title.ilike(f"%{token}%"),
+                            MemoryL3ORM.summary.ilike(f"%{token}%"),
+                        )
+                        for token in tokens
+                    )
+                )
+            )
+            .order_by(MemoryL3ORM.updated_at.desc())
+            .limit(max(1, limit))
+        )
+        result = await self._s.execute(stmt)
+        return [_l3(row) for row in result.scalars().all() if not _cross_tenant(row)]
+
     async def update_l3(self, item: L3Entry) -> None:
         row = await self._s.get(MemoryL3ORM, item.id)
         if row is None or _cross_tenant(row):
@@ -243,7 +337,9 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
 
     async def list_promotions(self, workspace_id: UUID) -> list[PromotionEvent]:
         result = await self._s.execute(
-            select(MemoryPromotionORM).where(MemoryPromotionORM.workspace_id == workspace_id)
+            select(MemoryPromotionORM).where(
+                MemoryPromotionORM.workspace_id == workspace_id
+            )
         )
         return [
             PromotionEvent(
@@ -283,9 +379,13 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
         result = await self._s.execute(
             select(MemoryPolicyORM).where(MemoryPolicyORM.workspace_id == workspace_id)
         )
-        return [_policy(row) for row in result.scalars().all() if not _cross_tenant(row)]
+        return [
+            _policy(row) for row in result.scalars().all() if not _cross_tenant(row)
+        ]
 
-    async def get_policy_by_label(self, workspace_id: UUID, label: str) -> RetentionPolicy | None:
+    async def get_policy_by_label(
+        self, workspace_id: UUID, label: str
+    ) -> RetentionPolicy | None:
         result = await self._s.execute(
             select(MemoryPolicyORM).where(
                 MemoryPolicyORM.workspace_id == workspace_id,

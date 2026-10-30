@@ -254,7 +254,9 @@ class MemoryAdminService:
     async def list_policies(
         self, *, tenant_id: UUID, workspace_id: UUID
     ) -> list[dict[str, Any]]:
-        items = await self._ensure_policies(tenant_id=tenant_id, workspace_id=workspace_id)
+        items = await self._ensure_policies(
+            tenant_id=tenant_id, workspace_id=workspace_id
+        )
         return [item.to_admin_dict() for item in items]
 
     async def get_policy(self, *, workspace_id: UUID, label: str) -> dict[str, Any]:
@@ -263,7 +265,9 @@ class MemoryAdminService:
             raise MemoryNotFound(f"policy {label} not found")
         return item.to_admin_dict()
 
-    async def trend(self, *, workspace_id: UUID, range: str = "7d") -> dict[str, list[int]]:
+    async def trend(
+        self, *, workspace_id: UUID, range: str = "7d"
+    ) -> dict[str, list[int]]:
         _ = range
         l1 = await self._catalog.list_l1(workspace_id)
         l2 = await self._catalog.list_l2(workspace_id)
@@ -276,13 +280,16 @@ class MemoryAdminService:
             "l2Hits": _series(max(l2_n * 12, l2_n)),
             "l3Hits": _series(l3_hits or l1_n),
         }
+
     async def _ensure_policies(
         self, *, tenant_id: UUID, workspace_id: UUID
     ) -> list[RetentionPolicy]:
         items = await self._catalog.list_policies(workspace_id)
         if items:
             return items
-        seeded = RetentionPolicy.defaults(tenant_id=tenant_id, workspace_id=workspace_id)
+        seeded = RetentionPolicy.defaults(
+            tenant_id=tenant_id, workspace_id=workspace_id
+        )
         for item in seeded:
             await self._catalog.add_policy(item)
         return seeded
