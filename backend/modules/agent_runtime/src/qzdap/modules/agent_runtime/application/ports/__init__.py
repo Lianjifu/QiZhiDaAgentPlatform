@@ -361,6 +361,42 @@ class SubAgentPort(Protocol):
     ) -> dict: ...
 
 
+class AgentCatalogLister(Protocol):
+    """**列目录里的 agent** ✓（专家路由要用的最小能力 ✓ —— 窄端口 ✓）。
+
+    ⚠️ **不依赖整个 `AgentCatalogService`** ✓ —— 路由只需要「列已发布的」与
+    「按 id 取一个」✓ —— 别的能力（评估 ✓ / 版本 ✓ / 收藏 ✓）它用不上 ✓。
+    """
+
+    async def list_published(self, *, workspace_id: UUID) -> list[dict]:
+        """**工作区里已发布的 agent** ✓（行形状 = `to_admin_dict()` ✓）。"""
+        ...
+
+    async def get_admin(self, agent_id: UUID) -> dict:
+        """**按 id 取一个 agent** ✓（取不到就报错 ✓ —— 调用方负责降级 ✓）。"""
+        ...
+
+
+class AgentDecisionPort(Protocol):
+    """**专家选择的留痕** ✓（Agent 方案 §4.1 / A-24 ✓）。
+
+    ⚠️ **记「用了什么」，不记「为什么挑了它」** ✓ —— 理由会变 ✓ 用法是事实 ✓。
+    ⚠️ **两处** ✓：`session_turns.agent_decision`（**轮次级快照** ✓ —— 最后一个
+    专家 ✓）+ `session_events` 的 `agent.expert.selected`（**追加式** ✓ —— 完整
+    历史 ✓）。
+    """
+
+    async def record(
+        self,
+        *,
+        turn_id: UUID,
+        decision: dict,
+        event_seq: int | None = None,
+    ) -> None:
+        """**记一次专家选择** ✓。"""
+        ...
+
+
 class PolicyPort(Protocol):
     """Approval + governance gate. P5; declared here so the use case can
     surface `ApprovalRequiredError` for gated actions."""

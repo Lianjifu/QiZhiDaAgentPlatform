@@ -1140,6 +1140,26 @@ ToolRuntimePort
 **旧代码减少**：`adapter/llm/__init__.py` 的 6 个散装参数收敛为一个端口调用。
 **验收**：**专家选择有独立测试**；模型与工具的**取值**结果 == agent 配置里绑定的那些（**代码里没有运行时「挑」的逻辑** —— 决策 #4）；`agent_decision` 完整留痕、**不碰 `route_decision`**；**专家切换不改变会话绑定**。
 
+#### 实施记录（2026-10-31 · Stage 4：专家 Agent 选择 + 配置取值接线）
+
+| 项 | 结果 |
+|---|---|
+| **A-21 `AgentRouter`（选专家）** | ✅ **达成** —— 模块侧 `adapter/tools/agent_router_adapter.py` ✓（`CatalogAgentRouter` ✓ 实现 runtime 的 `AgentRouterPort` ✓）。⚠️ **专家 = 目录里已发布的 agent** ✓（§4.2 规则 5 ✓ —— **不是会话绑定 agent 的子集** ✓）。匹配规则**确定性** ✓：① 分类置信度 **低于阈值** → **不选专家** ✓（落回 ✓）；② `profile.task_kinds` **显式声明** → 命中 ✓（优先 ✓）；③ 否则按 **category 关键词** ✓（研究 / 代码 / 数据 / 通用 ✓）；④ 多个命中取**最近更新**的 ✓；⑤ **都没命中 → 落回会话绑定** ✓（**不报错** ✓ —— §4.1 规则 2 ✓）。⚠️ **落回时也带出配置** ✓（模型名 ✓ / 版本 ✓ / 指令 ✓）—— 否则落回的专家**没有模型** ✗✗ |
+| **A-22 模型解析接线** | ✅ **达成** —— runtime 侧 `agent_loop/expert.py` ✓（`ExpertAssembler` ✓ + `ExpertInstance` ✓）：**专家实例 = 模型 + 指令 + 工具集** ✓（§4.2 规则 1 ✓）。模型走**取值链** ✓（`LLMCaller.resolve` ✓ —— §5.2.1 ✓ —— **查表，不是决策** ✓）：专家配置里的**模型名** → `ModelResolverPort` 查表 ✓；专家配置钉了 `model_id` / `route_id` 就**直接用** ✓（**路由优先于** model_id ✓）；解析不出 → **环境默认模型** ✓（**不是错误** ✓）。构造出 `QZDAPChatModel` ✓（内部持**端口** ✓ —— runtime 不绑死供应商实现 ✓） |
+| **A-23 工具绑定接线** | ✅ **达成** —— 同一个 `ExpertAssembler` ✓：绑定集按**选中的专家**取 ✓（`ToolBindingPort.bindings(agent_id, agent_version)` ✓ —— §5.3.1 规则 6 ✓）→ **治理过滤** ✓（`ToolBindingResolver` ✓ —— ∩ 风险 ✓ ∩ 作用域 ✓ − unprotected 的副作用工具 ✓）→ **统一成 `BaseTool`** ✓（tool / mcp / skill 同一种东西 ✓） |
+| **A-24 路由留痕** | ✅ **达成** —— 载荷 = **「用了什么」** ✓（专家 id ✓ / 版本 ✓ / 任务类型 ✓ / 置信度 ✓ / **解析出的模型** ✓ / **工具集** ✓）—— **不记「为什么挑了它」** ✓（理由会变 ✓ 用法是事实 ✓）；⚠️ **不写 `route_decision`** ✓（那是 Router 层的列 ✓ —— **两列两写者** ✓）。落点两处 ✓：`session_turns.agent_decision`（**轮次级快照** ✓）+ `session_events` 的 **`agent.expert.selected`** ✓（**追加式** ✓ —— 完整历史 ✓）→ 模块侧 `adapter/tools/agent_decision_store.py` ✓（`JournalAgentDecisionStore` ✓）+ journal 新增 `record_agent_decision` ✓ / `next_event_seq` ✓ |
+| **接线到组合根** | ✅ `composition/.../lifespan.py` 的 `_ExpertAssemblerFactory.for_request(request, db_session)` ✓ —— **请求作用域** ✓（绑定集与工具运行时都绑租户 / 工作区 / 用户 ✓ —— **不是全局单例** ✗ 那会串租户 ✗✗） |
+| 旧代码减少 | **0 行** —— 本 Stage 是**新增** ✓（专家装配的机器 ✓）。⚠️ **旧路径仍在服役** ✓（旧 runner 的手写循环 ✓ —— 它**不经过**专家装配 ✓） |
+| 测试 | 新增 `runtimes/agent_runtime/tests/test_agent_expert.py` ✓（5 条 ✓：**专家 = 模型 + 指令 + 工具** ✓ / **模型名查表** ✓ / **unprotected 剔除副作用工具** ✓ / **绑定集按选中的专家取** ✓ / **留痕载荷只记用了什么** ✓）；新增 `modules/agent_runtime/tests/unit/test_agent_router_adapter.py` ✓（5 条 ✓：**显式声明优先** ✓ / **category 关键词** ✓ / **低置信度落回** ✓ / **没有专家落回** ✓ / **会话 agent 不在目录里也落回** ✓） |
+| 回归 | `pytest` **1861 passed** ✓（0 失败 ✓）；`ruff` **无新增** ✓（组合根 4 条为**既有问题** ✓）；`mypy` **无新增** ✓ |
+
+⚠️ **本 Stage 之后仍未做的**（归后续 Stage ✓）：
+
+| 项 | 归属 |
+|---|---|
+| **新的 `AgentLoopRunner`** ✓ —— 专家装配器**目前还没有生产调用方** ✓（⚠️ 这是「建而不切」✗ —— 但按方案 §9，**Stage 4 交付机器、Stage 5 接线** ✓ —— **接线落在 Stage 5** ✓） | **Stage 5（A-25）** ✓ |
+| **端到端回归** ✓ · **停用旧 ReAct 循环** ✓ | **Stage 5（A-27 / A-28）** ✓ |
+
 ### Stage 5：循环与终止条件
 
 > **开工前置（硬）**：**Session Stage 3（唯一 turn 实现）已完成**。理由：Agent Loop 是**跑在一轮之内**的循环 —— 没有唯一的 turn 编排，两边都会认为自己该管这件事，产生第二套循环语义。

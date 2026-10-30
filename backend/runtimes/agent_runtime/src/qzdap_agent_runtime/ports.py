@@ -290,6 +290,14 @@ class AgentSelection:
     #: **是不是落回了会话绑定的 agent** ✓（§4.1 规则 2 ✓—— 没有专家可路由时
     #: **落回**而不是报错 ✓）。
     fell_back: bool = False
+    #: **专家配置里的模型名** ✓（§5.2.1 的取值链输入 ✓ —— **查表，不是决策** ✓）。
+    model_name: str = ""
+    #: **专家配置里钉的模型 id** ✓（版本冻结 ✓ —— 有就用它 ✓ 不查表 ✓）。
+    model_id: ModelId | None = None
+    #: **专家配置里绑的策略路由** ✓（**优先于** `model_id` ✓ —— §5.2.1 第 3 条 ✓）。
+    route_id: ModelId | None = None
+    #: **失败转移链** ✓（§5.2.1 第 5 条 ✓ —— 交给端口执行 ✓）。
+    fallback_model_ids: tuple[ModelId, ...] = ()
 
 
 @runtime_checkable

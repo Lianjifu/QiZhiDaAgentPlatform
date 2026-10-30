@@ -250,6 +250,31 @@ class PostgresSessionJournal:
                 )
             )
 
+    async def record_agent_decision(
+        self, *, turn_id: UUID, decision: dict[str, Any]
+    ) -> None:
+        """**写 `session_turns.agent_decision`** ✓（轮次级快照 ✓ —— 最后一个专家 ✓）。
+
+        ⚠️ **只写「用了什么」** ✓（专家 id ✓ / 版本 ✓ / 解析出的模型与工具 ✓）——
+        **不写「为什么挑了它」** ✓（理由会变 ✓ 用法是事实 ✓）。
+        """
+        async with self._sf.session() as session, session.begin():
+            await session.execute(
+                update(SessionTurnORM)
+                .where(SessionTurnORM.id == turn_id)
+                .values(agent_decision=decision, updated_at=func.now())
+            )
+
+    async def next_event_seq(self, *, turn_id: UUID) -> int:
+        """**这一轮的下一个事件序号** ✓（轮次内严格递增 ✓）。"""
+        async with self._sf.session() as session:
+            result = await session.execute(
+                select(func.coalesce(func.max(SessionEventORM.seq), 0)).where(
+                    SessionEventORM.turn_id == turn_id
+                )
+            )
+            return int(result.scalar_one() or 0) + 1
+
     async def mark_delivered(self, *, turn_id: UUID) -> None:
         """把这一轮还挂着的 ``pending`` 事件标成 ``delivered``。
 

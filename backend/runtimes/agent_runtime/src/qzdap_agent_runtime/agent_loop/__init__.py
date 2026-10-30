@@ -7,6 +7,7 @@
 （Stage 5 ✓）。
 """
 
+from .expert import ExpertAssembler, ExpertInstance
 from .reason import Reasoner, ToolCallAccumulator
 
-__all__ = ["Reasoner", "ToolCallAccumulator"]
+__all__ = ["ExpertAssembler", "ExpertInstance", "Reasoner", "ToolCallAccumulator"]

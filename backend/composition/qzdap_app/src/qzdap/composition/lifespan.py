@@ -815,6 +815,71 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.tool_factory = _ToolFactory()
     app.state.mcp_runtime = mcp_rt
 
+    # ── 专家装配（Agent Stage 4）───────────────────────────────────────
+    # ⚠️ **专家实例 = 模型 + 指令 + 工具集** ✓（Agent 方案 §4.2 ✓）——
+    # 装配器**只取不选** ✓：选专家是路由端口 ✓ / 模型是查表 ✓ / 工具是
+    # 绑定集 + 治理过滤 ✓。
+    # ⚠️ **请求作用域** ✓ —— 绑定集与工具运行时都绑着租户 / 工作区 / 用户 ✓
+    # → **按请求装配** ✓（不是全局单例 ✗ —— 那样会串租户 ✗✗）。
+    class _ExpertAssemblerFactory:
+        def for_request(self, request, db_session):  # type: ignore[no-untyped-def]
+            from qzdap.modules.agent_runtime.adapter.tools.agent_router_adapter import (
+                CatalogAgentLister,
+                CatalogAgentRouter,
+            )
+            from qzdap.modules.agent_runtime.adapter.tools.catalog_binding_reader import (
+                CatalogBindingReader,
+            )
+            from qzdap.modules.agent_runtime.adapter.tools.tool_binding_adapter import (
+                ToolBindingAdapter,
+            )
+            from qzdap.modules.agent_runtime.adapter.tools.tool_runtime_adapter import (
+                ToolRuntimeAdapter,
+            )
+            from qzdap.modules.agent_runtime.adapter.tools.tool_service_adapter import (
+                ToolServiceAdapter,
+            )
+            from qzdap_agent_runtime.agent_loop.expert import ExpertAssembler
+            from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+
+            tenant_id = TenantId(request.tenant_id)
+            workspace_id = WorkspaceId(request.workspace_id)
+            owner_id = UserId(request.owner_id)
+            tool_service = app.state.tool_factory.for_session(db_session)
+            tool_port = ToolServiceAdapter(
+                tool_service=tool_service,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_id=owner_id,
+            )
+            catalog = AgentCatalogService(
+                SqlCatalogAgentRepository(db_session),
+                SqlCatalogAgentUserStateRepository(db_session),
+                evaluator=_evaluate_catalog_agent,
+            )
+            return ExpertAssembler(
+                router=CatalogAgentRouter(
+                    catalog=CatalogAgentLister(catalog),
+                ),
+                bindings=ToolBindingAdapter(
+                    tools=tool_port,
+                    agents=CatalogBindingReader(SqlCatalogAgentRepository(db_session)),
+                ),
+                llm=LLMPortAdapter(
+                    container.llm_client(),
+                    model_service=model_service,
+                ),
+                resolver=getattr(app.state, "catalog_model_resolver", None),
+                tool_runtime=ToolRuntimeAdapter(
+                    tool_service=tool_service,
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    owner_id=owner_id,
+                ),
+            )
+
+    app.state.expert_assembler_factory = _ExpertAssemblerFactory()
+
     # ── per-request skill factory ─────────────────────────────────────────
     from qzdap.modules.skill.adapter.persistence.repositories import (
         SqlSkillRepository,
