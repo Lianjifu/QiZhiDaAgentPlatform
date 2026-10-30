@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from qzdap_agent_runtime.memory.policy import MemoryPolicy
+from qzdap_kernel.errors import ConflictError, ValidationError
 
 from qzdap.modules.memory.application.admin_service import MemoryAdminService
 from qzdap.modules.memory.application.services import MemoryRuntimeService
@@ -77,3 +78,38 @@ async def test_the_trend_is_real_usage() -> None:
     # ⚠️ **今天有 1 次使用** ✓（真实计数 ✓）。
     assert trend["l2Hits"][-1] == 1
     assert trend["l2Total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_the_admin_edit_goes_through_the_sensitive_gate() -> None:
+    """**管理端编辑也过闸门** ✓（M-41 ✓ —— 不绕过脱敏 ✓）。"""
+    catalog = InMemoryCatalog()
+    fact = _l2(session_id=uuid4(), value="正常内容")
+    catalog.l2[fact.id] = fact
+    admin = MemoryAdminService(catalog)
+    with pytest.raises(ValidationError):
+        await admin.update_l2(
+            fact.id,
+            workspace_id=WORKSPACE,
+            patch={"value": "我的密码是 hunter2"},
+        )
+    # ⚠️ **被拒的内容没有进库** ✓。
+    assert catalog.l2[fact.id].value == "正常内容"
+
+
+@pytest.mark.asyncio
+async def test_the_admin_edit_is_optimistic_concurrent() -> None:
+    """**并发编辑 → 409** ✓（M-40 ✓ —— 不静默后写覆盖 ✓）。"""
+    catalog = InMemoryCatalog()
+    fact = _l2(session_id=uuid4(), value="正常内容")
+    catalog.l2[fact.id] = fact
+    admin = MemoryAdminService(catalog)
+    updated = await admin.update_l2(
+        fact.id, workspace_id=WORKSPACE, patch={"value": "改过的内容", "version": 1}
+    )
+    assert updated["version"] == 2
+    # ⚠️ **旧版本号再改 → 冲突** ✓（第二个人拿到的是旧快照 ✓）。
+    with pytest.raises(ConflictError):
+        await admin.update_l2(
+            fact.id, workspace_id=WORKSPACE, patch={"value": "另一个人的内容", "version": 1}
+        )

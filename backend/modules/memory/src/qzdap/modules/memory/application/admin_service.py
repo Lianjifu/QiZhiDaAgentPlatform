@@ -18,7 +18,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qzdap_agent_runtime.memory.promotion import KnowledgePromotionPort
-from qzdap_kernel.errors import ValidationError
+from qzdap_agent_runtime.memory.redaction import RuleRedactor
+from qzdap_kernel.errors import ConflictError, ValidationError
 from qzdap_observability.metrics import record_legacy_call
 
 from qzdap.modules.memory.application.embedding import embed_item
@@ -124,10 +125,29 @@ class MemoryAdminService:
     async def update_l2(
         self, item_id: UUID, *, workspace_id: UUID, patch: dict[str, Any]
     ) -> dict[str, Any]:
-        """确认 / 退休一条 L2 事实。"""
+        """确认 / 退休 / 编辑一条 L2 事实。
+
+        ⚠️ **人工编辑走与平面 A 同一套闸门** ✓（Memory 方案 §7.4 / M-41 ✓）——
+        管理端**不能**绕过脱敏 ✓（绕过去 = 敏感内容进库 ✗✗）。
+
+        ⚠️ **乐观并发** ✓（决策 #10 ✓ —— M-40 ✓）：patch 带 ``version`` ✓
+        → 不一致就 **409** ✓（**不静默后写覆盖** ✓ —— 那是「两个人同时改，
+        一个人的修改凭空消失」✗✗）。
+        """
         item = await self._catalog.get_l2(item_id)
         if item is None or item.workspace_id != workspace_id:
             raise MemoryNotFound(f"l2 fact {item_id} not found")
+        # ── 乐观并发 ✓（决策 #10 ✓）──
+        expected = patch.get("version")
+        if expected is not None and int(expected) != int(item.version or 1):
+            raise ConflictError(
+                "memory fact was modified by someone else",
+                code="MEMORY_VERSION_CONFLICT",
+                details={
+                    "expected": int(expected),
+                    "current": int(item.version or 1),
+                },
+            )
         status = patch.get("status")
         if status is not None:
             value = str(status)
@@ -135,9 +155,21 @@ class MemoryAdminService:
                 raise ValidationError(f"unknown l2 status {value}")
             item.status = value  # type: ignore[assignment]
         if "value" in patch and patch["value"] is not None:
-            item.value = str(patch["value"])
+            new_value = str(patch["value"])
+            # ⚠️ **敏感闸门** ✓（与平面 A **同一套规则** ✓ —— M-41 ✓）——
+            # 命中 → **整条拒绝** ✓（不是打码后继续写 ✗✗）。
+            verdict = RuleRedactor().redact(new_value)
+            if verdict.blocked:
+                raise ValidationError(
+                    "the edited content contains sensitive information "
+                    f"({', '.join(verdict.kinds)}) — refused",
+                    code="MEMORY_SENSITIVE_CONTENT",
+                    details={"kinds": list(verdict.kinds)},
+                )
+            item.value = new_value
         if patch.get("confidence") is not None:
             item.confidence = float(patch["confidence"])
+        item.version = int(item.version or 1) + 1
         item.updated_at = datetime.now(UTC)
         await self._catalog.update_l2(item)
         return item.to_admin_dict()

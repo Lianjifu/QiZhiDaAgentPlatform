@@ -128,6 +128,9 @@ class L2Fact:
             "promotedAt": format_last_update(self.created_at),
             "status": self.status,
             "promotedToL3": self.promoted_to_l3,
+            # ⚠️ **版本号** ✓（乐观并发 ✓ —— 决策 #10 ✓）—— 管理端编辑要带它
+            # （不带 = 后写覆盖 ✗✗）。
+            "version": int(self.version or 1),
         }
         if self.usage_history:
             out["usageHistory"] = list(self.usage_history)
