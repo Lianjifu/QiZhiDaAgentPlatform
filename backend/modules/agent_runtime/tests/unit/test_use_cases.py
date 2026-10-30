@@ -484,7 +484,7 @@ async def test_copilot_saved_model_early_delta_and_close(selection: str) -> None
     sid = UUID(detail["id"])
     if selection == "session":
         session = await deps["sessions"].get(sid)
-        await deps["sessions"].update(session.with_runtime(metadata={**session.metadata, "model": str(saved_id)}, graph_state={}, wait_status="idle"))
+        await deps["sessions"].update(session.with_runtime(metadata={**session.metadata, "model": str(saved_id)}, graph_state={}))
     stream = svc.stream_turn(tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=sid, user_input="hi", model=str(saved_id) if selection == "override" else None)
     assert (await anext(stream)).content == "early"
     assert not advanced

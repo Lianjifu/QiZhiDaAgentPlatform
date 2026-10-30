@@ -196,6 +196,24 @@ class PostgresSessionJournal:
                 return None
             return row[0], dict(row[1])
 
+    async def list_waiting_approval_sessions(
+        self, *, tenant_id: UUID
+    ) -> set[UUID]:
+        """哪些会话**正在等审批** ✓（一次查询，别按会话逐个查 ✗）。
+
+        ⚠️ 会话列表 / 任务列表要用它判断「等你确认」—— 那一列
+        ``wait_status`` **已退役**（台账 X6 ✅），权威是**轮次表** ✓。
+        """
+        async with self._sf.session() as session:
+            result = await session.execute(
+                select(SessionTurnORM.session_id).where(
+                    SessionTurnORM.tenant_id == tenant_id,
+                    SessionTurnORM.status == "waiting",
+                    SessionTurnORM.pending_approval.isnot(None),
+                )
+            )
+            return {row[0] for row in result.all()}
+
     async def get_turn_status(self, turn_id: UUID, *, tenant_id: UUID) -> str | None:
         """读轮次状态；轮次不存在或不属于该租户 → ``None``。"""
         async with self._sf.session() as session:

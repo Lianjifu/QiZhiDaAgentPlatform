@@ -48,7 +48,6 @@ class SqlSessionRepository(SessionRepository):
 
     async def add(self, session: Session) -> None:
         record_legacy_call("X3")  # agent_sessions.graph_state 列
-        record_legacy_call("X6")  # agent_sessions.wait_status 列
         self._s.add(
             SessionORM(
                 id=session.id,
@@ -62,13 +61,11 @@ class SqlSessionRepository(SessionRepository):
                 closed_at=session.closed_at,
                 metadata_=session.metadata,
                 graph_state=dict(session.graph_state or {}),
-                wait_status=session.wait_status or "idle",
             )
         )
 
     async def update(self, session: Session) -> None:
         record_legacy_call("X3")  # agent_sessions.graph_state 列
-        record_legacy_call("X6")  # agent_sessions.wait_status 列
         o = await self._s.get(SessionORM, session.id)
         if o is None or _cross_tenant(o):
             return
@@ -76,7 +73,6 @@ class SqlSessionRepository(SessionRepository):
         o.closed_at = session.closed_at
         o.metadata_ = session.metadata
         o.graph_state = dict(session.graph_state or {})
-        o.wait_status = session.wait_status or "idle"
 
     async def get(self, session_id: UUID) -> Session | None:
         o = await self._s.get(SessionORM, session_id)
@@ -99,8 +95,8 @@ class SqlSessionRepository(SessionRepository):
     async def request_cancel(self, session_id: UUID) -> bool:
         """Ask the running turn to stop. Returns True when a turn was live.
 
-        ⚠️ **「是否在飞」看 ``current_turn_id``** —— 不再看 ``wait_status``
-        （那列的互斥职责已迁到 Session 层的 claim 端口 ✓，台账 R3）。
+        ⚠️ **「是否在飞」看 ``current_turn_id``** —— 不再看那个已退役的
+        状态列（互斥职责已迁到 Session 层的 claim 端口 ✓，台账 R3）。
         """
         session = await self.get(session_id)
         if session is None:

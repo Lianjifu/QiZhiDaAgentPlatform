@@ -69,7 +69,6 @@ class PostgresSessionStore:
                 status=SessionStatus.OPEN.value,
                 metadata_=dict(identity.metadata),
                 graph_state={},
-                wait_status="idle",
                 channel_session_key=identity.channel_session_key,
             )
             .on_conflict_do_nothing(

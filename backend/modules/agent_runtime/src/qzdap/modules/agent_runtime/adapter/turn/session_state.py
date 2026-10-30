@@ -1,8 +1,8 @@
 """``SessionStatePort`` 的实现 —— 会话行的读改（合并，不是覆盖 ✓）。
 
-⚠️ **过渡期**还写 ``wait_status`` —— 那列的**互斥**职责已迁走（台账 R3 ✅），
-现在只剩「审批挂起」的语义；Stage 5 会把它换成
-``session_turns.pending_approval`` 落库 ✓。
+⚠️ **不再写** ``wait_status`` —— 那列**整体退役**（台账 X6 ✅）：互斥职责
+迁到了 ``current_turn_id``（台账 R3），审批挂起落到了
+``session_turns.pending_approval``（Session 方案 §8）✓。
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ class SqlSessionState(SessionStatePort):
         session_id: UUID,
         metadata: Mapping[str, Any] | None = None,
         graph_state: Mapping[str, Any] | None = None,
-        wait_status: str | None = None,
     ) -> None:
         """改会话的元数据 / 续传状态 ✓。
 
@@ -44,8 +43,6 @@ class SqlSessionState(SessionStatePort):
             updated = updated.with_runtime(metadata=dict(metadata))
         if graph_state is not None:
             updated = updated.with_runtime(graph_state=dict(graph_state))
-        if wait_status is not None:
-            updated = updated.with_runtime(wait_status=wait_status)
         await self._sessions.update(updated)
 
 

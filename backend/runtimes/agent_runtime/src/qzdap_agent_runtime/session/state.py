@@ -1,8 +1,13 @@
 """会话与轮次的**状态机**（Session 方案 §4）。
 
-**为什么要有它**：`agent_sessions.status` 与 `agent_sessions.wait_status`
-表达同一件事却取值不一致（`open` vs `idle`）—— 那是数据层的**第二套真相**。
-本模块把状态与转移**收在一处**，非法转移**报错**（不是静默忽略）。
+**为什么要有它**：会话的「状态」曾散落在两列里 —— `agent_sessions.status`
+（`open` / `closed` …）与 `agent_sessions.wait_status`（`idle` / `running` …）
+**表达同一件事却取值不一致** —— 那是数据层的**第二套真相** ✗。
+
+⚠️ **2026-10-30 更新**：`wait_status` 那一列**整体退役**（台账 **X6** ✅ ——
+互斥迁到 `current_turn_id`，审批挂起落到 `session_turns.pending_approval`，
+迁移 0053 DROP 掉它）。本模块把状态与转移**收在一处**，非法转移**报错**
+（不是静默忽略）✓。
 
 **两套状态机**（互不重叠）：
 

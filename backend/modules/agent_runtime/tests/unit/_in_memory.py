@@ -283,6 +283,15 @@ class InMemorySessionJournal(SessionJournal):
                 return turn_id, dict(row["pending_approval"])
         return None
 
+    async def list_waiting_approval_sessions(self, *, tenant_id: UUID) -> set[UUID]:
+        return {
+            row["session_id"]
+            for row in self.turns.values()
+            if row.get("tenant_id") == tenant_id
+            and row.get("status") == "waiting"
+            and row.get("pending_approval")
+        }
+
     async def append_event(
         self,
         *,

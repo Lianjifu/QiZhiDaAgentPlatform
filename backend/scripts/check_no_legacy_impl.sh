@@ -161,7 +161,7 @@ from langgraph\.checkpoint\.postgres import;modules/;X20;X;on
 from langgraph\.checkpoint\.postgres import;composition/;X20;X;on
 RunTurnCompletionUseCase;modules/;X2;X;off
 use_cases.run_turn;modules/;X2;X;off
-wait_status;modules/;X6;X;off
+(\.wait_status\b|wait_status\s*=);modules/;X6;X;on
 graph_state;modules/;X3;X;off
 agent_turns;modules/;X4;X;off
 agent_session_messages;modules/;X4;X;off

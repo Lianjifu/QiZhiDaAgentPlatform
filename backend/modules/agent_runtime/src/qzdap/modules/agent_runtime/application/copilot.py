@@ -103,6 +103,10 @@ class CopilotSessionService:
     ) -> list[dict[str, Any]]:
         rows = await self._sessions.list_for_owner(tenant_id, owner_id, limit=80)
         query = search.strip().lower()
+        # 一次查完「哪些会话在等审批」✓（逐个查 = N 次查询 ✗）
+        waiting = await self._journal.list_waiting_approval_sessions(
+            tenant_id=tenant_id
+        )
         out: list[dict[str, Any]] = []
         for session in rows:
             if session.status is SessionStatus.CLOSED:
@@ -112,7 +116,9 @@ class CopilotSessionService:
             hay = f"{title} {preview}".lower()
             if query and query not in hay:
                 continue
-            out.append(_session_card(session))
+            out.append(
+                _session_card(session, waiting_approval=session.id in waiting)
+            )
         return out
 
     async def create_session(
@@ -160,8 +166,16 @@ class CopilotSessionService:
         messages = await self._messages.list_for_session(session_id)
         pending = (session.graph_state or {}).get("pending_approval")
         agent = await self._catalog.get_admin(session.agent_id)
+        waiting = await self._journal.find_pending_approval(
+            session_id=session_id, tenant_id=tenant_id
+        )
         return _session_detail(
-            session, messages=messages, pending=pending, agent=None, agent_dict=agent
+            session,
+            messages=messages,
+            pending=pending,
+            agent=None,
+            agent_dict=agent,
+            waiting_approval=waiting is not None,
         )
 
     async def close_session(self, *, tenant_id: UUID, session_id: UUID) -> None:
@@ -218,10 +232,15 @@ class CopilotSessionService:
             workspace_id=workspace_id,
             limit=200,
         )
+        waiting = await self._journal.list_waiting_approval_sessions(
+            tenant_id=tenant_id
+        )
         out: list[dict[str, Any]] = []
         for session in sessions:
             latest_turn = await self._turns.latest_for_session(session.id)
-            task = _task_card(session, latest_turn)
+            task = _task_card(
+                session, latest_turn, waiting_approval=session.id in waiting
+            )
             if status != "all" and task["status"] != status:
                 continue
             needle = q.strip().lower()
@@ -641,14 +660,16 @@ def _auto_title(user_input: str) -> str:
     return text[:24] + "…"
 
 
-def _session_card(session: Session) -> dict[str, Any]:
+def _session_card(session: Session, *, waiting_approval: bool = False) -> dict[str, Any]:
     return {
         "id": str(session.id),
         "title": str(session.metadata.get("title") or "新对话"),
         "preview": str(session.metadata.get("preview") or ""),
         "updatedAt": session.created_at.isoformat(),
         "agentId": str(session.agent_id),
-        "waitStatus": session.wait_status,
+        # ⚠️ **由轮次表推导**（``wait_status`` 那一列已退役，台账 X6 ✅）——
+        # 「正在等审批」的唯一权威是 ``session_turns.status='waiting'`` ✓。
+        "waitStatus": "waiting_approval" if waiting_approval else "idle",
     }
 
 
@@ -659,8 +680,9 @@ def _session_detail(
     pending: dict[str, Any] | None,
     agent: CatalogAgent | None,
     agent_dict: dict[str, Any] | None = None,
+    waiting_approval: bool = False,
 ) -> dict[str, Any]:
-    card = _session_card(session)
+    card = _session_card(session, waiting_approval=waiting_approval)
     card["messages"] = messages
     card["pendingApproval"] = pending
     card["agent"] = agent.to_catalog_dict() if agent is not None else agent_dict
@@ -668,7 +690,12 @@ def _session_detail(
     return card
 
 
-def _task_card(session: Session, latest_turn: Turn | None) -> dict[str, Any]:
+def _task_card(
+    session: Session,
+    latest_turn: Turn | None,
+    *,
+    waiting_approval: bool = False,
+) -> dict[str, Any]:
     """/api/tasks 派生 — 把 Session + 最新 turn 翻译成前端 Task 形状.
 
     故意用 session.metadata 存的 agentName / title, 不再 join agents,
@@ -703,7 +730,7 @@ def _task_card(session: Session, latest_turn: Turn | None) -> dict[str, Any]:
     elif latest_turn.status.value == "running":
         # 轮次挂起等审批时, 展示成「等你确认」而不是「执行中」—— 后者会让人
         # 以为系统还在跑, 实际上球在用户手里.
-        if session.wait_status == "waiting_approval":
+        if waiting_approval:
             status = "待处理"
             priority = "高"
             due = "等你确认"

@@ -173,14 +173,8 @@ class SessionStatePort(Protocol):
         session_id: UUID,
         metadata: Mapping[str, Any] | None = None,
         graph_state: Mapping[str, Any] | None = None,
-        wait_status: str | None = None,
     ) -> None:
-        """改会话的元数据 / 续传状态（**合并**，不是覆盖 ✓）。
-
-        ⚠️ ``wait_status`` 是**过渡期**参数 —— 那列的互斥职责已迁走（台账 R3
-        ✅），现在只剩「审批挂起」的语义；Stage 5 会把它换成
-        ``session_turns.pending_approval`` 落库 ✓。
-        """
+        """改会话的元数据 / 续传状态（**合并**，不是覆盖 ✓）。"""
         ...
 
 
@@ -277,7 +271,6 @@ class TurnRunner:
                         session_id=request.session_id,
                         metadata=metadata,
                         graph_state=self._executor.latest_state(),
-                        wait_status="waiting_approval",
                     )
                     # 审批挂起信息**落库**（Session 方案 §8 · 决策 #6）——
                     # 恢复时要靠它校验「挂起的是哪个工具、参数有没有被改」✓。
@@ -316,7 +309,6 @@ class TurnRunner:
                         session_id=request.session_id,
                         metadata=metadata,
                         graph_state=self._executor.latest_state(),
-                        wait_status="idle",
                     )
                     await self._lifecycle.finish_turn(
                         turn_id=request.turn_id,

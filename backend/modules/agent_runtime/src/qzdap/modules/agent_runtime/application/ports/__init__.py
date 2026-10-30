@@ -29,8 +29,8 @@ class SessionRepository(ABC):
 
     ⚠️ **执行权（互斥）不在这里** —— 它归 Session 层的 ``TurnClaimPort``
     （``agent_sessions.current_turn_id`` + ``session_turns.status`` 推导 ✓，
-    台账 R3）：旧实现是这里的 ``wait_status`` CAS，语义与「审批挂起」混装
-    在一列 ✗。
+    台账 R3）：旧实现是这一列上的 CAS，语义与「审批挂起」混装在一列 ✗
+    （那一列已退役，台账 X6 ✅）。
     """
 
     @abstractmethod
@@ -202,6 +202,11 @@ class SessionJournal(ABC):
         self, *, session_id: UUID, tenant_id: UUID
     ) -> tuple[UUID, dict[str, Any]] | None:
         """查这个会话**正在等审批**的那一轮 + 挂起信息 ✓（没有就 ``None``）。"""
+        ...
+
+    @abstractmethod
+    async def list_waiting_approval_sessions(self, *, tenant_id: UUID) -> set[UUID]:
+        """哪些会话**正在等审批** ✓（一次查询 —— 别按会话逐个查 ✗）。"""
         ...
 
 

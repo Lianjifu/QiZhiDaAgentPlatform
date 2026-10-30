@@ -62,12 +62,9 @@ class SessionORM(TenantScopedMixin, Base):
         default=dict,
         server_default=text("'{}'::jsonb"),
     )
-    wait_status: Mapped[str] = mapped_column(
-        String(32),
-        nullable=False,
-        default="idle",
-        server_default=text("'idle'"),
-    )
+    # ⚠️ **``wait_status`` 已退役**（台账 X6 ✅）—— 互斥归 ``current_turn_id``
+    # （R3），审批挂起归 ``session_turns.pending_approval``（方案 §8）。
+    # 迁移 0053 DROP 掉这一列；ORM 也不再映射它 ✓。
 
     # Stage 2 新增字段（§14.1）— migration 0035
     current_revision: Mapped[int] = mapped_column(

@@ -449,7 +449,7 @@
 | | S-03 `session_messages.session_id` 回填 | ✅ **已执行**（2026-10-29，迁移 0046 内：可空列 → 回填 → SET NOT NULL → 唯一索引；孤儿行直接报错不回填） | — | 0 | S-02 |
 | | S-04 `ErrorCode` 加 `APPROVER_MUST_DIFFER` | ✅ **已实施**（2026-10-30）：`libs/schema/.../errors.py` 的枚举成员 + 投影条目；`modules/governance` 的 `ApproverMustDiffer.code` 对齐 | — | 0 | — |
 | | S-05 **`AsyncPostgresSaver` 接线** | ✅ **已实施**（2026-10-30）：`langgraph.checkpoint.postgres.aio` 接进 **composition 的 lifespan**（建连接 → `setup()` → 关停时释放）；建表仍归**迁移 0046**（`setup()` 因此是幂等空跑）| **X20 已清理**（同步 saver 工厂 `graph/builder.py:from_url` **删除** —— 同步 saver 在全异步仓库里会阻塞事件循环，且无生产调用方；扫描规则 + 架构测试双重守门） | ~25 行 | S-01 |
-| | S-06 停写 `wait_status` | ⚠️ **未达成**（2026-10-30）：第二套 turn 实现（**X2**）仍靠 `try_claim` 的 `wait_status` 分支 —— 停写会让 IM 侧失去互斥 ✗✗。**必须等 Stage 3 的唯一 turn 实现**。本轮改为**旧入口打点**（`record_legacy_call("X6")`）—— 「没有打点就没有清理判据」 | **X6 停写**（关注点 #23）—— **未接管** | 写入点归零（~20 行）—— **未达成** | S-02 |
+| | S-06 停写 `wait_status` | ✅ **已达成**（2026-10-30，Stage 6）—— 三个依赖都摘掉了才停写：① 互斥迁到 `current_turn_id`（R3 ✅）② 审批挂起落进 `session_turns.pending_approval`（Stage 5a ✅）③ 读端（会话卡片 / 任务列表的「等你确认」）改成**从轮次表推导** ✓ | **X6 已清理**（关注点 #23） | 写入点归零（~20 行） | S-02 |
 | | S-07 打点本层旧入口 | ✅ **已实施**（2026-10-30）：**X2**（`dispatch_subscriber`，早于本轮）· **X3 / X6**（`repositories`，早于本轮）· **X4**（`SqlTurnRepository.add` / `SqlSessionMessageRepository.append`，本轮补）· **R3**（`try_claim` + copilot 调用点，本轮补）· **X18**（`copilot.stream_turn`，早于本轮）。⚠️ **X7 的打点已撤除** —— 它的旧行为（吞异常）本轮就删了 | — | 0 | 前置 C2 |
 | Stage 1 · Manager | S-08 `resolve_or_create` | ✅ **已实施**（2026-10-30）：`session/manager.py` 的 `SessionManager.resolve_or_create`（lookup → insert → **唯一约束冲突** → 有界重试 → 读回胜者）；`PostgresSessionStore` 的 `ON CONFLICT ... WHERE channel_session_key IS NOT NULL` **arbiter 带同一谓词**（否则 Postgres 认不出这个部分唯一索引） | — | 0 | Stage 0 |
 | | **S-08b `lookup`（只读）** | ✅ **已实施**（2026-10-30）：`SessionManager.lookup` —— **只读**查既有会话 + 其 agent 绑定；**不创建、不写表**、查不到返回 `None`。Router 粘性规则（决策链规则 1）的依据 —— 没有它就是鸡生蛋（`resolve_or_create` 需要 `agent_binding` 入参） | — | 0 | Stage 0 |
@@ -482,7 +482,7 @@
 | | S-31 审批幂等 | 同 `(session_id, tool_call_id, request_hash)` 复用 approval ID | — | 0 | S-27 |
 | Stage 5b · 删第二套 turn 实现 | **S-32 切 IM 入口** | `dispatch_subscriber.py` → 新链路 | 与 **Gateway G-20 同 PR** | 0（**只切不删**） | **Gateway Stage 4a 同 PR** |
 | | **S-33 删 `use_cases/run_turn.py` + `run_turn_to_completion.py`** | — | **X2（IM 侧）**（关注点 #2） | **~600 行** | 与 **Gateway G-20 同 PR** |
-| Stage 6 · 清理与封口 | **S-34 DROP `agent_sessions.wait_status` 列** | 单独迁移，不与 0046 合并 | **X6**（关注点 #23） | **1 列** | 读端已随 Stage 5b 删除 |
+| Stage 6 · 清理与封口 | **S-34 DROP `agent_sessions.wait_status` 列** | ✅ **已达成**（2026-10-30）—— **迁移 0053**（单独迁移 ✓，不与 0046 合并）；ORM 不再映射 ✓ → **代码不再依赖这一列**（DROP 与否都不影响运行 ✓）。⚠️ dev 库待连接释放后 `make db-upgrade`（迁移 0052 / 0053） | **X6 已清理**（关注点 #23） | **1 列** | 读端已改成从轮次表推导 ✓ |
 | | **S-35 停写并废弃 `agent_sessions.graph_state`** | 保留 ≥95% 流量后 ≥7 天的只读期 | **X3**（关注点 #22） | **1 列** | 与 S-34 同 PR |
 | | **S-36 迁数据 + DROP `agent_turns` / `agent_session_messages`** | — | **X4**（关注点 #21） | **2 张表** | **独占（删表）**。前置四条全满足：① 切读（S-15a）已完成；② **新旧表全量对账差异 = 0**；③ **只读窗口 ≥7 天**（S-15b 停旧写之后）；④ 备份恢复**演练过** |
 | | S-37 启用扫描脚本 Session 段 | 台账 X2/X3/X4/X6/X7 段（**X18 的规则在 Stage 3b 随删除一起启用**） | — | 0 | S-33 · S-21b |
@@ -1146,7 +1146,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] R-25/R-26 **确认**无残留调用方（不删）· R-27 启用扫描脚本 Router 段 · R-28 更新台账 + 现状文档
 
 ### Session 层（§3.3）—— **删除 X2 / X3 / X4 / X6 / X7 / X18**（**全局关键路径**）
-- [ ] S-01 `session/` 骨架 + `state.py` · S-02 **迁移 0046** · S-03 `session_messages.session_id` 回填 · S-04 `APPROVER_MUST_DIFFER` · S-05 **`AsyncPostgresSaver`** · S-06 停写 `wait_status` → **X6 停写** · S-07 打点 X2–X7
+- [ ] S-01 `session/` 骨架 + `state.py` · S-02 **迁移 0046** · S-03 `session_messages.session_id` 回填 · S-04 `APPROVER_MUST_DIFFER` · S-05 **`AsyncPostgresSaver`** · S-06 停写 `wait_status` → **X6** ✅ 2026-10-30 · S-07 打点 X2–X7
 - [ ] S-08 `resolve_or_create` · **S-08b `lookup`（只读，Router 粘性依据）** · S-09 `close`/`archive` · S-10 sweeper 骨架 · S-11 **删 `try_claim` 的 `wait_status` 分支**
 - [ ] S-12 `ingress_seq` · S-13 `session_seq` · S-14 checkpoint 接线 · S-15 启用新表写入
 - [ ] S-16 `turn_runner.py` 落地 · S-17 轮次幂等 · S-18 取消 · S-19 成本归属 · S-20 **切 web/api 入口**
@@ -1158,7 +1158,8 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] S-30 审批自动过期（**归治理域** —— approvals 表不归 Session 管；Session 的 sweeper 不该跨域写治理表 ✗）· S-31 审批幂等（同 `(session_id, tool_call_id, request_hash)` 复用 approval ID —— 创建审批在**旧执行器**里（`runner._request_approval`），要等 Agent 层 A-26 才接得上 ✓）
 - [ ] S-32 **切 IM 入口**（与 **G-20 同 PR**）· S-33 **删 `use_cases/run_turn.py` + `run_turn_to_completion.py`** → **X2**
 - [ ] S-15 **双写启用** · **S-15a 切读新表** · **S-15b 停旧写（双写结束）**
-- [ ] S-34 **DROP `wait_status`** → **X6** · S-35 **停写并废弃 `graph_state`** → **X3** · S-36 **迁数据 + DROP 旧表** → **X4**（前置：切读完成 + 全量对账差异 = 0 + 只读窗口 ≥7 天 + 备份恢复演练过）
+- [x] S-34 **DROP `wait_status`** → **X6** ✅ 2026-10-30（迁移 0053）
+- [ ] S-35 **停写并废弃 `graph_state`** → **X3** · S-36 **迁数据 + DROP 旧表** → **X4**（前置：切读完成 + 全量对账差异 = 0 + 只读窗口 ≥7 天 + 备份恢复演练过）
 - [ ] S-37 启用扫描脚本 Session 段 · S-38 更新台账 + 现状文档
 
 ### Context 层（§3.4）—— **删除 X8 / X9 / X10**

@@ -31,7 +31,6 @@ def session_orm_to_domain(o: SessionORM) -> Session:
         closed_at=o.closed_at,
         metadata=dict(o.metadata_ or {}),
         graph_state=dict(getattr(o, "graph_state", None) or {}),
-        wait_status=getattr(o, "wait_status", None) or "idle",
     )
 
 

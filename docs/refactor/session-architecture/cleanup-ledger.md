@@ -99,7 +99,7 @@
 | X3 | `agent_sessions.graph_state`（续传状态与业务数据混装同列） | `modules/agent_runtime/adapter/persistence/models.py:56-61` | `session_events` / `session_turns` | 未开始（**替代物开始有数据**，2026-10-29：Gateway Stage 4b 连带落地了 `session_events` 的事件落库 —— 事件流真写真读了；`graph_state` 仍在写，迁移归 Session Stage 1/6。2026-10-30：Session Stage 1 补齐**旧入口打点** `record_legacy_call("X3")` —— 「没有打点就没有清理判据」） | Session 层 |
 | X4 | `agent_turns` / `agent_session_messages` 表 | `migrations/versions/`（早期） | `session_turns` / `session_messages` | 未开始（**双写期已开始**，2026-10-29：Gateway Stage 4b 连带落地了 `session_turns` 的**轮次双写** —— 它是 `session_events` 的外键父行；旧表仍在写，删除归 Session Stage 6。2026-10-30：Session Stage 1 补齐**旧表写入点的打点** `record_legacy_call("X4")`（`SqlTurnRepository.add` / `SqlSessionMessageRepository.append`）—— 旧表什么时候不再被写，指标说了算。2026-10-30：Session Stage 2 落地**消息双写**（新表 `session_messages` + 旧表 `agent_session_messages` 都写）；**读仍走旧表**（切读 S-15a 要等对账窗口）。旧 ORM 改名 `LegacySessionMessageORM` —— 新旧两张表都叫「会话消息」，同名会让人以为只有一张 ✗） | Session 层（Router 决策 #2） |
 | X5 | 占位图 `compile_loop_graph`（节点全是 `_passthrough_*`） | `modules/agent_runtime/adapter/graph/loop.py:63-69`、`runner.py:92` | Agent Loop 方案的真实图 | 未开始 | Agent 层（Stage 7） |
-| X6 | `agent_sessions.wait_status` 列（与 `status` 表达同一状态机，取值还不一致） | `modules/agent_runtime/adapter/persistence/models.py:63-67` | `current_turn_id` + `session_turns.status` 推导 | 未开始（2026-10-30：Session Stage 1 —— 旧入口**已打点** `record_legacy_call("X6")`；Stage 3a 已把**互斥职责**迁走（台账 R3 ✅）。⚠️ **写入点仍不为零**：那列现在只剩「审批挂起」的语义 —— 停写要等 **Stage 5** 把审批挂起落进 `session_turns.pending_approval`） | Session 层 |
+| X6 | `agent_sessions.wait_status` 列（与 `status` 表达同一状态机，取值还不一致） | ~~`modules/agent_runtime/adapter/persistence/models.py:63-67`~~（**已删**） | `current_turn_id`（互斥，台账 R3 ✅）+ `session_turns.pending_approval`（审批挂起，Session 方案 §8 ✅） | **已清理**（2026-10-30：Session Stage 3a + Stage 5a + Stage 6 —— ① 互斥职责迁到 `current_turn_id`（R3）；② 审批挂起落进 `session_turns.pending_approval`；③ 读端（会话卡片 / 任务列表的「等你确认」）改成**从轮次表推导**（一次查询，别逐会话查 ✗）；④ ORM 不再映射 + **迁移 0053 DROP 该列** ✓。扫描规则 `(\.wait_status\b|wait_status\s*=)` 启用 ✓） | Session 层（**Stage 6** ✅） |
 | X7 | 审批异常吞噬 `except Exception: pass`（吞掉 `ApproverMustDiffer` / `ApprovalExpired` / `ApprovalAlreadyDecided` → 工具照常执行） | `modules/agent_runtime/src/qzdap/modules/agent_runtime/application/copilot.py:466-471` | `ErrorChunk` + 明确错误码（Session 方案 §5.6 校验清单） | **已清理**（2026-10-30：Session Stage 1 —— `except Exception: pass` 换成「记日志 + **再抛**」：审批失败（`ApproverMustDiffer` / `ApprovalExpired` / `ApprovalAlreadyDecided`）不再被吞掉，**工具不会照常执行** ✗→✓；旧打点撤除） | Session 层（**Stage 1**，比原定的 Stage 5 提前） |
 | X8 | 旧上下文组装 `_load_messages`（**在跑**，消息形状正确，是新 Builder 的实现基础）—— ⚠️ 但**召回失败被静默吞掉**（`runner.py:523,549`，无 `recall_degraded`），且 `top_k`（8/6）与每条 400 字截断需一并复刻 | `modules/agent_runtime/src/qzdap/modules/agent_runtime/adapter/graph/runner.py:495-566` | `context/builder.py`（迁入后删除原处） | 未开始 | Context 层 |
 | X9 | 旧上下文压缩 `compact_messages`（纯字符截断：每条 180 字 × 20 条，无摘要模型）—— ⚠️ 但它的**工具结果清洗（截 1500 字）/ 首个 system 保留 / 摘要累加**三项行为必须复刻 | `modules/agent_runtime/src/qzdap/modules/agent_runtime/adapter/graph/compact.py:14-50` | `context/compressor.py`（async 摘要 + 确定性降级，**降级时追加而非覆盖摘要**） | 未开始 | Context 层 |
@@ -250,7 +250,7 @@ _scan "build_session_key"         runtimes/        "R4"
 # 跨层
 _scan "RunTurnCompletionUseCase"  modules/          "X2"
 _scan "use_cases.run_turn"        modules/          "X2"
-_scan "wait_status"               modules/          "X6"
+_scan "(\.wait_status\b|wait_status\s*=)"  modules/  "X6"   # 只盯**引用/赋值** —— 文档里提到那列名不算残留 ✓
 _scan "try_claim"                 modules/          "R3"
 
 # Session 域（X2 / X3 / X4）
@@ -459,7 +459,7 @@ def record_legacy_call(entry: str) -> None:
 | X2 第二套 turn 实现 | IM 渠道当前走 `dispatch_subscriber → run_turn_to_completion`；停用 turn 实现与停用渠道入口必须同 PR，否则 IM 断 | Session 层与 Gateway 层**同 PR** |
 | G5 `ChannelMessageReceived` | `services.py:240` 发布、`dispatch_subscriber.py:98` 消费，发布端与消费端必须同时换 | 同 PR |
 | X3 `graph_state` 停写 | 同一份续传状态的读写两端 | 停写与切读同 PR |
-| X6 `wait_status` 列 | 列被 repositories 写、copilot 读 | 先「停止写入 + 保留列」，删除另做 |
+| X6 `wait_status` 列 | 列被 repositories 写、copilot 读 | ✅ **已清理**（2026-10-30：停写 + 读端改从轮次表推导 + 迁移 0053 DROP）—— 「先停写后删列」的两步**在本轮一起做完**（中间没有跨 Stage 的依赖 ✗） |
 | R1 `channel_session_key` 唯一索引 | 加索引前必须先清理历史重复值，否则 DDL 失败 | 清理 → 加索引 → 加约束，三步各自独立 PR |
 | X4 旧表 DROP | 物理不可逆，无并存期 | 全量对账 + 只读窗口后再 DROP |
 | `session_turns` 写入切换 | 新表零生产数据，历史全在旧表 | 双写期 → 对账 → 切读 → 停旧写 → DROP |

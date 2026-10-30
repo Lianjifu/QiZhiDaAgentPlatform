@@ -62,7 +62,6 @@ class Session:
     closed_at: datetime | None = None
     metadata: dict = field(default_factory=dict)
     graph_state: dict = field(default_factory=dict)
-    wait_status: str = "idle"
 
     @classmethod
     def create(
@@ -92,7 +91,6 @@ class Session:
             closed_at=None,
             metadata=dict(metadata or {}),
             graph_state={},
-            wait_status="idle",
         )
 
     def close(self) -> Self:
@@ -115,7 +113,6 @@ class Session:
             closed_at=datetime.now(UTC),
             metadata=dict(self.metadata),
             graph_state=dict(self.graph_state),
-            wait_status=self.wait_status,
         )
 
     def with_runtime(
@@ -123,7 +120,6 @@ class Session:
         *,
         metadata: dict | None = None,
         graph_state: dict | None = None,
-        wait_status: str | None = None,
     ) -> Self:
         return type(self)(
             id=self.id,
@@ -137,7 +133,6 @@ class Session:
             closed_at=self.closed_at,
             metadata=dict(metadata if metadata is not None else self.metadata),
             graph_state=dict(graph_state if graph_state is not None else self.graph_state),
-            wait_status=wait_status if wait_status is not None else self.wait_status,
         )
 
     def raise_opened_event(self) -> SessionOpened:

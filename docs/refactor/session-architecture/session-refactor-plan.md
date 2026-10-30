@@ -983,6 +983,28 @@ IM 的事件要进 `session_events`、再由 outbox worker 投递 —— 这正�
 | 更新现状文档 | `docs/copilot-chat-module-architecture.md` |
 
 **旧代码减少**：§11.4 删除清单**归零** —— `wait_status` 列 + `graph_state` 列 + `agent_turns` / `agent_session_messages` 两张旧表，**合计约 300 行 + 2 表 + 2 列**（第二套 turn 实现的 ~600 行已在 Stage 5b 删除）。
+
+#### 实施记录（2026-10-30 · Stage 6a：`wait_status` 整列退役 · 台账 X6 已清理）
+
+| 项 | 结果 |
+|---|---|
+| 停写 | 互斥（`current_turn_id` ✅）与审批挂起（`session_turns.pending_approval` ✅）**两个依赖都摘掉了**才停写 ✓；ORM **不再映射**该列 ✓ → 代码不再依赖它（DROP 与否都不影响运行 ✓） |
+| 读端 | 会话卡片 / 任务列表的「等你确认」改成**从轮次表推导** ✓ —— 一次查询（`list_waiting_approval_sessions`）拿全集 ✓，**不逐会话查**（那是 N 次查询 ✗） |
+| 领域 | `Session.wait_status` 字段删除 ✓（连同 `with_runtime` 的参数 ✓） |
+| 迁移 | **0053**（单独迁移 ✓，不与 0046 合并）；实测 upgrade → downgrade → upgrade ✓ |
+| 扫描 | 规则从 `wait_status` **收窄**成 `(\.wait_status\b|wait_status\s*=)` —— 只盯**引用/赋值**，文档里提到列名不算残留 ✓（已用植入字面量验证会红 ✓） |
+
+⚠️ **dev 库待办**：`make db-upgrade`（迁移 **0052 / 0053**）—— 我这边连接被你运行中
+的应用占满，apply 不上去 ✓（**代码不依赖这两列**，所以不迁移也能跑 ✓）。
+
+**仍未接管**（都要等前置条件，不能提前做）：
+
+| # | 事项 | 前置 | 归属 |
+|---|---|---|---|
+| **S-35** | 停写并废弃 `agent_sessions.graph_state`（X3） | ≥95% 流量 + ≥7 天只读期 | Stage 6（后续） |
+| **S-36** | 迁数据 + DROP `agent_turns` / `agent_session_messages`（X4） | 切读完成 + 全量对账差异 = 0 + 只读窗口 ≥7 天 + **备份恢复演练过** | Stage 6（后续） |
+| **S-37** | 启用扫描脚本 X2 / X3 / X4 段 | 旧实现删完 | 随各项删除 |
+| **S-32 / S-33** | 切 IM 入口 + 删第二套 turn 实现（X2） | **与 Gateway Stage 4a 同 PR**（原子 ✓） | Stage 5b |
 **验收**：台账本层条目全部「已清理」；扫描脚本无命中。
 
 ### 阶段与「旧代码减少」对照
