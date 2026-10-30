@@ -13,6 +13,12 @@ from uuid import UUID
 
 from qzdap.modules.tool.application.services import ToolService
 from qzdap.modules.tool.application.tool_catalog import BUILTIN_TOOL_SPECS
+from qzdap.modules.tool.application.tool_schema import (
+    tool_description,
+    tool_needs_confirm,
+    tool_parameters,
+    tool_risk,
+)
 
 from qzdap.modules.agent_runtime.application.ports import ToolPort
 
@@ -49,11 +55,11 @@ class ToolServiceAdapter(ToolPort):
     async def list_tools(self) -> list[dict]:
         """Enumerate the tenant's enabled tools with their argument contract.
 
-        The ``tools`` rows carry name + description but an empty ``spec``,
-        so the function schema the model sees comes from the static
-        built-in catalog. Rows the catalog doesn't know about (admin
-        registered OpenAPI / MCP tools) fall back to a permissive schema
-        rather than being hidden.
+        The ``tools`` rows carry name + description but an empty ``spec``
+        for the built-ins, so the function schema the model sees comes
+        from the static built-in catalog. Admin registered OpenAPI / MCP
+        tools carry their real spec — their schema is derived from it
+        (an empty ``properties`` object would leave the model guessing).
         """
         try:
             rows = await self._svc.list_tools().execute(
@@ -82,10 +88,11 @@ class ToolServiceAdapter(ToolPort):
             out.append(
                 {
                     "name": name,
-                    "description": row.description or name,
-                    "parameters": {"type": "object", "properties": {}},
-                    "risk": "medium",
-                    "needConfirm": True,
+                    "description": tool_description(row),
+                    "parameters": tool_parameters(row),
+                    "risk": tool_risk(row),
+                    "needConfirm": tool_needs_confirm(row),
+                    "protocol": str(getattr(row.protocol, "value", row.protocol)),
                 }
             )
         return out

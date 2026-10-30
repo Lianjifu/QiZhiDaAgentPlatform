@@ -23,8 +23,20 @@ from .lock import (
     RevisionConflictError,
     SessionBusyError,
 )
+from .tool_binding import (
+    RISK_ORDER,
+    BindingPolicy,
+    ToolBindingResolver,
+    current_actor,
+    require_actor,
+    reset_current_actor,
+    set_current_actor,
+    tool_schema,
+)
 
 __all__ = [
+    "RISK_ORDER",
+    "BindingPolicy",
     "InMemoryLockManager",
     "InMemoryToolExecutor",
     "LLMCaller",
@@ -35,9 +47,15 @@ __all__ = [
     "RevisionConflictError",
     "SessionBusyError",
     "ToolArgumentError",
+    "ToolBindingResolver",
     "ToolCallRecord",
     "ToolFunction",
     "ToolRateLimitError",
     "ToolTimeoutError",
+    "current_actor",
+    "require_actor",
+    "reset_current_actor",
+    "set_current_actor",
+    "tool_schema",
     "usage_from_chunks",
 ]

@@ -1062,6 +1062,28 @@ ToolRuntimePort
 **旧代码减少**：硬编码 actor 消除（`actor_id="u-1"` 归零）。`nodes.py` 的 `governance` 节点**留到 Stage 7 随整文件删除** —— 提前改它是改死代码。
 **验收**：actor 是真实用户；取不到 actor → **拒绝执行工具**；`unprotected` 轮次**不产生任何副作用工具调用**；admin 注册的 OpenAPI / MCP 工具有真实 schema。
 
+#### 实施记录（2026-10-30 · Stage 2：工具绑定与治理接线）
+
+| 项 | 结果 |
+|---|---|
+| **A-10 工具绑定 + 治理过滤** | ✅ **runtime 侧** `runtimes/.../execution/tool_binding.py` ✓（`ToolBindingResolver` ✓ + `BindingPolicy` ✓）—— tool / mcp / skill **统一成 `BaseTool`** ✓（§5.3.1 规则 5 ✓）；∩ 风险维度 ✓；**`unprotected` 轮次剔除副作用工具** ✓（**剔除，不是执行时拦截** ✓ —— 规则 3 ✓ —— 未受保护的轮次**根本不该看见**副作用工具 ✓）；**绑定集为空不是错误** ✓（规则 1 ✓ / 规则 2 ✓ —— 降级为「无工具」✓）；**高风险不筛** ✓（规则 4 ✓ —— **筛不等于批** ✓ —— 交给 `PolicyGuard` ✓）。✅ **模块侧** `adapter/tools/tool_binding_adapter.py` ✓（`ToolBindingAdapter` ✓ **实现 runtime 的 `ToolBindingPort`** ✓ —— **只取不选** ✓）+ `adapter/tools/catalog_binding_reader.py` ✓（绑定集从 `admin_agents.tools` 读 ✓ —— **agent_runtime 自己的表** ✓ 不跨模块读表 ✓）+ `application/ports` 里的 `AgentBindingReader` 窄端口 ✓ |
+| **A-11 修 `list_tools` 的空 schema** | ✅ **单一真相**落在 `modules/tool/.../application/tool_schema.py` ✓ —— `spec` → **JSON Schema** ✓：**OpenAPI** 从文档的 paths 抽出 `__operation_id`（枚举 ✓）/ `path` / `query` / `body` ✓（**与 `openapi_runtime` 的参数路由同口径** ✓ —— 那是执行时的真相 ✓）；**MCP / 自定义**取 spec 里声明的参数 ✓（`parameters` / `input_schema` / `inputSchema` ✓）；`ToolServiceAdapter.list_tools` 改用它 ✓ —— admin 工具不再是**空 `properties`** ✓。⚠️ **旧路径顺带受益** ✓ —— 旧 runner 的 `_openai_tools` 直接吃 `parameters` ✓ → **admin 工具在旧路径上也拿到真 schema** ✓（不是新路径专属 ✓） |
+| **A-12 `governance` 接线（真实 actor）** | ✅ **runtime 侧** `current_actor()` / `require_actor()` ✓ —— **取不到 actor 就拒绝执行工具** ✓（不静默降级成匿名 ✗✗）；⚠️ **用 `ContextVar` 挂** ✓（**并发两轮各挂各的** ✓ —— 普通全局变量会互相覆盖 ✗✗✗ 那就等于用错了人的身份调工具 ✗✗✗）。✅ **模块侧** `adapter/tools/tool_runtime_adapter.py` ✓（`ToolRuntimeAdapter` ✓ **实现 `ToolRuntimePort`** ✓）：**无 actor → `TOOL_ACTOR_MISSING`** ✓（**不执行** ✓）+ **跨租户 actor → `TOOL_ACTOR_TENANT_MISMATCH`** ✓；执行**复用 `modules/tool` 的既有路径** ✓（`invoke_tool` ✓ —— **不自建执行器** ✓ —— §5.3 ✓），skill 落到 skill 的路径 ✓ |
+| **A-13 新 AgentLoop 侧注入真实 actor** | ⚠️ **未做** —— 按 §9 Stage 2 的说明：**不改 `runtimes/.../graph/nodes.py`** ✓（**死代码** ✓ —— 19 节点图没有生产调用方 ✓ —— Stage 7 随整文件删 ✓ —— 在那里改是**改死代码** ✗✗）。真实 actor 从 **Session 的轮次上下文**（`session_turns` 的用户/租户列）注入到新的 `AgentLoopRunner` ✓ → **归 Stage 5（A-25）** ✓ |
+| **审批挂起走 `interrupt()`** | ⚠️ **未做** —— 那需要**新的 `AgentLoopRunner`** ✓（LangGraph 的 `interrupt()` 要有 checkpointer ✓ + 图 ✓ —— 现在只有死代码那张图 ✓）→ **归 Stage 5（A-25）** ✓ —— 见「未接管」表 ✓ |
+| 旧代码减少 | **0 行** —— 本 Stage 是**新增** ✓（runtime 的绑定机器 ✓ + 模块侧的三个适配器 ✓）；⚠️ **旧路径仍在服役** ✓（旧 runner 的 ReAct 循环 ✓ —— 它的工具白名单走 `ToolPort.list_tools()` ✓ → **顺带拿到真 schema** ✓） |
+| 测试 | 新增 `runtimes/agent_runtime/tests/test_agent_tool_binding.py` ✓（12 条 ✓：三种来源统一 ✓ / spec 进 schema ✓ / properties 兜底 ✓ / **空绑定集不报错** ✓ / **unprotected 剔除副作用工具** ✓ / **高风险不筛** ✓ / 风险过滤 ✓ / **没有 actor 就不执行** ✓ / actor 到达端口 ✓ / 失败带错误码 ✓ / actor 必填 ✓）；新增 `modules/tool/tests/unit/test_tool_schema.py` ✓（9 条 ✓：OpenAPI 的操作与参数 ✓ / MCP 与自定义 ✓ / 风险与审批 ✓ / 描述 ✓）；新增 `modules/agent_runtime/tests/unit/test_tool_binding.py` ✓（11 条 ✓：**admin 工具的真实 schema** ✓ / 内置工具仍走目录 ✓ / **绑定集读取** ✓ / **未注册的工具不暴露** ✓ / mcp 标记 ✓ / **skill 统一成同一种形状** ✓ / 高风险 = 副作用 ✓ / **无 actor 拒绝执行** ✓ / **跨租户拒绝** ✓ / 结果回文本 ✓） |
+| 回归 | `pytest` **1838 passed** ✓（**0 失败** ✓ —— 4 个 error 是 testcontainers 的网络问题 ✓ 与改动前一致 ✓）；`ruff` 我的文件**全过** ✓；`mypy` **7 个文件无问题** ✓ |
+
+⚠️ **本 Stage 之后仍未做的**（归后续 Stage ✓）：
+
+| 项 | 归属 |
+|---|---|
+| **绑定集 / 模型解析接进生产调用方**（把**选中专家**的配置交给 Execution ✓ —— §5.3.1 规则 6 ✓） | **Stage 4** ✓ |
+| **新的 `AgentLoopRunner`**（Reason → Observe → Evaluate ✓）+ **真实 actor 注入** ✓ + **审批挂起走 `interrupt()`** ✓ | **Stage 5（A-25）** ✓ |
+| **`tool_executions` 落库**（幂等 ✓ / 重试 ✓ / 熔断 ✓）+ **`TOOL_IDEMPOTENCY_CONFLICT`** ✓ | **Stage 3** ✓ |
+| **旧 ReAct 循环退役**（`runner.py::_run_turn_inner` ✓ —— 旧路径真正变小 ✓） | **Stage 5（停用 + 打点 A-28）→ Stage 7（删除）** ✓ |
+
 ### Stage 3：Tool Runtime 落库化（幂等 / 重试 / 熔断）
 
 | 动作 | 细节 |

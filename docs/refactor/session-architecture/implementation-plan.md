@@ -723,10 +723,10 @@
 | | A-07 `LLMClient` 封装 | ✅ **已达成** —— `execution/llm_client.py` ✓（`LLMCaller` ✓）：**取值链**按 §5.2.1 走一遍 ✓（查表 ✓ 不决策 ✓）；**失败转移链**（primary → fallback ✓）交给端口 ✓ | — | 0 | A-06 |
 | | A-08 `Reasoner` | ✅ **已达成** —— `agent_loop/reason.py` ✓；**`ToolCallAccumulator` 迁入** ✓（按 index 归并 ✓ / 参数表示不容混用 ✓ / `thought_signature` 透传 ✓）；文本增量实时到 ✓，**工具调用装配完整才交出去** ✓ | — | 0（迁移 ✓） | A-06 |
 | | **A-09 迁移 `adapter/graph/chat_model.py` 的 `stream_chat` / `ToolCallAccumulator`** | ⚠️ **只迁入，不删** ✓ —— `ToolCallAccumulator` 已迁到 `agent_loop/reason.py` ✓；⚠️ **旧循环 `runner.py` 还在 import 那个文件** ✓（**唯一在跑的循环** ✗）→ **文件删除落在 Stage 7** ✓（两个前置都已完成 ✓ —— A-26 ✓ + Session Stage 5b ✓ —— 但删除要与 X17 同批 ✗） | — | 0（代码迁出 ✓，文件删除推迟 ✓） | A-08 |
-| Stage 2 · 工具绑定与治理 | A-10 **工具绑定 + 治理过滤** | 从**当前执行的 agent** 的配置取绑定集（`allowed_tools` / `allowed_skills`）→ tool / mcp / skill **统一成 `BaseTool`**；再 ∩ 风险 ∩ 作用域；**`unprotected` 剔除副作用工具**（Agent 层方案 §5.3.1） | — | 0 | Stage 1 |
-| | A-11 修 `list_tools` 的空 schema | 改为从 `tools` 表的 spec 生成真实 schema | — | 0 | A-10 |
-| | A-12 `governance` 接线 | **真实 actor**（**删掉 `actor_id="u-1"`**）；审批挂起走 `interrupt()` | — | 0 | A-10 |
-| | A-13 **在新 AgentLoop 侧注入真实 actor** | ⚠️ **不改 `runtimes/.../graph/nodes.py`** —— 那个文件从未接线、且在 Stage 7 会整体删除；在这里改它是**改死代码**。真实 actor 从 **Session 的轮次上下文**（`session_turns` 的用户/租户列）注入到新的 `AgentLoopRunner` | — | 0 | A-12 |
+| Stage 2 · 工具绑定与治理 | A-10 **工具绑定 + 治理过滤** | ✅ **已达成**（2026-10-30，Agent Stage 2）—— runtime 侧 `execution/tool_binding.py` ✓（`ToolBindingResolver` ✓）：tool / mcp / skill **统一成 `BaseTool`** ✓；∩ 风险 ✓；**`unprotected` 剔除副作用工具** ✓（**剔除，不是执行时拦截** ✓ —— §5.3.1 规则 3 ✓）；**绑定集为空不是错误** ✓（规则 1 ✓）。模块侧 `adapter/tools/tool_binding_adapter.py` ✓（`ToolBindingAdapter` ✓ 实现 runtime 的 `ToolBindingPort` ✓）+ `catalog_binding_reader.py` ✓（绑定集从 `admin_agents.tools` 读 ✓ —— agent_runtime 自己的表 ✓ 不跨模块读表 ✓） | — | 0（**新路径不接管旧路径** ✓ —— 接线归 Stage 4 ✓） | A-06 |
+| | A-11 修 `list_tools` 的空 schema | ✅ **已达成** —— `modules/tool/.../application/tool_schema.py` ✓（**spec → JSON Schema 的单一真相** ✓）：**OpenAPI** 从文档的 paths 抽出 `__operation_id` / `path` / `query` / `body` ✓（**与 `openapi_runtime` 的参数路由同口径** ✓）；**MCP / 自定义** 取 spec 里声明的参数 ✓；`ToolServiceAdapter.list_tools` 改用它 ✓ —— admin 工具不再是空 `properties` ✓ | — | 0 | A-10 |
+| | A-12 `governance` 接线 | ⚠️ **部分达成**（2026-10-30）—— **真实 actor** ✓：runtime 侧 `current_actor()` / `require_actor()` ✓（**取不到就拒绝执行工具** ✓ —— `ContextVar` ✓ 并发各挂各的 ✓）；模块侧 `adapter/tools/tool_runtime_adapter.py` ✓（`ToolRuntimeAdapter` ✓ 实现 `ToolRuntimePort` ✓）：**无 actor → `TOOL_ACTOR_MISSING`** ✓ + **跨租户 actor → `TOOL_ACTOR_TENANT_MISMATCH`** ✓。⚠️ **审批挂起走 `interrupt()` 未做** ✗ —— 那需要**新的 `AgentLoopRunner`** ✓（**Stage 5 的 A-25** ✓ —— 现在只有死代码的 19 节点图 ✓）→ 归「未接管」表 ✓ | — | 0 | A-10 |
+| | A-13 **在新 AgentLoop 侧注入真实 actor** | ⚠️ **未达成** —— 按方案 §9 Stage 2 的说明：**不改 `runtimes/.../graph/nodes.py`** ✓（死代码 ✓ —— Stage 7 随整文件删 ✓）；真实 actor 从 **Session 的轮次上下文**（`session_turns` 的用户/租户列）注入到新的 `AgentLoopRunner` ✓ → **归 Stage 5（A-25）** ✓ | — | 0 | A-12 |
 | Stage 3 · Tool Runtime 落库化 | A-14 `tool_executions` 开始写 | 幂等的唯一权威（`ON CONFLICT DO NOTHING` → 冲突读回） | — | 0 | Stage 2 |
 | | A-15 `request_hash` 冲突**拒绝** | `TOOL_IDEMPOTENCY_CONFLICT` —— ⚠️ **该码不存在**（`ErrorCode` 枚举里没有）→ **新增错误码**并同步 `libs/schema` + 前端契约；不静默返回旧结果 | — | 0 | A-14 |
 | | A-16 重试 / 熔断 | 指数退避 + jitter；按工具名熔断 | — | 0 | A-14 |
@@ -1193,8 +1193,8 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] A-01 补五个端口（✅ 2026-10-30）· A-02 `QZDAPChatModel` 骨架（✅）· A-03 归一 `TaskKind`/`TaskClassifier`（✅ —— `graph/routing.py` 迁到 `agent_router/classifier.py` ✓）· A-04 依赖核对（✅ —— 显式声明三个依赖 ✓）· A-05 打点 X5 旧入口（✅ 已有 ✓）
 - [x] A-06 `QZDAPChatModel` 落地（✅ 2026-10-30）· A-07 `LLMClient` 失败转移链（✅ —— 取值链 ✓）· A-08 `Reasoner`（✅ —— `ToolCallAccumulator` 迁入 ✓）
 - [ ] A-09 **删 `chat_model.py` 的 `stream_chat`**
-- [ ] A-10 **工具绑定 + 治理过滤** · A-11 修 `list_tools` 空 schema · A-12 `governance` 接线真实 actor
-- [ ] A-13 **在新 AgentLoop 侧注入真实 actor**（⚠️ 不改 `nodes.py` —— 那是死代码，Stage 7 整体删）
+- [x] A-10 **工具绑定 + 治理过滤**（✅ 2026-10-30 —— runtime 的 `execution/tool_binding.py` ✓ + 模块侧 `ToolBindingAdapter` ✓ / `CatalogBindingReader` ✓）· A-11 修 `list_tools` 空 schema（✅ —— `modules/tool/.../tool_schema.py` ✓ 从 spec 生成真实 schema ✓）· A-12 `governance` 接线真实 actor（✅ 真实 actor ✓ —— `current_actor` ✓ / `require_actor` ✓ + `ToolRuntimeAdapter` ✓；⚠️ **审批挂起走 `interrupt()` 归 Stage 5** ✗）
+- [ ] A-13 **在新 AgentLoop 侧注入真实 actor**（⚠️ 不改 `nodes.py` —— 那是死代码，Stage 7 整体删；**归 Stage 5（A-25）** ✓）
 - [ ] A-14 `tool_executions` 开始写 · A-15 `request_hash` 冲突拒绝 · A-16 重试/熔断 · A-17 **修 async** · A-18 沙箱接入 · A-19 成本结算 · A-20 进程内幂等降级为快速路径 · **A-20b `modules/tool` 的 `InvokeToolUseCase` 补幂等 / 重试 / 熔断**（✅ 归属已定：**改 `modules/tool`**）
 - [ ] A-21 `AgentRouter`（选专家） · A-22 **模型解析接线** · A-23 **工具绑定接线** · A-24 路由留痕 `route_decision`
 - [ ] A-25 `AgentLoopRunner` + `Evaluator` · **✅ A-26 把 `_run_turn_inner` 改接新 Builder / Writer**（旧循环的最后一次改造 · **2026-10-30 已达成** ✓）· A-27 端到端回归 · A-28 停用打点 `_run_turn_inner` → **X17**

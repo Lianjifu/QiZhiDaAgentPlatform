@@ -355,3 +355,24 @@ class PolicyPort(Protocol):
     async def evaluate_action(
         self, *, tenant_id: UUID, action: str, context: dict
     ) -> bool: ...
+
+
+class AgentBindingReader(Protocol):
+    """Agent 方案 §5.3.1 —— **取一个 agent 配置里声明的绑定集** ✓。
+
+    ⚠️ **只返回名字** ✓ —— 「这个 agent 允许用哪些工具 / skill」✓；
+    **真实参数契约**由 ``ToolPort.list_tools()`` 那一侧给 ✓（那里才有 spec ✓）。
+
+    ⚠️ **绑定集为空不是错误** ✓ —— 返回空元组即可 ✓（那一步就是纯对话 ✓）。
+    """
+
+    async def declared(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        agent_id: UUID,
+        agent_version: str,
+    ) -> tuple[str, ...]:
+        """返回该 agent 声明的工具 / skill 名 ✓。"""
+        ...
