@@ -96,6 +96,8 @@ class AssembledContext:
     messages: list[Any]
     manifest: ContextManifest
     degraded_flags: dict[str, bool]
+    #: 整段上下文的 token 估算 ✓（= manifest 的合计 ✓）。
+    tokens_estimated: int = 0
 
 
 __all__ = [

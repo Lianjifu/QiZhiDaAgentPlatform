@@ -546,12 +546,12 @@
 | | C-02 **迁移 0047** | ✅ **已达成** —— `rolling_summary` 列 + `session_context_manifests` 表 + **三步回填** ✓（dev 库已确认存在 ✓）。⚠️ **不清 `metadata['rolling_summary']`** ✓（旧路径仍是当前唯一写者 ✗ → 清理归 Stage 4 之后 ✓） | — | 0 | **0046 已落 ✓** |
 | | C-03 `tokens.py` | ✅ **已达成**（2026-10-30）—— `context/tokens.py` **按语种估算的唯一实现** ✓；**旧路径 `adapter/graph/state.py` 改调它** ✓（不再 `len//4` 一刀切 ✗✗ —— 中文不再被低估 4 倍 ✓）；单元测试 ✓（中/英/混合 ✓ + 对 `tiktoken` 偏差 <15% ✓ + **新旧差异 <10%** ✓ 实测 0% ✓）。⚠️ **压缩触发点因此前移** ✓（中文会话更早压缩 ✓） | — | 0 | — |
 | | C-04 打点本层旧入口 | ✅ **已达成** —— X8 / X9 打点已有 ✓（`runner.py:569` / `runner.py:212` ✓）；X10 的旧入口**已随 Session Stage 5b 删除** ✓ → 打点自然归零 ✓ | — | 0 | 前置 C2 ✓ |
-| Stage 1 · Builder | C-05 `ContextBuilder` | 固定优先级拼装 → `[{role, content}]` | — | 0 | Stage 0 |
-| | C-06 agent prompts 完整接入 | 修「agent 身份不生效」 | — | 0 | C-05 |
-| | C-07 单段式 prompt 渲染 | 合并四套模板 | — | 0 | C-05 |
-| | C-08 召回发起 | Builder 主动调 `recall_memory` / `recall_knowledge` | — | 0 | C-05 · **Memory Stage 2** |
-| | C-09 manifest 生成 | 含来源、token、版本、ref_id、score、`filtered_reason`（**字段已存在**，本层补齐取值） | — | 0 | C-05 |
-| | C-10 **只新建，不动调用点** | ⚠️ `_load_messages` 与四套模板**仍被 `runner._run_turn_inner` 调用**（`runner.py:179`），此刻停用会把还在服役的旧循环打断。**停用推迟到 Stage 4**（前置 = Agent Stage 5 的 A-26 接线完成） | — | — | C-05 |
+| Stage 1 · Builder | C-05 `ContextBuilder` | ✅ **已达成**（2026-10-30，Context Stage 1）—— `context/builder.py` ✓ 固定优先级拼装 → `[{role, content}]` ✓；**消息与清单成对** ✓（降级时成对丢 ✓） | — | 0 | Stage 0 ✓ |
+| | C-06 agent prompts 完整接入 | ✅ **已达成** —— 五段配置（soul / prompt / agents / tools / user）按**原顺序**进 system ✓（修「agent 身份不生效」✓）；agent 没配 prompt 时**不追加** ✓（兜底句不重复 ✓） | — | 0 | C-05 ✓ |
+| | C-07 单段式 prompt 渲染 | ✅ **已达成** —— `context/prompts.py` **单段式渲染** ✓（一个模板 + 可选片段 ✓）；⚠️ 四套模板**已随 Session Stage 5b 删除** ✓（台账 X10 ✓，扫描规则已启用 ✓）→ 「合并」退化为「不再需要合并」✓ | — | 0 | C-05 ✓ |
+| | C-08 召回发起 | ✅ **已达成** —— Builder 主动调 `recall` / `search` ✓（契约层定义协议 ✓，模块侧适配器结构上满足 ✓）；**复刻旧路径三个参数** ✓（`top_k=8/6` ✓、按 `score` 降序 ✓、每条截 400 字 ✓）；记忆**按当前用户过滤** ✓（跨用户泄漏 X14 ✓）；**失败可见** ✓（`recall_degraded` ✓ —— 旧路径静默吞掉 ✗） | — | 0 | C-05 ✓ |
+| | C-09 manifest 生成 | ✅ **已达成** —— 每段一条 ✓：来源 / token / 版本 / **`ref_id`** / **`score`** / **`filtered_reason`** / `degraded` ✓；被超预算淘汰的片段**留记录** ✓（`filtered_reason='over_budget'` ✓） | — | 0 | C-05 ✓ |
+| | C-10 **只新建，不动调用点** | ✅ **已达成**（2026-10-30）—— 旧路径 `_load_messages` **仍在服役** ✓（本 Stage 没碰调用点 ✓）；⚠️ Builder 因此**暂时没有生产调用方** ✓ —— 接线归 Stage 4 ✓，前置 = **Agent Stage 5 的 A-26** ✗（归「未接管」表 ✓） | — | — | C-05 ✓ |
 | Stage 2 · Compressor | C-11 async 压缩器 | 修「同步调异步」 | — | 0 | Stage 1 |
 | | C-12 结构化摘要 | 保留决策 / 数字 / 承诺 / 未完成事项 / 来源 ID | — | 0 | C-11 |
 | | C-13 压缩后复验预算 | 仍超限 → `CONTEXT_TOO_LARGE` | — | 0 | C-12 |

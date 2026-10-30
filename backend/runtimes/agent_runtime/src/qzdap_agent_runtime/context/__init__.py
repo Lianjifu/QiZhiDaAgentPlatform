@@ -15,6 +15,19 @@ from .budget import (
     SummaryError,
     SummaryModel,
 )
+from .builder import (
+    KNOWLEDGE_TOP_K,
+    MEMORY_TOP_K,
+    ContextBuilder,
+    KnowledgeSearchPort,
+    MemoryRecallPort,
+)
+from .prompts import (
+    DEFAULT_SYSTEM_PROMPT,
+    render_agent_prompts,
+    render_knowledge_hits,
+    render_memory_hits,
+)
 from .tokens import estimate_message_tokens, estimate_tokens
 from .types import (
     CONTEXT_SOURCES,
@@ -25,15 +38,24 @@ from .types import (
 
 __all__ = [
     "CONTEXT_SOURCES",
+    "DEFAULT_SYSTEM_PROMPT",
+    "KNOWLEDGE_TOP_K",
+    "MEMORY_TOP_K",
     "AssembledContext",
     "CompactionResult",
     "Compactor",
     "ContextAssembler",
+    "ContextBuilder",
     "ContextManifest",
     "InMemorySummaryModel",
+    "KnowledgeSearchPort",
     "ManifestEntry",
+    "MemoryRecallPort",
     "SummaryError",
     "SummaryModel",
     "estimate_message_tokens",
     "estimate_tokens",
+    "render_agent_prompts",
+    "render_knowledge_hits",
+    "render_memory_hits",
 ]

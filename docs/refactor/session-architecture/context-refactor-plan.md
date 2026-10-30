@@ -671,6 +671,26 @@ UPDATE agent_sessions s
 **旧代码减少**：无删除。⚠️ **本 Stage 不停用 `_load_messages`，也不停用四套模板** —— 它们**仍被 `runner._run_turn_inner` 调用**（`runner.py:179`），此刻停用会把还在服役的旧循环打断。**停用推迟到 Stage 4**（前置 = Agent Stage 5 的 A-26 接线完成）。
 **验收**：产出可直接喂 LLM；agent 身份正确（不再是「企业助手」通用语）；manifest 完整；**四套模板调用点数归零**。
 
+#### 实施记录（2026-10-30 · Stage 1：Builder 落地）
+
+| 项 | 结果 |
+|---|---|
+| `context/builder.py` | `ContextBuilder` ✓ —— 按**固定优先级**拼成 `[{role, content}]` ✓（§3.1 ✓：系统提示 → agent → 租户 → 摘要 → 召回 → 最近消息 → 当前输入 ✓）。⚠️ **消息与清单条目成对** ✓ —— 降级时成对丢 ✓（对不上就说明「它喂了什么」不可信 ✗✗） |
+| `context/prompts.py` | **单段式渲染** ✓ —— 一个模板 + 可选片段 ✓（四套模板已随 Stage 5b 删除 ✓，这里不再有「变体」✓）。agent 的五段配置（soul / prompt / agents / tools / user）**按原顺序**拼 ✓（旧路径同 ✓ —— 换顺序会改变模型行为 ✗✗） |
+| agent 身份 | **不丢** ✓ —— 五段配置进 system ✓（新 runtime 原来只输出 `agent_id=… version=…` ✗✗ —— agent 身份整个丢了 ✗）。⚠️ agent 没配 prompt 时**不追加这一段** ✓（否则兜底句重复两遍 ✗✗） |
+| **复刻旧路径的三个参数** | 记忆 `top_k=8` ✓、知识 `top_k=6` ✓、每条命中**截 400 字** ✓ —— 少一个，新旧行为就会漂移 ✗✗。召回命中**按 `score` 降序** ✓（顺序决定截断谁 ✓） |
+| 记忆的用户过滤 | `user_id` 照旧传 ✓ —— 缺了会**跨用户泄漏** ✗✗（X14 ✓） |
+| **召回失败可见** | 置 `degraded_flags["recall_degraded"] = True` ✓ —— 旧路径是**静默吞掉**的 ✗✗（模型以为没有记忆 ✗） |
+| manifest | 每段一条 ✓ —— 来源 / token / 版本 / **`ref_id`** / **`score`** / **`filtered_reason`** ✓ / `degraded` ✓；总 token 与 `tokens_estimated` 一致 ✓ |
+| 降级 | 超预算时按 **5 → 4 → 3** 丢片段 ✓（优先级 1 / 2 / 6 **永不降级** ✓ —— 用户这句话和工具结果丢了，模型就是在答空气 ✗✗）；被丢的片段**留一条记录** ✓（`filtered_reason='over_budget'` ✓） |
+| 召回端口 | 契约层定义 `MemoryRecallPort` / `KnowledgeSearchPort` 协议 ✓（不引框架 ✓）；模块侧的 `MemoryServiceAdapter` / `KnowledgeServiceAdapter` **结构上满足** ✓（测试断言 ✓） |
+| **只新建，不动调用点** | ✅ 旧路径 `_load_messages` **仍在服役** ✓（C-10 ✓）—— 本 Stage **没有**接线 ✓（Stage 4 才接 ✓，前置 = Agent Stage 5 的 A-26 ✗） |
+| 测试 | 19 条 ✓（优先级顺序 ✓ / agent 身份 ✓ / 三个复刻参数 ✓ / 降级可见 ✓ / manifest 字段 ✓ / 成对覆盖 ✓ / 端口结构 ✓ / 不引框架 ✓） |
+
+⚠️ **本 Stage 是「建」不是「切」** ✓ —— Builder **暂时没有生产调用方** ✓；
+接线的 Stage 4 的前置（**Agent Stage 5 的 A-26**）还没落地 ✗ → 归入
+「未接管」表 ✓。
+
 ### Stage 2：Compressor 落地
 
 | 动作 | 细节 |
