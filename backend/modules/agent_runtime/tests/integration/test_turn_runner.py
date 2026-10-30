@@ -26,12 +26,18 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from qzdap_agent_runtime.session.approval import arguments_digest
 from qzdap_agent_runtime.session.turn_runner import (
     AgentSnapshot,
     TurnRequest,
     TurnRunner,
 )
-from qzdap_schema.dtos.turn import DoneChunk, MessageChunk, UsageChunk
+from qzdap_schema.dtos.turn import (
+    ApprovalRequiredChunk,
+    DoneChunk,
+    MessageChunk,
+    UsageChunk,
+)
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -190,6 +196,35 @@ class _FakeExecutor:
 
     def latest_state(self):  # type: ignore[no-untyped-def]
         return {"rolling_summary": "摘要"}
+
+
+class _ApprovalExecutor:
+    """产出「需要审批」chunk 的执行器 ✓。"""
+
+    def __init__(self, *, approval_id: UUID) -> None:
+        self._approval_id = approval_id
+
+    async def run(self, *, request: TurnRequest):  # type: ignore[no-untyped-def]
+        yield ApprovalRequiredChunk(
+            turn_id=request.turn_id,
+            seq=1,
+            approval_id=self._approval_id,
+            tool_name="danger_tool",
+            arguments={"path": "/"},
+        )
+
+    def latest_state(self):  # type: ignore[no-untyped-def]
+        return {}
+
+
+class _NoopMessages:
+    """消息端口的空实现 ✓（这里只关心轮次行的落库）。"""
+
+    async def next_seq(self, *, session_id):  # type: ignore[no-untyped-def]
+        return 0
+
+    async def append(self, **kwargs):  # type: ignore[no-untyped-def]
+        return None
 
 
 class _RecordingEvents:
@@ -391,13 +426,6 @@ async def test_a_failed_turn_lands_as_failed(turn_ctx) -> None:  # type: ignore[
     turn_id = uuid4()
     await _session_row(turn_ctx, session_id=session_id, tenant_id=tenant)
 
-    class _NoopMessages:
-        async def next_seq(self, *, session_id):  # type: ignore[no-untyped-def]
-            return 0
-
-        async def append(self, **kwargs):  # type: ignore[no-untyped-def]
-            return None
-
     class _BoomExecutor:
         async def run(self, *, request):  # type: ignore[no-untyped-def]
             raise RuntimeError("no provider")
@@ -446,6 +474,76 @@ async def test_a_failed_turn_lands_as_failed(turn_ctx) -> None:  # type: ignore[
         ).one()
     assert row[0] == "failed"
     assert row[1] == "TURN_FAILED"
+
+
+@pytest.mark.asyncio
+async def test_the_pending_approval_lands_on_the_turn_row(turn_ctx) -> None:  # type: ignore[no-untyped-def]
+    """审批挂起 → ``session_turns.pending_approval`` 落库 + 状态 ``waiting`` ✓。
+
+    ⚠️ **只在内存里 = 进程重启后审批永久卡死** ✗✗ —— 落库是恢复的前提 ✓。
+    """
+    from qzdap.modules.agent_runtime.adapter.persistence.repositories import (
+        SqlSessionRepository,
+        SqlTurnRepository,
+    )
+    from qzdap.modules.agent_runtime.adapter.persistence.session_journal import (
+        PostgresSessionJournal,
+    )
+    from qzdap.modules.agent_runtime.adapter.turn.lifecycle import TurnLifecycle
+    from qzdap.modules.agent_runtime.adapter.turn.session_state import SqlSessionState
+
+    tenant = uuid4()
+    session_id = uuid4()
+    turn_id = uuid4()
+    approval_id = uuid4()
+    await _session_row(turn_ctx, session_id=session_id, tenant_id=tenant)
+
+    async with turn_ctx.session() as db_session:
+        runner = TurnRunner(
+            executor=_ApprovalExecutor(approval_id=approval_id),
+            lifecycle=TurnLifecycle(
+                turns=SqlTurnRepository(db_session),
+                journal=PostgresSessionJournal(turn_ctx),
+                events=_RecordingEvents(),  # type: ignore[arg-type]
+            ),
+            messages=_NoopMessages(),  # type: ignore[arg-type]
+            session_state=SqlSessionState(SqlSessionRepository(db_session)),
+            cancel=None,  # type: ignore[arg-type]
+        )
+        request = TurnRequest(
+            tenant_id=tenant,
+            workspace_id=uuid4(),
+            owner_id=uuid4(),
+            session_id=session_id,
+            turn_id=turn_id,
+            user_input="清理磁盘",
+            idempotency_key="k1",
+            key_strength="strong",
+            agent=AgentSnapshot(
+                agent_id=uuid4(), agent_version="v1", model="default", raw=None
+            ),
+        )
+        chunks = [chunk async for chunk in runner.run(request=request)]
+        assert [chunk.kind for chunk in chunks] == ["approval_required"]
+        await db_session.commit()
+
+    async with turn_ctx.session() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT status, pending_approval FROM session_turns "
+                    "WHERE id = :id"
+                ),
+                {"id": turn_id},
+            )
+        ).one()
+    assert row[0] == "waiting"
+    pending = row[1]
+    assert pending["approval_id"] == str(approval_id)
+    assert pending["tool_name"] == "danger_tool"
+    assert pending["arguments_digest"] == arguments_digest({"path": "/"})
+    assert pending["session_id"] == str(session_id)
+    assert pending["turn_id"] == str(turn_id)
 
 
 def _now() -> datetime:

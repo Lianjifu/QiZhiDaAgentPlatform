@@ -899,6 +899,27 @@ turn），而是让**模块侧组装** `TurnRequest`（读都在那边 ✓）。
 
 > **这是 Gateway 决策 #4「无感重放」的落地依赖**，完成后 Gateway 的重复请求才能真正无感。
 
+#### 实施记录（2026-10-30 · Stage 4 的现状核对）
+
+**S-23 / S-25 已具备** ✓ —— chunk 落 `session_events`（落库先于投递 ✓）与
+`Last-Event-ID` 重放都在 **Gateway Stage 4b** 落地了 ✓。
+
+⚠️ **S-24 / S-26（outbox dispatcher + worker）本轮不做的原因**：`session_events`
+现在存的是 **web 的 chunk 流**（SSE 投递 + 断线重放 ✓），而 **IM 的出站目前
+是直投**（`dispatch_subscriber → sink.deliver`）—— **不经过事件表** ✗。
+
+也就是说：**现在没有「需要 outbox 投递」的事件源** —— 若此时接上 outbox worker，
+它会把 **web 的 chunk 当成 IM 消息投出去** ✗✗（重复投递）。
+
+IM 的事件要进 `session_events`、再由 outbox worker 投递 —— 这正是 **Stage 5b
+的 IM 入口切换**（与 Gateway Stage 4a 同 PR）的一部分 ✓。所以：
+
+| 项 | 归属 |
+|---|---|
+| S-24 dispatcher 接线 · S-26 outbox worker 进 lifespan | **Stage 5b**（与 Gateway 的 IM 入口切换同 PR）—— 事件源在那时才出现 ✓ |
+
+⚠️ 这不是「拖」，是**顺序**：先有事件源，再有调度器 —— 反过来做就是重复投递 ✗。
+
 ### Stage 5：审批中断恢复加固
 
 | 动作 | 细节 |
@@ -911,6 +932,25 @@ turn），而是让**模块侧组装** `TurnRequest`（读都在那边 ✓）。
 
 **旧代码减少**：审批异常吞噬点归零。
 **验收**：过期审批、自审批、参数被改、重复点击 → **四种情况都不执行工具**，且返回明确错误码。
+
+#### 实施记录（2026-10-30 · Stage 5a：挂起落库 + 恢复校验）
+
+| 项 | 结果 |
+|---|---|
+| 契约 | `session/approval.py`：`PendingApproval`（落库形状）+ `arguments_digest`（**规范化**摘要 —— 键序无关 ✓，否则「参数没改」也会被误判 ✗✗） |
+| 落库 | 挂起时写 `session_turns.pending_approval` + 轮次状态转 `waiting` ✓（`journal.write_pending_approval`）—— **只在内存里 = 进程重启后审批永久卡死** ✗✗ |
+| 校验 | 恢复前逐项校验：挂起记录存在且是**这个**审批 / 属于**这个会话**（`APPROVAL_NOT_MATCH`）· 审批未过期（`APPROVAL_EXPIRED`）· **审批记录里的参数摘要**与挂起时一致（`TOOL_ARGUMENT_INVALID`）；自审批与「已决策」由 governance 把关 ✓ |
+| 测试 | 契约 7 条（摘要的键序无关性 / 往返 / 读不懂就 `None`）· 单测 2 条（挂起落库 / 参数被改则**不执行工具**）· 真库 1 条（`session_turns.pending_approval` 落库 + 状态 `waiting`）✓ |
+
+⚠️ **第 5 项校验比对的是「审批记录里的参数」**（治理域的**权威** ✓）——
+不是「前端传回来的参数」（那个能被改 ✗✗）。
+
+**仍未接管**：
+
+| # | 事项 | 原因 | 归属 |
+|---|---|---|---|
+| **S-30** | 审批自动过期（`expire_if_due` 接入 sweeper） | `approvals` 表归**治理域** —— Session 的 sweeper **不该跨域写治理表** ✗ | **治理域** |
+| **S-31** | 审批幂等（同 `(session_id, tool_call_id, request_hash)` 复用 approval ID） | 创建审批在**旧执行器**里（`runner._request_approval`）—— 要等它接上新的挂起落库 ✓ | **Agent 层 A-26** |
 
 ### Stage 5b：删第二套 turn 实现（**与 Gateway 的 IM 入口切换原子**）
 

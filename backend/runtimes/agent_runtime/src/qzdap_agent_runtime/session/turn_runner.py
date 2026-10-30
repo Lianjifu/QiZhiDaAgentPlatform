@@ -33,6 +33,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from time import monotonic
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
@@ -45,6 +46,8 @@ from qzdap_schema.dtos.turn import (
     UsageChunk,
 )
 from qzdap_schema.ids import ModelId
+
+from qzdap_agent_runtime.session.approval import PendingApproval, arguments_digest
 
 _log = logging.getLogger(__name__)
 
@@ -148,6 +151,15 @@ class TurnLifecyclePort(Protocol):
 
     async def mark_delivered(self, *, turn_id: UUID) -> None:
         """事件已投递（重放判据用 —— 见 Session 方案 §7）。"""
+        ...
+
+    async def mark_waiting_approval(
+        self, *, turn_id: UUID, pending: Mapping[str, Any]
+    ) -> None:
+        """轮次挂起等审批 —— **挂起信息落库** ✓（``session_turns.pending_approval``）。
+
+        ⚠️ **必须落库**：进程重启后审批要能恢复 ✓（只在内存里 = 永久卡死 ✗✗）。
+        """
         ...
 
 
@@ -266,6 +278,19 @@ class TurnRunner:
                         metadata=metadata,
                         graph_state=self._executor.latest_state(),
                         wait_status="waiting_approval",
+                    )
+                    # 审批挂起信息**落库**（Session 方案 §8 · 决策 #6）——
+                    # 恢复时要靠它校验「挂起的是哪个工具、参数有没有被改」✓。
+                    pending = PendingApproval(
+                        approval_id=stamped.approval_id,
+                        tool_name=stamped.tool_name,
+                        arguments_digest=arguments_digest(stamped.arguments),
+                        session_id=request.session_id,
+                        turn_id=request.turn_id,
+                        created_at=datetime.now(UTC),
+                    )
+                    await self._lifecycle.mark_waiting_approval(
+                        turn_id=request.turn_id, pending=pending.to_json()
                     )
                 if isinstance(stamped, UsageChunk):
                     turn_usage = stamped

@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -18,6 +19,7 @@ from qzdap_agent_runtime.gateway.idempotency import (
 from qzdap_agent_runtime.gateway.normalizer import resolve_idempotency_key
 from qzdap_agent_runtime.gateway.types import ChannelType, IdempotencyKey
 from qzdap_agent_runtime.router.types import RouteDecision
+from qzdap_agent_runtime.session.approval import PendingApproval, arguments_digest
 from qzdap_agent_runtime.session.claim import TurnClaimPort
 from qzdap_agent_runtime.session.message import SessionMessagePort
 from qzdap_agent_runtime.session.turn_runner import (
@@ -26,6 +28,7 @@ from qzdap_agent_runtime.session.turn_runner import (
     TurnRunner,
 )
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_kernel.errors import AppError, ConflictError, ValidationError
 from qzdap_schema.dtos.errors import ErrorCode
 from qzdap_schema.dtos.turn import TurnChunk
 from qzdap_schema.ids import (
@@ -55,6 +58,10 @@ from qzdap.modules.agent_runtime.domain.errors import (
 )
 
 _log = logging.getLogger(__name__)
+
+
+def _now_utc() -> datetime:
+    return datetime.now(UTC)
 
 
 class CopilotSessionService:
@@ -453,6 +460,14 @@ class CopilotSessionService:
         pending = dict((session.graph_state or {}).get("pending_approval") or {})
         if str(pending.get("approval_id")) != str(approval_id):
             pending["approval_id"] = str(approval_id)
+        # ── 恢复前的校验清单（Session 方案 §8）────────────────────────
+        # ⚠️ **任一不过 → 不执行工具**，返回明确错误码 ✓。
+        await self._verify_pending_approval(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            approval_id=approval_id,
+            approval_service=approval_service,
+        )
         if approval_service is not None:
             from qzdap_schema.ids import ApprovalId
             from qzdap_schema.ids import TenantId as TId
@@ -500,6 +515,68 @@ class CopilotSessionService:
             parent_span_context=parent_span_context,
         ):
             yield chunk
+
+    async def _verify_pending_approval(
+        self,
+        *,
+        tenant_id: UUID,
+        session_id: UUID,
+        approval_id: UUID,
+        approval_service: Any | None,
+    ) -> None:
+        """审批恢复前的**校验清单**（Session 方案 §8）✓。
+
+        | # | 校验 | 错误码 |
+        |---|---|---|
+        | 1 | 挂起记录存在，且是**这个**审批 | ``APPROVAL_NOT_MATCH`` |
+        | 2 | 挂起记录属于**这个会话** | ``APPROVAL_NOT_MATCH`` |
+        | 3 | 审批记录存在、**未过期** | ``APPROVAL_EXPIRED`` |
+        | 4 | 审批记录的**参数摘要**与挂起时一致 | ``TOOL_ARGUMENT_INVALID`` |
+
+        ⚠️ **第 4 项比对的是「审批记录里的参数」**（治理域的**权威** ✓）——
+        不是「前端传回来的参数」（那个能被改 ✗✗）。
+        """
+        record = await self._journal.find_pending_approval(
+            session_id=session_id, tenant_id=tenant_id
+        )
+        stored = PendingApproval.from_json(record[1]) if record is not None else None
+        if stored is not None:
+            if stored.approval_id != approval_id:
+                raise ConflictError(
+                    "approval does not match the pending approval",
+                    code=ErrorCode.APPROVAL_NOT_MATCH.value,
+                )
+            if stored.session_id != session_id:
+                raise ConflictError(
+                    "pending approval belongs to another session",
+                    code=ErrorCode.APPROVAL_NOT_MATCH.value,
+                )
+        if approval_service is None:
+            # 没有审批服务 = 没有审批记录可比对（测试替身 / 未接治理域）✓
+            return
+        from qzdap_schema.ids import ApprovalId
+        from qzdap_schema.ids import TenantId as TId
+
+        approval = await approval_service.get(
+            tenant_id=TId(tenant_id), approval_id=ApprovalId(approval_id)
+        )
+        expires_at = getattr(approval, "expires_at", None)
+        if expires_at is not None and expires_at <= _now_utc():
+            raise AppError(
+                "approval has expired",
+                code=ErrorCode.APPROVAL_EXPIRED.value,
+                status=410,
+            )
+        if stored is not None:
+            resource = getattr(approval, "resource", None) or {}
+            arguments = resource.get("arguments")
+            if arguments is not None and (
+                arguments_digest(arguments) != stored.arguments_digest
+            ):
+                raise ValidationError(
+                    "tool arguments changed since the approval was requested",
+                    code=ErrorCode.TOOL_ARGUMENT_INVALID.value,
+                )
 
     async def request_cancel(self, *, tenant_id: UUID, session_id: UUID) -> bool:
         """Ask the running turn to stop.

@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -27,14 +28,16 @@ from _ar_unit_in_memory import (
     make_turn_runner,
 )
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
-from qzdap.modules.agent_runtime.adapter.turn.executor import (
-    SessionGraphExecutor,
-)
+from qzdap_agent_runtime.session.approval import arguments_digest
+from qzdap_kernel.errors import ValidationError
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 from qzdap_schema.dtos.turn import ApprovalRequiredChunk
 from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 
 from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
+from qzdap.modules.agent_runtime.adapter.turn.executor import (
+    SessionGraphExecutor,
+)
 from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 from qzdap.modules.agent_runtime.domain.errors import (
@@ -235,6 +238,8 @@ async def _make_service(
     messages = _Messages()
     runner = SessionGraphRunner(llm=llm, tool_port=tool_port)
     journal = InMemorySessionJournal()
+    # 把 journal 也放进 deps —— 断言「审批挂起落库」要用 ✓
+    deps["journal"] = journal
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
@@ -360,6 +365,8 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
     messages = _Messages()
     runner = SessionGraphRunner(llm=deps["llm"])
     journal = InMemorySessionJournal()
+    # 把 journal 也放进 deps —— 断言「审批挂起落库」要用 ✓
+    deps["journal"] = journal
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
@@ -722,6 +729,8 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
         llm=_PricingLLM(), catalog_model_resolver=_PricingResolver()
     )
     journal = InMemorySessionJournal()
+    # 把 journal 也放进 deps —— 断言「审批挂起落库」要用 ✓
+    deps["journal"] = journal
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
@@ -849,6 +858,176 @@ async def test_double_clicking_approve_executes_the_tool_only_once() -> None:
     with pytest.raises(DuplicateRequestError):
         await approve()
     assert len(tool_port.invoked) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_pending_approval_is_persisted_on_the_turn() -> None:
+    """审批挂起时**落库**（Session 方案 §8 · 决策 #6）✓。
+
+    ⚠️ 只在内存里 = 进程重启后审批永久卡死 ✗✗ —— 落库是恢复的前提 ✓。
+    """
+    tid, wid, uid, aid = _owners()
+    agent = CatalogAgent.create(
+        id=aid,
+        tenant_id=tid,
+        workspace_id=wid,
+        name="t",
+        category="test",
+        owner="test",
+        model="default",
+    )
+    agent = replace(agent, tools=[{"name": "danger_tool", "enabled": True}])
+    llm = _ScriptedLLM(
+        [
+            {
+                "tool_calls": [
+                    {
+                        "id": str(uuid4()),
+                        "name": "danger_tool",
+                        "arguments": {"path": "/"},
+                    }
+                ]
+            },
+            {"delta": "已执行。"},
+        ]
+    )
+    tool_port = _CatalogToolPort(
+        [
+            {
+                "name": "danger_tool",
+                "description": "高风险操作",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+                "risk": "high",
+                "needConfirm": True,
+            }
+        ]
+    )
+    svc, deps, sid, *_ = await _make_service(
+        llm=llm, agent=agent, owner_id=uid, tool_port=tool_port
+    )
+
+    chunks = [
+        chunk
+        async for chunk in svc.stream_turn(
+            tenant_id=tid,
+            workspace_id=wid,
+            owner_id=uid,
+            session_id=UUID(sid),
+            user_input="清理磁盘",
+            client_request_id="req-pending",
+        )
+    ]
+    approvals = [c for c in chunks if isinstance(c, ApprovalRequiredChunk)]
+    assert approvals, [getattr(c, "kind", None) for c in chunks]
+
+    journal = deps["journal"]
+    waiting = [row for row in journal.turns.values() if row.get("pending_approval")]
+    assert len(waiting) == 1, journal.turns
+    pending = waiting[0]["pending_approval"]
+    assert pending["approval_id"] == str(approvals[0].approval_id)
+    assert pending["tool_name"] == "danger_tool"
+    assert pending["arguments_digest"] == arguments_digest({"path": "/"})
+    assert pending["session_id"] == sid
+    # 轮次状态也转成「等待」✓（由轮次表说了算）
+    assert waiting[0]["status"] == "waiting"
+
+
+@pytest.mark.asyncio
+async def test_changed_tool_arguments_block_the_approval() -> None:
+    """参数被改过 → **不执行工具**，明确错误码 ✓（Session 方案 §8 校验 5）。
+
+    ⚠️ 比对的是「**审批记录里的参数**」（治理域的权威）—— 不是前端传回来的
+    参数（那个能被改 ✗✗）。
+    """
+    tid, wid, uid, aid = _owners()
+    agent = CatalogAgent.create(
+        id=aid,
+        tenant_id=tid,
+        workspace_id=wid,
+        name="t",
+        category="test",
+        owner="test",
+        model="default",
+    )
+    agent = replace(agent, tools=[{"name": "danger_tool", "enabled": True}])
+    llm = _ScriptedLLM(
+        [
+            {
+                "tool_calls": [
+                    {
+                        "id": str(uuid4()),
+                        "name": "danger_tool",
+                        "arguments": {"path": "/"},
+                    }
+                ]
+            },
+            {"delta": "已执行。"},
+        ]
+    )
+    tool_port = _CatalogToolPort(
+        [
+            {
+                "name": "danger_tool",
+                "description": "高风险操作",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+                "risk": "high",
+                "needConfirm": True,
+            }
+        ]
+    )
+    svc, _deps, sid, *_ = await _make_service(
+        llm=llm, agent=agent, owner_id=uid, tool_port=tool_port
+    )
+
+    chunks = [
+        chunk
+        async for chunk in svc.stream_turn(
+            tenant_id=tid,
+            workspace_id=wid,
+            owner_id=uid,
+            session_id=UUID(sid),
+            user_input="清理磁盘",
+            client_request_id="req-tampered",
+        )
+    ]
+    approvals = [c for c in chunks if isinstance(c, ApprovalRequiredChunk)]
+    assert approvals, [getattr(c, "kind", None) for c in chunks]
+    approval_id = approvals[0].approval_id
+
+    class _Approval:
+        status = "pending"
+        expires_at = datetime.now(UTC) + timedelta(hours=1)
+        # 参数与挂起时**不同** —— 模拟「审批记录里的参数被改过」
+        resource = {"tool": "danger_tool", "arguments": {"path": "/etc/passwd"}}
+
+    class _ApprovalService:
+        async def get(self, *, tenant_id, approval_id):  # type: ignore[no-untyped-def]
+            return _Approval()
+
+        async def approve(self, **kwargs):  # type: ignore[no-untyped-def]
+            raise AssertionError("参数被改过就不该批准")
+
+    with pytest.raises(ValidationError) as excinfo:
+        async for _ in svc.decide_approval(
+            tenant_id=tid,
+            workspace_id=wid,
+            owner_id=uid,
+            session_id=UUID(sid),
+            approval_id=approval_id,
+            approved=True,
+            approval_service=_ApprovalService(),
+        ):
+            pass
+    assert excinfo.value.code == "TOOL_ARGUMENT_INVALID"
+    assert not tool_port.invoked, "参数被改过却执行了工具 ✗✗"
 
 
 @pytest.mark.asyncio

@@ -186,6 +186,24 @@ class SessionJournal(ABC):
         """把这一轮还挂着的 ``pending`` 事件标成 ``delivered``。"""
         ...
 
+    @abstractmethod
+    async def write_pending_approval(
+        self, *, turn_id: UUID, pending: dict[str, Any]
+    ) -> None:
+        """轮次挂起等审批 —— **挂起信息落库** ✓（``session_turns.pending_approval``）。
+
+        ⚠️ 恢复路径靠它校验「挂起的是哪个工具、参数有没有被改」✓
+        （Session 方案 §8）。
+        """
+        ...
+
+    @abstractmethod
+    async def find_pending_approval(
+        self, *, session_id: UUID, tenant_id: UUID
+    ) -> tuple[UUID, dict[str, Any]] | None:
+        """查这个会话**正在等审批**的那一轮 + 挂起信息 ✓（没有就 ``None``）。"""
+        ...
+
 
 # ── Forward-compat ports (Protocol stubs; concrete adapters land in P2/P3/P4) ──
 

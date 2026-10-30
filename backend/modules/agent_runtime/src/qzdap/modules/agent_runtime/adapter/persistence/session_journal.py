@@ -156,6 +156,46 @@ class PostgresSessionJournal:
                 )
             )
 
+    async def write_pending_approval(
+        self, *, turn_id: UUID, pending: dict[str, Any]
+    ) -> None:
+        """轮次挂起等审批 —— **挂起信息落库** ✓（Session 方案 §8 · 决策 #6）。
+
+        ⚠️ 同时把轮次状态置 ``waiting`` —— 「这一轮在等审批」这件事
+        **由轮次表说了算** ✓（会话那一列只是给人看的 ✓）。
+        """
+        async with self._sf.session() as session, session.begin():
+            await session.execute(
+                update(SessionTurnORM)
+                .where(SessionTurnORM.id == turn_id)
+                .values(pending_approval=pending, status="waiting")
+            )
+
+    async def find_pending_approval(
+        self, *, session_id: UUID, tenant_id: UUID
+    ) -> tuple[UUID, dict[str, Any]] | None:
+        """查这个会话**正在等审批**的那一轮 + 它的挂起信息 ✓。
+
+        ⚠️ 取**最近**的一个（多个挂起时以最新的为准 ✓）——
+        审批恢复路径靠它校验「挂起的是哪个工具、参数有没有被改」✓。
+        """
+        async with self._sf.session() as session:
+            result = await session.execute(
+                select(SessionTurnORM.id, SessionTurnORM.pending_approval)
+                .where(
+                    SessionTurnORM.session_id == session_id,
+                    SessionTurnORM.tenant_id == tenant_id,
+                    SessionTurnORM.status == "waiting",
+                    SessionTurnORM.pending_approval.isnot(None),
+                )
+                .order_by(SessionTurnORM.started_at.desc())
+                .limit(1)
+            )
+            row = result.first()
+            if row is None or row[1] is None:
+                return None
+            return row[0], dict(row[1])
+
     async def get_turn_status(self, turn_id: UUID, *, tenant_id: UUID) -> str | None:
         """读轮次状态；轮次不存在或不属于该租户 → ``None``。"""
         async with self._sf.session() as session:

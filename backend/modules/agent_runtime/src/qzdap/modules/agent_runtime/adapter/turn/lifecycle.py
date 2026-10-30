@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
 
@@ -135,6 +136,14 @@ class TurnLifecycle(TurnLifecyclePort):
     async def mark_delivered(self, *, turn_id: UUID) -> None:
         """事件已投递 ✓。"""
         await self._journal.mark_delivered(turn_id=turn_id)
+
+    async def mark_waiting_approval(
+        self, *, turn_id: UUID, pending: Mapping[str, Any]
+    ) -> None:
+        """审批挂起 → 轮次落库 + 状态转 ``waiting`` ✓（Session 方案 §8）。"""
+        await self._journal.write_pending_approval(
+            turn_id=turn_id, pending=dict(pending)
+        )
 
 
 __all__ = ["TurnLifecycle"]

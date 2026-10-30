@@ -263,6 +263,26 @@ class InMemorySessionJournal(SessionJournal):
             row["status"] = status
             row["error_code"] = error_code
 
+    async def write_pending_approval(
+        self, *, turn_id: UUID, pending: dict[str, Any]
+    ) -> None:
+        row = self.turns.get(turn_id)
+        if row is not None:
+            row["pending_approval"] = pending
+            row["status"] = "waiting"
+
+    async def find_pending_approval(
+        self, *, session_id: UUID, tenant_id: UUID
+    ) -> tuple[UUID, dict[str, Any]] | None:
+        for turn_id, row in self.turns.items():
+            if (
+                row.get("session_id") == session_id
+                and row.get("status") == "waiting"
+                and row.get("pending_approval")
+            ):
+                return turn_id, dict(row["pending_approval"])
+        return None
+
     async def append_event(
         self,
         *,

@@ -475,9 +475,9 @@
 | | S-24 dispatcher 接线 | 复用 `runtimes/.../outbox/` 的重试与死信 | — | 0 | S-23 |
 | | S-25 `Last-Event-ID` 重放 | 从 `session_events` 按 seq 重放 | — | 0 | S-23 |
 | | S-26 outbox worker 接线 | 与 sweeper 一起进 lifespan | — | 0 | S-24 |
-| Stage 5 · 审批加固 | S-27 审批挂起落库 | `session_turns.pending_approval` | — | 0 | Stage 3 |
-| | S-28 恢复校验清单 | 5 项校验（层方案 §5.6） | — | 0 | S-27 |
-| | **S-29 删 `except Exception: pass`** | 审批失败 → `ErrorChunk` + 明确错误码 | **X7** | **~5 行** | S-28 |
+| Stage 5 · 审批加固 | S-27 审批挂起落库 | ✅ **已实施**（2026-10-30，Stage 5a）—— 挂起时把 `approval_id` / `tool_name` / **`arguments_digest`** / `session_id` / `turn_id` / `created_at` 落进 `session_turns.pending_approval`，同时轮次状态转 `waiting` ✓（契约 `session/approval.py`；落库在 `journal.write_pending_approval` ✓） | — | 0 | Stage 3 |
+| | S-28 恢复校验清单 | ✅ **已实施**（2026-10-30，Stage 5a）—— 恢复前逐项校验（层方案 §8）：挂起记录存在且是**这个**审批 / 属于**这个会话**（`APPROVAL_NOT_MATCH`）· 审批未过期（`APPROVAL_EXPIRED`）· **审批记录里的参数摘要**与挂起时一致（`TOOL_ARGUMENT_INVALID`）；自审批与「已决策」由 governance 的 `approve()` 把关 ✓。⚠️ **比对的是审批记录里的参数**（权威 ✓），不是前端传回来的参数 | — | 0 | S-27 |
+| | **S-29 删 `except Exception: pass`** | ✅ **已提前完成**（2026-10-30，Session Stage 1 —— 台账 **X7 已清理**：改成「记日志 + 再抛」） | **X7 已清理** | **~5 行** | S-28 |
 | | S-30 审批自动过期 | `expire_if_due()` 接入 sweeper | — | 0 | S-27 |
 | | S-31 审批幂等 | 同 `(session_id, tool_call_id, request_hash)` 复用 approval ID | — | 0 | S-27 |
 | Stage 5b · 删第二套 turn 实现 | **S-32 切 IM 入口** | `dispatch_subscriber.py` → 新链路 | 与 **Gateway G-20 同 PR** | 0（**只切不删**） | **Gateway Stage 4a 同 PR** |
@@ -1153,8 +1153,9 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] S-21 停用打点 `copilot.py` turn 编排 → **X18** · S-22 停用打点 `use_cases/run_turn*.py` → **X2（IM 侧）**
 - [ ] **S-21b 删 `copilot.py` 的 turn 编排** → **X18 已清理**（Stage 3b；进入条件：指标归零 ≥7 天 + 新路径 ≥95%）
 - [ ] S-23 chunk 写 `session_events` · S-24 dispatcher 接线 · S-25 `Last-Event-ID` 重放 · S-26 outbox worker 接线
-- [ ] S-27 审批挂起落库 · S-28 5 项恢复校验
-- [ ] S-29 **删 `except Exception: pass`** → **X7** · S-30 审批自动过期 · S-31 审批幂等
+- [x] S-27 审批挂起落库 · S-28 5 项恢复校验（**2026-10-30 完成，Stage 5a** ✓）
+- [x] S-29 **删 `except Exception: pass`** → **X7**（**2026-10-30 已提前完成**，Session Stage 1 ✓）
+- [ ] S-30 审批自动过期（**归治理域** —— approvals 表不归 Session 管；Session 的 sweeper 不该跨域写治理表 ✗）· S-31 审批幂等（同 `(session_id, tool_call_id, request_hash)` 复用 approval ID —— 创建审批在**旧执行器**里（`runner._request_approval`），要等 Agent 层 A-26 才接得上 ✓）
 - [ ] S-32 **切 IM 入口**（与 **G-20 同 PR**）· S-33 **删 `use_cases/run_turn.py` + `run_turn_to_completion.py`** → **X2**
 - [ ] S-15 **双写启用** · **S-15a 切读新表** · **S-15b 停旧写（双写结束）**
 - [ ] S-34 **DROP `wait_status`** → **X6** · S-35 **停写并废弃 `graph_state`** → **X3** · S-36 **迁数据 + DROP 旧表** → **X4**（前置：切读完成 + 全量对账差异 = 0 + 只读窗口 ≥7 天 + 备份恢复演练过）
