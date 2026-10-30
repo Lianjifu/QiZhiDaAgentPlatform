@@ -12,6 +12,7 @@ from qzdap_schema.dtos import (
     ToolCallChunk,
     UsageChunk,
 )
+from qzdap_schema.dtos.turn import ContextCompactedChunk
 from qzdap_schema.ids import (
     TenantId,
     WorkspaceId,
@@ -74,6 +75,24 @@ def test_done_chunk_optional_message() -> None:
     chunk = DoneChunk(turn_id=uuid4(), seq=3, final_message=None)
     d = chunk.model_dump(mode="json")
     assert d["final_message"] is None
+
+
+def test_context_compacted_chunk_carries_degraded() -> None:
+    """压缩事件带 ``degraded`` ✓ —— 摘要模型失败时前端能看出来 ✓。
+
+    ⚠️ **可选字段** ✓ —— 不传时默认 ``False`` ✓（向后兼容 ✓ ——
+    前端目前只按 ``kind`` 提示 ✓）。
+    """
+    chunk = ContextCompactedChunk(
+        turn_id=uuid4(), seq=1, tokens_before=100, tokens_after=40
+    )
+    assert chunk.degraded is False
+    assert chunk.model_dump(mode="json")["degraded"] is False
+
+    degraded = ContextCompactedChunk(
+        turn_id=uuid4(), seq=1, tokens_before=100, tokens_after=40, degraded=True
+    )
+    assert degraded.model_dump(mode="json")["degraded"] is True
 
 
 def test_problem_details_is_kernel_error() -> None:

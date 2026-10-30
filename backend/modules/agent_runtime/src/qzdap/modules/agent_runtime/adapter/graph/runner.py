@@ -210,6 +210,9 @@ class SessionGraphRunner:
                 degraded=False,
             )
         record_legacy_call("X9")  # 旧上下文压缩 compact_messages
+        # ⚠️ **压缩前的真实 token 数** ✓ —— 之前写死 0 ✗✗（事件里的
+        # 「压缩了多少」永远是 0 ✓ → 排查时看不到效果 ✓）。
+        tokens_before_compact = estimate_tokens(messages)
         messages, rolling_summary, did_compact = compact_messages(
             messages, rolling_summary=rolling_summary, context_window=context_window
         )
@@ -218,7 +221,7 @@ class SessionGraphRunner:
             yield ContextCompactedChunk(
                 turn_id=turn_id,
                 seq=seq,
-                tokens_before=0,
+                tokens_before=tokens_before_compact,
                 tokens_after=estimate_tokens(messages),
             )
 

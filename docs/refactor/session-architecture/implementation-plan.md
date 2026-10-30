@@ -552,13 +552,13 @@
 | | C-08 召回发起 | ✅ **已达成** —— Builder 主动调 `recall` / `search` ✓（契约层定义协议 ✓，模块侧适配器结构上满足 ✓）；**复刻旧路径三个参数** ✓（`top_k=8/6` ✓、按 `score` 降序 ✓、每条截 400 字 ✓）；记忆**按当前用户过滤** ✓（跨用户泄漏 X14 ✓）；**失败可见** ✓（`recall_degraded` ✓ —— 旧路径静默吞掉 ✗） | — | 0 | C-05 ✓ |
 | | C-09 manifest 生成 | ✅ **已达成** —— 每段一条 ✓：来源 / token / 版本 / **`ref_id`** / **`score`** / **`filtered_reason`** / `degraded` ✓；被超预算淘汰的片段**留记录** ✓（`filtered_reason='over_budget'` ✓） | — | 0 | C-05 ✓ |
 | | C-10 **只新建，不动调用点** | ✅ **已达成**（2026-10-30）—— 旧路径 `_load_messages` **仍在服役** ✓（本 Stage 没碰调用点 ✓）；⚠️ Builder 因此**暂时没有生产调用方** ✓ —— 接线归 Stage 4 ✓，前置 = **Agent Stage 5 的 A-26** ✗（归「未接管」表 ✓） | — | — | C-05 ✓ |
-| Stage 2 · Compressor | C-11 async 压缩器 | 修「同步调异步」 | — | 0 | Stage 1 |
-| | C-12 结构化摘要 | 保留决策 / 数字 / 承诺 / 未完成事项 / 来源 ID | — | 0 | C-11 |
-| | C-13 压缩后复验预算 | 仍超限 → `CONTEXT_TOO_LARGE` | — | 0 | C-12 |
-| | C-14 `removed_ids` 按 id 差集 | — | — | 0 | C-12 |
-| | C-15 真正的降级序 | 摘要 → 低分淘汰 → 附件摘要 → 明确错误 | — | 0 | C-13 |
-| | C-16 `context_compacted` 事件 | 修 `tokens_before=0`；**在 `libs/schema` 给 `ContextCompactedChunk` 补 `degraded: bool = False`**（决策 #7；前端只按 `kind` 提示 → 向后兼容） | — | 0 | C-12 |
-| | C-17 **只新建，不动调用点** | ⚠️ `compact.py` 仍被旧循环调用，**停用推迟到 Stage 4**（同上） | — | — | C-11 |
+| Stage 2 · Compressor | C-11 async 压缩器 | ✅ **已达成**（2026-10-30，Context Stage 2）—— `context/compressor.py` ✓ **async** ✓（摘要模型走异步端口 ✓，旧 runtime 的 `run_async_from_sync` 绕行路径不再需要 ✓） |
+| | C-12 结构化摘要 | ✅ **已达成** —— 提示词点名保留**决策 / 数字 / 承诺 / 未完成事项 / 来源 ID** ✓；输入**按 role 分组** ✓；系统提示不入摘要 ✓ |
+| | C-13 压缩后复验预算 | ✅ **已达成** —— 压缩后复验 ✓ → 仍超限 → 二级确定性窗口 ✓ → 仍超限 → **抛 `CONTEXT_TOO_LARGE`** ✓（明确错误 ✓ 不静默截断 ✓） |
+| | C-14 `removed_ids` 按 id 差集 | ✅ **已达成** —— 按**稳定序号**（`session_seq` ✓）报 ✓；⚠️ **不引用 `message_id`** ✓（`session_messages` 没这列 ✗✗） |
+| | C-15 真正的降级序 | ✅ **已达成** —— 一级摘要 → 二级确定性窗口 → **明确错误** ✓；⚠️ 降级时**追加**而不是覆盖旧摘要 ✓；工具结果清洗（截 1500 字 ✓）复刻旧路径 ✓ |
+| | C-16 `context_compacted` 事件 | ✅ **已达成** —— `ContextCompactedChunk` 补 `degraded: bool = False` ✓（决策 #7 ✓ 可选字段 ✓）；旧路径的 **`tokens_before=0` 修掉** ✓（改成压缩前的真实 token 数 ✓） |
+| | C-17 **只新建，不动调用点** | ✅ **已达成**（2026-10-30）—— 旧路径 `compact.py` **仍在服役** ✓；Compressor 因此**暂时没有生产调用方** ✓ → 接线归 Stage 4 ✓（前置 = Agent A-26 ✗，归「未接管」表 ✓） |
 | Stage 3 · Persistence | C-18 manifest 落库 | 按 `(turn_id, step)` | — | 0 | Stage 2 |
 | | C-19 `rolling_summary` 读写迁移 | **新写入**改到新列（旧写入点在 `copilot.py:379-380` 与 `runner.py`，等 Stage 4 停用旧循环后才归零） | — | 0 | C-02 |
 | | C-20 交付前落库 | 保证「模型已回答」时 manifest 一定存在 | — | 0 | C-18 |

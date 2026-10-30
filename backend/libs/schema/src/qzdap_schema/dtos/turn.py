@@ -97,6 +97,10 @@ class ContextCompactedChunk(ChunkEnvelope):
     kind: Literal["context_compacted"] = "context_compacted"
     tokens_before: int = Field(ge=0, default=0)
     tokens_after: int = Field(ge=0, default=0)
+    #: 压缩是否**降级** ✓（摘要模型失败 → 走了确定性窗口 ✓）。
+    #: ⚠️ **可选字段** ✓ —— 前端目前只按 ``kind`` 提示 ✓，不读任何字段 ✓
+    #: → 向后兼容 ✓（Context 方案决策 #7 ✓）。
+    degraded: bool = False
 
 
 class UsageChunk(ChunkEnvelope):

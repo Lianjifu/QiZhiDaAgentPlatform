@@ -8,7 +8,6 @@ Context 方案决策 #2 ✓）。
 from __future__ import annotations
 
 from .budget import (
-    CompactionResult,
     Compactor,
     ContextAssembler,
     InMemorySummaryModel,
@@ -21,6 +20,15 @@ from .builder import (
     ContextBuilder,
     KnowledgeSearchPort,
     MemoryRecallPort,
+)
+from .compressor import (
+    DEFAULT_WINDOW,
+    KEEP_RECENT,
+    WINDOW_RATIO,
+    CompactionOutcome,
+    ContextCompressor,
+    ContextTooLargeError,
+    SummaryModelPort,
 )
 from .prompts import (
     DEFAULT_SYSTEM_PROMPT,
@@ -39,20 +47,26 @@ from .types import (
 __all__ = [
     "CONTEXT_SOURCES",
     "DEFAULT_SYSTEM_PROMPT",
+    "DEFAULT_WINDOW",
+    "KEEP_RECENT",
     "KNOWLEDGE_TOP_K",
     "MEMORY_TOP_K",
+    "WINDOW_RATIO",
     "AssembledContext",
-    "CompactionResult",
+    "CompactionOutcome",
     "Compactor",
     "ContextAssembler",
     "ContextBuilder",
+    "ContextCompressor",
     "ContextManifest",
+    "ContextTooLargeError",
     "InMemorySummaryModel",
     "KnowledgeSearchPort",
     "ManifestEntry",
     "MemoryRecallPort",
     "SummaryError",
     "SummaryModel",
+    "SummaryModelPort",
     "estimate_message_tokens",
     "estimate_tokens",
     "render_agent_prompts",
