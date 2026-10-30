@@ -800,6 +800,28 @@ UPDATE agent_sessions s
 
 > **新写入量的量级对照**：`session_context_manifests` 的行数 = **模型调用总次数**（不是消息数、不是轮次数）。ReAct 深度 3 的轮次 ≈ 3 行。粗估：单租户日均 1 万轮、平均深度 2.5 → ≈ 2.5 万行/天、每行约 2–8 KB JSONB → **约 50–200 MB/天**。这是本层**最大的新增存储成本**，缓解手段见 §11 风险表（保留期策略 / 只存摘要指纹）。
 
+### 本层的「未接管」（都要等门禁 ✓，不能提前做 ✗）
+
+| # | 事项 | 门禁 | 归属 |
+|---|---|---|---|
+| **Stage 4 接线** | Agent Loop 改调 `context/builder.py` + `memory/writer.py` | **Agent Stage 5 的 A-26** ✗ —— ⚠️ **A-26 的前置是「Context Stage 1–3 + Memory Stage 3」** ✓（Context 侧 **已完成** ✓ —— 2026-10-30 Stage 0/1/2/3 ✓；**Memory Stage 3 尚未做** ✗） | Agent 层（Stage 5） |
+| **Stage 5 清理** | 删 `compact.py` / `_load_messages` / `budget.py` / `metadata['rolling_summary']` 残留 | ① Stage 4 已停用 ✓ ✗；② 台账 X8 / X9 / X10 全「已清理」✓ ✗；③ 扫描脚本 Context 段零命中 ✓ ✗ | 本层（Stage 5） |
+| **X9 / X8 的扫描规则启用** | `compact.py` / `_load_messages` 两条规则 | 旧实现删掉后才开 ✓（X10 的规则**已开** ✓ —— 2026-10-30） | 本层（Stage 5） |
+| **前端消费降级标记** | 读 `context_compacted.degraded` 与 `ResultEvent.flags` | ⚠️ 前端目前**零消费** `flags` ✓（§5.3.1 ✓）→ 独立工作项 ✓ | 前端 |
+| **快照** | `session_context_snapshots` | 决策 #3：**先不做** ✓ | — |
+
+⚠️ **解锁链**（要接线就得按这个顺序走 ✓）：
+
+```
+Memory Stage 0–3（Writer 重写） ✓?
+        ↓
+Agent Stage 5 · A-26（旧循环改接新 Builder / Writer） ✗
+        ↓
+Context Stage 4（接线） ✗  →  Context Stage 5（清理） ✗
+        ↓
+Memory Stage 7（M-43 删 runner._remember） ✗
+```
+
 ---
 
 ## 10. 验收标准
