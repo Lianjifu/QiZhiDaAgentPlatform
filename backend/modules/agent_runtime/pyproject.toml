@@ -11,6 +11,9 @@ dependencies = [
     "qzdap-messaging",
     "qzdap-llm",
     "qzdap-observability",
+    # ActorContext 的来源（qzdap_vault.actor）—— 本模块有 5 个文件 import 它，
+    # 不声明的话 isolated install 环境直接 ModuleNotFoundError.
+    "qzdap-vault",
     # Gateway 层契约（qzdap_agent_runtime.gateway）—— 幂等键与判定结果类型.
     "qzdap-agent-runtime-runtime",
     "fastapi>=0.115.0",

@@ -2537,6 +2537,7 @@ dependencies = [
     { name = "qzdap-observability" },
     { name = "qzdap-persistence" },
     { name = "qzdap-schema" },
+    { name = "qzdap-vault" },
 ]
 
 [package.metadata]
@@ -2555,6 +2556,7 @@ requires-dist = [
     { name = "qzdap-observability", editable = "libs/observability" },
     { name = "qzdap-persistence", editable = "libs/persistence" },
     { name = "qzdap-schema", editable = "libs/schema" },
+    { name = "qzdap-vault", editable = "libs/vault" },
 ]
 
 [[package]]

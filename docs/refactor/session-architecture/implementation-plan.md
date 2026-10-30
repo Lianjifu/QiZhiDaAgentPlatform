@@ -246,6 +246,9 @@
 > ```
 > **验收**：只装 `qzdap-agent-runtime` 的声明依赖后，`import qzdap.modules.agent_runtime.application.ports` 不报错。
 
+> **状态**：✅ **已修（2026-10-31）** —— `modules/agent_runtime/pyproject.toml` 已加 `qzdap-vault` ✓ + `uv.lock` 离线重锁 ✓（**无版本变动** ✓）。
+> ⚠️ **仍未验证**：本仓库**没有 isolated install 的 CI 检查** ✓（**P-12 / C10 未做** ✗ —— 守门人缺席 ✗✗ → 同类问题**还会再犯** ✗）。
+
 ### 2.3 前置 C：把收敛基础设施建起来（**不做则后面全部删不掉**）
 
 > **`qzdap_legacy_calls_total` 这个指标在代码里不存在**（`grep` 零命中）。台账 36 条条目的「指标归零」判据**目前全部无从判定** —— 收敛机制是空的。
@@ -301,43 +304,43 @@
 
 | Stage | 工作项 | 产出 / 落点 | **删除的旧实现**（台账 / 关注点） | **旧代码减少** | 依赖 |
 |---|---|---|---|---|---|
-| Stage 0 · 契约与地基 | G-01 建 `gateway/` 骨架 + `types.py` | 4 个类型定稿 | — | 0（纯新增） | — |
+| Stage 0 · 契约与地基 | G-01 建 `gateway/` 骨架 + `types.py` | ✅ **已达成** —— `gateway/` 骨架 ✓（`types.py` ✓ / `normalizer.py` ✓ / `identity.py` ✓ / `idempotency.py` ✓ / `facade.py` ✓ / `replay.py` ✓ / `web.py` ✓ / `outbound.py` ✓ / `channels.py` ✓） 4 个类型定稿 | — | 0（纯新增） | — |
 | | G-02 扩 `ErrorCode` 投影表 | ✅ **已实施**（2026-10-29）：`libs/schema/.../errors.py` 的 `ERROR_PROJECTION`（http/im/web 三套文案）+ `project_error` / `try_project_error` / `project_error_message`；**三处投放面接线**（http 错误信封 / im 出站编码器 / web 的 SSE 错误 chunk）。⚠️ **落点与 §9.1 的 `gateway/errors.py` 不同** —— 唯一一份放 `libs/schema`（Gateway 方案附录 C.8 的 G-46）| — | 0 | G-01 |
 | | **G-02b 错误码收敛（跨模块）** | ✅ **已实施**（2026-10-29）：**15 个**码提升为 `ErrorCode` 枚举成员（方案 §9.0 列了 7 个 —— 实施时发现 Gateway Stage 2/4a **自己又造了 8 个**，按实况补齐），各模块 `domain/errors.py` 的 `code=` 改为 `ErrorCode.X.value`；台账 **G12 已清理**（扫描规则 + 架构测试双重守门）。⚠️ **其余模块自己的 ~150 个码未接管** —— 不属本层 | — | 0 | **横切 H8**（跨模块前置） |
-| | G-03 **迁移 0044** | `session_inbox` 加列 + 换约束：**部分唯一索引**（`WHERE key_strength='strong'`，让 weak 键不参与判重）+ `expires_at` + NOT NULL 列的**合成值/哨兵**约定 | — | 0 | G-01 |
-| | G-04 建架构测试 | import 禁令 | — | 0 | — |
-| | G-05 打点本层旧入口 | `record_legacy_call("G1".."G10")` ×10 | — | 0 | 前置 C2 |
-| Stage 1 · Idempotency Guard | G-06 `IdempotencyStore` 端口 + SQL 实现 | **strong / weak 两条 INSERT 路径**：strong 走 `ON CONFLICT (...) WHERE key_strength='strong' DO NOTHING RETURNING`；weak 走**不带 arbiter 的普通 INSERT**（永不判重，决策 #5） | — | 0 | Stage 0 |
-| | G-07 `Gateway.accept` 编排 | ①→②→③→④ 四步 | — | 0 | G-06 |
-| | G-08 web 入站切过来 | `session_router.py` 的 `stream_turn` 先过 `Gateway.accept` | — | 0 | G-07 |
-| | **G-09 删 `record_request_id` + `recent_request_ids`** | — | **G1**（关注点 #4） | **~25 行** | G-08 |
-| | **G-09b 审批恢复路径传幂等键** | `decide_approval` 触发的续跑请求**携带原轮次的 `clientRequestId`** → 连点两次「同意」只执行一次工具 | — | 0 | G-08 · **Session Stage 5**（X7 侧） |
-| | **G-09c 过期行不当成重复** | claim 命中冲突行但 `expires_at < now()` → 同事务内 `DELETE` + 重新 `INSERT`（第二道保险） | — | 0 | G-06 |
-| Stage 2 · Auth Identity | G-10 `IdentityVerifier` 端口 | web(JWT) / IM(HMAC) / internal 三种实现 | — | 0 | Stage 0 |
-| | G-11 服务账号物化 | IM 的 actor 从渠道配置读 | — | 0 | G-10 |
-| | G-12 验签迁出 | `channel/application/services.py` → `gateway/identity.py` | — | 0 | G-10 |
-| | G-13 补 `/v1/sessions` 租户校验 | 或随 Stage 4a 直接删该路由 | — | 0 | G-10 |
-| | **G-13b `modules/channel` 加 `qzdap-agent-runtime` 依赖** | Gateway 方案 §9.2.1 的依赖方向变更 —— webhook 端点要调 `Gateway.accept`。**必须同步更新 `uv.lock`** | — | 0 | **横切 H6**（锁文件） |
-| | **G-14 删验签分支 + 硬编码身份常量** | — | **G2 / G3**（关注点 #5） | **~60 行** | G-12 |
-| Stage 3 · Message Normalizer | G-15 4 个 inbound adapter 改产 `InboundMessage` | 补 tenant / workspace / channel / trace / attachments | — | 0 | Stage 0 |
-| | G-16 附件统一 | `AttachmentRef` + `AttachmentStoragePort` | — | 0 | G-15 |
-| | **G-17 删 `ParsedMessage` + `ChannelMessageReceived` + IM 进程内 LRU** | — | **G4 / G5 / G6**（关注点 #3、#4） | **~120 行** | G-15 |
-| Stage 4a · 接管（重放降级） | G-18 `ResultSink` 落地 | 出站编码 + 卡片 + 降级规则 | — | 0 | Stage 0–3 |
-| | **G-18a `Gateway.accept` 门面**（①②③）+ ④ 的三个动作 | 编排收进一处：查渠道 → 验签 → 归一化；claim / complete / release 拆给「开始轮次的一方」 | **渠道服务内联的 ②③ 删除**（`_verify_identity` + 归一化段落） | **~70 行** | G-15 |
-| | **G-18b web 入口走门面** | `gateway/web.py`（② principal/租户头、③ 请求体 → 标准消息）+ `container.web_gateway()`；`session_router` 的 SSE 端点改走 `Gateway.accept` | **身份与幂等键各只有一个来源**（原先：端点自取租户头 + copilot 自选键） | **~40 行** | G-18a |
-| | G-19 渠道入站切过来 | `receive_webhook` → `Gateway.accept` → Router | — | 0 | G-18 |
+| | G-03 **迁移 0044** | ✅ **已执行**（2026-10-29）—— `session_inbox` 的 **strong 部分唯一索引** ✓ + `expires_at` ✓ `session_inbox` 加列 + 换约束：**部分唯一索引**（`WHERE key_strength='strong'`，让 weak 键不参与判重）+ `expires_at` + NOT NULL 列的**合成值/哨兵**约定 | — | 0 | G-01 |
+| | G-04 建架构测试 | ✅ **已执行** —— `backend/tests/architecture/test_gateway_boundary.py` ✓（import 禁令 ✓） import 禁令 | — | 0 | — |
+| | G-05 打点本层旧入口 | ✅ **已达成** —— 打点**随旧实现删除逐条撤除** ✓（台账 G1–G9 全部「已清理」✓ —— 旧实现不在场时打点必须撤 ✓ 否则指标永远非零 ✗✗） `record_legacy_call("G1".."G10")` ×10 | — | 0 | 前置 C2 |
+| Stage 1 · Idempotency Guard | G-06 `IdempotencyStore` 端口 + SQL 实现 | ✅ **已达成** —— `gateway/idempotency.py` ✓（strong 走 `ON CONFLICT ... WHERE key_strength='strong' DO NOTHING RETURNING` ✓；weak 走**不带 arbiter 的普通 INSERT** ✓ —— 永不判重 ✓） **strong / weak 两条 INSERT 路径**：strong 走 `ON CONFLICT (...) WHERE key_strength='strong' DO NOTHING RETURNING`；weak 走**不带 arbiter 的普通 INSERT**（永不判重，决策 #5） | — | 0 | Stage 0 |
+| | G-07 `Gateway.accept` 编排 | ✅ **已达成** —— `gateway/facade.py` ✓（①→②→③→④ 四步 ✓） ①→②→③→④ 四步 | — | 0 | G-06 |
+| | G-08 web 入站切过来 | ✅ **已达成** —— `session_router.py:351` 取 `app.state.web_gateway` → `gateway.accept(...)` ✓ `session_router.py` 的 `stream_turn` 先过 `Gateway.accept` | — | 0 | G-07 |
+| | **G-09 删 `record_request_id` + `recent_request_ids`** | ✅ **已清理**（台账 **G1** ✓）—— 协议方法、实现与 `recent_request_ids` 的全部读写**已删** ✓ — | **G1**（关注点 #4） | **~25 行** | G-08 |
+| | **G-09b 审批恢复路径传幂等键** | ✅ **已修复**（台账 **G10** ✓）—— `decide_approval` 生成 `approval\|{approval_id}\|{decision}` 强键 ✓（连点两次「同意」只执行一次 ✓） `decide_approval` 触发的续跑请求**携带原轮次的 `clientRequestId`** → 连点两次「同意」只执行一次工具 | — | 0 | G-08 · **Session Stage 5**（X7 侧） |
+| | **G-09c 过期行不当成重复** | ✅ **已达成** —— `gateway/idempotency.py` 的 `expires_at` 过期行处理 ✓ claim 命中冲突行但 `expires_at < now()` → 同事务内 `DELETE` + 重新 `INSERT`（第二道保险） | — | 0 | G-06 |
+| Stage 2 · Auth Identity | G-10 `IdentityVerifier` 端口 | ✅ **已达成** —— `gateway/identity.py` ✓（web JWT / IM HMAC / internal ✓） web(JWT) / IM(HMAC) / internal 三种实现 | — | 0 | Stage 0 |
+| | G-11 服务账号物化 | ✅ **已达成** —— 迁移 **0049** ✓（`channels.service_account` ✓ + 存量回填 ✓）；渠道没登记服务账号就**不跑这一轮** ✓ IM 的 actor 从渠道配置读 | — | 0 | G-10 |
+| | G-12 验签迁出 | ✅ **已清理**（台账 **G2** ✓）—— `_verify_signature` 已删 ✓ `channel/application/services.py` → `gateway/identity.py` | — | 0 | G-10 |
+| | G-13 补 `/v1/sessions` 租户校验 | ✅ **不适用** —— 该路由**整体已删**（Stage 5 ✓ —— 台账 G7 / G8 ✓） 或随 Stage 4a 直接删该路由 | — | 0 | G-10 |
+| | **G-13b `modules/channel` 加 `qzdap-agent-runtime` 依赖** | ✅ **已执行** —— `modules/channel/pyproject.toml` 声明 `qzdap-agent-runtime-runtime` ✓ Gateway 方案 §9.2.1 的依赖方向变更 —— webhook 端点要调 `Gateway.accept`。**必须同步更新 `uv.lock`** | — | 0 | **横切 H6**（锁文件） |
+| | **G-14 删验签分支 + 硬编码身份常量** | ✅ **已清理**（台账 **G2 / G3** ✓） —— — | **G2 / G3**（关注点 #5） | **~60 行** | G-12 |
+| Stage 3 · Message Normalizer | G-15 4 个 inbound adapter 改产 `InboundMessage` | ✅ **已达成** —— `gateway/normalizer.py` ✓（台账 G4 / G5 / G6 ✓） 补 tenant / workspace / channel / trace / attachments | — | 0 | Stage 0 |
+| | G-16 附件统一 | ✅ **已达成** —— `gateway/types.py` 的 `AttachmentRef` ✓ + `AttachmentStoragePort` ✓ `AttachmentRef` + `AttachmentStoragePort` | — | 0 | G-15 |
+| | **G-17 删 `ParsedMessage` + `ChannelMessageReceived` + IM 进程内 LRU** | ✅ **已清理**（台账 **G4 / G5 / G6** ✓） —— — | **G4 / G5 / G6**（关注点 #3、#4） | **~120 行** | G-15 |
+| Stage 4a · 接管（重放降级） | G-18 `ResultSink` 落地 | ✅ **已达成** —— `gateway/outbound.py` ✓ 出站编码 + 卡片 + 降级规则 | — | 0 | Stage 0–3 |
+| | **G-18a `Gateway.accept` 门面**（①②③）+ ④ 的三个动作 | ✅ **已达成** —— `gateway/facade.py` ✓（claim / complete / release 拆给「开始轮次的一方」✓） 编排收进一处：查渠道 → 验签 → 归一化；claim / complete / release 拆给「开始轮次的一方」 | **渠道服务内联的 ②③ 删除**（`_verify_identity` + 归一化段落） | **~70 行** | G-15 |
+| | **G-18b web 入口走门面** | ✅ **已达成** —— `gateway/web.py` ✓ + `session_router.py` 的 SSE 端点改走 `Gateway.accept` ✓ `gateway/web.py`（② principal/租户头、③ 请求体 → 标准消息）+ `container.web_gateway()`；`session_router` 的 SSE 端点改走 `Gateway.accept` | **身份与幂等键各只有一个来源**（原先：端点自取租户头 + copilot 自选键） | **~40 行** | G-18a |
+| | G-19 渠道入站切过来 | ✅ **已达成** —— 渠道入站 → `Gateway.accept` ✓（与 G-20 一起 ✓） `receive_webhook` → `Gateway.accept` → Router | — | 0 | G-18 |
 | | **G-20 切 IM 入口（原子）** | ✅ **已达成**（2026-10-30，Session Stage 5b 同 PR）—— `dispatch_subscriber.py` → `channel_turn_dispatcher.py`（渠道侧驱动）→ Session 层 `ChannelTurnService`（**会话按 `channel_session_key` 粘住** ✓）→ **唯一 turn 实现** ✓ | 与 **Session S-32 同 PR** ✅（关注点 #2） | 0（只切不删） | — |
-| | G-21 `/v1/sessions*` turn 部分停用 + 打点 | — | **G7 / G8** | 0 | G-19 |
-| | G-22 `dispatch_subscriber.py` 停用 + 打点 | — | **G9** | 0 | G-19 |
-| | G-23 重复请求降级路径 | 命中重复但 `session_events` 未就绪 → 202 + `replay_unavailable`（**不静默丢弃**） | — | 0 | G-19 |
-| Stage 4b · 无感重放 | **G-24 `Last-Event-ID` 重放** | 从 `session_events` 按 seq 重放 —— `gateway/replay.py`（`StoredEvent` / `EventStore` 读端口 / `event_digest`）+ `Gateway.replay()`；SSE 每帧带 `id: <seq>`（live 与 replay **共用一个编码器**） | — | 0 | **Session Stage 4 完成（硬依赖，不豁免）** |
-| | **G-25 降级路径移除** | 重复命中 → **重放上一轮的事件流**（200 + SSE）；**202 分支与 `replay_unavailable` 字段删除**（台账 **G11 已清理**）；重放不了（这一轮还在跑）→ **409** | **202 降级路径整条删除**（同一语义的两套实现 → 只留重放） | ~15 行 | G-24 |
-| | **G-26 重放一致性校验** | `event_digest`（规范化摘要 —— JSONB 不保序，比的不是字节相等）+ seq 连续；真库集成测试断言「copilot 跑一轮 → 事件落库 → 门面重放 → 摘要与原流一致」 | — | 0 | G-24 |
-| | **G-24b Session 侧最小交付（连带落地）** | ⚠️ **方案偏差**（Gateway 附录 C.6 的 **G-31 / G-32**）：Stage 4b 的硬依赖（Session Stage 4「`session_events` 真写真读」）**开工时不满足** —— 表在、**一行没有**。本轮**连带落地**三件事：① `session_turns` **轮次双写**（它是 `session_events.turn_id` 的外键父行）② `session_events` **事件落库**（每 chunk 一行，**先落库再投递**）③ **按 seq 的读取端口**（JOIN 轮次表按租户过滤）+ 迁移 0050 | — | ~250 行 | **Session Stage 0/2/4 的最小部分**（outbox 调度 / 死信 / 保留期仍在 Session Stage 4） |
+| | G-21 `/v1/sessions*` turn 部分停用 + 打点 | ✅ **已清理** —— `/v1/sessions*` **整体删除**（Stage 5 ✓ —— 台账 G7 / G8 ✓） — | **G7 / G8** | 0 | G-19 |
+| | G-22 `dispatch_subscriber.py` 停用 + 打点 | ✅ **已达成** —— 文件**已删**（Stage 5b ✓ —— 台账 **G9** ✓） — | **G9** | 0 | G-19 |
+| | G-23 重复请求降级路径 | ✅ **已被 G-25 取代** —— 重复命中改走**重放** ✓（202 分支删除 ✓ —— 台账 **G11** ✓） 命中重复但 `session_events` 未就绪 → 202 + `replay_unavailable`（**不静默丢弃**） | — | 0 | G-19 |
+| Stage 4b · 无感重放 | **G-24 `Last-Event-ID` 重放** | ✅ **已达成** —— `gateway/replay.py` ✓（`StoredEvent` ✓ / `EventStore` ✓ / `event_digest` ✓）；SSE 每帧带 `id: <seq>` ✓ 从 `session_events` 按 seq 重放 —— `gateway/replay.py`（`StoredEvent` / `EventStore` 读端口 / `event_digest`）+ `Gateway.replay()`；SSE 每帧带 `id: <seq>`（live 与 replay **共用一个编码器**） | — | 0 | **Session Stage 4 完成（硬依赖，不豁免）** |
+| | **G-25 降级路径移除** | ✅ **已执行** —— 202 分支与 `replay_unavailable` 删除 ✓（台账 **G11** ✓） 重复命中 → **重放上一轮的事件流**（200 + SSE）；**202 分支与 `replay_unavailable` 字段删除**（台账 **G11 已清理**）；重放不了（这一轮还在跑）→ **409** | **202 降级路径整条删除**（同一语义的两套实现 → 只留重放） | ~15 行 | G-24 |
+| | **G-26 重放一致性校验** | ✅ **已达成** —— `test_copilot_duplicate_response.py::test_the_replayed_events_have_the_same_digest_as_the_original` ✓ `event_digest`（规范化摘要 —— JSONB 不保序，比的不是字节相等）+ seq 连续；真库集成测试断言「copilot 跑一轮 → 事件落库 → 门面重放 → 摘要与原流一致」 | — | 0 | G-24 |
+| | **G-24b Session 侧最小交付（连带落地）** | ✅ **已达成** —— 轮次双写 ✓ + `session_events` 事件落库 ✓ + 按 seq 的读取端口 ✓ + 迁移 0050 ✓ ⚠️ **方案偏差**（Gateway 附录 C.6 的 **G-31 / G-32**）：Stage 4b 的硬依赖（Session Stage 4「`session_events` 真写真读」）**开工时不满足** —— 表在、**一行没有**。本轮**连带落地**三件事：① `session_turns` **轮次双写**（它是 `session_events.turn_id` 的外键父行）② `session_events` **事件落库**（每 chunk 一行，**先落库再投递**）③ **按 seq 的读取端口**（JOIN 轮次表按租户过滤）+ 迁移 0050 | — | ~250 行 | **Session Stage 0/2/4 的最小部分**（outbox 调度 / 死信 / 保留期仍在 Session Stage 4） |
 | Stage 5 · 清理 | **G-27 删 `/v1/sessions*`（turn 部分 + 列表别名）** | ✅ **已执行**（2026-10-29）：**整个 `adapter/http/router.py` + `mappers.py` 删除**、4 个 DTO 删除、`GET /v1/sessions` 别名删除、`composition/main.py` 挂载删除；仓内调用方（perf 脚本 / 集成测试）同步迁到 `/api` | **G7 / G8** | **~280 行** | ⚠️ 依据是**引用关系**（P-11 确认无仓外消费者），不是指标（偏差 G-38 / G-39） |
 | | **G-28 删 `dispatch_subscriber.py`** | ✅ **已达成**（2026-10-30，Session Stage 5b 同 PR）—— 文件**删除** ✓（取代它的是 `channel_turn_dispatcher.py` ✓） | **G9 已清理** ✅ | **~290 行** | — |
 | | G-29 删 `recent_request_ids` 残留列 / 孤儿索引 / 废弃常量 | ✅ **已执行**（2026-10-29）：迁移 **0051**（`metadata - 'recent_request_ids'` + DROP `session_events` 的 `turn_id` 单列索引）—— ⚠️ 它是 **JSONB 里的键**不是列（G-43） | — | 少量 | G-09 |
-| | G-30 启用扫描脚本 Gateway 段 | ✅ **已执行**（2026-10-29）：`backend/scripts/check_no_legacy_impl.sh`（规则表唯一来源 = 台账 §3.1 ✓）+ `.github/workflows/backend.yml` 的 `legacy-scan` job；**8 条 Gateway 规则启用**（G9 仍 off —— 旧实现还在场 ✓） | — | 0 | G-27 |
+| | G-30 启用扫描脚本 Gateway 段 | ✅ **已执行**（2026-10-29）：`backend/scripts/check_no_legacy_impl.sh`（规则表唯一来源 = 台账 §3.1 ✓）+ `.github/workflows/backend.yml` 的 `legacy-scan` job；**8 条 Gateway 规则启用**（⚠️ **2026-10-31 核对**：G9 的规则**也已启用** ✓ —— 旧实现已删 ✓；扫描脚本现共 **32 条启用 / 12 条待启用** ✓） | — | 0 | G-27 |
 | | G-31 更新台账 + 现状文档 | ✅ **已执行**（2026-10-29）：台账（G7 / G8 → 已清理 ✓）+ `docs/copilot-chat-module-architecture.md`（API 表 + 缺陷 #9 ✓）+ 根 `README.md`（API 列表 ✓） | — | 0 | G-30 |
 | | **G-31b 架构测试（§11.2）** | ✅ **已执行**（2026-10-29）：`backend/tests/architecture/test_gateway_boundary.py`（import 禁令 + Gateway 不反向依赖 ✓）+ `test_single_implementation.py`（单实现守卫 + `InMemory*` 基线 ✓）。⚠️ 方案的 `SCAN_DIRS` 含整个 `backend/runtimes`（那里有**独立的 FastAPI 服务** ✓）→ 收窄（G-40） | — | 0 | G-27 |
 
@@ -378,35 +381,35 @@
 
 | Stage | 工作项 | 产出 / 落点 | **删除的旧实现**（台账 / 关注点） | **旧代码减少** | 依赖 |
 |---|---|---|---|---|---|
-| Stage 0 · 契约与配置 | R-01 建 `router/` 骨架 + `types.py` | 4 个类型定稿 | — | 0 | — |
-| | R-02 **迁移 0045** | `agent_sessions` 加 `next_ingress_seq` / `last_completed_seq` | — | 0 | R-01 |
-| | R-03 策略配置规范 | `admin_agents.profile` 的路由配置 schema（文档化，不强制） | — | 0 | R-01 |
-| | R-04 `UserDirectoryPort` 契约 | 定义在 router 侧，实现在 identity 侧 | — | 0 | R-01 |
-| | R-05 `ErrorCode` 加 `QUEUE_FULL` / `QUEUE_TIMEOUT` | `libs/schema/.../errors.py` + `_HTTP_STATUS` 映射 | — | 0 | 决策 #7 |
-| | R-06 打点本层旧入口 | `record_legacy_call("R1".."R4")` ×4 | — | 0 | 前置 C2 |
-| Stage 1 · Strategy | R-07 规则链实现 | 粘性 > 显式 > 业务线 > 用户标签 > 兜底 | — | 0 | Stage 0 |
-| | R-08 `RouteDecision` 留痕 | 写入 `session_turns.route_decision`（**本层唯一写者**）| — | 0 | R-07 |
-| | **R-09 web 建会话改走 Strategy** | `session_router.py:162` → Strategy | **R2**（关注点 #6） | **~10 行** | R-08 |
-| Stage 2 · Session Routing | R-10 会话 key 派生 | tenant+workspace+channel+chat+user → sha256 | — | 0 | — |
-| | **R-10b 查既有会话（只读）** | 调 Session 的 `lookup(session_key)` → 既有绑定 → **粘性规则的依据**（Gateway 的 `InboundMessage` 不含会话绑定，粘性必须先查） | — | 0 | **Session Stage 1（硬）** |
-| | R-11 会话创建/复用改调 Session | 调 `resolve_or_create`（不再自建）；绑定 Strategy 选出的 agent | — | 0 | R-10b |
-| | R-12 `ingress_seq` 分配 + 入队 | 新增列 + `session_turns.status='queued'` | — | 0 | R-11 · 迁移 0046 已落 |
-| | R-13 IM 路径切换 + 旧 key 停用 | `dispatch_subscriber.py:175-186` | **R1**（行为替换）· **R4**（停用 + 打点） | **~40 行（行为）** | R-11 |
-| Stage 3 · 有序处理 | R-14 FIFO 放行判定 | `ingress_seq == last_completed_seq + 1` | — | 0 | **Session Stage 3（硬）** |
-| | R-15 会话级互斥 | 轮次表 CAS 为主；advisory lock 仅作优化（决策 #9） | — | 0 | R-14 |
-| | R-16 审批中断不占执行位 | `waiting_approval` 是**会话级**状态 | — | 0 | R-15 |
-| | R-17 并发语义切换 | 从「拒绝 `SESSION_BUSY`」改为「排队」 | — | 0 | R-14 · 决策 #1 |
-| | **R-18 FIFO 兜底路径** | 快路径（快照）不成立时，以 `session_turns` 权威值为准放行 + 修复 `last_completed_seq` + 计数告警（防「快照落后 → 队列卡死」） | — | 0 | R-14 |
-| Stage 4 · 接管与弃用 | R-19 渠道入站改走 Strategy + Session Routing | — | — | 0 | Stage 1–3 |
-| | R-20 `dispatch_subscriber.py` 停用 + 打点 | ⚠️ **只停用，不删**（G9 归 Gateway） | — | 0 | R-19 |
-| | R-21 第二套 turn 实现停用 + 打点 | ⚠️ **只停用，不删**（X2 归 Session） | — | 0 | R-19 |
-| Stage 5 · 清理 | **R-22 删 `build_session_key` 冒号拼接版** | — | **R4**（关注点 #7） | **~30 行** | 归零判据满足 |
-| | **R-23 确认 `try_claim` 的互斥职责已由 Session 迁走** | ⚠️ **本层不删** —— 台账 **R3 的 owner 是 Session**（互斥归 Session 的执行权；旧路径本无顺序职责，Router 的 FIFO 是全新建） | — | 0 | — |
-| | R-24 删 `catalog.py:274-281` 的展示映射 | 若策略改用 `category` 原值 | — | **~30 行** | R-09 |
-| | R-25 **确认** `dispatch_subscriber.py` 无残留调用方 | ⚠️ **不删**（归 Gateway） | — | 0 | — |
-| | R-26 **确认**第二套 turn 实现无残留调用方 | ⚠️ **不删**（归 Session） | — | 0 | — |
-| | R-27 启用扫描脚本 Router 段 | 进 CI | — | 0 | R-22 |
-| | R-28 更新台账 + 现状文档 | — | — | 0 | R-27 |
+| Stage 0 · 契约与配置 | R-01 建 `router/` 骨架 + `types.py` | ✅ **已达成** —— `router/types.py` ✓（`RouteDecision` ✓ / `UserDirectoryPort` ✓） 4 个类型定稿 | — | 0 | — |
+| | R-02 **迁移 0045** | ✅ **已执行** —— `agent_sessions.next_ingress_seq` / `last_completed_seq` ✓ `agent_sessions` 加 `next_ingress_seq` / `last_completed_seq` | — | 0 | R-01 |
+| | R-03 策略配置规范 | ✅ **已达成** —— `admin_agents.profile` 的路由配置 ✓（文档化 ✓ 不强制 ✓） `admin_agents.profile` 的路由配置 schema（文档化，不强制） | — | 0 | R-01 |
+| | R-04 `UserDirectoryPort` 契约 | ✅ **已达成** —— `router/types.py:295` ✓（实现在 identity 侧 ✓） 定义在 router 侧，实现在 identity 侧 | — | 0 | R-01 |
+| | R-05 `ErrorCode` 加 `QUEUE_FULL` / `QUEUE_TIMEOUT` | ❌ **未做** —— `libs/schema/.../errors.py` 里**没有**这两个码 ✓ → **随 Stage 3 的排队语义一起加** ✓（现在加 = 建而不切 ✗✗） `libs/schema/.../errors.py` + `_HTTP_STATUS` 映射 | — | 0 | 决策 #7 |
+| | R-06 打点本层旧入口 | ✅ **已达成** —— 打点**随旧实现删除逐条撤除** ✓（台账 R1 / R2 / R4 全「已清理」✓） `record_legacy_call("R1".."R4")` ×4 | — | 0 | 前置 C2 |
+| Stage 1 · Strategy | R-07 规则链实现 | ✅ **已达成** —— `router/strategy.py` ✓（粘性 > 显式 > 业务线 > 用户标签 > 兜底 ✓） 粘性 > 显式 > 业务线 > 用户标签 > 兜底 | — | 0 | Stage 0 |
+| | R-08 `RouteDecision` 留痕 | ✅ **已达成** —— `session_router.py:216` 的 `strategy.decide(...)` → `session_turns.route_decision` ✓（`adapter/turn/lifecycle.py:71` 写入 ✓） 写入 `session_turns.route_decision`（**本层唯一写者**） | — | 0 | R-07 |
+| | **R-09 web 建会话改走 Strategy** | ✅ **已达成** —— `agentId` 直取**删除** ✓（台账 **R2** ✓ —— 改为「显式指定」这一条规则的输入 ✓） `session_router.py:162` → Strategy | **R2**（关注点 #6） | **~10 行** | R-08 |
+| Stage 2 · Session Routing | R-10 会话 key 派生 | ✅ **已达成** —— `router/session_key.py` ✓（长度前缀 + sha256 ✓ 6 维 ✓） tenant+workspace+channel+chat+user → sha256 | — | 0 | — |
+| | **R-10b 查既有会话（只读）** | ✅ **已达成** —— Session 侧 `SessionManager.lookup` ✓（Session S-08b ✓ —— 只读 ✓ 不建表 ✓） 调 Session 的 `lookup(session_key)` → 既有绑定 → **粘性规则的依据**（Gateway 的 `InboundMessage` 不含会话绑定，粘性必须先查） | — | 0 | **Session Stage 1（硬）** |
+| | R-11 会话创建/复用改调 Session | ✅ **已达成** —— `channel_turn.py:58` 与 web 侧都调 `resolve_or_create` ✓（不再自建 ✓） 调 `resolve_or_create`（不再自建）；绑定 Strategy 选出的 agent | — | 0 | R-10b |
+| | R-12 `ingress_seq` 分配 + 入队 | ⚠️ **一半达成** —— **分配** ✓（`session/sequence.py` ✓ 原子自增 ✓）；**入队（`status='queued'`）未做** ✗ → 随 Stage 3 的排队语义 ✓ 新增列 + `session_turns.status='queued'` | — | 0 | R-11 · 迁移 0046 已落 |
+| | R-13 IM 路径切换 + 旧 key 停用 | ✅ **已达成** —— IM 会话按 `channel_session_key` 粘住 ✓（台账 **R1** ✓ —— Session Stage 5b ✓） `dispatch_subscriber.py:175-186` | **R1**（行为替换）· **R4**（停用 + 打点） | **~40 行（行为）** | R-11 |
+| Stage 3 · 有序处理 | R-14 FIFO 放行判定 | ❌ **未做** —— Stage 3 未开工 ✓（`router/__init__.py` 明说「FIFO 放行的契约**不提前建**」✓ —— 建而不切 ✗✗） `ingress_seq == last_completed_seq + 1` | — | 0 | **Session Stage 3（硬）** |
+| | R-15 会话级互斥 | ❌ **未做** —— 互斥归 Session 的执行权 ✓（`current_turn_id` ✓ —— 台账 R3 ✓）；Router 侧的**会话级**排队未做 ✓ 轮次表 CAS 为主；advisory lock 仅作优化（决策 #9） | — | 0 | R-14 |
+| | R-16 审批中断不占执行位 | ❌ **未做** —— 审批挂起已在 `session_turns.pending_approval` ✓（Session Stage 5a ✓），但「不占 FIFO 位」的排队语义未做 ✓ `waiting_approval` 是**会话级**状态 | — | 0 | R-15 |
+| | R-17 并发语义切换 | ❌ **未做** —— 决策 #1 定了「S1 严格排队」✓，但**代码里没有排队** ✓（现状：claim 失败即 `SESSION_BUSY` ✓） 从「拒绝 `SESSION_BUSY`」改为「排队」 | — | 0 | R-14 · 决策 #1 |
+| | **R-18 FIFO 兜底路径** | ❌ **未做** —— 随 R-14 ✓ 快路径（快照）不成立时，以 `session_turns` 权威值为准放行 + 修复 `last_completed_seq` + 计数告警（防「快照落后 → 队列卡死」） | — | 0 | R-14 |
+| Stage 4 · 接管与弃用 | R-19 渠道入站改走 Strategy + Session Routing | ⚠️ **一半达成** —— **web 走 Strategy** ✓；**IM 走渠道配置里登记的 agent** ✓（`channel_turn.py` 的 `request.agent_id` ✓）—— IM 那半**没走规则链** ✗ → 归 Stage 4 ✓ — | — | 0 | Stage 1–3 |
+| | R-20 `dispatch_subscriber.py` 停用 + 打点 | ✅ **已达成** —— 文件**已删** ✓（台账 **G9** ✓ —— 归 Gateway 删除 ✓） ⚠️ **只停用，不删**（G9 归 Gateway） | — | 0 | R-19 |
+| | R-21 第二套 turn 实现停用 + 打点 | ✅ **已达成** —— 两个用例**已删** ✓（台账 **X2** ✓） ⚠️ **只停用，不删**（X2 归 Session） | — | 0 | R-19 |
+| Stage 5 · 清理 | **R-22 删 `build_session_key` 冒号拼接版** | ✅ **已清理**（台账 **R4** ✓） —— — | **R4**（关注点 #7） | **~30 行** | 归零判据满足 |
+| | **R-23 确认 `try_claim` 的互斥职责已由 Session 迁走** | ✅ **已清理**（台账 **R3** ✓ —— owner 是 Session ✓） ⚠️ **本层不删** —— 台账 **R3 的 owner 是 Session**（互斥归 Session 的执行权；旧路径本无顺序职责，Router 的 FIFO 是全新建） | — | 0 | — |
+| | R-24 删 `catalog.py:274-281` 的展示映射 | ⚠️ **待核对** —— 现状 `catalog.py:274-281` 是 `set_favorite` ✓（旧的展示映射已不在那里 ✓）—— 未逐行比对历史版本 ✗ 若策略改用 `category` 原值 | — | **~30 行** | R-09 |
+| | R-25 **确认** `dispatch_subscriber.py` 无残留调用方 | ✅ **已确认** —— 文件已删 ✓ 扫描规则已启用 ✓ ⚠️ **不删**（归 Gateway） | — | 0 | — |
+| | R-26 **确认**第二套 turn 实现无残留调用方 | ✅ **已确认** —— 两个用例已删 ✓ 扫描规则已启用 ✓ ⚠️ **不删**（归 Session） | — | 0 | — |
+| | R-27 启用扫描脚本 Router 段 | ✅ **已达成** —— `build_session_key` ✓ / `try_claim` ✓ 两条规则**已启用** ✓ 进 CI | — | 0 | R-22 |
+| | R-28 更新台账 + 现状文档 | ⚠️ **台账已更新** ✓（R1–R4 全「已清理」✓）；**现状文档未更新** ✗（`docs/copilot-chat-module-architecture.md` ✓ —— 与 Session S-38 / Context C-32 / Memory M-51 一起补 ✓） — | — | 0 | R-27 |
 
 **退出判据**：
 1. 同一飞书群连续 3 条消息 → **同一个 `session_id`**，跨 worker 一致；
@@ -563,9 +566,9 @@
 | Stage 3 · Persistence | C-18 manifest 落库 | ✅ **已达成**（2026-10-30，Context Stage 3）—— `ContextManifestStore` 端口（契约层 ✓ 不引框架 ✓）+ `PostgresContextManifestStore`（模块侧 ✓）；按 `(turn_id, step)` ✓（一次模型调用一条 ✓）；**同 step 冲突即抛错** ✓（落库后立刻 flush ✓）；**不进 outbox** ✓ —— ⚠️ **2026-10-30（Context Stage 4）接上生产调用方** ✓（`runner` 每次模型调用前落一条 ✓，演示栈实测有行 ✓） |
 | | C-19 `rolling_summary` 读写迁移 | ✅ **已达成**（2026-10-30，Context Stage 4）—— **新写入只走 `agent_sessions.rolling_summary`** ✓（`save_rolling_summary` ✓）；旧写入点（Session 层的 `metadata['rolling_summary']`）**不再写** ✓；读侧改读新列 ✓（旧副本**只作过渡回退** ✓ → 清理归 Stage 5 ✓） |
 | | C-20 交付前落库 | ✅ **已达成**（2026-10-30，Context Stage 4）—— manifest **在模型调用之前**落库 ✓（实测：manifest 行先于模型响应存在 ✓）；⚠️ **落库失败就让这一轮失败** ✓ —— 「模型已回答却查不到上下文」比「这一轮失败」更糟 ✗✗ |
-| Stage 4 · 接线与端到端 | C-21 Agent Loop 调 Context | 替换「自己拼 messages」 | — | 0 | **Agent Stage 5** |
+| Stage 4 · 接线与端到端 | C-21 Agent Loop 调 Context | ✅ **已达成**（2026-10-30，**Agent A-26**）—— 旧循环 `_run_turn_inner` 的上下文装配改调 `ContextBuilder.build` ✓（⚠️ **新的 `AgentLoopRunner` 那半还没做** ✗ —— 归 Agent Stage 5 ✓） 替换「自己拼 messages」 | — | 0 | **Agent Stage 5** |
 | | C-22 召回失败的 degraded 标记 | ⚠️ **未达成** —— Context 侧**已经产出** `recall_degraded` ✓（落进 manifest 的 `degraded` 列 ✓），但 **`ResultEvent.flags` 契约还没实现** ✗（Gateway 层 §9.0 只在方案里 ✓）→ **没有可投递的通道** ✗ → 归 **Gateway 层** ✓ | — | 0 | C-08 · **Gateway 的 flags 契约** |
-| | C-23 端到端回归 | 长会话、混合中英文、召回为空、摘要模型故障 | — | 0 | C-21 |
+| | C-23 端到端回归 | ✅ **已达成** —— `modules/agent_runtime/tests/unit/test_context_wiring.py` ✓（长会话 ✓ 混合中英文 ✓ 召回为空 ✓ 摘要模型故障 ✓） 长会话、混合中英文、召回为空、摘要模型故障 | — | 0 | C-21 |
 | | **C-24 停用 + 打点 `_load_messages` / 四套模板 / `compact.py`** | ⚠️ **前置（硬）已满足**（Agent A-26 ✅ 2026-10-30）—— 旧循环 `_run_turn_inner` 已改接 `context/builder.py` + `memory/writer.py` ✓；**X8 的调用点已归零** ✓（演示栈实测 ✓）—— 剩下的「停用 + 打点 + 删除」归 **Context Stage 4 / Stage 5** ✓ | **X8 / X9 / X10 → 已弃用**（关注点 #9、#10、#11） | — | C-21 · **Agent A-26 ✓** |
 | | C-25 Agent Loop 内自拼 messages 分支停用 + 打点 | ✅ **旧循环那一半已停用** ✓（2026-10-30：随 A-26 改调 Builder ✓）—— ⚠️ `nodes.py` 的 `agent` 节点那半是**死代码** ✓（19 节点图没有生产调用方 ✓）→ 删除归 Agent Stage 7（X17）✓ | — | — | C-21 ✓ |
 | Stage 5 · 清理 | **C-26 删 `adapter/graph/compact.py`** | ✅ **已达成**（2026-10-30，Context Stage 5）—— 文件已删 ✓；调用点随 Stage 4 换掉 ✓ | **X9 → 已清理**（关注点 #10） | **~53 行** | 归零判据满足 + **C-24 已停用打点** ✓ |
@@ -574,7 +577,7 @@
 | | **C-29 删 `runtimes/.../context/budget.py`** | ⚠️ **未达成** —— 它的两个旧类（`Compactor` / `ContextAssembler`）还被**19 节点图的 `nodes.py`** import ✓（那图**没有生产调用方** ✓）→ 删除归 **Agent Stage 7**（连 `nodes.py` 一起删 ✓） | — | **~384 行** | **Agent Stage 7** |
 | | C-30 删 `metadata['rolling_summary']` 残留读写 | ✅ **已达成**（2026-10-30，Context Stage 5）—— Session 层不再写 ✓、`copilot.py` 不再读 ✓（只读新列 ✓） | — | 少量 | C-19 ✓ |
 | | C-31 启用扫描脚本 Context 段 | ✅ **已达成**（2026-10-30）—— `compact.py`（X9 ✓）与 `_load_messages`（X8 ✓）两条规则**已启用** ✓（脚本 28 → **30** 条启用 ✓，扫描通过 ✓） | — | 0 | C-26 ✓ |
-| | C-32 更新台账 + 现状文档 | — | — | 0 | C-31 |
+| | C-32 更新台账 + 现状文档 | ⚠️ **台账已更新** ✓（X8 / X9 / X10 全「已清理」✓）；**现状文档未更新** ✗（与 Session S-38 / Router R-28 / Memory M-51 一起补 ✓） —— — | — | 0 | C-31 |
 
 **退出判据**：
 1. 上下文可喂模型（`[{role, content}]`）；agent 身份正确（不再是「企业助手」通用语）；
@@ -621,14 +624,14 @@
 | | M-03 **迁移 0048** | ✅ **早已落地** ✓（M0 地基 ✓）—— L2 补列 + 回填 ✓ + 索引 ✓ + `session_memory_buffer` ✓ + **DROP 死表 `memory_l2_embeddings`** ✓（X19 ✓）+ 放开策略唯一约束 ✓ |
 | | **M-03b 写入侧持久化 `owner_id`** | ✅ **早已落地** ✓ —— `write()` 把 `owner_id` 写进 `L2Fact.user_id` ✓（`user_id` 唯一可靠的来源 ✓） |
 | | M-04 `RecallHit` 扩字段 | ✅ **已达成** —— 契约的 `RecallHit` 补 `scope` / `used_count` / **`ref_id`** / **`version`** ✓（后两个是 Context manifest 依赖的 ✓）；**生产返回改用 `RecallHit`** ✓（不再返回 5 键 dict ✓），dict 转换只在 agent_runtime 的适配器一处 ✓ |
-| | M-05 打点本层旧入口 | `record_legacy_call("X11".."X16")` ×6 | — | 0 | 前置 C2 |
+| | M-05 打点本层旧入口 | ✅ **已达成** —— 打点**随旧实现删除逐条撤除** ✓（X11 打点随 `_remember` 删除撤除 ✓ —— 演示栈实测 `qzdap_legacy_calls_total{entry="X11"}` = 0 ✓） `record_legacy_call("X11".."X16")` ×6 | — | 0 | 前置 C2 |
 | Stage 1 · 作用域过滤 | M-06 L2 召回加 `user_id` 过滤 | ✅ **早已落地** ✓（X14 修复 ✓，2026-10-29 ✓）—— 下推到 SQL 的 WHERE ✓；**归属不明的行不召回** ✓ |
 | | M-07 向量检索加 `user_id` payload 过滤 | ✅ **早已落地** ✓ —— 下沉到 pgvector ✓（决策 #2 ✓），落在 `admin_memory_vec` ✓ |
 | | M-08 历史向量回填 | ✅ **早已落地** ✓（迁移 **0048** ✓）—— 按 id 关联回填 `payload.user_id` ✓；关联不上的行**保持无 user_id** ✓（按用户过滤时不可见 ✓）|
 | | M-09 L3 的 `visible_scope` ACL（若保留 L3） | ⚠️ **跳过** ✓ —— 决策 #1：L3 **退役** ✓（知识归 `modules/knowledge` ✓）→ 不加 ACL ✓ |
 | | **X14 修复完成即「已弃用」** | — | **X14**（**修复类条目，不是删除类**） | — | M-06 |
-| Stage 2 · C2 Retrieval 重写 | M-10 向量优先 + 词法兜底 | 替代全量扫描 | — | 0 | Stage 1 |
-| | M-11 候选集 `top_k × 4` | 替代全量 | — | 0 | M-10 |
+| Stage 2 · C2 Retrieval 重写 | M-10 向量优先 + 词法兜底 | ✅ **已达成**（2026-10-30，Memory Stage 2）—— **向量分为主 + 词法分补权重** ✓（0.7 / 0.3 ✓ —— 与旧路径同口径 ✓）；词法候选**始终**取 ✓ 替代全量扫描 | — | 0 | Stage 1 |
+| | M-11 候选集 `top_k × 4` | ✅ **已达成** —— 端口的 `limit` = `top_k × 4` ✓（与 Context 的降级序一致 ✓） 替代全量 | — | 0 | M-10 |
 | | M-12 去重 + 阈值 + abstain | ✅ **已达成** —— 去重按 `ref_id` + **`content_hash`** ✓（两道 ✓）；阈值 0.15 ✓；**abstained** ✓（「没召回」≠「没有相关知识」✓）|
 | | M-13 provenance 补全 | ✅ **已达成** —— 每条命中带 `scope` / `used_count` / `version` / `created_at` / `content_hash` ✓；⚠️ **ORM 补上迁移 0048 已建但没映射的七列** ✓（领域实体同步 ✓）|
 | | M-14 **C10 读取侧降级** | ✅ **已达成** —— 向量库 / embedding 不可用 → **纯词法** ✓ + `degraded=True` ✓（降级可见 ✓）；没配向量**不算降级** ✓|
@@ -667,8 +670,8 @@
 | | **M-47 退役 `admin_memory_l3`** | ⚠️ **未做** —— 决策 #1 的**数据要先迁到 `modules/knowledge`** ✓（团队知识不能直接丢 ✗✗） | **X15**（关注点 #14） | **1 张表** | 决策 #1 · **未接管** |
 | | M-48 清理 `memory_policy` 的无效语义 | ✅ **已达成**（2026-10-30）—— 旧 `autoSummarize` / `scope` 标签用法的**唯一消费者**（旧写入点）已删 ✓；**字段形状保留** ✓（前端表单按这四个字段读写 ✓）—— 「无效」指的是**运行时不再消费** ✓ | — | 少量 | Stage 4–5 ✓ |
 | | **M-49 删原 `MemoryService` 单类** | ⚠️ 平面 A / B 两个服务类**必须保留** | **X16**（关注点 #15） | 少量 | M-01 |
-| | M-50 启用扫描脚本 Memory 段 | 台账 X11–X16 段 | — | 0 | M-43 |
-| | M-51 更新台账 + 现状文档 | X14 标「已弃用」（修复类）；**X19 在 Stage 0 的迁移 0048 内已落地** → 一并标「已清理」 | — | 0 | M-50 |
+| | M-50 启用扫描脚本 Memory 段 | ⚠️ **部分达成** —— **X11 / X16 两条已启用** ✓（`class MemoryService\b` ✓ / `_remember` ✓）；**X12 / X13 / X15 仍关着** ✓ —— 那几条的旧实现还在场 ✓（`layered.py` ✓ / L1 表 ✓ / L3 表 ✓）；**X19 的表已 DROP** ✓ → 规则收窄后启用 ✓（本轮 ✓） 台账 X11–X16 段 | — | 0 | M-43 |
+| | M-51 更新台账 + 现状文档 | ⚠️ **台账已更新** ✓（X11 已清理 ✓ / X16 已弃用 ✓ / X19 **本轮改为已清理** ✓）；**现状文档未更新** ✗（与 Session S-38 / Router R-28 / Context C-32 一起补 ✓） —— X14 标「已弃用」（修复类）；**X19 在 Stage 0 的迁移 0048 内已落地** → 一并标「已清理」 | — | 0 | M-50 |
 
 **退出判据**：
 1. **用户 A 的会话召回结果里不含用户 B 的记忆**（租户 / 工作区 / 用户三层隔离各有测试）—— **X14 已修复**；
@@ -718,7 +721,6 @@
 | | A-03 归一 `TaskKind` 与 `TaskClassifier` | ✅ **已达成** —— `graph/routing.py` **迁到** `agent_router/classifier.py` ✓（**不是新增一份** ✓）；返回值多了**置信度** ✓（`TaskClassification` ✓）；顺带把 `nodes.py` 里写死的 `confidence: 1.0` 换成**真实置信度** ✓ | — | 0（迁移 ✓） | A-01 |
 | | A-04 依赖核对 | ✅ **已达成** —— 版本与方案 §2.1 一致 ✓：`langgraph` 1.2.12 ✓ / `langgraph-prebuilt` 1.1.0 ✓ / `langchain-core` 1.6.6 ✓；`deepagents` **未安装** ✓（决策 #8：Stage 6 可选 ✓ → 不加 ✓）；⚠️ runtime 的 pyproject **显式声明**了这三个依赖 ✓（之前只靠传递引入 ✗）+ `uv.lock` 离线重锁 ✓ | — | 0 | — |
 | | A-05 打点 X5 旧入口 | ✅ **已有** ✓（`runner.py:104` 的 `record_legacy_call("X5")` ✓ —— 占位图 `compile_loop_graph` ✓）；扫描规则**仍关着** ✓（归 Agent Stage 7 与 X17 同批删 ✓） | — | 0 | 前置 C2 ✓ |
-| | A-05 打点 X5 旧入口 | `record_legacy_call("X5")` | — | 0 | 前置 C2 |
 | Stage 1 · LLM / SLM | A-06 `QZDAPChatModel` 落地 | ✅ **已达成**（2026-10-30，Agent Stage 1）—— 内部持**端口** ✓（`LLMPort` ✓）；`_astream` → `AIMessageChunk` ✓；用量 → `usage_metadata` ✓；工具调用 delta → `tool_call_chunks` ✓（额外字段原样带走 ✓）| — | 0 | A-06 |
 | | A-07 `LLMClient` 封装 | ✅ **已达成** —— `execution/llm_client.py` ✓（`LLMCaller` ✓）：**取值链**按 §5.2.1 走一遍 ✓（查表 ✓ 不决策 ✓）；**失败转移链**（primary → fallback ✓）交给端口 ✓ | — | 0 | A-06 |
 | | A-08 `Reasoner` | ✅ **已达成** —— `agent_loop/reason.py` ✓；**`ToolCallAccumulator` 迁入** ✓（按 index 归并 ✓ / 参数表示不容混用 ✓ / `thought_signature` 透传 ✓）；文本增量实时到 ✓，**工具调用装配完整才交出去** ✓ | — | 0（迁移 ✓） | A-06 |
@@ -1100,111 +1102,108 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 > **勾选规则**：完成一个工作项就勾上，并注明它让哪个台账条目前进了一格。**「删除」类工作项必须勾上才算该层完成。**
 
 ### 全局前置
-- [ ] P-01 拍板「表选择」决策 —— **gate**（前置 A）
-- [ ] P-02 修 `qzdap-vault` 缺失声明（前置 B）
-- [ ] P-03 建 `qzdap_legacy_calls_total` + `record_legacy_call`（C1）
-- [ ] P-04 给 29 条台账条目的旧入口打点（C2，**逐条核对，不许漏**）
-- [ ] P-05 建 CI 扫描脚本骨架（不启用）（C3）
-- [ ] P-06 建架构测试骨架 + 单实现扫描 + **`InMemory*` 禁令**（C4）
-- [ ] P-07 建指标看板查询片段（C5）
-- [ ] P-08 登记 16 个 `InMemory*` + 平行 `*Event` 的处置归属（C6）
-- [ ] P-09 建验收环境与脱敏样本（H1 / C7）
-- [ ] P-10 建告警规则（H2 / C8）
-- [ ] P-11 **确认 `/v1/sessions*` 是否有仓外消费者**（H5 / C9，需 API owner 拍板）
-- [ ] P-12 CI 加 isolated install 检查（H6 / C10）
+> **2026-10-31 核对**（依据 = 代码 + 台账 + git 历史 ✓）。
+
+- [x] P-01 拍板「表选择」决策 —— **gate**（前置 A）—— ✅ **2026-10-29 用户拍板** ✓（53 条决策全部定稿 ✓ —— §2.1 ✓）
+- [x] **P-02 修 `qzdap-vault` 缺失声明**（前置 B）—— ✅ **2026-10-31 已修** —— `modules/agent_runtime` 有 **5 个文件** import `qzdap_vault` ✓（`adapter/llm/__init__.py` ✓ / `adapter/context/summary_adapter.py` ✓ / `adapter/graph/runner.py` ✓ / `adapter/graph/chat_model.py` ✓ / `application/ports/__init__.py` ✓）而 pyproject **没声明它** ✗ → **isolated install 环境直接 `ModuleNotFoundError`** ✗✗ —— 已加 `qzdap-vault` 到 `modules/agent_runtime/pyproject.toml` ✓ + `uv.lock` 离线重锁 ✓（**无版本变动** ✓）。⚠️ **仍未验证**：本仓库**没有 isolated install 的 CI 检查** ✓（= P-12 ✗ —— 那条没做，这类问题**还会再犯** ✗✗）
+- [x] P-03 建 `qzdap_legacy_calls_total` + `record_legacy_call`（C1）—— ✅ `libs/observability/.../metrics.py` ✓（`NEW_CALLS_TOTAL` ✓ + `record_new_call` ✓ 同一套 `entry` 标签 ✓）
+- [x] P-04 给台账条目的旧入口打点（C2，**逐条核对，不许漏**）—— ✅ **36 条中 16 条在旧实现的入口处打点** ✓（其余 20 条走替代判据 ✓ —— grep 扫描 / 数据迁移 / 回归测试 ✓） —— ⚠️ **打点随旧实现删除逐条撤除** ✓（旧实现不在场时打点必须撤 ✓ 否则指标永远非零 ✗✗）
+- [x] P-05 建 CI 扫描脚本骨架（C3）—— ✅ `backend/scripts/check_no_legacy_impl.sh` ✓（**31 条启用** ✓ / 13 条待启用 ✓）+ CI 的 `legacy-scan` job ✓
+- [x] P-06 建架构测试骨架 + 单实现扫描 + **`InMemory*` 禁令**（C4）—— ✅ `backend/tests/architecture/` ✓（5 个文件 ✓ —— `test_single_implementation.py` ✓ / `test_error_code_vocabulary.py` ✓ / 三层的 boundary ✓）
+- [x] P-07 建指标看板查询片段（C5）—— ✅ `/metrics` 端点已有 ✓（按 `entry` 分组查询 ✓）
+- [x] P-08 登记 16 个 `InMemory*` + 平行 `*Event` 的处置归属（C6）—— ✅ §1.5 ✓
+- [ ] P-09 建验收环境与脱敏样本（H1 / C7）—— ⬜ **未做**（演示栈有 ✓ —— 但**脱敏样本**没有 ✗）
+- [ ] P-10 建告警规则（H2 / C8）—— ⬜ **未做**
+- [x] P-11 **确认 `/v1/sessions*` 是否有仓外消费者**（H5 / C9，需 API owner 拍板）—— ✅ **已确认无仓外调用方** ✓（Gateway G-27 的删除依据 ✓ —— 兼容保留期因此归零 ✓）
+- [ ] P-12 CI 加 isolated install 检查（H6 / C10）—— ❌ **未做** —— CI 有 lint ✓ / import-linter ✓ / legacy-scan ✓ / mypy ✓ / secret ✓ / audit ✓ / test ✓ / smoke ✓ —— **没有 isolated install** ✗（那正是 **P-02 那类问题**的守门人 ✗✗）
 
 ### Gateway 层（§3.1）—— **删除 G1–G12**
-> **2026-10-29 核对**：G-01…G-19 / G-21…G-27 / G-29…G-31 / **G-02 / G-02b** 均已落地
-> （依据 = 代码 + 台账 + git 历史 ✓）。**G-20 / G-28 未接管** —— 必须与
-> **Session Stage 5b 同一个 PR**（台账 §3.4 的原子切换规则 ✓）。
+> **台账 G1–G12 全部「已清理」** ✓ —— 本层**收口** ✓。剩余的只有「现状文档同步」（与 Session S-38 / Router R-28 / Context C-32 / Memory M-51 一起补 ✓）。
 
-- [x] G-01 `gateway/` 骨架 + `types.py` · **G-02 `ErrorCode` 投影表** ✅ 2026-10-29 · **G-02b 错误码收敛（15 个 → `ErrorCode` 枚举 + 台账 G12）** ✅ 2026-10-29 · G-03 **迁移 0044**（部分唯一索引 + 合成值约定）· G-04 架构测试 · G-05 打点 G1–G11
-- [x] G-06 `IdempotencyStore` · G-07 `Gateway.accept` · G-08 web 入站切过来
-- [x] G-09 **删 `record_request_id` + `recent_request_ids`** → **G1** · **G-09b 审批恢复路径传幂等键** → **G10** · **G-09c 过期行不当成重复**
-- [x] G-10 `IdentityVerifier` · G-11 服务账号物化 · G-12 验签迁出 · G-13 `/v1/sessions` 租户校验（该路由已随 Stage 5 删除 ✓）· **G-13b `modules/channel` 加 `qzdap-agent-runtime` 依赖 + `uv.lock`**
-- [x] G-14 **删验签分支 + 硬编码身份常量** → **G2 / G3**
-- [x] G-15 4 个 inbound adapter · G-16 附件统一
-- [x] G-17 **删 `ParsedMessage` + `ChannelMessageReceived` + IM LRU** → **G4 / G5 / G6**
-- [x] G-18 `ResultSink` · G-19 渠道入站切过来
-- [x] **G-20 切 IM 入口**（与 **S-32 同 PR**）—— ✅ **2026-10-30 达成**（Session Stage 5b 同 PR）：IM 走唯一 turn 实现 ✓
-- [x] G-21 `/v1/sessions*` 停用打点（随后随 Stage 5 删除 ✓）· G-22 `dispatch_subscriber.py` 停用打点 · G-23 重复请求降级路径（Stage 4b 已删除，改重放 ✓）
-- [x] G-24 `Last-Event-ID` 重放 · G-25 降级路径移除 · G-26 重放一致性校验
-- [x] G-27 **删 `/v1/sessions*`** → **G7 / G8** · G-28 **删 `dispatch_subscriber.py`** → **G9** —— ✅ **2026-10-30 达成**（与 **S-33 同 PR** ✓，取代它的是 `channel_turn_dispatcher.py`）
-- [x] G-29 残留列 / 孤儿索引 · G-30 启用扫描脚本 Gateway 段 · G-31 更新台账 + 现状文档
+- [x] G-01 `gateway/` 骨架 + `types.py` ✓ · **G-02 `ErrorCode` 投影表** ✅ 2026-10-29 · **G-02b 错误码收敛（15 个 → `ErrorCode` 枚举 + 台账 G12）** ✅ 2026-10-29 · G-03 **迁移 0044** ✓ · G-04 架构测试 ✓ · G-05 打点 G1–G11 ✓（随旧实现删除**已撤除** ✓）
+- [x] G-06 `IdempotencyStore` ✓ · G-07 `Gateway.accept` ✓ · G-08 web 入站切过来 ✓
+- [x] G-09 **删 `record_request_id` + `recent_request_ids`** → **G1** ✓ · **G-09b 审批恢复路径传幂等键** → **G10** ✓ · **G-09c 过期行不当成重复** ✓
+- [x] G-10 `IdentityVerifier` ✓ · G-11 服务账号物化 ✓（迁移 0049 ✓）· G-12 验签迁出 ✓ · G-13 `/v1/sessions` 租户校验（**不适用** ✓ —— 该路由已随 Stage 5 删除 ✓）· **G-13b `modules/channel` 加 `qzdap-agent-runtime` 依赖** ✓
+- [x] G-14 **删验签分支 + 硬编码身份常量** → **G2 / G3** ✓
+- [x] G-15 4 个 inbound adapter ✓ · G-16 附件统一 ✓
+- [x] G-17 **删 `ParsedMessage` + `ChannelMessageReceived` + IM LRU** → **G4 / G5 / G6** ✓
+- [x] G-18 `ResultSink` ✓ · G-19 渠道入站切过来 ✓
+- [x] **G-20 切 IM 入口**（与 **S-32 同 PR**）✅ 2026-10-30 ✓
+- [x] G-21 `/v1/sessions*` 停用打点（随后随 Stage 5 删除 ✓）· G-22 `dispatch_subscriber.py` 停用打点 ✓ · G-23 重复请求降级路径（**Stage 4b 已删** ✓ 改重放 ✓）
+- [x] G-24 `Last-Event-ID` 重放 ✓ · G-25 降级路径移除 ✓ · G-26 重放一致性校验 ✓
+- [x] G-27 **删 `/v1/sessions*`** → **G7 / G8** ✓ · G-28 **删 `dispatch_subscriber.py`** → **G9** ✓（2026-10-30 ✓ 与 **S-33 同 PR** ✓）· G-29 残留列 / 孤儿索引 ✓（迁移 0051 ✓）
+- [x] G-30 启用扫描脚本 Gateway 段 ✓ · G-31 更新台账 ✓ · **G-31b 架构测试** ✓ —— ⚠️ **现状文档**（`docs/copilot-chat-module-architecture.md` ✓ / 根 `README.md` ✓）在 G-31 已更新 ✓，但**后续几层的变更还没回灌** ✗（见 S-38 ✓）
 
 ### Router 层（§3.2）—— **删除 R1–R4**
-- [x] R-01 `router/` 骨架 · R-02 **迁移 0045** · R-03 策略配置 schema · R-04 `UserDirectoryPort` · R-05 `QUEUE_FULL`/`QUEUE_TIMEOUT` · R-06 打点 R1–R4
-      （2026-10-29：R4 无生产调用方 → 打不了点 ✓；R2 的打点随旧实现撤除 ✓）
-- [x] R-07 规则链 · R-08 `RouteDecision` 留痕
-      （2026-10-29：**粘性规则已实现但拿不到输入** —— 依赖 Session Stage 1 的 `lookup` 端口 → 偏差 D1，详见 router 方案 §13.2）
-- [x] R-09 **web 建会话改走 Strategy** → **R2 已清理**
-- [x] R-10 会话 key 派生 ✅ 2026-10-29（哈希版 `router/session_key.py`，6 维含 `channel_type`；**旧的冒号拼接版已删 → R4 已清理**）· **R-10b 调 Session 的 `lookup`（粘性依据）** ⏳ 阻塞于 Session Stage 1（端口不存在）· R-11 改调 `resolve_or_create` ⏳ 同上 · R-12 `ingress_seq` 分配 + 入队 ⏳ 同上
-- [ ] R-13 IM 路径切换 + 旧 key 停用 → **R1**（行为）/ **R4**（停用）
-- [ ] R-14 FIFO 放行 · R-15 会话级互斥 · R-16 审批不占执行位 · R-17 并发语义切排队
-- [ ] R-18 **FIFO 兜底路径**（快照落后时以权威值为准 + 修复 + 告警）
-- [ ] R-19 渠道入站改走 Strategy · R-20 `dispatch_subscriber` 停用打点（不删）· R-21 第二套 turn 停用打点（不删）
-- [x] R-22 **删 `build_session_key`** → **R4 已清理** ✅ 2026-10-29（⚠️ 扫描规则的目录原本写错、从来没生效过 → 已改正并启用）· R-23 **确认 `try_claim` 的互斥已迁走**（⚠️ **不删**，R3 归 Session）· R-24 删 `catalog.py` 映射
-- [ ] R-25/R-26 **确认**无残留调用方（不删）· R-27 启用扫描脚本 Router 段 · R-28 更新台账 + 现状文档
+> **台账 R1–R4 全部「已清理」** ✓ —— 但 **Stage 3（排队语义）整段未做** ✗。
+
+- [x] R-01 `router/` 骨架 ✓ · R-02 **迁移 0045** ✓ · R-03 策略配置 schema ✓ · R-04 `UserDirectoryPort` ✓ · R-06 打点 R1–R4 ✓（随旧实现删除**已撤除** ✓）
+- [ ] **R-05 `QUEUE_FULL` / `QUEUE_TIMEOUT`** —— ❌ **未做** —— `libs/schema/.../errors.py` 里**没有**这两个码 ✓ → **随 Stage 3 一起加** ✓（现在加 = 建而不切 ✗✗）
+- [x] R-07 规则链 ✓ · R-08 `RouteDecision` 留痕 ✓（`session_turns.route_decision` ✓）
+- [x] R-09 **web 建会话改走 Strategy** → **R2 已清理** ✓
+- [x] R-10 会话 key 派生 ✓（哈希版 ✓ 6 维 ✓）· **R-10b 调 Session 的 `lookup`** ✓（Session S-08b ✓ —— 粘性规则的输入有了 ✓）· R-11 改调 `resolve_or_create` ✓
+- [ ] **R-12 `ingress_seq` 分配 + 入队** —— ⚠️ **一半** —— **分配** ✓（`session/sequence.py` ✓ 原子自增 ✓）；**入队（`status='queued'`）未做** ✗
+- [x] R-13 IM 路径切换 + 旧 key 停用 → **R1 / R4** ✓（2026-10-30 ✓ Session Stage 5b ✓）
+- [ ] **R-14 FIFO 放行** · **R-15 会话级互斥** · **R-16 审批不占执行位** · **R-17 并发语义切排队** —— ❌ **Stage 3 整段未做** ✓（决策 #1 已定「S1 严格排队」✓ 但**代码里没有排队** ✓ —— 现状仍是 claim 失败即 `SESSION_BUSY` ✓；`router/__init__.py` 明说「FIFO 放行的契约**不提前建**」✓）
+- [ ] **R-18 FIFO 兜底路径** —— ❌ 随 R-14 ✓
+- [ ] **R-19 渠道入站改走 Strategy** —— ⚠️ **一半** —— **web 走 Strategy** ✓；**IM 走渠道配置登记的 agent** ✓（`channel_turn.py` 的 `request.agent_id` ✓）—— IM 那半**没走规则链** ✗ → 归 Stage 4 ✓
+- [x] R-20 `dispatch_subscriber` 停用打点 ✓（文件已删 ✓）· R-21 第二套 turn 停用打点 ✓（两个用例已删 ✓）
+- [x] R-22 **删 `build_session_key`** → **R4 已清理** ✓（扫描规则的目录原本写错 ✓ 已改正并启用 ✓）· R-23 **确认 `try_claim` 的互斥已迁走** ✓（**不删** ✓ —— R3 归 Session ✓）· R-24 删 `catalog.py` 映射（⚠️ **待核对** ✓）
+- [x] R-25 / R-26 **确认**无残留调用方 ✓ · R-27 启用扫描脚本 Router 段 ✓ · R-28 更新台账 ✓ —— ⚠️ **现状文档未更新** ✗
 
 ### Session 层（§3.3）—— **删除 X2 / X3 / X4 / X6 / X7 / X18**（**全局关键路径**）
-- [ ] S-01 `session/` 骨架 + `state.py` · S-02 **迁移 0046** · S-03 `session_messages.session_id` 回填 · S-04 `APPROVER_MUST_DIFFER` · S-05 **`AsyncPostgresSaver`** · S-06 停写 `wait_status` → **X6** ✅ 2026-10-30 · S-07 打点 X2–X7
-- [ ] S-08 `resolve_or_create` · **S-08b `lookup`（只读，Router 粘性依据）** · S-09 `close`/`archive` · S-10 sweeper 骨架 · S-11 **删 `try_claim` 的 `wait_status` 分支**
-- [ ] S-12 `ingress_seq` · S-13 `session_seq` · S-14 checkpoint 接线 · S-15 启用新表写入
-- [ ] S-16 `turn_runner.py` 落地 · S-17 轮次幂等 · S-18 取消 · S-19 成本归属 · S-20 **切 web/api 入口**
-- [x] S-21 停用打点 `copilot.py` turn 编排 → **X18** ✅ · S-22 停用打点 `use_cases/run_turn*.py` → **X2（IM 侧）** ✅ 2026-10-30
-- [ ] **S-21b 删 `copilot.py` 的 turn 编排** → **X18 已清理**（Stage 3b；进入条件：指标归零 ≥7 天 + 新路径 ≥95%）
-- [x] S-23 chunk 写 `session_events` ✅ · S-24 dispatcher 接线 ✅ 2026-10-30 · S-25 `Last-Event-ID` 重放 ✅ · S-26 outbox worker 接线 ✅ 2026-10-30
-- [x] S-27 审批挂起落库 · S-28 5 项恢复校验（**2026-10-30 完成，Stage 5a** ✓）
-- [x] S-29 **删 `except Exception: pass`** → **X7**（**2026-10-30 已提前完成**，Session Stage 1 ✓）
-- [ ] S-30 审批自动过期（**归治理域** —— approvals 表不归 Session 管；Session 的 sweeper 不该跨域写治理表 ✗）· S-31 审批幂等（同 `(session_id, tool_call_id, request_hash)` 复用 approval ID —— 创建审批在**旧执行器**里（`runner._request_approval`），要等 Agent 层 A-26 才接得上 ✓）
-- [x] S-32 **切 IM 入口**（与 **G-20 同 PR**）✅ 2026-10-30 · S-33 **删 `use_cases/run_turn.py` + `run_turn_to_completion.py`** → **X2** ✅ 2026-10-30
-- [x] S-15 **双写启用** ✅ · **S-15a 切读新表** ✅ 2026-10-30 · **S-15b 停旧写（双写结束）** ✅ 2026-10-30
-- [x] S-34 **DROP `wait_status`** → **X6** ✅ 2026-10-30（迁移 0053）
-- [ ] S-35 **停写并废弃 `graph_state`** → **X3** · S-36 **迁数据 ✅（迁移 0054）+ DROP 旧表** → **X4**（前置：切读完成 + 全量对账差异 = 0 + 只读窗口 ≥7 天 + 备份恢复演练过）
-- [x] S-37 启用扫描脚本 Session 段（**X2 / X6 / X18 段已启用** ✅；X3 / X4 段待旧实现删除）· S-38 更新台账 + 现状文档 ✅
+- [x] S-01 `session/` 骨架 + `state.py` ✓ · S-02 **迁移 0046** ✓ · S-03 `session_messages.session_id` 回填 ✓ · S-04 `APPROVER_MUST_DIFFER` ✓ · S-05 **`AsyncPostgresSaver`** ✓（**X20 已清理** ✓）· S-06 停写 `wait_status` → **X6** ✓ · S-07 打点 X2–X7 ✓
+- [x] S-08 `resolve_or_create` ✓ · **S-08b `lookup`（只读，Router 粘性依据）** ✓ · S-09 `close`/`archive` ✓ · S-10 sweeper 骨架 ✓ · **S-10b sweeper 第四类清扫** ✓
+- [ ] **S-11 删 `try_claim` 的 `wait_status` 分支** —— ⚠️ **未达成** —— 与 S-06 同一个阻塞：第二套 turn 实现（**X2**）当时还在用它的 CAS ✓ → **X2 已在 Stage 5b 删除** ✓ → **这条现在可以做了** ✓（≈20 行 ✓）
+- [x] S-12 `ingress_seq` ✓ · S-13 `session_seq` ✓ · S-15 启用新表写入 ✓ · **S-15a 切读新表** ✓ · **S-15b 停旧写** ✓（双写期结束 ✓ 对账差异 = 0 ✓）
+- [ ] **S-14 checkpoint 接线** —— ⚠️ **未达成** —— saver 已在 lifespan ✓ + `thread_id` 契约已给 ✓，但「真正用它跑图」**阻塞在 19 节点图没有生产调用方** ✓ → 归 **Agent Stage 5** ✓
+- [x] S-16 `turn_runner.py` 落地 ✓ · S-17 轮次幂等 ✓ · S-18 取消 ✓ · S-19 成本归属 ✓ · S-20 **切 web/api 入口** ✓
+- [x] S-21 停用打点 `copilot.py` turn 编排 → **X18** ✓ · S-22 停用打点 `use_cases/run_turn*.py` → **X2（IM 侧）** ✓
+- [ ] **S-21b 删 `copilot.py` 的 turn 编排（薄壳）** —— ⚠️ **编排已迁出** ✓（`_fail_turn` / `_publish_chunk` / `_next_seq` / `_auto_title` 已删 ✓）剩下的是**薄壳**（幂等 accept + claim + 转发 ✓ ≈60 行 ✓）—— 删除条件：判据改为**引用关系可证** ✓ + 新路径流量 ≥95% ✓
+- [x] S-23 chunk 写 `session_events` ✓ · S-24 dispatcher 接线 ✓ · S-25 `Last-Event-ID` 重放 ✓ · S-26 outbox worker 接线 ✓
+- [x] S-27 审批挂起落库 ✓ · S-28 恢复校验清单 ✓ · S-29 **删 `except Exception: pass`** → **X7** ✓
+- [ ] **S-30 审批自动过期** —— ⬜ 未做（`expire_if_due()` 接入 sweeper ✓ —— **归治理域** ✓ —— approvals 表不归 Session 管 ✓）· [ ] **S-31 审批幂等** —— ⬜ 未做（同 `(session_id, tool_call_id, request_hash)` 复用 approval ID ✓ —— 创建审批在**旧执行器**里（`runner._request_approval` ✓）→ 等 Agent 层接管 ✓）
+- [x] S-32 **切 IM 入口**（与 **G-20 同 PR**）✓ · S-33 **删 `use_cases/run_turn.py` + `run_turn_to_completion.py`** → **X2** ✓
+- [x] S-34 **DROP `wait_status`** → **X6** ✓（迁移 0053 ✓）
+- [ ] **S-35 停写并废弃 `graph_state`** → **X3** —— ⬜ 未做（`session_events` 已在真写真读 ✓ —— 但 `graph_state` 仍在写 ✓）· [ ] **S-36 DROP `agent_turns` / `agent_session_messages`** → **X4** —— ⚠️ **一半** —— **迁数据** ✓（迁移 0054 ✓）+ **对账差异 = 0** ✓（dev + demo 各跑一遍 ✓）+ **停旧写** ✓（S-15b ✓）—— **DROP 那半未做** ✗（**只读窗口 ≥7 天** ✓ 从 2026-10-30 起算 ✓ + **备份恢复演练** ✗）
+- [x] S-37 启用扫描脚本 Session 段（**X2 / X6 / X18 段已启用** ✓；**X3 / X4 段仍关着** ✓ —— 那两条的旧实现还在场 ✓）· [ ] **S-38 更新台账 + 现状文档** —— ⚠️ **台账已更新** ✓；**现状文档未更新** ✗
 
 ### Context 层（§3.4）—— **删除 X8 / X9 / X10**
-- [ ] C-01 `context/` 骨架 · C-02 **迁移 0047** · C-03 `tokens.py` · C-04 打点 X8–X10
-- [ ] C-05 `ContextBuilder` · C-06 agent prompts 接入 · C-07 单段式渲染 · C-08 召回发起 · C-09 manifest 生成
-- [ ] C-10 **只新建，不动调用点** · C-11…C-17（Stage 2）· **C-24 停用打点 `_load_messages` / 四套模板 / `compact.py`** → **X8 / X9 / X10**（前置 = Agent A-26）
-- [ ] C-11 async 压缩器 · C-12 结构化摘要 · C-13 复验预算 · C-14 `removed_ids` 差集 · C-15 真正的降级序 · C-16 `context_compacted` 事件
-- [ ] C-17 停用打点 `compact.py` → **X9**
-- [x] C-18 manifest 落库（**Context Stage 4 已接上生产** ✓）· C-19 `rolling_summary` 迁移（**已达成** ✓）· C-20 交付前落库（**已达成** ✓）
-- [x] C-21 Agent Loop 调 Context（**已达成** ✓ · A-26 + Stage 4）· C-22 degraded 标记（⚠️ **归 Gateway 层** ✓ —— `ResultEvent.flags` 契约还没实现 ✗）· C-23 端到端回归（**已达成** ✓ —— `test_context_wiring.py` ✓）
-- [x] **C-24 停用打点 `_load_messages` / 四套模板 / `compact.py`**（前置 = **Agent A-26** ✓）→ **X8 / X9 / X10**（**调用点已归零** ✓ —— 实测 legacy 计数 0 ✓；台账行到 Stage 5 才标「已清理」✓）· C-25 自拼 messages 分支停用打点（**旧循环那半已达成** ✓ —— **删除归 Agent X17** ✓）
-- [ ] C-26 **删 `compact.py`** → **X9** · C-27 **删四套模板** → **X10**（前置 = Session S-33）· C-28 **删 `_load_messages`** → **X8** · C-29 **删 `budget.py`**
-- [x] C-26 **删 `compact.py`** → **X9**（✅ 2026-10-30）· C-27 **删四套模板** → **X10**（✅ 随 Session S-33）· C-28 **删 `_load_messages`** → **X8**（✅ 2026-10-30）· C-29 **删 `budget.py`**（⚠️ **归 Agent Stage 7** ✓）
-- [x] C-30 删 `metadata['rolling_summary']` 残留（✅ 2026-10-30）· C-31 启用扫描脚本 Context 段（✅ 28 → 30 条规则 ✓）· C-32 更新台账 + 现状文档（✅）
+- [x] C-01 `context/` 骨架 ✓ · C-02 **迁移 0047** ✓ · C-03 `tokens.py` ✓ · C-04 打点 X8–X10 ✓（X10 的旧入口随 Session Stage 5b 删除 ✓ → 打点自然归零 ✓）
+- [x] C-05 `ContextBuilder` ✓ · C-06 agent prompts 接入 ✓ · C-07 单段式渲染 ✓ · C-08 召回发起 ✓ · C-09 manifest 生成 ✓
+- [x] C-10 **只新建，不动调用点** ✓ · **C-10b Builder 接上生产调用方** ✓（Agent A-26 ✓）· C-11 async 压缩器 ✓ · C-12 结构化摘要 ✓ · C-13 复验预算 ✓ · C-14 `removed_ids` 差集 ✓ · C-15 真正的降级序 ✓ · C-16 `context_compacted` 事件 ✓ · C-17 停用打点 `compact.py` → **X9** ✓
+- [x] C-18 manifest 落库 ✓（**Context Stage 4 已接上生产** ✓）· C-19 `rolling_summary` 迁移 ✓ · C-20 交付前落库 ✓
+- [x] C-21 Agent Loop 调 Context ✓（**旧循环那半** ✓ —— A-26 ✓；⚠️ **新 `AgentLoopRunner` 那半未做** ✗ → Agent Stage 5 ✓）· [ ] **C-22 召回失败的 degraded 标记** —— ⚠️ **未达成** —— Context 侧**已产出** `recall_degraded` ✓ 但 **`ResultEvent.flags` 契约还没实现** ✗ → **归 Gateway 层** ✓ · C-23 端到端回归 ✓（`test_context_wiring.py` ✓）
+- [x] C-24 停用打点 `_load_messages` / 四套模板 / `compact.py` → **X8 / X9 / X10** ✓（调用点已归零 ✓ —— 实测 legacy 计数 0 ✓）· C-25 自拼 messages 分支停用打点 ✓（旧循环那半 ✓ —— **删除归 Agent X17** ✓）
+- [x] C-26 **删 `compact.py`** → **X9** ✓ · C-27 **删四套模板** → **X10** ✓ · C-28 **删 `_load_messages`** → **X8** ✓ · [ ] **C-29 删 `budget.py`** —— ⚠️ **未做** —— 它的两个旧类还被**死代码** `nodes.py` import ✓ → **归 Agent Stage 7** ✓ · C-30 删 `metadata['rolling_summary']` 残留 ✓
+- [x] C-31 启用扫描脚本 Context 段 ✓（28 → 30 条 ✓）· [ ] **C-32 更新台账 + 现状文档** —— ⚠️ **台账已更新** ✓；**现状文档未更新** ✗
 
 ### Memory 层（§3.5）—— **删除 X11 / X12 / X13 / X15 / X16，修复 X14**
-- [ ] M-01 **拆分 `MemoryService`** → **X16 拆分**（含 6 个管理写方法）· M-02 `memory/` 骨架 + 端口 · M-03 **迁移 0048**（含 **DROP 死表 X19**）· **M-03b 写入侧持久化 `owner_id`** · M-04 `RecallHit` 扩字段 + 生产返回改用 `RecallHit` · M-05 打点 X11–X16 · **X19 死表在 M-03 内已 DROP**
-- [ ] M-06 L2 `user_id` 过滤 · M-07 向量 payload 过滤 · M-08 历史向量回填 · M-09 L3 `visible_scope` ACL → **X14 修复完成即「已弃用」**
-- [x] M-10 向量优先 + 词法兜底 ✅ · M-11 候选集 `top_k×4` ✅ · M-12 去重/阈值/abstain ✅ · M-13 provenance ✅ · M-14 C10 降级 ✅ · M-15 **确认 `layered.py` 从未接线** ✅ · 2026-10-30（**无停用阶段**）→ **X12**
-- [x] M-16 `FactExtractor` ✅ · M-17 `Redactor` ✅ · M-18 幂等 ✅ · M-19 置信度 ✅ · M-20 来源追溯 ✅ · 2026-10-30
-- [x] M-21 **实现新 Writer，写新表** ✅ 2026-10-30（⚠️ **不停用 `_remember`** —— 它仍被 `runner._run_turn_inner` 调用）
-- [ ] M-22 `enabled` · M-23 `scope` · M-24 `policyLabel` · M-25 `l3EntryIds`/`knowledge_refs`
-- [ ] M-26 向量统一走 embedding · M-27 异步补写 · M-28 `session_memory_buffer` · M-29 会话结束提炼（sweeper 触发）· M-30 提升规则
-- [ ] M-31 统计更新 · M-32 淘汰器 · M-33 `trend()` 真实统计 · M-34 接入 sweeper · M-35 **淘汰执行器**
-- [ ] M-36 B1 管理接口 · M-37 B2 管理服务 · M-38 B3 管理策略 · M-39 **C9 治理 provider** · M-40 乐观并发 409 · M-41 敏感闸门补齐 · M-42 管理端直写停用打点
-- [x] M-43 **删 `_remember`** → **X11**（✅ 2026-10-30 · 旧写入路径一起删 ✓）· M-44 **删 `layered.py`** → **X12**（⚠️ **归 Agent Stage 7** ✓）· M-45 **删 `remember` 节点** → **X12**（⚠️ **归 Agent Stage 7** ✓）· M-46 **退役 `admin_memory_l1`** → **X13**（⚠️ **写侧已退役 ✓，表未 DROP** ✓）· M-47 **退役 `admin_memory_l3`** → **X15**（⚠️ **数据要先迁 knowledge** ✓）· M-48 清理 `memory_policy` 无效语义（✅）· M-49 **删原 `MemoryService` 单类** → **X16**（✅ 已拆 ✓）
-- [ ] M-50 启用扫描脚本 Memory 段 · M-51 更新台账 + 现状文档（**X19 已在 M-03 落地**）
+- [x] M-01 **拆分 `MemoryService`** → **X16 拆分** ✓ · M-02 `memory/` 骨架 + 端口 ✓ · M-03 **迁移 0048** ✓（含 **DROP 死表 X19** ✓）· **M-03b 写入侧持久化 `owner_id`** ✓ · M-04 `RecallHit` 扩字段 ✓ · M-05 打点 X11–X16 ✓（随旧实现删除**已撤除** ✓）
+- [x] M-06 L2 `user_id` 过滤 ✓ · M-07 向量 payload 过滤 ✓ · M-08 历史向量回填 ✓ · M-09 L3 `visible_scope` ACL —— **跳过** ✓（决策 #1：L3 退役 ✓）→ **X14 修复完成即「已弃用」** ✓
+- [x] M-10 向量优先 + 词法兜底 ✓ · M-11 候选集 `top_k×4` ✓ · M-12 去重/阈值/abstain ✓ · M-13 provenance ✓ · M-14 C10 降级 ✓ · M-15 **确认 `layered.py` 从未接线** ✓ → **X12**
+- [x] M-16 `FactExtractor` ✓ · M-17 `Redactor` ✓ · M-18 幂等 ✓ · M-19 置信度 ✓ · M-20 来源追溯 ✓ · M-21 **实现新 Writer，写新表** ✓
+- [ ] **M-22 `enabled`** · [ ] **M-23 `scope`** · [ ] **M-24 `policyLabel`** · [ ] **M-25 `l3EntryIds`/`knowledge_refs`** —— ⬜ **Stage 4（C6 策略绑定接线）未做**
+- [ ] **M-26 向量统一走 embedding** · [ ] **M-27 异步补写** · [ ] **M-28 `session_memory_buffer`** · [ ] **M-29 会话结束提炼（sweeper 触发）** · [ ] **M-30 提升规则** —— ⬜ **Stage 5 未做**
+- [ ] **M-31 统计更新** · [ ] **M-32 淘汰器** · [ ] **M-33 `trend()` 真实统计** · [ ] **M-34 接入 sweeper** · [ ] **M-35 淘汰执行器** —— ⬜ **Stage 6 未做**
+- [ ] **M-36 B1 管理接口** · [ ] **M-37 B2 管理服务** · [ ] **M-38 B3 管理策略** · [ ] **M-39 C9 治理 provider** · [ ] **M-40 乐观并发 409** · [ ] **M-41 敏感闸门补齐** · [ ] **M-42 管理端直写停用打点** —— ⬜ **Stage 6b 未做**（⚠️ **X16 的后半段**（管理端绕过脱敏与去重 ✓）**就归这里** ✗）
+- [x] M-43 **删 `_remember`** → **X11** ✓ · [ ] M-44 **删 `layered.py`** → **X12**（⚠️ **归 Agent Stage 7** ✓）· [ ] M-45 **删 `remember` 节点** → **X12**（⚠️ **归 Agent Stage 7** ✓）· [ ] M-46 **退役 `admin_memory_l1`** → **X13**（⚠️ **写侧已退役 ✓，表未 DROP** ✓ —— 管理端 4 个 L1 端点还读它 ✓）· [ ] M-47 **退役 `admin_memory_l3`** → **X15**（⚠️ **数据要先迁 knowledge** ✓）· M-48 清理 `memory_policy` 无效语义 ✓ · M-49 **删原 `MemoryService` 单类** → **X16** ✓（已拆 ✓ —— 两个服务类**必须保留** ✓）
+- [ ] **M-50 启用扫描脚本 Memory 段** —— ⚠️ **部分** —— **X11 / X16 两条已启用** ✓；**X12 / X13 / X15 仍关着** ✓（旧实现还在场 ✓）· [ ] **M-51 更新台账 + 现状文档** —— ⚠️ **台账已更新** ✓；**现状文档未更新** ✗
 
 ### Agent 层（§3.6）—— **删除 X5 / X1 + 关注点 #16 / #24–#29**
-- [x] A-01 补五个端口（✅ 2026-10-30）· A-02 `QZDAPChatModel` 骨架（✅）· A-03 归一 `TaskKind`/`TaskClassifier`（✅ —— `graph/routing.py` 迁到 `agent_router/classifier.py` ✓）· A-04 依赖核对（✅ —— 显式声明三个依赖 ✓）· A-05 打点 X5 旧入口（✅ 已有 ✓）
-- [x] A-06 `QZDAPChatModel` 落地（✅ 2026-10-30）· A-07 `LLMClient` 失败转移链（✅ —— 取值链 ✓）· A-08 `Reasoner`（✅ —— `ToolCallAccumulator` 迁入 ✓）
-- [ ] A-09 **删 `chat_model.py` 的 `stream_chat`**
-- [x] A-10 **工具绑定 + 治理过滤**（✅ 2026-10-30 —— runtime 的 `execution/tool_binding.py` ✓ + 模块侧 `ToolBindingAdapter` ✓ / `CatalogBindingReader` ✓）· A-11 修 `list_tools` 空 schema（✅ —— `modules/tool/.../tool_schema.py` ✓ 从 spec 生成真实 schema ✓）· A-12 `governance` 接线真实 actor（✅ 真实 actor ✓ —— `current_actor` ✓ / `require_actor` ✓ + `ToolRuntimeAdapter` ✓；⚠️ **审批挂起走 `interrupt()` 归 Stage 5** ✗）
-- [ ] A-13 **在新 AgentLoop 侧注入真实 actor**（⚠️ 不改 `nodes.py` —— 那是死代码，Stage 7 整体删；**归 Stage 5（A-25）** ✓）
-- [ ] A-14 `tool_executions` 开始写 · A-15 `request_hash` 冲突拒绝 · A-16 重试/熔断 · A-17 **修 async** · A-18 沙箱接入 · A-19 成本结算 · A-20 进程内幂等降级为快速路径 · **A-20b `modules/tool` 的 `InvokeToolUseCase` 补幂等 / 重试 / 熔断**（✅ 归属已定：**改 `modules/tool`**）
-- [ ] A-21 `AgentRouter`（选专家） · A-22 **模型解析接线** · A-23 **工具绑定接线** · A-24 路由留痕 `route_decision`
-- [ ] A-25 `AgentLoopRunner` + `Evaluator` · **✅ A-26 把 `_run_turn_inner` 改接新 Builder / Writer**（旧循环的最后一次改造 · **2026-10-30 已达成** ✓）· A-27 端到端回归 · A-28 停用打点 `_run_turn_inner` → **X17**
-- [ ] A-28 加 `deepagents` 依赖 · A-29 `deep/factory.py` · A-30 `deep/planner.py` · A-31 预算 · A-32 删 deep 空壳（**可选，决策 #8**）
-- [ ] A-33 **删 `nodes.py` 13 节点** · A-34 **改 `builder.py` 为 6 节点版** · A-35 **删 `runner.py` ReAct 循环** · A-36 **删 `compile_loop_graph`** → **X5**
-- [ ] A-37 **删 `InMemoryToolExecutor`** → **#16** · A-38 **删 `InMemoryToolRegistry`** → **#29**
-- [ ] A-39 **删平行 `*Event` 16 种** → **#24** · A-40 **删其余 14 个 `InMemory*`** → **#25–#29**
-- [ ] A-41 启用扫描脚本 Agent 段 + `InMemory*` 禁令 · A-42 更新台账 + 现状文档
-
----
+- [x] A-01 补五个端口 ✓ · A-02 `QZDAPChatModel` 骨架 ✓ · A-03 归一 `TaskKind`/`TaskClassifier` ✓（`graph/routing.py` 迁到 `agent_router/classifier.py` ✓）· A-04 依赖核对 ✓ · A-05 打点 X5 旧入口 ✓
+- [x] A-06 `QZDAPChatModel` 落地 ✓ · A-07 `LLMClient` 失败转移链 ✓ · A-08 `Reasoner` ✓（`ToolCallAccumulator` 迁入 ✓）
+- [ ] **A-09 删 `chat_model.py` 的 `stream_chat`** —— ⚠️ **只迁入不删** ✓ —— 旧循环 `runner.py` **还在 import 那个文件** ✓ → **删除落在 Stage 7** ✓（与 X17 同批 ✓）
+- [x] A-10 **工具绑定 + 治理过滤** ✓ · A-11 修 `list_tools` 空 schema ✓ · A-12 `governance` 接线真实 actor（✅ 真实 actor ✓ —— `current_actor` ✓ / `require_actor` ✓ + `ToolRuntimeAdapter` ✓；⚠️ **审批挂起走 `interrupt()` 未做** ✗ → **归 Stage 5** ✓）
+- [ ] **A-13 在新 AgentLoop 侧注入真实 actor** —— ⚠️ **未做** → **归 Stage 5（A-25）** ✓
+- [ ] **A-14 `tool_executions` 开始写** · [ ] **A-15 `request_hash` 冲突拒绝**（`TOOL_IDEMPOTENCY_CONFLICT` **该码还不存在** ✓）· [ ] **A-16 重试/熔断** · [ ] **A-17 修 async** · [ ] **A-18 沙箱接入** · [ ] **A-19 成本结算** · [ ] **A-20 进程内幂等降级为快速路径** · [ ] **A-20b `modules/tool` 的 `InvokeToolUseCase` 补幂等 / 重试 / 熔断** —— ⬜ **Stage 3 整段未做** ✓
+- [ ] **A-21 `AgentRouter`（选专家）** · [ ] **A-22 模型解析接线** · [ ] **A-23 工具绑定接线** · [ ] **A-24 路由留痕 `agent_decision`** —— ⬜ **Stage 4 整段未做** ✓
+- [ ] **A-25 `AgentLoopRunner` + `Evaluator`** · [x] **A-26 把 `_run_turn_inner` 改接新 Builder / Writer** ✓ · [ ] **A-27 端到端回归** · [ ] **A-28 停用打点 `_run_turn_inner`** → **X17** —— ⬜ **Stage 5 未做** ✓
+- [ ] **A-28b 加 `deepagents` 依赖** · [ ] **A-29 `deep/factory.py`** · [ ] **A-30 `deep/planner.py`** · [ ] **A-31 预算** · [ ] **A-32 删 deep 空壳** —— ⬜ **Stage 6（可选** —— 决策 #8：先验证再接 ✓）
+- [ ] **A-33 删 `nodes.py` 13 节点** · [ ] **A-34 改 `builder.py` 为 6 节点版** · [ ] **A-35 删 `runner.py` ReAct 循环** · [ ] **A-36 删 `compile_loop_graph`** → **X5** —— ⬜ **Stage 7 未做** ✓
+- [ ] **A-37 删 `InMemoryToolExecutor`** → **#16** · [ ] **A-38 删 `InMemoryToolRegistry`** → **#29** —— ⬜ 未做 ✓
+- [ ] **A-39 删平行 `*Event` 16 种** → **#24** · [ ] **A-40 删其余 14 个 `InMemory*`** → **#25–#29** —— ⬜ 未做 ✓
+- [ ] **A-41 启用扫描脚本 Agent 段 + `InMemory*` 禁令** · [ ] **A-42 更新台账 + 现状文档** —— ⬜ 未做 ✓
 
 ## 附录 B：台账条目 → **层 · Stage** 推进表
 
