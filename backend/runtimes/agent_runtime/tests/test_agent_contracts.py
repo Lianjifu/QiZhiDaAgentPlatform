@@ -17,8 +17,6 @@ import pytest
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from qzdap_llm.client import ChatRequest, LLMChunk
-from qzdap_llm.config import LLMConfig
-from qzdap_llm.mock import MockLLMClient
 from qzdap_schema.ids import ModelId
 
 from qzdap_agent_runtime.agent_router import (
@@ -47,7 +45,7 @@ from qzdap_agent_runtime.ports import (
 
 
 class _FakeLLM:
-    def stream(
+    async def stream(
         self,
         request: ChatRequest,
         *,
@@ -57,6 +55,22 @@ class _FakeLLM:
         actor: ActorContext | None = None,
     ) -> AsyncIterator[LLMChunk]:
         yield LLMChunk(model=request.model, delta="ok")
+
+
+class _EchoLLM:
+    """会说一句话的端口替身 ✓。"""
+
+    async def stream(
+        self,
+        request: ChatRequest,
+        *,
+        model_id: ModelId | None = None,
+        route_id: ModelId | None = None,
+        fallback_model_ids: list[ModelId] | None = None,
+        actor: ActorContext | None = None,
+    ) -> AsyncIterator[LLMChunk]:
+        _ = (model_id, route_id, fallback_model_ids, actor)
+        yield LLMChunk(model=request.model, delta="你好")
 
 
 class _FakeResolver:
@@ -158,16 +172,13 @@ class TestToolBinding:
 class TestQZDAPChatModel:
     def test_it_is_a_base_chat_model(self) -> None:
         """**必须是 `BaseChatModel` 的实例** ✓（§2.2 的全部意义就在这 ✓）。"""
-        model = QZDAPChatModel(client=MockLLMClient(LLMConfig(mock_latency_ms=0)))
+        model = QZDAPChatModel(llm=_FakeLLM())
         assert isinstance(model, BaseChatModel)
 
     @pytest.mark.asyncio
     async def test_it_answers_a_message(self) -> None:
         """**能被调用** ✓ —— 这是 LangGraph 节点的 `model` 参数的硬前置 ✓。"""
-        model = QZDAPChatModel(
-            client=MockLLMClient(LLMConfig(mock_latency_ms=0)),
-            model_name="demo",
-        )
+        model = QZDAPChatModel(llm=_EchoLLM(), model_name="demo")
         reply = await model.ainvoke([HumanMessage(content="你好")])
         assert isinstance(reply.content, str)
         assert reply.content
@@ -175,10 +186,7 @@ class TestQZDAPChatModel:
     @pytest.mark.asyncio
     async def test_it_streams_incrementally(self) -> None:
         """**流式** ✓ —— 文本增量边到边推 ✓（§5.2.2 第 3 条 ✓）。"""
-        model = QZDAPChatModel(
-            client=MockLLMClient(LLMConfig(mock_latency_ms=0)),
-            model_name="demo",
-        )
+        model = QZDAPChatModel(llm=_EchoLLM(), model_name="demo")
         chunks = [chunk async for chunk in model.astream([HumanMessage(content="你好")])]
         assert len(chunks) >= 1
         assert all(isinstance(chunk.content, str) for chunk in chunks)
@@ -188,7 +196,7 @@ class TestQZDAPChatModel:
 
         ⚠️ 悄悄返回空会让调用方以为「模型没说话」✗✗。
         """
-        model = QZDAPChatModel(client=MockLLMClient(LLMConfig(mock_latency_ms=0)))
+        model = QZDAPChatModel(llm=_EchoLLM())
         with pytest.raises(NotImplementedError):
             list(model.stream([HumanMessage(content="你好")]))
 

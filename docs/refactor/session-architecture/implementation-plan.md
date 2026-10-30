@@ -719,10 +719,10 @@
 | | A-04 依赖核对 | ✅ **已达成** —— 版本与方案 §2.1 一致 ✓：`langgraph` 1.2.12 ✓ / `langgraph-prebuilt` 1.1.0 ✓ / `langchain-core` 1.6.6 ✓；`deepagents` **未安装** ✓（决策 #8：Stage 6 可选 ✓ → 不加 ✓）；⚠️ runtime 的 pyproject **显式声明**了这三个依赖 ✓（之前只靠传递引入 ✗）+ `uv.lock` 离线重锁 ✓ | — | 0 | — |
 | | A-05 打点 X5 旧入口 | ✅ **已有** ✓（`runner.py:104` 的 `record_legacy_call("X5")` ✓ —— 占位图 `compile_loop_graph` ✓）；扫描规则**仍关着** ✓（归 Agent Stage 7 与 X17 同批删 ✓） | — | 0 | 前置 C2 ✓ |
 | | A-05 打点 X5 旧入口 | `record_legacy_call("X5")` | — | 0 | 前置 C2 |
-| Stage 1 · LLM / SLM | A-06 `QZDAPChatModel` 落地 | `_stream` → `AIMessageChunk`；用量 → `usage_metadata` | — | 0 | Stage 0 |
-| | A-07 `LLMClient` 封装 | 失败转移链（primary → fallback） | — | 0 | A-06 |
-| | A-08 `Reasoner` | 上下文 + 工具 schema → 流式文本 + 工具调用（**迁入 `ToolCallAccumulator`**） | — | 0 | A-06 |
-| | **A-09 迁移 `adapter/graph/chat_model.py` 的 `stream_chat` / `ToolCallAccumulator`** | ⚠️ **只迁入，不删** —— `runner.py:36`（web 路径）与 `use_cases/run_turn.py:49`（IM 路径）**都还在 import 它**；删除需 **A-26**（旧循环改接）**且** **Session Stage 5b**（IM 切换后删 `run_turn.py`）**都完成** → 文件删除落在 **Stage 7** | — | 0（代码迁出 ~200 行，文件删除推迟） | A-08 |
+| Stage 1 · LLM / SLM | A-06 `QZDAPChatModel` 落地 | ✅ **已达成**（2026-10-30，Agent Stage 1）—— 内部持**端口** ✓（`LLMPort` ✓）；`_astream` → `AIMessageChunk` ✓；用量 → `usage_metadata` ✓；工具调用 delta → `tool_call_chunks` ✓（额外字段原样带走 ✓）| — | 0 | A-06 |
+| | A-07 `LLMClient` 封装 | ✅ **已达成** —— `execution/llm_client.py` ✓（`LLMCaller` ✓）：**取值链**按 §5.2.1 走一遍 ✓（查表 ✓ 不决策 ✓）；**失败转移链**（primary → fallback ✓）交给端口 ✓ | — | 0 | A-06 |
+| | A-08 `Reasoner` | ✅ **已达成** —— `agent_loop/reason.py` ✓；**`ToolCallAccumulator` 迁入** ✓（按 index 归并 ✓ / 参数表示不容混用 ✓ / `thought_signature` 透传 ✓）；文本增量实时到 ✓，**工具调用装配完整才交出去** ✓ | — | 0（迁移 ✓） | A-06 |
+| | **A-09 迁移 `adapter/graph/chat_model.py` 的 `stream_chat` / `ToolCallAccumulator`** | ⚠️ **只迁入，不删** ✓ —— `ToolCallAccumulator` 已迁到 `agent_loop/reason.py` ✓；⚠️ **旧循环 `runner.py` 还在 import 那个文件** ✓（**唯一在跑的循环** ✗）→ **文件删除落在 Stage 7** ✓（两个前置都已完成 ✓ —— A-26 ✓ + Session Stage 5b ✓ —— 但删除要与 X17 同批 ✗） | — | 0（代码迁出 ✓，文件删除推迟 ✓） | A-08 |
 | Stage 2 · 工具绑定与治理 | A-10 **工具绑定 + 治理过滤** | 从**当前执行的 agent** 的配置取绑定集（`allowed_tools` / `allowed_skills`）→ tool / mcp / skill **统一成 `BaseTool`**；再 ∩ 风险 ∩ 作用域；**`unprotected` 剔除副作用工具**（Agent 层方案 §5.3.1） | — | 0 | Stage 1 |
 | | A-11 修 `list_tools` 的空 schema | 改为从 `tools` 表的 spec 生成真实 schema | — | 0 | A-10 |
 | | A-12 `governance` 接线 | **真实 actor**（**删掉 `actor_id="u-1"`**）；审批挂起走 `interrupt()` | — | 0 | A-10 |
@@ -1191,7 +1191,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 
 ### Agent 层（§3.6）—— **删除 X5 / X1 + 关注点 #16 / #24–#29**
 - [x] A-01 补五个端口（✅ 2026-10-30）· A-02 `QZDAPChatModel` 骨架（✅）· A-03 归一 `TaskKind`/`TaskClassifier`（✅ —— `graph/routing.py` 迁到 `agent_router/classifier.py` ✓）· A-04 依赖核对（✅ —— 显式声明三个依赖 ✓）· A-05 打点 X5 旧入口（✅ 已有 ✓）
-- [ ] A-06 `QZDAPChatModel` 落地 · A-07 `LLMClient` 失败转移链 · A-08 `Reasoner`
+- [x] A-06 `QZDAPChatModel` 落地（✅ 2026-10-30）· A-07 `LLMClient` 失败转移链（✅ —— 取值链 ✓）· A-08 `Reasoner`（✅ —— `ToolCallAccumulator` 迁入 ✓）
 - [ ] A-09 **删 `chat_model.py` 的 `stream_chat`**
 - [ ] A-10 **工具绑定 + 治理过滤** · A-11 修 `list_tools` 空 schema · A-12 `governance` 接线真实 actor
 - [ ] A-13 **在新 AgentLoop 侧注入真实 actor**（⚠️ 不改 `nodes.py` —— 那是死代码，Stage 7 整体删）

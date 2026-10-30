@@ -1030,6 +1030,26 @@ ToolRuntimePort
 >
 > ⚠️ **不用 `create_react_agent` 做验收** —— 决策 #1 已定「自建 6 节点 StateGraph」。`create_react_agent` 只作为**生态打通的旁证**，不是交付物。
 
+#### 实施记录（2026-10-30 · Stage 1：LLM / SLM 调用（Execution 的模型侧））
+
+| 项 | 结果 |
+|---|---|
+| **A-06 `QZDAPChatModel` 落地** | ✅ `execution/chat_model.py` ✓ —— **内部持的是端口** ✓（`LLMPort` ✓ —— 不是平台客户端 ✗，runtime 不该绑死供应商实现 ✗✗）；`_astream` → 端口的 `stream()` ✓ → 逐个 yield `AIMessageChunk` ✓；**用量 → `usage_metadata`** ✓；**工具调用 delta → `tool_call_chunks`** ✓（`ToolCallChunk` ✓ —— 额外字段如 Gemini 的 `thought_signature` **原样带走** ✓ —— 丢了就断链 ✗✗） |
+| **A-07 `LLMClient` 封装** | ✅ `execution/llm_client.py` ✓ —— `LLMCaller.resolve()` **按 §5.2.1 的六条取值链走一遍** ✓：显式 `model_id` ✓ → **策略路由优先** ✓ → 上游模型名**查表** ✓ → **查不到不是错误** ✓（回退环境默认模型 ✓）；`stream()` 把**失败转移链**交给端口 ✓（primary + fallback ✓）。⚠️ **它不做模型选择** ✓（决策 #4 ✓）—— 只是「把取值链走完」✓ |
+| **A-08 `Reasoner`** | ✅ `agent_loop/reason.py` ✓ —— 上下文 + 工具 schema → **流式文本** ✓ + **装配好的工具调用** ✓；**`ToolCallAccumulator` 迁入** ✓（§8.2 ✓ —— 「最容易写错的逻辑」✓）：按 `index` 归并 ✓、字符串参数与 dict 参数**不容混用** ✓（混了抛错 ✓ —— 半截参数比报错更糟 ✗✗）、`thought_signature` 透传 ✓。⚠️ **文本与工具调用分离投递** ✓（§3.1 第 2 条 ✓）—— 工具调用的**分片不单独推** ✓，**最后一条**才带装配好的调用 ✓ |
+| **迁移 `chat_model.py`** | ⚠️ **只迁入不删** ✓（A-09 ✓）—— 旧循环 `runner.py` **还在 import 它** ✓（那是**唯一在跑的循环** ✗ —— 它要活到 Agent Stage 7 ✓）。⚠️ **两份 `ToolCallAccumulator` 暂时并存** ✓ —— 这是方案批准的迁移形态 ✓（旧文件删除归 Stage 7 ✓） |
+| 旧代码减少 | **0 行**（迁移 ✓ —— 代码在新文件里 ✓，旧文件还在服役 ✗ → 删它归 Stage 7 ✓） |
+| 测试 | 新增 `runtimes/agent_runtime/tests/test_agent_reasoning.py` ✓（13 条 ✓：取值链的优先级 ✓（显式 / 路由优先 / 查表 / 查不到回退 ✓）、失败转移链到达端口 ✓、**分片装配** ✓（归并 ✓ / 两个调用不混 ✓ / 混用参数抛错 ✓ / `thought_signature` 保留 ✓）、文本增量实时到 ✓、**调用方拿到的是装配好的调用** ✓、用量走 `usage_metadata` ✓、工具调用 delta 的翻译 ✓）；`test_agent_contracts.py` 跟着改 ✓（模型改持端口 ✓） |
+| 回归 | `pytest` **1883 passed** ✓（1 失败 + 4 error 与改动前一致 ✓ —— 环境问题 ✗）；mypy **17 条** ✓（比改动前**少 4 条** ✓ —— 顺手修掉了 `usage_metadata` 的类型抱怨 ✓ 与测试里的生成器类型 ✓）；ruff 无新增 ✓；import-lint ✓ |
+
+⚠️ **本 Stage 之后仍未做的**（归后续 Stage ✓）：
+
+| 项 | 归属 |
+|---|---|
+| **模块侧接上这些端口**（`LLMPortAdapter` 实现 runtime 的 `LLMPort` ✓ / `SqlCatalogModelResolver` 实现 `ModelResolverPort` ✓ / 绑定集读取 ✓ / 专家路由 ✓） | **Stage 2–4** ✓ |
+| **工具 schema 进模型**（`tools` 参数 ✓ —— 现在是空的 ✓） | **Stage 2**（工具绑定 ✓） |
+| `chat_model.py` 的**文件删除**（含旧 `ToolCallAccumulator` ✓） | **Agent Stage 7** ✓ |
+
 ### Stage 2：工具绑定与治理接线
 
 | 动作 | 细节 |

@@ -15,6 +15,7 @@ from .executor import (
     ToolRateLimitError,
     ToolTimeoutError,
 )
+from .llm_client import LLMCaller, ResolvedModel, usage_from_chunks
 from .lock import (
     InMemoryLockManager,
     LockManager,
@@ -26,9 +27,11 @@ from .lock import (
 __all__ = [
     "InMemoryLockManager",
     "InMemoryToolExecutor",
+    "LLMCaller",
     "LockManager",
     "LockToken",
     "QZDAPChatModel",
+    "ResolvedModel",
     "RevisionConflictError",
     "SessionBusyError",
     "ToolArgumentError",
@@ -36,4 +39,5 @@ __all__ = [
     "ToolFunction",
     "ToolRateLimitError",
     "ToolTimeoutError",
+    "usage_from_chunks",
 ]
