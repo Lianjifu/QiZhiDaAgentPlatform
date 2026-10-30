@@ -498,6 +498,8 @@ class SessionGraphRunner:
                         owner_id=owner_id,
                         tool_name=str(approval.get("tool_name") or ""),
                         arguments=dict(approval.get("arguments") or {}),
+                        session_id=session_id,
+                        tool_call_id=str(approval.get("tool_call_id") or ""),
                     )
                     seq += 1
                     yield ApprovalRequiredChunk(
@@ -973,17 +975,33 @@ class SessionGraphRunner:
         owner_id: UUID,
         tool_name: str,
         arguments: dict[str, Any],
+        session_id: UUID | None = None,
+        tool_call_id: str = "",
     ) -> UUID:
         if self._approval_factory is None:
             return uuid4()
+        from qzdap_agent_runtime.session.approval import (
+            approval_correlation_id,
+            arguments_digest,
+        )
         from qzdap_schema.ids import TenantId, UserId
 
         svc = self._approval_factory
+        # ⚠️ **幂等** ✓（Session 方案 S-31 ✓）—— 同一个工具调用**复用同一个
+        # 审批** ✓（重试不该多出一条待办 ✗✗）。
+        correlation_id = None
+        if session_id is not None and tool_call_id:
+            correlation_id = approval_correlation_id(
+                session_id=session_id,
+                tool_call_id=tool_call_id,
+                request_hash=arguments_digest(arguments),
+            )
         approval = await svc.create(
             tenant_id=TenantId(tenant_id),
             requester_id=UserId(owner_id),
             action=f"agent.tool.{tool_name}",
             resource={"tool": tool_name, "arguments": arguments, "owner_id": str(owner_id)},
+            correlation_id=correlation_id,
         )
         return UUID(str(approval.id))
 

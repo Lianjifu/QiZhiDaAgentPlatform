@@ -118,6 +118,24 @@ class InMemoryApprovalRepository(ApprovalRepository):
             if a.tenant_id == tenant_id and a.status is status
         ][:limit]
 
+    async def get_by_correlation_id(self, *, tenant_id, correlation_id):
+        for a in self._rows.values():
+            if (
+                a.tenant_id == tenant_id
+                and a.correlation_id == correlation_id
+            ):
+                return a
+        return None
+
+    async def list_expired_pending(self, *, now: datetime, limit: int = 100):
+        out = [
+            a
+            for a in self._rows.values()
+            if a.status is ApprovalStatus.PENDING and a.expires_at <= now
+        ]
+        out.sort(key=lambda a: a.expires_at)
+        return out[:limit]
+
 
 # ── DecisionEventRepo ───────────────────────────────────────────────────────
 

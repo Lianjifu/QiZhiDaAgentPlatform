@@ -68,7 +68,6 @@ class PostgresSessionStore:
                 agent_version=agent.agent_version,
                 status=SessionStatus.OPEN.value,
                 metadata_=dict(identity.metadata),
-                graph_state={},
                 channel_session_key=identity.channel_session_key,
             )
             .on_conflict_do_nothing(

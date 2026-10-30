@@ -54,12 +54,6 @@ class SessionORM(TenantScopedMixin, Base):
         default=dict,
         server_default=text("'{}'::jsonb"),
     )
-    graph_state: Mapped[dict] = mapped_column(
-        JSONB,
-        nullable=False,
-        default=dict,
-        server_default=text("'{}'::jsonb"),
-    )
     # ⚠️ **摘要是独立的一列** ✓（Context 方案 §5.1 ✓，迁移 0047 ✓）——
     # 旧的 ``metadata['rolling_summary']`` 是**旧副本** ✓（它的写入点已
     # 归零 ✓ —— 清理归 Context Stage 5 ✓）。

@@ -27,13 +27,16 @@ class SqlSessionState(SessionStatePort):
         *,
         session_id: UUID,
         metadata: Mapping[str, Any] | None = None,
-        graph_state: Mapping[str, Any] | None = None,
+        resume_state: Mapping[str, Any] | None = None,
     ) -> None:
         """改会话的元数据 / 续传状态 ✓。
 
         ⚠️ **metadata 是「替换」而不是「逐字段合并」** —— 调用方传的是
         **快照 + 本轮的修改**（契约层维护累加器 ✓），这样并发下别的请求
         改了 metadata 也会被覆盖 —— 与旧实现**同语义** ✓（不引入新行为）。
+
+        ⚠️ **续传状态归 ``metadata["resume"]``** ✓（台账 **X3** ✓ ——
+        旧的续传状态列**退役** ✓ —— 新的循环不写它 ✓）。
         """
         session = await self._sessions.get(session_id)
         if session is None:
@@ -41,8 +44,10 @@ class SqlSessionState(SessionStatePort):
         updated = session
         if metadata is not None:
             updated = updated.with_runtime(metadata=dict(metadata))
-        if graph_state is not None:
-            updated = updated.with_runtime(graph_state=dict(graph_state))
+        if resume_state is not None:
+            merged = dict(updated.metadata or {})
+            merged["resume"] = dict(resume_state)
+            updated = updated.with_runtime(metadata=merged)
         await self._sessions.update(updated)
 
 

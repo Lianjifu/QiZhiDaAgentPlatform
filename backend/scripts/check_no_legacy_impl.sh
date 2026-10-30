@@ -164,7 +164,7 @@ use_cases\.run_turn;modules/;X2;X;on
 agent_runtime\.application\.services;modules/;X2;X;on
 agent_runtime\.adapter\.llm\.prompts;modules/;X10;X;on
 (\.wait_status\b|wait_status\s*=);modules/;X6;X;on
-graph_state;modules/;X3;X;off
+graph_state;modules/;X3;X;on
 agent_turns;modules/;X4;X;off
 agent_session_messages;modules/;X4;X;off
 _fail_turn;modules/;X18;X;on

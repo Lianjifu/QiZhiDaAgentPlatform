@@ -1488,10 +1488,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ④ 向量补写 worker —— **落库后异步补向量** ✓（C5 ✓ —— Memory §5.4 ✓）
     app.state.memory_vector_stop = _start_memory_vector_worker(app.state)
 
-    # ② checkpoint saver —— **异步**版；同步版会阻塞事件循环 ✗
-    app.state.checkpointer_cm, app.state.checkpointer = await _start_checkpointer(
-        container
-    )
+    # ⚠️ **checkpoint saver 已退役** ✓（Session S-14 ✓）—— 它唯一的消费者是
+    # 那张 19 节点的 LangGraph 图 ✓（**已随 Agent Stage 7 删除** ✓）——
+    # 新的循环用**会话 metadata + 轮次行**续传 ✓（不需要 LangGraph 的
+    # checkpoint ✓）→ **不再起它** ✓（省一个连接池 ✓ —— 台账 X3 ✓）。
 
     try:
         yield
@@ -1510,9 +1510,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         stop_vector = getattr(app.state, "memory_vector_stop", None)
         if stop_vector is not None:
             await stop_vector()
-        checkpointer_cm = getattr(app.state, "checkpointer_cm", None)
-        if checkpointer_cm is not None:
-            await checkpointer_cm.__aexit__(None, None, None)
         await bus.stop()
         sandbox = getattr(app.state, "sandbox", None)
         if sandbox is not None:
@@ -1548,6 +1545,19 @@ def _start_memory_vector_worker(app: Any) -> Callable[[], Awaitable[None]]:
             pass
 
     return _stop
+
+
+def _expire_due_approvals(container: Container) -> Callable[[datetime], Awaitable[int]]:
+    """**审批过期的清扫回调** ✓（Session 方案 §3.3 ✓）。
+
+    ⚠️ **判定在治理域** ✓ —— 这里只做接线 ✓（清扫器不引治理模块 ✓）。
+    """
+
+    async def _expire(now: datetime) -> int:
+        service = container.approval_service()
+        return int(await service.expire_due(now=now))
+
+    return _expire
 
 
 async def _refine_memory_buffers(app: Any, container: Container) -> None:
@@ -1598,6 +1608,9 @@ async def _start_session_sweeper(
     sweeper = PostgresSessionSweeper(
         session_factory=container.session_factory(),
         idempotency_store=PostgresIdempotencyStore(container.session_factory()),
+        # ⚠️ **审批过期归治理域** ✓（Session 方案 §3.3 的第 2 类 ✓ —— 判定
+        # 只有一份 ✓ —— 治理域的 ``expire_if_due`` ✓）。
+        expire_approvals=_expire_due_approvals(container),
     )
 
     async def _loop() -> None:
@@ -1686,42 +1699,6 @@ async def _start_outbox_worker(
             pass
 
     return _stop
-
-
-def _psycopg_url(database_url: str) -> str:
-    """把 asyncpg 的连接串转成 psycopg 能吃的形式。
-
-    ⚠️ 只去驱动后缀 —— 其余（主机 / 端口 / 库名 / 参数）原样保留 ✓。
-    """
-    return database_url.replace("postgresql+asyncpg://", "postgresql://")
-
-
-async def _start_checkpointer(container: Container) -> tuple[Any | None, Any | None]:
-    """建**异步** Postgres checkpoint saver —— 生命周期归 lifespan ✓。
-
-    ⚠️ **不能用同步版** ``PostgresSaver.from_conn_string``
-    （``runtimes/.../graph/builder.py``）—— 全异步仓库里它会阻塞事件循环
-    （Session 方案 §5.3）。
-
-    ⚠️ 建表**不归这里**：迁移 0046 已按已安装的
-    ``langgraph-checkpoint-postgres 3.1.3`` 的实际 DDL 建好四张表，并把
-    ``checkpoint_migrations`` 写成 9 —— ``setup()`` 因此是幂等的空跑 ✓。
-    """
-    try:
-        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-
-        url = _psycopg_url(container.settings.database_url)
-        cm = AsyncPostgresSaver.from_conn_string(url)
-        saver = await cm.__aenter__()
-        await saver.setup()
-    except Exception:  # noqa: BLE001
-        _log.warning(
-            "checkpointer unavailable; checkpoint persistence disabled",
-            exc_info=True,
-        )
-        return None, None
-    _log.info("checkpointer_ready")
-    return cm, saver
 
 
 async def _seed_default_plans(container: Container) -> None:

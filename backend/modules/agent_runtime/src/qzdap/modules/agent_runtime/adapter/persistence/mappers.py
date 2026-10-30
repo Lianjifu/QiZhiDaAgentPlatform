@@ -30,7 +30,6 @@ def session_orm_to_domain(o: SessionORM) -> Session:
         created_at=o.created_at,
         closed_at=o.closed_at,
         metadata=dict(o.metadata_ or {}),
-        graph_state=dict(getattr(o, "graph_state", None) or {}),
         rolling_summary=str(getattr(o, "rolling_summary", None) or ""),
     )
 

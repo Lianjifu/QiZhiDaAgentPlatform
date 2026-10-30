@@ -170,11 +170,13 @@ class CopilotSessionService:
     async def get_session(self, *, tenant_id: UUID, session_id: UUID) -> dict[str, Any]:
         session = await self._require_session(tenant_id, session_id)
         messages = await self._messages.list_for_session(session_id)
-        pending = (session.graph_state or {}).get("pending_approval")
         agent = await self._catalog.get_admin(session.agent_id)
         waiting = await self._journal.find_pending_approval(
             session_id=session_id, tenant_id=tenant_id
         )
+        # ⚠️ **待审批从轮次行读** ✓（权威 ✓ —— 台账 X3 ✓ —— 旧的续传状态列
+        # 不再是第二份真相 ✓）。
+        pending = (waiting or (None, None))[1]
         return _session_detail(
             session,
             messages=messages,
@@ -449,9 +451,11 @@ class CopilotSessionService:
             if item.get("role") in {"user", "assistant", "tool", "system"}
         ]
         # 续传状态 = 会话里存的 + 本轮恢复带进来的（后者覆盖前者 ✓）。
-        graph_state = dict(session.graph_state or {})
+        # ⚠️ **归 ``metadata["resume"]``** ✓（台账 X3 ✓ —— 旧的续传状态列
+        # 退役 ✓ —— 新的循环不写它 ✓）。
+        resume_state = dict((session.metadata or {}).get("resume") or {})
         if resume:
-            graph_state = {**graph_state, **resume}
+            resume_state = {**resume_state, **resume}
         request = TurnRequest(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -478,7 +482,7 @@ class CopilotSessionService:
             # 已把历史行回填 ✓）。
             rolling_summary=session.rolling_summary,
             session_metadata=dict(session.metadata),
-            graph_state=graph_state,
+            resume_state=resume_state,
             # 路由决策随轮次留痕（``session_turns.route_decision``）——
             # **产出者是 Router**，这里只是把它带进轮次行。
             route_decision=session.metadata.get("route_decision"),
@@ -503,7 +507,11 @@ class CopilotSessionService:
         parent_span_context: Any = None,
     ) -> AsyncIterator[TurnChunk]:
         session = await self._require_session(tenant_id, session_id)
-        pending = dict((session.graph_state or {}).get("pending_approval") or {})
+        # ⚠️ **续传状态归 ``metadata["resume"]``** ✓（台账 X3 ✓ —— 旧的续传
+        # 状态列退役 ✓）—— **挂起内容在轮次行** ✓（那是权威 ✓），**参数在续传
+        # 状态里** ✓（闸门只让摘要进轮次行 ✓ —— 原文不进那一列 ✓）。
+        resume_state = dict((session.metadata or {}).get("resume") or {})
+        pending = dict(resume_state.get("pending_approval") or {})
         if str(pending.get("approval_id")) != str(approval_id):
             pending["approval_id"] = str(approval_id)
         # ── 恢复前的校验清单（Session 方案 §8）────────────────────────
@@ -555,7 +563,7 @@ class CopilotSessionService:
             resume={
                 "pending_approval": pending,
                 "decision": pending["decision"],
-                "messages": (session.graph_state or {}).get("messages"),
+                "messages": resume_state.get("messages"),
             },
             idempotency_key=key,
             parent_span_context=parent_span_context,
@@ -658,15 +666,17 @@ class CopilotSessionService:
     ) -> None:
         """Persist a plan decision (approve / deny) on the session.
 
-        The decision lands in ``session.graph_state["plan_decisions"]`` so
+        The decision lands in ``session.metadata["plan_decisions"]`` so
         the next turn — and the transcript — can see what the user chose.
+
+        ⚠️ **不再写旧的续传状态列** ✓（台账 **X3** ✓ —— 那一列退役 ✓）。
         """
         session = await self._require_session(tenant_id, session_id)
-        graph_state = dict(session.graph_state or {})
-        decisions = dict(graph_state.get("plan_decisions") or {})
+        metadata = dict(session.metadata or {})
+        decisions = dict(metadata.get("plan_decisions") or {})
         decisions[str(plan_id)] = decision
-        graph_state["plan_decisions"] = decisions
-        await self._sessions.update(session.with_runtime(graph_state=graph_state))
+        metadata["plan_decisions"] = decisions
+        await self._sessions.update(session.with_runtime(metadata=metadata))
 
     async def _require_session(self, tenant_id: UUID, session_id: UUID) -> Session:
         session = await self._sessions.get(session_id)

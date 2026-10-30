@@ -61,7 +61,8 @@ class Session:
     created_at: datetime
     closed_at: datetime | None = None
     metadata: dict = field(default_factory=dict)
-    graph_state: dict = field(default_factory=dict)
+    # ⚠️ **旧的续传状态字段退役** ✓（台账 **X3** ✓）—— 续传状态归
+    # ``metadata["resume"]`` ✓（见 ``copilot`` ✓）。
     # ⚠️ **摘要** ✓（Context 方案 §5.1 ✓）—— **只读** ✓：这一列的**唯一
     # 写者**是 Context 层的落库口 ✓（会话仓储不写它 ✓ —— 两个写者会打架 ✗✗）。
     rolling_summary: str = ""
@@ -93,7 +94,6 @@ class Session:
             created_at=datetime.now(UTC),
             closed_at=None,
             metadata=dict(metadata or {}),
-            graph_state={},
         )
 
     def close(self) -> Self:
@@ -115,7 +115,6 @@ class Session:
             created_at=self.created_at,
             closed_at=datetime.now(UTC),
             metadata=dict(self.metadata),
-            graph_state=dict(self.graph_state),
             rolling_summary=self.rolling_summary,
         )
 
@@ -123,7 +122,6 @@ class Session:
         self,
         *,
         metadata: dict | None = None,
-        graph_state: dict | None = None,
     ) -> Self:
         return type(self)(
             id=self.id,
@@ -136,7 +134,6 @@ class Session:
             created_at=self.created_at,
             closed_at=self.closed_at,
             metadata=dict(metadata if metadata is not None else self.metadata),
-            graph_state=dict(graph_state if graph_state is not None else self.graph_state),
             rolling_summary=self.rolling_summary,
         )
 

@@ -56,6 +56,14 @@ class ApprovalService:
         correlation_id: UUID | None = None,
     ) -> Approval:
         now = self._clock.now()
+        # ⚠️ **幂等** ✓（Session 方案 S-31 ✓）—— 同一个 ``correlation_id``
+        # **复用同一个审批** ✓（重试 / 重放不该多出一条待办 ✗✗）。
+        if correlation_id is not None:
+            existing = await self._repo.get_by_correlation_id(
+                tenant_id=tenant_id, correlation_id=correlation_id
+            )
+            if existing is not None:
+                return existing
         expires_at = now + timedelta(seconds=ttl_seconds or self._default_ttl)
         approval = Approval.create(
             tenant_id=tenant_id,
@@ -142,6 +150,22 @@ class ApprovalService:
         await self._publish_decision(
             expired, approver_id=expired.requester_id, force_actor=True
         )
+        return expired
+
+    async def expire_due(self, *, now: datetime, limit: int = 100) -> int:
+        """**把到期未决策的审批置为过期** ✓（清扫用 ✓ —— Session 方案 §3.3 ✓）。
+
+        ⚠️ **跨租户扫描** ✓ —— 它是**维护任务** ✓（请求上下文里才有租户 ✓）。
+        ⚠️ **逐条走 ``expire_if_due``** ✓（**判定只有一份** ✓ —— 别在这里
+        再写一遍过期判断 ✗✗ —— 两处判断迟早不一致 ✗✗）。
+        """
+        expired = 0
+        for approval in await self._repo.list_expired_pending(now=now, limit=limit):
+            result = await self.expire_if_due(
+                tenant_id=approval.tenant_id, approval_id=approval.id
+            )
+            if result is not None:
+                expired += 1
         return expired
 
     async def list_pending(

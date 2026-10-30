@@ -29,9 +29,9 @@ class SessionGraphExecutor:
         ⚠️ **resume 只在「有审批挂起」或「显式恢复」时传** —— 否则 graph 会
         拿着上一轮的残留状态重跑 ✓（与旧实现同语义）。
         """
-        graph_state = dict(request.graph_state or {})
+        resume_state = dict(request.resume_state or {})
         resume = request.resume
-        merged = {**graph_state, **(resume or {})} if resume else graph_state
+        merged = {**resume_state, **(resume or {})} if resume else resume_state
         return self._graph.run_turn(
             tenant_id=request.tenant_id,
             workspace_id=request.workspace_id,

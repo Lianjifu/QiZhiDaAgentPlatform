@@ -30,7 +30,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from qzdap_kernel.digest import request_hash
 
@@ -47,6 +47,31 @@ def arguments_digest(arguments: Mapping[str, Any] | None) -> str:
     虚设 ✗）。
     """
     return request_hash(arguments or {})
+
+
+#: **审批幂等的命名空间** ✓（固定 ✓ —— 变了就是另一个 id ✓）。
+APPROVAL_IDEMPOTENCY_NAMESPACE = NAMESPACE_URL
+
+
+def approval_correlation_id(
+    *,
+    session_id: UUID,
+    tool_call_id: str,
+    request_hash: str,
+) -> UUID:
+    """**审批幂等键** ✓（Session 方案 S-31 ✓）。
+
+    ⚠️ **同 ``(session_id, tool_call_id, request_hash) → 同 id** ✓ ——
+    重试 / 重放**复用同一个审批** ✓（不是新建一个 ✓ —— 那会让审批人看到
+    两条一样的待办 ✗✗）。
+
+    ⚠️ **用 uuid5** ✓（确定性 ✓ —— 同样的输入永远算出同一个 id ✓）——
+    摘要在**全仓只有一份算法** ✓（``qzdap_kernel.digest`` ✓）。
+    """
+    return uuid5(
+        APPROVAL_IDEMPOTENCY_NAMESPACE,
+        f"{session_id}:{tool_call_id}:{request_hash}",
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,4 +120,9 @@ class PendingApproval:
             return None
 
 
-__all__ = ["PendingApproval", "arguments_digest"]
+__all__ = [
+    "APPROVAL_IDEMPOTENCY_NAMESPACE",
+    "PendingApproval",
+    "approval_correlation_id",
+    "arguments_digest",
+]

@@ -66,14 +66,3 @@ async def test_the_sweeper_interval_is_never_zero(
     finally:
         await stop()
 
-
-@pytest.mark.asyncio
-async def test_the_database_url_for_the_saver_is_psycopg_compatible() -> None:
-    """saver 用 psycopg —— ``postgresql+asyncpg://`` 的驱动后缀必须去掉 ✓。"""
-    from qzdap.composition.lifespan import _psycopg_url
-
-    assert (
-        _psycopg_url("postgresql+asyncpg://postgres:postgres@127.0.0.1:9153/qzdap_dev")
-        == "postgresql://postgres:postgres@127.0.0.1:9153/qzdap_dev"
-    )
-    assert _psycopg_url("postgresql://u:p@h/db") == "postgresql://u:p@h/db"

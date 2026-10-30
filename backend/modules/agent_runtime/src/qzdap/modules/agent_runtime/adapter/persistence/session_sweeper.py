@@ -11,7 +11,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from logging import getLogger
 from typing import Any
 
 from qzdap_agent_runtime.session.state import (
@@ -26,6 +28,8 @@ from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
 )
 from qzdap.modules.agent_runtime.adapter.persistence.models import SessionTurnORM
 
+_log = getLogger(__name__)
+
 
 class PostgresSessionSweeper:
     """清扫器 —— 每类各一次批量操作 ✓。"""
@@ -35,20 +39,42 @@ class PostgresSessionSweeper:
         *,
         session_factory: Any,
         idempotency_store: Any,
+        expire_approvals: Callable[[datetime], Awaitable[int]] | None = None,
         batch_limit: int = 1000,
     ) -> None:
         self._sf = session_factory
         self._inbox = idempotency_store
+        #: ⚠️ **审批过期的执行者** ✓（Session 方案 §3.3 的第 2 类 ✓）——
+        #: **归治理域** ✓（`approval_service.expire_if_due` ✓）—— 这里只
+        #: **给它一个回调** ✓（不引治理模块 ✓ —— 组合根接线 ✓）。
+        self._expire_approvals = expire_approvals
         self._batch_limit = batch_limit
 
     async def sweep(self, *, now: datetime) -> SweepReport:
         """跑一次清扫 —— **每类独立**，一类失败不影响另一类 ✓。"""
         zombie_turns = await self._sweep_zombie_turns(now=now)
         expired_rows = await self._sweep_expired_idempotency()
+        expired_approvals = await self._sweep_expired_approvals(now=now)
         return SweepReport(
             zombie_turns=zombie_turns,
             expired_idempotency_rows=expired_rows,
+            expired_approvals=expired_approvals,
         )
+
+    async def _sweep_expired_approvals(self, *, now: datetime) -> int:
+        """**到期未决策的审批 → 自动过期** ✓（§3.3 第 2 类 ✓）。
+
+        ⚠️ **没有执行者就什么都不做** ✓（不猜 ✓ —— 「没有触发者 = 能力不存在」
+        ✗✗ —— 但组合根**接上了** ✓ —— 这里只是没接线时不报错 ✓）。
+        """
+        if self._expire_approvals is None:
+            return 0
+        try:
+            return int(await self._expire_approvals(now))
+        except Exception:  # noqa: BLE001
+            # ⚠️ **一类失败不影响另一类** ✓（清扫器整体还要跑 ✓）。
+            _log.exception("approval expiry sweep failed")
+            return 0
 
     async def _sweep_zombie_turns(self, *, now: datetime) -> int:
         """僵尸轮次 —— 卡在 ``running`` 超过 30 分钟的**置 failed** ✓。

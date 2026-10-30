@@ -47,7 +47,6 @@ class SqlSessionRepository(SessionRepository):
         self._s = session
 
     async def add(self, session: Session) -> None:
-        record_legacy_call("X3")  # agent_sessions.graph_state 列
         self._s.add(
             SessionORM(
                 id=session.id,
@@ -60,19 +59,16 @@ class SqlSessionRepository(SessionRepository):
                 created_at=session.created_at,
                 closed_at=session.closed_at,
                 metadata_=session.metadata,
-                graph_state=dict(session.graph_state or {}),
             )
         )
 
     async def update(self, session: Session) -> None:
-        record_legacy_call("X3")  # agent_sessions.graph_state 列
         o = await self._s.get(SessionORM, session.id)
         if o is None or _cross_tenant(o):
             return
         o.status = session.status.value
         o.closed_at = session.closed_at
         o.metadata_ = session.metadata
-        o.graph_state = dict(session.graph_state or {})
 
     async def get(self, session_id: UUID) -> Session | None:
         o = await self._s.get(SessionORM, session_id)

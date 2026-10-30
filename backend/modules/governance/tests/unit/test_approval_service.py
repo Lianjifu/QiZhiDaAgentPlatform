@@ -250,3 +250,43 @@ async def test_list_all_respects_limit():
         )
     rows = await svc.list_all(tenant_id=TID, limit=3)
     assert len(rows) == 3
+
+
+async def test_the_same_correlation_id_reuses_the_approval():
+    """**审批幂等** ✓（Session 方案 S-31 ✓）—— 重试**不多出一条待办** ✓。"""
+    svc, repo, _pub, _clock = _service()
+    correlation_id = UUID("00000000-0000-0000-0000-0000000000c1")
+    first = await svc.create(
+        tenant_id=TID,
+        requester_id=USER_A,
+        action="agent.tool.sandbox_exec",
+        resource={"tool": "sandbox_exec"},
+        correlation_id=correlation_id,
+    )
+    second = await svc.create(
+        tenant_id=TID,
+        requester_id=USER_A,
+        action="agent.tool.sandbox_exec",
+        resource={"tool": "sandbox_exec"},
+        correlation_id=correlation_id,
+    )
+    assert second.id == first.id
+    assert len(repo._rows) == 1
+
+
+async def test_the_due_approvals_are_expired_by_the_sweep():
+    """**到期未决策 → 自动过期** ✓（Session 方案 §3.3 第 2 类 ✓）。"""
+    svc, _repo, _pub, clock = _service()
+    await svc.create(
+        tenant_id=TID,
+        requester_id=USER_A,
+        action="agent.tool.sandbox_exec",
+        resource={"tool": "sandbox_exec"},
+        ttl_seconds=60,
+    )
+    # ⚠️ **时间往前推** ✓（超过 TTL ✓）。
+    clock.advance(120)
+    expired = await svc.expire_due(now=clock.now())
+    assert expired == 1
+    pending = await svc.list_pending(tenant_id=TID)
+    assert pending == []

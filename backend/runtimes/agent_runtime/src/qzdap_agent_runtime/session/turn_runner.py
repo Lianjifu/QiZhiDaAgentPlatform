@@ -11,7 +11,7 @@
 | :class:`TurnExecutorPort` | 跑一轮并产出 chunk | 模块侧（现役的 graph runner） |
 | :class:`TurnLifecyclePort` | 轮次行（新表）+ 事件落库 + 轮次终态 | 模块侧 |
 | :class:`SessionMessagePort` | 消息读写（会话内序号） | 模块侧 |
-| :class:`SessionStatePort` | 会话行的读改（标题 / 预览 / 摘要 / graph_state） | 模块侧 |
+| :class:`SessionStatePort` | 会话行的读改（标题 / 预览 / 摘要 / 续传状态 ✓） | 模块侧 |
 | :class:`CancelProbePort` | 取消标记 | 模块侧 |
 
 ⚠️ **为什么用「窄端口 + DTO」而不是把领域对象搬进契约层**：契约层不引模块
@@ -97,7 +97,10 @@ class TurnRequest:
     route_id: ModelId | None = None
     rolling_summary: str = ""
     session_metadata: Mapping[str, Any] = field(default_factory=dict)
-    graph_state: Mapping[str, Any] = field(default_factory=dict)
+    #: **续传状态** ✓（上一轮的循环状态 ✓）—— ⚠️ **不再存 ``graph_state`` 列**
+    #: ✓（台账 **X3** ✓ —— 那是旧图的落点 ✓ —— 新的续传状态进会话的
+    #: ``metadata["resume"]`` ✓ —— §8 ✓）。
+    resume_state: Mapping[str, Any] = field(default_factory=dict)
     route_decision: Mapping[str, Any] | None = None
     parent_span_context: Any = None
     trace_id: str | None = None
@@ -183,9 +186,13 @@ class SessionStatePort(Protocol):
         *,
         session_id: UUID,
         metadata: Mapping[str, Any] | None = None,
-        graph_state: Mapping[str, Any] | None = None,
+        resume_state: Mapping[str, Any] | None = None,
     ) -> None:
-        """改会话的元数据 / 续传状态（**合并**，不是覆盖 ✓）。"""
+        """改会话的元数据 / 续传状态（**合并**，不是覆盖 ✓）。
+
+        ⚠️ **续传状态归 ``metadata["resume"]``** ✓（不再有 ``graph_state``
+        列 ✓ —— 台账 **X3** ✓）。
+        """
         ...
 
 
@@ -291,7 +298,7 @@ class TurnRunner:
                     await self._session_state.patch_session(
                         session_id=request.session_id,
                         metadata=metadata,
-                        graph_state=self._executor.latest_state(),
+                        resume_state=self._executor.latest_state(),
                     )
                     # 审批挂起信息**落库**（Session 方案 §8 · 决策 #6）——
                     # 恢复时要靠它校验「挂起的是哪个工具、参数有没有被改」✓。
@@ -326,7 +333,7 @@ class TurnRunner:
                     await self._session_state.patch_session(
                         session_id=request.session_id,
                         metadata=metadata,
-                        graph_state=self._executor.latest_state(),
+                        resume_state=self._executor.latest_state(),
                     )
                     await self._lifecycle.finish_turn(
                         turn_id=request.turn_id,

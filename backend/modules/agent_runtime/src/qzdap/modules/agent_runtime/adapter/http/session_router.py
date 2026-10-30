@@ -610,7 +610,7 @@ def build_session_router() -> APIRouter:
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
         svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
     ) -> dict[str, Any]:
-        """批准 plan — 决策落库到 session.graph_state, 并写一行审计."""
+        """批准 plan — 决策落库到 session.metadata, 并写一行审计."""
         await svc.decide_plan(
             tenant_id=x_tenant_id,
             session_id=session_id,
@@ -636,7 +636,7 @@ def build_session_router() -> APIRouter:
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
         svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
     ) -> dict[str, Any]:
-        """拒绝 plan — 决策落库到 session.graph_state, 并写一行审计."""
+        """拒绝 plan — 决策落库到 session.metadata, 并写一行审计."""
         await svc.decide_plan(
             tenant_id=x_tenant_id,
             session_id=session_id,

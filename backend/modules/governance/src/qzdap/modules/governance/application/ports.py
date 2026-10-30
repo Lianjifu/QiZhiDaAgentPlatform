@@ -76,6 +76,22 @@ class ApprovalRepository(Protocol):
         limit: int = 100,
     ) -> list[Approval]: ...
 
+    async def get_by_correlation_id(
+        self, *, tenant_id: TenantId, correlation_id: UUID
+    ) -> Approval | None:
+        """**按关联 id 找审批** ✓（幂等复用 ✓ —— 该列有索引 ✓）。"""
+        ...
+
+    async def list_expired_pending(
+        self, *, now: datetime, limit: int = 100
+    ) -> list[Approval]:
+        """**已过期但还没决策**的审批 ✓（清扫用 ✓ —— 跨租户 ✓）。
+
+        ⚠️ **跨租户** ✓ —— 它是**维护任务** ✓（租户过滤在请求上下文里生效 ✓
+        —— 清扫器没有租户上下文 ✓ → 看到全部 ✓）。
+        """
+        ...
+
 
 @runtime_checkable
 class DecisionEventRepo(Protocol):
