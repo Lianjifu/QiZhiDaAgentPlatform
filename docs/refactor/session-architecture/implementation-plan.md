@@ -615,11 +615,11 @@
 
 | Stage | 工作项 | 产出 / 落点 | **删除的旧实现**（台账 / 关注点） | **旧代码减少** | 依赖 |
 |---|---|---|---|---|---|
-| Stage 0 · 契约与迁移 | M-01 **拆分 `MemoryService`** | 平面 A `MemoryRuntimeService` + 平面 B `MemoryAdminService`（**纯重构，行为不变**） | **X16 → 已弃用**（关注点 #15） | 0（拆分） | — |
-| | M-02 建 `memory/` 骨架 + 端口 | `Retrieval` / `Writer` / `FactExtractor` / `Redactor` / `Policy` 契约 | — | 0 | M-01 |
-| | M-03 **迁移 0048** | L2 补列 + 回填（产出冲突清单）+ 索引 + `session_memory_buffer` + **DROP 死表 `memory_l2_embeddings`（X19）** + 放开 `admin_memory_policies` 唯一约束（决策 #12） | — | 0 | M-02 |
-| | **M-03b 写入侧持久化 `owner_id`** | `write()` 不再丢弃 `owner_id`（`services.py:325`）→ 落 `admin_memory_l2.user_id`。**这是 `user_id` 唯一可靠的来源**（自动沉淀的 `user_name` 是占位符 `"用户"`） | — | 0 | M-03 |
-| | M-04 `RecallHit` 扩字段 | `scope` / `used_count` / **`ref_id`** / **`version`** | — | 0 | M-03 |
+| Stage 0 · 契约与迁移 | M-01 **拆分 `MemoryService`** | ✅ **已达成**（2026-10-30，Memory Stage 0）—— 运行面 `MemoryRuntimeService` ✓ + 管理面 `MemoryAdminService` ✓（新文件 `admin_service.py` ✓）；向量写入抽成**共享实现** ✓（`embedding.py` ✓）；composition **两个工厂** ✓（对话路径看不到平面 B ✓）；**X16 打点撤除** ✓ + 扫描规则启用 ✓ | **X16 → 已弃用** ✓（关注点 #15；绕过脱敏那半归 M-42 ⏳） | 0（拆分） | — |
+| | M-02 建 `memory/` 骨架 + 端口 | ✅ **已达成** —— 契约层新建 `extraction.py` / `redaction.py` / `policy.py` / `retrieval.py` / `writer.py` / `scope.py` ✓（**只建契约** ✓ —— 实现归 Stage 2 / Stage 3 ✓） |
+| | M-03 **迁移 0048** | ✅ **早已落地** ✓（M0 地基 ✓）—— L2 补列 + 回填 ✓ + 索引 ✓ + `session_memory_buffer` ✓ + **DROP 死表 `memory_l2_embeddings`** ✓（X19 ✓）+ 放开策略唯一约束 ✓ |
+| | **M-03b 写入侧持久化 `owner_id`** | ✅ **早已落地** ✓ —— `write()` 把 `owner_id` 写进 `L2Fact.user_id` ✓（`user_id` 唯一可靠的来源 ✓） |
+| | M-04 `RecallHit` 扩字段 | ✅ **已达成** —— 契约的 `RecallHit` 补 `scope` / `used_count` / **`ref_id`** / **`version`** ✓（后两个是 Context manifest 依赖的 ✓）；**生产返回改用 `RecallHit`** ✓（不再返回 5 键 dict ✓），dict 转换只在 agent_runtime 的适配器一处 ✓ |
 | | M-05 打点本层旧入口 | `record_legacy_call("X11".."X16")` ×6 | — | 0 | 前置 C2 |
 | Stage 1 · 作用域过滤 | M-06 L2 召回加 `user_id` 过滤 | **下推到 SQL 的 WHERE** | — | 0 | Stage 0 |
 | | M-07 向量检索加 `user_id` payload 过滤 | 落在 **`admin_memory_vec`**（0023，生产在用的向量表；不是 0036 的死表 `memory_l2_embeddings`） | — | 0 | M-06 |

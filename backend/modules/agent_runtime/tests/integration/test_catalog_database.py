@@ -19,7 +19,8 @@ from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
 from qzdap.modules.memory.adapter.http.router import build_router as memory_router
 from qzdap.modules.memory.adapter.persistence.models import MemoryL3ORM, MemoryPolicyORM
 from qzdap.modules.memory.adapter.persistence.repositories import SqlMemoryCatalogRepository
-from qzdap.modules.memory.application.services import MemoryService
+from qzdap.modules.memory.application.admin_service import MemoryAdminService
+from qzdap.modules.memory.application.services import MemoryRuntimeService
 
 
 @pytest.fixture
@@ -45,7 +46,13 @@ async def catalog_db():
         async def evaluator(**kwargs):
             return "real execution response"
         app.state.agent_catalog_factory = SimpleNamespace(for_session=lambda db: AgentCatalogService(SqlCatalogAgentRepository(db), evaluator=evaluator))
-        app.state.memory_service_factory = SimpleNamespace(for_session=lambda db: MemoryService(SqlMemoryCatalogRepository(db)))
+        app.state.memory_runtime_service_factory = SimpleNamespace(
+            for_session=lambda db: MemoryRuntimeService(SqlMemoryCatalogRepository(db))
+        )
+        # ⚠️ 管理端走**管理面**的工厂 ✓（平面分离 ✓ —— Memory Stage 0 ✓）。
+        app.state.memory_admin_service_factory = SimpleNamespace(
+            for_session=lambda db: MemoryAdminService(SqlMemoryCatalogRepository(db))
+        )
         @app.middleware("http")
         async def principal(request, call_next):
             request.state.principal = SimpleNamespace(tenant_id=tenant, workspace_id=UUID(request.headers.get("X-Workspace-Id", str(workspace))), id=uuid4())

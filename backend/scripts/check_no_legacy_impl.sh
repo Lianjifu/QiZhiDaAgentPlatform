@@ -176,7 +176,7 @@ layered.py;modules/;X12;M;off
 _remember;modules/;X11;M;off
 admin_memory_l1;modules/;X13;M;off
 admin_memory_l3;modules/;X15;M;off
-class MemoryService;modules/;X16;M;off
+class MemoryService\b;modules/;X16;M;on
 memory_l2_embeddings;migrations/;X19;M;off
 compile_loop_graph;modules/;X5;A;off
 _run_turn_inner;modules/;X17;A;off

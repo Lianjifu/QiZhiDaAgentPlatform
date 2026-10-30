@@ -311,7 +311,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
             knowledge_factory = getattr(app.state, "knowledge_service_factory", None)
-            memory_factory = getattr(app.state, "memory_service_factory", None)
+            memory_factory = getattr(
+                app.state, "memory_runtime_service_factory", None
+            )
             skill_factory = getattr(app.state, "skill_factory", None)
             knowledge_port = (
                 KnowledgeServiceAdapter(knowledge_factory.for_session(session))
@@ -823,7 +825,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from qzdap.modules.memory.adapter.persistence.vector_adapter import (
         PgMemoryVectorAdapter,
     )
-    from qzdap.modules.memory.application.services import MemoryService
+    from qzdap.modules.memory.application.admin_service import MemoryAdminService
+    from qzdap.modules.memory.application.services import MemoryRuntimeService
     from qzdap_vector.pg_vector import PgVectorStore
 
     memory_vectors = PgMemoryVectorAdapter(
@@ -835,9 +838,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     memory_embedding = container.memory_embedding_adapter()
 
-    class _MemoryFactory:
+    class _MemoryRuntimeFactory:
+        """**运行面** ✓ —— 对话路径用它 ✓（召回 / 写入 ✓）。"""
+
         def for_session(self, session):  # type: ignore[no-untyped-def]
-            return MemoryService(
+            return MemoryRuntimeService(
                 SqlMemoryCatalogRepository(session),
                 embedding=memory_embedding,
                 vectors=memory_vectors,
@@ -846,7 +851,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         def __call__(self, session):  # type: ignore[no-untyped-def]
             return self.for_session(session)
 
-    app.state.memory_service_factory = _MemoryFactory()
+    class _MemoryAdminFactory:
+        """**管理面** ✓ —— 管理端接口用它 ✓（目录 / 策略 / 审核 / 趋势 ✓）。"""
+
+        def for_session(self, session):  # type: ignore[no-untyped-def]
+            return MemoryAdminService(
+                SqlMemoryCatalogRepository(session),
+                embedding=memory_embedding,
+                vectors=memory_vectors,
+            )
+
+        def __call__(self, session):  # type: ignore[no-untyped-def]
+            return self.for_session(session)
+
+    # ⚠️ **两个平面各一个工厂** ✓（Memory Stage 0 的平面分离 ✓ 台账 X16 ✓）
+    # —— 对话路径只看得到**运行面** ✓。
+    app.state.memory_runtime_service_factory = _MemoryRuntimeFactory()
+    app.state.memory_admin_service_factory = _MemoryAdminFactory()
 
     # ── per-request knowledge factory ───────────────────────────────────
     from qzdap.modules.knowledge.adapter.persistence.repositories import (

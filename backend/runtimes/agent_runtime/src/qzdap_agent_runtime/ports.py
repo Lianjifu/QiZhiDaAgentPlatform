@@ -67,7 +67,13 @@ RecallLayer = Literal["l1", "l2", "l3"]
 
 @dataclass(frozen=True, slots=True)
 class RecallHit:
-    """§13.4 统一召回结果。L3 必须携带 knowledge_asset_id / chunk_id。"""
+    """§13.4 统一召回结果。L3 必须携带 knowledge_asset_id / chunk_id。
+
+    ⚠️ **Memory 层补了四个字段** ✓（Memory 方案 §10.3 ✓ —— 契约**扩字段**，
+    不是「不变」✓）：``scope`` / ``used_count`` / ``ref_id`` / ``version`` ——
+    后两个是 **Context 的 manifest 组装所依赖** ✓（§3.5 ✓：召回项要能
+    追到来源与版本 ✓）。
+    """
 
     layer: RecallLayer
     content: str
@@ -75,6 +81,14 @@ class RecallHit:
     source_id: str
     citation: str | None
     metadata: dict[str, Any]
+    #: 作用域 ✓（session / user / workspace ✓ —— Memory §3.2 ✓）。
+    scope: str = "user"
+    #: 被用过的次数 ✓（统计 ✓ —— Memory §3.5 provenance ✓）。
+    used_count: int = 0
+    #: **命中项 ID** ✓（记忆 id / 知识 chunk id ✓ —— Context manifest 用 ✓）。
+    ref_id: str = ""
+    #: **版本** ✓（记忆批次版本 / 知识包版本 ✓ —— Context manifest 用 ✓）。
+    version: str = ""
 
 
 @runtime_checkable

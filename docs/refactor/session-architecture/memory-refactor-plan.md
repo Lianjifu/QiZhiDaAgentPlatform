@@ -1047,6 +1047,24 @@ ALTER TABLE admin_memory_policies
 **验收**：回填脚本产出冲突清单；无法确定归属的行被标「待人工处理」，未做任何猜测性回填；**拆分后对话路径的调用图里不出现平面 B 的服务**；**新写入的记忆带真实 `user_id`**（写入侧已接上 `owner_id`）；`memory_l2_embeddings` 已 DROP（台账 X19 → 已清理）。
 **验收补充**：本层每个台账条目的旧入口都有打点；`/metrics` 能查到 `qzdap_legacy_calls_total`。
 
+#### 实施记录（2026-10-30 · Stage 0：契约与迁移）
+
+| 项 | 结果 |
+|---|---|
+| **M-01 拆 `MemoryService`** | ✅ **平面分离完成** ✓ —— 运行面 `MemoryRuntimeService`（`recall` / `write` ✓）留在 `application/services.py` ✓；管理面 `MemoryAdminService`（目录 / 策略 / 审核 / 趋势 ✓）新到 `application/admin_service.py` ✓。⚠️ **向量写入抽成共享实现** ✓（`application/embedding.py` ✓）—— 两个平面各写一份 = 两个实现 ✗✗ |
+| 装配 | composition 里**两个工厂** ✓（`memory_runtime_service_factory` ✓ / `memory_admin_service_factory` ✓）—— 对话路径只看得到**运行面** ✓（Stage 0 验收 ✓） |
+| **M-02 `memory/` 契约骨架** | ✅ 契约层新建五个契约 ✓ —— `extraction.py`（`FactExtractor` + `FactCandidate` ✓）/ `redaction.py`（`Redactor` + `RedactionResult` ✓）/ `policy.py`（`MemoryPolicy` + `PolicyBinding` ✓）/ `retrieval.py`（`Retrieval` + `RetrievalOutcome` ✓）/ `writer.py`（`Writer` + `WriteOutcome` ✓）/ `scope.py`（`MemoryScope` ✓）。⚠️ **只建契约** ✓ —— 实现归 Stage 2 / Stage 3 ✓ |
+| **M-03 迁移 0048** | ✅ **早已落地** ✓（M0 地基 ✓）—— L2 补列 + 回填 + 索引 + `session_memory_buffer` + DROP 死表 `memory_l2_embeddings` ✓（X19 ✓）+ 放宽策略唯一约束 ✓ |
+| **M-03b 写入侧持久化 `owner_id`** | ✅ **早已落地** ✓ —— `write()` 把 `owner_id` 写进 `L2Fact.user_id` ✓（这是 `user_id` 唯一可靠的来源 ✓ —— 自动沉淀的 `user_name` 是占位符 ✗） |
+| **M-04 `RecallHit` 扩字段** | ✅ 契约的 `RecallHit` 补 `scope` / `used_count` / **`ref_id`** / **`version`** ✓（后两个是 **Context 的 manifest 组装所依赖** ✓）；**生产返回改用 `RecallHit`** ✓（不再返回 5 键 dict ✓）—— dict 形状的转换**只在 agent_runtime 的适配器里一处** ✓ |
+| **X16 的打点撤除** | ✅ 「单类未拆」这个事实**不再成立** ✓ → 打点一起撤 ✓（台账 §3.2 ✓ —— 否则指标永远非零 ✗✗，清理判据就失真 ✗）；测试改成断言「**不再被打点**」✓ |
+| 扫描 | `class MemoryService\b` 规则**已启用** ✓（收紧到类声明本身 ✓ —— `MemoryServiceAdapter` 是另一回事 ✓） |
+| 依赖 | `modules/memory` 增加 `qzdap-agent-runtime-runtime` ✓（`RecallHit` 的契约在那儿 ✓）—— 契约层不依赖模块 ✓（方向不反 ✓） |
+
+⚠️ **本 Stage 没有删任何旧实现** ✓ —— 只做了**平面分离** ✓（X16 → 已弃用 ✓）；
+`runner._remember`（X11 ✓）与 `runtimes/.../memory/layered.py`（X12 ✓）**仍在**
+✓ —— 它们归 Stage 3 / Stage 7 ✓。
+
 ### Stage 1：作用域过滤（安全修复，优先级最高）
 
 | 动作 | 细节 |

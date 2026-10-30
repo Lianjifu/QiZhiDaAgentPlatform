@@ -11,6 +11,8 @@ dependencies = [
     "qzdap-auth",
   "qzdap-observability",
     "qzdap-http",
+    # 契约层的 RecallHit（Memory Stage 0 · M-04：统一召回结果形状 ✓）
+    "qzdap-agent-runtime-runtime",
     "fastapi>=0.115.0",
     "pydantic>=2.9",
     "httpx>=0.28.0",

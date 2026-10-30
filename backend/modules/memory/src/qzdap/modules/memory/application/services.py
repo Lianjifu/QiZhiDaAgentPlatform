@@ -1,16 +1,28 @@
-"""Memory catalog service — admin L1/L2/L3 + RAG recall for turns."""
+"""平面 A · 记忆**运行面**的服务 —— 召回 + 自动沉淀 ✓。
+
+依据：Memory 方案 §10.1（平面 A）、§2.2 规则 6（平面分离 ✓）。
+
+⚠️ **管理面已拆走** ✓（台账 **X16** ✓）—— 目录 / 策略 / 审核 / 趋势在
+`admin_service.py` ✓（平面 B ✓）；这里只剩**运行时**要的 `recall` / `write`
+✓ —— 对话路径的调用图里**不再出现平面 B** ✓（Stage 0 验收 ✓）。
+
+⚠️ **本文件待拆** ✓ —— `recall` / `write` 的最终形态在契约层的
+`memory/retrieval.py` / `memory/writer.py` ✓（Stage 2 / Stage 3 ✓）；
+Stage 0 只做**平面分离** ✓（纯重构 ✓，行为不变 ✓）。
+"""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
 
-from qzdap.composition.unavailable_providers import ProviderUnavailable
-from qzdap_kernel.errors import ValidationError
+from qzdap_agent_runtime.ports import RecallHit
 from qzdap_observability.metrics import record_legacy_call
 
+from qzdap.modules.memory.application.embedding import embed_item
 from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
     MemoryCatalogRepository,
@@ -18,20 +30,17 @@ from qzdap.modules.memory.application.ports import (
 )
 from qzdap.modules.memory.domain.entities import (
     L2_CATEGORIES,
-    L2_STATUSES,
-    L3_STATUSES,
     L1Session,
     L2Fact,
-    L3Entry,
     PromotionEvent,
-    RetentionPolicy,
 )
-from qzdap.modules.memory.domain.errors import MemoryNotFound
 
 _log = getLogger(__name__)
 
 
-class MemoryService:
+class MemoryRuntimeService:
+    """运行面 —— **召回 + 写入** ✓（不含任何管理查询 ✓）。"""
+
     def __init__(
         self,
         catalog: MemoryCatalogRepository,
@@ -42,227 +51,6 @@ class MemoryService:
         self._catalog = catalog
         self._embedding = embedding
         self._vectors = vectors
-
-    async def list_l1(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
-        items = await self._catalog.list_l1(workspace_id)
-        items.sort(key=lambda item: item.updated_at, reverse=True)
-        return [item.to_admin_dict() for item in items]
-
-    async def get_l1(self, item_id: UUID) -> dict[str, Any]:
-        item = await self._catalog.get_l1(item_id)
-        if item is None:
-            raise MemoryNotFound(f"l1 session {item_id} not found")
-        return item.to_admin_dict()
-
-    async def list_l2(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
-        items = await self._catalog.list_l2(workspace_id)
-        items.sort(key=lambda item: item.updated_at, reverse=True)
-        return [item.to_admin_dict() for item in items]
-
-    async def get_l2(self, item_id: UUID) -> dict[str, Any]:
-        item = await self._catalog.get_l2(item_id)
-        if item is None:
-            raise MemoryNotFound(f"l2 fact {item_id} not found")
-        return item.to_admin_dict()
-
-    async def list_l3(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
-        items = await self._catalog.list_l3(workspace_id)
-        items.sort(key=lambda item: item.updated_at, reverse=True)
-        return [item.to_admin_dict() for item in items]
-
-    async def get_l3(self, item_id: UUID) -> dict[str, Any]:
-        item = await self._catalog.get_l3(item_id)
-        if item is None:
-            raise MemoryNotFound(f"l3 entry {item_id} not found")
-        return item.to_admin_dict()
-
-    async def flush_l1(self, item_id: UUID, *, workspace_id: UUID) -> dict[str, Any]:
-        """冲掉一条 L1 会话缓冲 —— 内容落盘后丢弃上下文窗口。"""
-        item = await self._catalog.get_l1(item_id)
-        if item is None or item.workspace_id != workspace_id:
-            raise MemoryNotFound(f"l1 session {item_id} not found")
-        now = datetime.now(UTC)
-        item.status = "expired"
-        item.buffer_text = ""
-        item.buffer_size = 0
-        item.ttl_remain_min = 0
-        item.updated_at = now
-        await self._catalog.update_l1(item)
-        return item.to_admin_dict()
-
-    async def flush_all_l1(self, *, workspace_id: UUID) -> dict[str, int]:
-        """冲掉工作区下所有未过期的 L1 会话。"""
-        now = datetime.now(UTC)
-        flushed = 0
-        for item in await self._catalog.list_l1(workspace_id):
-            if item.status == "expired":
-                continue
-            item.status = "expired"
-            item.buffer_text = ""
-            item.buffer_size = 0
-            item.ttl_remain_min = 0
-            item.updated_at = now
-            await self._catalog.update_l1(item)
-            flushed += 1
-        return {"flushed": flushed}
-
-    async def update_l2(
-        self, item_id: UUID, *, workspace_id: UUID, patch: dict[str, Any]
-    ) -> dict[str, Any]:
-        """确认 / 退休一条 L2 事实。"""
-        item = await self._catalog.get_l2(item_id)
-        if item is None or item.workspace_id != workspace_id:
-            raise MemoryNotFound(f"l2 fact {item_id} not found")
-        status = patch.get("status")
-        if status is not None:
-            value = str(status)
-            if value not in L2_STATUSES:
-                raise ValidationError(f"unknown l2 status {value}")
-            item.status = value  # type: ignore[assignment]
-        if "value" in patch and patch["value"] is not None:
-            item.value = str(patch["value"])
-        if patch.get("confidence") is not None:
-            item.confidence = float(patch["confidence"])
-        item.updated_at = datetime.now(UTC)
-        await self._catalog.update_l2(item)
-        return item.to_admin_dict()
-
-    async def promote_l2(
-        self,
-        *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        ids: list[UUID],
-        team: str,
-        title: str,
-        summary: str,
-        operator: str = "管理员",
-        category: str = "knowledge",
-    ) -> dict[str, Any]:
-        """把选中的 L2 事实晋升为一条 L3 团队知识。"""
-        facts: list[L2Fact] = []
-        for item_id in ids:
-            fact = await self._catalog.get_l2(item_id)
-            if fact is None or fact.workspace_id != workspace_id:
-                raise MemoryNotFound(f"l2 fact {item_id} not found")
-            facts.append(fact)
-        if not facts:
-            raise ValidationError("没有可晋升的长期记忆")
-        now = datetime.now(UTC)
-        for fact in facts:
-            fact.promoted_to_l3 = True
-            fact.updated_at = now
-            await self._catalog.update_l2(fact)
-        entry = L3Entry.create(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            team=team,
-            title=title,
-            summary=summary,
-            category=category,
-            contributor=operator,
-            status="draft",
-            promoted_from_l2_ids=[str(fact.id) for fact in facts],
-        )
-        await self._catalog.add_l3(entry)
-        await self._catalog.add_promotion(
-            PromotionEvent(
-                id=uuid4(),
-                tenant_id=tenant_id,
-                workspace_id=workspace_id,
-                layer="l2→l3",
-                label=f"{team} · {title}: {summary[:24]}",
-                operator=operator,
-                target_id=str(entry.id),
-                created_at=now,
-            )
-        )
-        await self._embed_item(
-            entry.id, "l3", entry.recall_text(), tenant_id, workspace_id
-        )
-        return entry.to_admin_dict()
-
-    async def create_l3(
-        self,
-        *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        team: str,
-        title: str,
-        summary: str,
-        category: str = "knowledge",
-        contributor: str = "管理员",
-        status: str = "published",
-    ) -> dict[str, Any]:
-        """手工新建一条 L3 团队知识。"""
-        if status not in L3_STATUSES:
-            raise ValidationError(f"unknown l3 status {status}")
-        entry = L3Entry.create(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            team=team,
-            title=title,
-            summary=summary,
-            category=category,
-            contributor=contributor,
-            status=status,  # type: ignore[arg-type]
-        )
-        await self._catalog.add_l3(entry)
-        await self._embed_item(
-            entry.id, "l3", entry.recall_text(), tenant_id, workspace_id
-        )
-        return entry.to_admin_dict()
-
-    async def update_l3(
-        self, item_id: UUID, *, workspace_id: UUID, patch: dict[str, Any]
-    ) -> dict[str, Any]:
-        """发布 / 下线一条 L3 知识。"""
-        item = await self._catalog.get_l3(item_id)
-        if item is None or item.workspace_id != workspace_id:
-            raise MemoryNotFound(f"l3 entry {item_id} not found")
-        status = patch.get("status")
-        if status is not None:
-            value = str(status)
-            if value not in L3_STATUSES:
-                raise ValidationError(f"unknown l3 status {value}")
-            item.status = value  # type: ignore[assignment]
-        for field in ("title", "summary", "team", "category"):
-            if patch.get(field) is not None:
-                setattr(item, field, str(patch[field]))
-        item.updated_at = datetime.now(UTC)
-        await self._catalog.update_l3(item)
-        return item.to_admin_dict()
-
-    async def list_promotions(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
-        items = await self._catalog.list_promotions(workspace_id)
-        items.sort(key=lambda item: item.created_at, reverse=True)
-        return [item.to_admin_dict() for item in items]
-
-    async def list_policies(
-        self, *, tenant_id: UUID, workspace_id: UUID
-    ) -> list[dict[str, Any]]:
-        items = await self._ensure_policies(tenant_id=tenant_id, workspace_id=workspace_id)
-        return [item.to_admin_dict() for item in items]
-
-    async def get_policy(self, *, workspace_id: UUID, label: str) -> dict[str, Any]:
-        item = await self._catalog.get_policy_by_label(workspace_id, label)
-        if item is None:
-            raise MemoryNotFound(f"policy {label} not found")
-        return item.to_admin_dict()
-
-    async def trend(self, *, workspace_id: UUID, range: str = "7d") -> dict[str, list[int]]:
-        _ = range
-        l1 = await self._catalog.list_l1(workspace_id)
-        l2 = await self._catalog.list_l2(workspace_id)
-        l3 = await self._catalog.list_l3(workspace_id)
-        l1_n = sum(1 for item in l1 if item.status != "expired")
-        l2_n = sum(1 for item in l2 if item.status != "retired")
-        l3_hits = sum(item.hits for item in l3 if item.status == "published")
-        return {
-            "l1Active": _series(l1_n),
-            "l2Hits": _series(max(l2_n * 12, l2_n)),
-            "l3Hits": _series(l3_hits or l1_n),
-        }
 
     async def write(
         self,
@@ -275,7 +63,6 @@ class MemoryService:
         user_name: str = "",
         agent_name: str = "",
     ) -> dict[str, Any]:
-        record_legacy_call("X16")  # MemoryService 单类（运行时 + 管理面未拆）
         meta = metadata or {}
         now = datetime.now(UTC)
         session = L1Session(
@@ -293,6 +80,9 @@ class MemoryService:
             created_at=now,
             buffer_text=content,
         )
+        # ⚠️ **L1 缓冲表在用** ✓（台账 X13 —— 决策 #5：L1 退役 ✓）→ 打点 ✓
+        # （没有打点就没有清理判据 ✓ —— 台账 §3.2 ✓）。
+        record_legacy_call("X13")
         await self._catalog.add_l1(session)
         category = str(meta.get("category") or "fact")
         if category not in L2_CATEGORIES:
@@ -339,6 +129,7 @@ class MemoryService:
         )
         return fact.to_admin_dict()
 
+
     async def recall(
         self,
         *,
@@ -349,7 +140,6 @@ class MemoryService:
         scope_filter: str | None = None,
         user_id: UUID | None = None,
     ) -> list[dict[str, Any]]:
-        record_legacy_call("X16")  # MemoryService 单类（运行时 + 管理面未拆）
         _ = scope_filter
         limit = max(1, top_k)
         needle = query.strip().lower()
@@ -369,14 +159,31 @@ class MemoryService:
         # ⚠️ L3 **不按用户过滤**，这是设计如此：L3 是**工作区级的团队知识**，
         #    对工作区内所有人可见（决策 #1：L3 退役后由 modules/knowledge 接管）。
         #    用户级隔离只作用于 L2（个人事实）与向量检索 —— 那两条才是 X14 的泄漏面。
-        keyword: list[tuple[float, dict[str, Any]]] = []
+        keyword: list[tuple[float, RecallHit]] = []
         for fact in facts:
             hay = fact.recall_text().lower()
-            keyword.append((_keyword_score(needle, hay), _hit(fact.id, fact.recall_text(), "l2", 0.0)))
+            keyword.append(
+                (
+                    _keyword_score(needle, hay),
+                    _hit(
+                        fact.id,
+                        fact.recall_text(),
+                        "l2",
+                        0.0,
+                        used_count=int(getattr(fact, "used_count", 0) or 0),
+                        version=str(getattr(fact, "version", "") or ""),
+                    ),
+                )
+            )
         for entry in knowledge:
             hay = entry.recall_text().lower()
-            keyword.append((_keyword_score(needle, hay), _hit(entry.id, entry.recall_text(), "l3", 0.0)))
-        vector_hits: list[tuple[float, dict[str, Any]]] = []
+            keyword.append(
+                (
+                    _keyword_score(needle, hay),
+                    _hit(entry.id, entry.recall_text(), "l3", 0.0),
+                )
+            )
+        vector_hits: list[tuple[float, RecallHit]] = []
         if self._embedding is not None and self._vectors is not None and needle:
             [query_vec] = await self._embedding.embed([query.strip()])
             for hit in await self._vectors.search(
@@ -392,28 +199,16 @@ class MemoryService:
                         _hit(hit.item_id, hit.content, hit.layer, hit.score),
                     )
                 )
-        merged: dict[str, dict[str, Any]] = {}
-        keyword_by_id = {item[1]["id"]: item[0] for item in keyword}
-        for score, payload in vector_hits:
-            kw = keyword_by_id.get(payload["id"], 0.05)
-            payload = {**payload, "score": 0.7 * score + 0.3 * kw}
-            merged[payload["id"]] = payload
-        for score, payload in keyword:
-            if payload["id"] not in merged:
-                merged[payload["id"]] = {**payload, "score": 0.3 * score}
-        ranked = sorted(merged.values(), key=lambda item: float(item["score"]), reverse=True)
+        merged: dict[str, RecallHit] = {}
+        keyword_by_id = {item[1].source_id: item[0] for item in keyword}
+        for score, hit in vector_hits:
+            kw = keyword_by_id.get(hit.source_id, 0.05)
+            merged[hit.source_id] = replace(hit, score=0.7 * score + 0.3 * kw)
+        for score, hit in keyword:
+            if hit.source_id not in merged:
+                merged[hit.source_id] = replace(hit, score=0.3 * score)
+        ranked = sorted(merged.values(), key=lambda item: float(item.score), reverse=True)
         return ranked[:limit]
-
-    async def _ensure_policies(
-        self, *, tenant_id: UUID, workspace_id: UUID
-    ) -> list[RetentionPolicy]:
-        items = await self._catalog.list_policies(workspace_id)
-        if items:
-            return items
-        seeded = RetentionPolicy.defaults(tenant_id=tenant_id, workspace_id=workspace_id)
-        for item in seeded:
-            await self._catalog.add_policy(item)
-        return seeded
 
     async def _embed_item(
         self,
@@ -424,28 +219,14 @@ class MemoryService:
         workspace_id: UUID,
         user_id: UUID | None = None,
     ) -> None:
-        if self._embedding is None or self._vectors is None or not content.strip():
-            return
-        # 优雅降级: embedding 不可用(例如 dev 没配真实供应商)时,
-        # 跳过向量写入, 不阻塞上层 turn (否则 chat 已经回完用户, 但
-        # 因为记忆落库失败, 整个 turn 会抛 500). L2/L3 目录行仍保留,
-        # 等管理侧配上 embedding 供应商后再补回.
-        try:
-            [vector] = await self._embedding.embed([content])
-        except ProviderUnavailable:
-            _log.warning(
-                "memory embed skipped (provider unavailable) item_id=%s layer=%s",
-                item_id,
-                layer,
-            )
-            return
-        await self._vectors.upsert(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
+        await embed_item(
+            self._embedding,
+            self._vectors,
             item_id=item_id,
             layer=layer,
             content=content,
-            embedding=vector,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
             user_id=user_id,
         )
 
@@ -462,23 +243,33 @@ def _keyword_score(needle: str, hay: str) -> float:
     return 0.15 + 0.85 * (hits / len(parts)) if hits else 0.05
 
 
-def _hit(item_id: UUID, content: str, layer: str, score: float) -> dict[str, Any]:
-    scope = "workspace" if layer == "l3" else "user"
-    return {
-        "id": str(item_id),
-        "content": content,
-        "score": score,
-        "scope": scope,
-        "layer": layer,
-    }
+def _hit(
+    item_id: UUID,
+    content: str,
+    layer: str,
+    score: float,
+    *,
+    used_count: int = 0,
+    version: str = "",
+) -> RecallHit:
+    """一条召回命中 ✓ —— **统一用 ``RecallHit``** ✓（Memory Stage 0 · M-04 ✓）。
+
+    ⚠️ **生产不再返回 dict** ✓ —— 返回形状统一 ✓（契约在
+    ``qzdap_agent_runtime.ports`` ✓）；调用方要 dict 就自己转 ✓
+    （agent_runtime 的适配器负责转 ✓）。
+    """
+    return RecallHit(
+        layer=layer,  # type: ignore[arg-type]
+        content=content,
+        score=score,
+        source_id=str(item_id),
+        citation=None,
+        metadata={},
+        scope="workspace" if layer == "l3" else "user",
+        used_count=used_count,
+        ref_id=str(item_id),
+        version=version,
+    )
 
 
-def _series(end: int) -> list[int]:
-    end = max(0, int(end))
-    step = max(1, end // 7) if end else 0
-    values = [max(0, end - (7 - i) * step) for i in range(8)]
-    values[-1] = end
-    return values
-
-
-__all__ = ["MemoryService"]
+__all__ = ["MemoryRuntimeService"]

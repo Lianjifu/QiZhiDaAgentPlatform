@@ -9,12 +9,13 @@ from uuid import UUID
 import pytest
 from qzdap_kernel.errors import ValidationError
 
+from qzdap.modules.memory.application.admin_service import MemoryAdminService
 from qzdap.modules.memory.application.ports import (
     MemoryCatalogRepository,
     VectorHit,
     VectorSearchPort,
 )
-from qzdap.modules.memory.application.services import MemoryService
+from qzdap.modules.memory.application.services import MemoryRuntimeService
 from qzdap.modules.memory.domain.entities import (
     L1Session,
     L2Fact,
@@ -62,7 +63,11 @@ class InMemoryVectors(VectorSearchPort):
         user_id: UUID | None = None,
     ) -> None:
         _ = tenant_id
-        payload = {"workspace_id": str(workspace_id), "layer": layer, "content": content}
+        payload = {
+            "workspace_id": str(workspace_id),
+            "layer": layer,
+            "content": content,
+        }
         if user_id is not None:
             payload["user_id"] = str(user_id)
         self.items[item_id] = (list(embedding), payload)
@@ -90,7 +95,9 @@ class InMemoryVectors(VectorSearchPort):
                 # 对齐 pgvector：`payload->>'user_id'` 为 NULL 时不匹配。
                 continue
             vn = math.sqrt(sum(value * value for value in vector)) or 1.0
-            score = sum(a * b for a, b in zip(query_embedding, vector, strict=True)) / (qn * vn)
+            score = sum(a * b for a, b in zip(query_embedding, vector, strict=True)) / (
+                qn * vn
+            )
             scored.append(
                 VectorHit(
                     item_id=item_id,
@@ -156,29 +163,46 @@ class InMemoryCatalog(MemoryCatalogRepository):
         self.promotions[item.id] = item
 
     async def list_promotions(self, workspace_id: UUID) -> list[PromotionEvent]:
-        return [item for item in self.promotions.values() if item.workspace_id == workspace_id]
+        return [
+            item
+            for item in self.promotions.values()
+            if item.workspace_id == workspace_id
+        ]
 
     async def add_policy(self, item: RetentionPolicy) -> None:
         self.policies[item.id] = item
 
     async def list_policies(self, workspace_id: UUID) -> list[RetentionPolicy]:
-        return [item for item in self.policies.values() if item.workspace_id == workspace_id]
+        return [
+            item for item in self.policies.values() if item.workspace_id == workspace_id
+        ]
 
-    async def get_policy_by_label(self, workspace_id: UUID, label: str) -> RetentionPolicy | None:
+    async def get_policy_by_label(
+        self, workspace_id: UUID, label: str
+    ) -> RetentionPolicy | None:
         for item in self.policies.values():
             if item.workspace_id == workspace_id and item.label == label:
                 return item
         return None
 
 
-def _svc() -> MemoryService:
-    return MemoryService(InMemoryCatalog(), embedding=HashEmbedding(), vectors=InMemoryVectors())
+def _svc() -> tuple[MemoryRuntimeService, MemoryAdminService]:
+    """两个平面各一个服务，**共用同一份目录** ✓（模拟生产的两条路 ✓）。"""
+    catalog = InMemoryCatalog()
+    return (
+        MemoryRuntimeService(
+            catalog, embedding=HashEmbedding(), vectors=InMemoryVectors()
+        ),
+        MemoryAdminService(
+            catalog, embedding=HashEmbedding(), vectors=InMemoryVectors()
+        ),
+    )
 
 
 @pytest.mark.asyncio
 async def test_write_lists_and_policies() -> None:
-    svc = _svc()
-    written = await svc.write(
+    runtime, admin = _svc()
+    written = await runtime.write(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=TENANT,
@@ -186,108 +210,140 @@ async def test_write_lists_and_policies() -> None:
         metadata={"key": "答复风格", "userName": "张文佳"},
     )
     assert written["key"] == "答复风格"
-    l1 = await svc.list_l1(workspace_id=WORKSPACE)
-    l2 = await svc.list_l2(workspace_id=WORKSPACE)
+    l1 = await admin.list_l1(workspace_id=WORKSPACE)
+    l2 = await admin.list_l2(workspace_id=WORKSPACE)
     assert len(l1) == 1
     assert len(l2) == 1
-    detail = await svc.get_l2(UUID(l2[0]["id"]))
+    detail = await admin.get_l2(UUID(l2[0]["id"]))
     assert detail["value"].find("精简") >= 0
-    events = await svc.list_promotions(workspace_id=WORKSPACE)
+    events = await admin.list_promotions(workspace_id=WORKSPACE)
     assert events
-    policies = await svc.list_policies(tenant_id=TENANT, workspace_id=WORKSPACE)
+    policies = await admin.list_policies(tenant_id=TENANT, workspace_id=WORKSPACE)
     assert len(policies) == 3
-    short = await svc.get_policy(workspace_id=WORKSPACE, label="短期记忆")
+    short = await admin.get_policy(workspace_id=WORKSPACE, label="短期记忆")
     assert short["layer"] == "l1"
-    trend = await svc.trend(workspace_id=WORKSPACE)
+    trend = await admin.trend(workspace_id=WORKSPACE)
     assert len(trend["l1Active"]) == 8
 
 
 @pytest.mark.asyncio
+async def test_the_retiring_tables_are_measured() -> None:
+    """**要退役的表在用** → 打点 ✓（台账 §3.2：没有打点就没有清理判据 ✓）。
+
+    X13 = ``admin_memory_l1``（决策 #5 退役 ✓）· X15 = ``admin_memory_l3``
+    （决策 #1 退役 ✓）—— 指标非零才说明「还没退干净」✓。
+    """
+    from qzdap_observability.metrics import LEGACY_CALLS_TOTAL
+
+    runtime, admin = _svc()
+    l1_before = LEGACY_CALLS_TOTAL.labels(entry="X13")._value.get()
+    l3_before = LEGACY_CALLS_TOTAL.labels(entry="X15")._value.get()
+
+    await runtime.write(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        owner_id=TENANT,
+        content="需要记住的一条",
+        metadata={"key": "偏好"},
+    )
+    await admin.create_l3(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        team="平台",
+        title="团队知识",
+        summary="摘要",
+    )
+
+    assert LEGACY_CALLS_TOTAL.labels(entry="X13")._value.get() == l1_before + 1
+    assert LEGACY_CALLS_TOTAL.labels(entry="X15")._value.get() == l3_before + 1
+
+
+@pytest.mark.asyncio
 async def test_recall_ranks_matching_fact() -> None:
-    svc = _svc()
-    await svc.write(
+    runtime, _ = _svc()
+    await runtime.write(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=TENANT,
         content="订单退款需要 7 天内申请",
         metadata={"key": "退款规则"},
     )
-    await svc.write(
+    await runtime.write(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=TENANT,
         content="发票一律开增值税专票",
         metadata={"key": "发票规则"},
     )
-    hits = await svc.recall(
+    hits = await runtime.recall(
         tenant_id=TENANT, workspace_id=WORKSPACE, query="退款 订单", top_k=2
     )
     assert hits
-    assert "退款" in hits[0]["content"]
+    assert "退款" in hits[0].content
 
 
 @pytest.mark.asyncio
 async def test_missing_l3_raises() -> None:
-    svc = _svc()
+    _, admin = _svc()
     with pytest.raises(MemoryNotFound):
-        await svc.get_l3(UUID("00000000-0000-0000-0000-000000000099"))
+        await admin.get_l3(UUID("00000000-0000-0000-0000-000000000099"))
 
 
 @pytest.mark.asyncio
 async def test_flush_l1_expires_session() -> None:
-    svc = _svc()
-    await svc.write(
+    runtime, admin = _svc()
+    await runtime.write(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=TENANT,
         content="会议纪要要点",
         metadata={"key": "纪要"},
     )
-    sessions = await svc.list_l1(workspace_id=WORKSPACE)
+    sessions = await admin.list_l1(workspace_id=WORKSPACE)
     assert len(sessions) == 1
-    flushed = await svc.flush_l1(UUID(sessions[0]["id"]), workspace_id=WORKSPACE)
+    flushed = await admin.flush_l1(UUID(sessions[0]["id"]), workspace_id=WORKSPACE)
     assert flushed["status"] == "expired"
     assert flushed["bufferSize"] == 0
-    again = await svc.list_l1(workspace_id=WORKSPACE)
+    again = await admin.list_l1(workspace_id=WORKSPACE)
     assert again[0]["status"] == "expired"
 
 
 @pytest.mark.asyncio
 async def test_flush_all_l1_only_counts_active() -> None:
-    svc = _svc()
-    await svc.write(
+    runtime, admin = _svc()
+    await runtime.write(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=TENANT,
         content="第一条",
         metadata={"key": "a"},
     )
-    await svc.write(
+    await runtime.write(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=TENANT,
         content="第二条",
         metadata={"key": "b"},
     )
-    first = await svc.flush_all_l1(workspace_id=WORKSPACE)
+    first = await admin.flush_all_l1(workspace_id=WORKSPACE)
     assert first["flushed"] == 2
-    second = await svc.flush_all_l1(workspace_id=WORKSPACE)
+    second = await admin.flush_all_l1(workspace_id=WORKSPACE)
     assert second["flushed"] == 0
 
 
 @pytest.mark.asyncio
 async def test_flush_rejects_other_workspace() -> None:
-    svc = _svc()
-    await svc.write(
+    runtime, admin = _svc()
+    await runtime.write(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=TENANT,
         content="内容",
         metadata={"key": "a"},
     )
-    sessions = await svc.list_l1(workspace_id=WORKSPACE)
+    sessions = await admin.list_l1(workspace_id=WORKSPACE)
     with pytest.raises(MemoryNotFound):
-        await svc.flush_l1(
+        await admin.flush_l1(
             UUID(sessions[0]["id"]),
             workspace_id=UUID("00000000-0000-0000-0000-0000000000ff"),
         )
@@ -295,39 +351,39 @@ async def test_flush_rejects_other_workspace() -> None:
 
 @pytest.mark.asyncio
 async def test_update_l2_confirms_and_validates_status() -> None:
-    svc = _svc()
-    await svc.write(
+    runtime, admin = _svc()
+    await runtime.write(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=TENANT,
         content="偏好中文回复",
         metadata={"key": "语言"},
     )
-    facts = await svc.list_l2(workspace_id=WORKSPACE)
+    facts = await admin.list_l2(workspace_id=WORKSPACE)
     fact_id = UUID(facts[0]["id"])
-    updated = await svc.update_l2(
+    updated = await admin.update_l2(
         fact_id, workspace_id=WORKSPACE, patch={"status": "confirmed"}
     )
     assert updated["status"] == "confirmed"
     with pytest.raises(ValidationError):
-        await svc.update_l2(
+        await admin.update_l2(
             fact_id, workspace_id=WORKSPACE, patch={"status": "nonsense"}
         )
 
 
 @pytest.mark.asyncio
 async def test_promote_l2_creates_l3_and_marks_facts() -> None:
-    svc = _svc()
-    await svc.write(
+    runtime, admin = _svc()
+    await runtime.write(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=TENANT,
         content="退款 7 天内申请",
         metadata={"key": "退款规则"},
     )
-    facts = await svc.list_l2(workspace_id=WORKSPACE)
+    facts = await admin.list_l2(workspace_id=WORKSPACE)
     fact_id = UUID(facts[0]["id"])
-    entry = await svc.promote_l2(
+    entry = await admin.promote_l2(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         ids=[fact_id],
@@ -340,16 +396,16 @@ async def test_promote_l2_creates_l3_and_marks_facts() -> None:
     assert entry["team"] == "售后组"
     assert entry["contributor"] == "张文佳"
     assert entry["promotedFromL2Ids"] == [str(fact_id)]
-    assert (await svc.get_l2(fact_id))["promotedToL3"] is True
-    events = await svc.list_promotions(workspace_id=WORKSPACE)
+    assert (await admin.get_l2(fact_id))["promotedToL3"] is True
+    events = await admin.list_promotions(workspace_id=WORKSPACE)
     assert any(event["layer"] == "l2→l3" for event in events)
 
 
 @pytest.mark.asyncio
 async def test_promote_l2_rejects_empty_selection() -> None:
-    svc = _svc()
+    _, admin = _svc()
     with pytest.raises(ValidationError):
-        await svc.promote_l2(
+        await admin.promote_l2(
             tenant_id=TENANT,
             workspace_id=WORKSPACE,
             ids=[],
@@ -361,8 +417,8 @@ async def test_promote_l2_rejects_empty_selection() -> None:
 
 @pytest.mark.asyncio
 async def test_create_l3_publishes_entry() -> None:
-    svc = _svc()
-    entry = await svc.create_l3(
+    _, admin = _svc()
+    entry = await admin.create_l3(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         team="增长组",
@@ -372,15 +428,15 @@ async def test_create_l3_publishes_entry() -> None:
     )
     assert entry["status"] == "published"
     assert entry["hits"] == 0
-    listed = await svc.list_l3(workspace_id=WORKSPACE)
+    listed = await admin.list_l3(workspace_id=WORKSPACE)
     assert [item["id"] for item in listed] == [entry["id"]]
 
 
 @pytest.mark.asyncio
 async def test_create_l3_rejects_unknown_status() -> None:
-    svc = _svc()
+    _, admin = _svc()
     with pytest.raises(ValidationError):
-        await svc.create_l3(
+        await admin.create_l3(
             tenant_id=TENANT,
             workspace_id=WORKSPACE,
             team="增长组",
@@ -392,8 +448,8 @@ async def test_create_l3_rejects_unknown_status() -> None:
 
 @pytest.mark.asyncio
 async def test_update_l3_publishes_and_retires() -> None:
-    svc = _svc()
-    entry = await svc.create_l3(
+    _, admin = _svc()
+    entry = await admin.create_l3(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         team="增长组",
@@ -401,22 +457,21 @@ async def test_update_l3_publishes_and_retires() -> None:
         summary="新客首单 8 折",
     )
     item_id = UUID(entry["id"])
-    published = await svc.update_l3(
+    published = await admin.update_l3(
         item_id, workspace_id=WORKSPACE, patch={"status": "published"}
     )
     assert published["status"] == "published"
-    retired = await svc.update_l3(
+    retired = await admin.update_l3(
         item_id, workspace_id=WORKSPACE, patch={"status": "retired"}
     )
     assert retired["status"] == "retired"
     with pytest.raises(ValidationError):
-        await svc.update_l3(
+        await admin.update_l3(
             item_id, workspace_id=WORKSPACE, patch={"status": "unknown"}
         )
     with pytest.raises(MemoryNotFound):
-        await svc.update_l3(
+        await admin.update_l3(
             item_id,
             workspace_id=UUID("00000000-0000-0000-0000-0000000000ff"),
             patch={"status": "published"},
         )
-

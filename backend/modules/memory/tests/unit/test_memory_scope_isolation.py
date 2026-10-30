@@ -1,6 +1,6 @@
 """X14 跨用户泄漏的回归测试 —— 工作区内的记忆必须按用户隔离。
 
-背景：``MemoryService.write`` 过去把 ``owner_id`` 直接丢掉（``_ = owner_id``），
+背景：``MemoryRuntimeService.write`` 过去把 ``owner_id`` 直接丢掉（``_ = owner_id``），
 ``recall`` 又忽略作用域、只按 workspace 拉全量 → 同工作区的 A 能召回到 B 的记忆。
 
 修复（Memory 决策 #11 / #2）：
@@ -23,7 +23,7 @@ from qzdap.modules.memory.application.ports import (
     VectorHit,
     VectorSearchPort,
 )
-from qzdap.modules.memory.application.services import MemoryService
+from qzdap.modules.memory.application.services import MemoryRuntimeService
 from qzdap.modules.memory.domain.entities import (
     L1Session,
     L2Fact,
@@ -190,15 +190,19 @@ class InMemoryCatalog(MemoryCatalogRepository):
         return None
 
 
-def _svc() -> tuple[MemoryService, InMemoryCatalog]:
+def _svc() -> tuple[MemoryRuntimeService, InMemoryCatalog]:
     catalog = InMemoryCatalog()
     return (
-        MemoryService(catalog, embedding=HashEmbedding(), vectors=InMemoryVectors()),
+        MemoryRuntimeService(
+            catalog, embedding=HashEmbedding(), vectors=InMemoryVectors()
+        ),
         catalog,
     )
 
 
-async def _seed(svc: MemoryService, owner_id: UUID, content: str, key: str) -> None:
+async def _seed(
+    svc: MemoryRuntimeService, owner_id: UUID, content: str, key: str
+) -> None:
     await svc.write(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
@@ -239,11 +243,11 @@ async def test_recall_does_not_leak_across_users() -> None:
         user_id=USER_B,
     )
 
-    assert [h["content"] for h in hits_a] == ["报销额度: 张三的报销额度是五千元"]
-    assert [h["content"] for h in hits_b] == ["客户名单: 李四的客户名单在另一个系统"]
+    assert [h.content for h in hits_a] == ["报销额度: 张三的报销额度是五千元"]
+    assert [h.content for h in hits_b] == ["客户名单: 李四的客户名单在另一个系统"]
 
-    joined_a = " ".join(str(h["content"]) for h in hits_a)
-    joined_b = " ".join(str(h["content"]) for h in hits_b)
+    joined_a = " ".join(str(h.content) for h in hits_a)
+    joined_b = " ".join(str(h.content) for h in hits_b)
     assert "李四" not in joined_a
     assert "张三" not in joined_b
 
@@ -278,12 +282,16 @@ async def test_unowned_memories_are_not_recalled() -> None:
         top_k=10,
         user_id=USER_A,
     )
-    assert all("存量自动沉淀" not in str(h["content"]) for h in hits)
+    assert all("存量自动沉淀" not in str(h.content) for h in hits)
 
 
 @pytest.mark.asyncio
-async def test_legacy_call_metric_is_recorded() -> None:
-    """收敛打点：旧实现被调用 → 指标可观测（台账 §3.2 的清理判据依赖它）。"""
+async def test_the_split_retires_the_x16_metric() -> None:
+    """**X16 的打点撤除** ✓ —— 「单类未拆」这个事实**不再成立** ✓。
+
+    ⚠️ 台账 §3.2：打点是「旧实现**在场**」的唯一事实来源 ✓ —— 旧实现拆掉，
+    打点就一起撤 ✓（否则指标会永远停在非零 ✗✗ —— 清理判据就失真了 ✗）。
+    """
     svc, _ = _svc()
     before = LEGACY_CALLS_TOTAL.labels(entry="X16")._value.get()
     await svc.write(
@@ -301,7 +309,7 @@ async def test_legacy_call_metric_is_recorded() -> None:
         user_id=USER_A,
     )
     after = LEGACY_CALLS_TOTAL.labels(entry="X16")._value.get()
-    assert after == before + 2
+    assert after == before
 
 
 @pytest.mark.asyncio
