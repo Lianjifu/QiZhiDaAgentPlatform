@@ -26,13 +26,13 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
+
+from qzdap_kernel.digest import request_hash
 
 
 def arguments_digest(arguments: Mapping[str, Any] | None) -> str:
@@ -41,15 +41,12 @@ def arguments_digest(arguments: Mapping[str, Any] | None) -> str:
     ⚠️ **必须规范化**：同样的参数，键序不同就应该是同一个摘要 ✓ ——
     否则「参数没变」也会被误判成「被改了」✗。规范化 = 键排序 + 无空格
     的 JSON ✓（值里如果还有 dict/list，也会被递归排序 ✓）。
+
+    ⚠️ **全仓只有一份算法** ✓（``qzdap_kernel.digest`` ✓）—— 与**工具幂等
+    指纹**同源 ✓（两份实现 = 判据不一致 ✗✗ —— 那会让审批恢复的校验形同
+    虚设 ✗）。
     """
-    canonical = json.dumps(
-        arguments or {},
-        sort_keys=True,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        default=str,
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return request_hash(arguments or {})
 
 
 @dataclass(frozen=True, slots=True)

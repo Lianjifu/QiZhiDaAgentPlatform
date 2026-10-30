@@ -385,7 +385,16 @@ async def test_saved_graph_early_delta_cancellation_closes_provider() -> None:
             finally:
                 closed.set()
 
-    runner = SessionGraphRunner(llm=LLMPortAdapter(ScriptedLLM([]), model_service=SavedService()))
+    class Sandbox:
+        async def exec(self, **_kwargs: object) -> dict:
+            return {"ok": True, "output": "ok"}
+
+    runner = SessionGraphRunner(
+        llm=LLMPortAdapter(ScriptedLLM([]), model_service=SavedService()),
+        # ⚠️ **沙箱工具** ✓ —— 新路径只在**配了沙箱**时才暴露它 ✓
+        # （旧路径是无条件暴露 ✓ —— 那等于每个 agent 都凭空多了跑代码的能力 ✗✗）。
+        sandbox_port=Sandbox(),  # type: ignore[arg-type]
+    )
     stream = runner.run_turn(tenant_id=TENANT, workspace_id=WORKSPACE, owner_id=OWNER,
                              turn_id=uuid4(), user_input="hi", history=[], agent=None, model=str(model_id))
     first = await asyncio.wait_for(anext(stream), timeout=1)

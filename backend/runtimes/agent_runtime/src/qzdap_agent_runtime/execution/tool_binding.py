@@ -50,6 +50,19 @@ class BindingPolicy:
     allowed_risks: frozenset[str] = frozenset(RISK_ORDER)
 
 
+class ToolExecutionError(RuntimeError):
+    """**工具执行失败** ✓（失败要有码 + 原因 ✓ —— §5.4 ✓）。
+
+    ⚠️ **别把原因丢了** ✓ —— 模型要靠它换策略 ✓（只给一个错误码等于
+    什么都没说 ✗✗）。
+    """
+
+    def __init__(self, *, code: str, message: str) -> None:
+        super().__init__(f"{code}: {message}" if message else code)
+        self.code = code
+        self.message = message
+
+
 class ToolBindingResolver:
     """**绑定集 → 暴露给模型的工具集** ✓（§5.3.1 ✓）。"""
 
@@ -66,8 +79,21 @@ class ToolBindingResolver:
 
         ⚠️ **返回空列表不是错误** ✓（规则 1 ✓ / 规则 2 ✓）。
         """
+        return [tool for _binding, tool in self.resolve_pairs(bindings, policy=policy)]
+
+    def resolve_pairs(
+        self,
+        bindings: Sequence[ToolBinding],
+        *,
+        policy: BindingPolicy | None = None,
+    ) -> list[tuple[ToolBinding, BaseTool]]:
+        """**统一 + 过滤** ✓，**并保住「哪个工具对应哪条声明」** ✓。
+
+        ⚠️ **过滤后不能靠顺序去对齐** ✓ —— 被剔除的工具会让两边的下标错位
+        ✗✗（那会让治理元数据套到别的工具上 ✗✗✗）。
+        """
         active = policy or BindingPolicy()
-        resolved: list[BaseTool] = []
+        resolved: list[tuple[ToolBinding, BaseTool]] = []
         for binding in bindings:
             if active.unprotected and binding.side_effect:
                 # ⚠️ **剔除** ✓（不是执行时拦截 ✓ —— 未受保护的轮次**根本不
@@ -75,7 +101,7 @@ class ToolBindingResolver:
                 continue
             if binding.risk not in active.allowed_risks:
                 continue
-            resolved.append(self._to_base_tool(binding))
+            resolved.append((binding, self._to_base_tool(binding)))
         return resolved
 
     def _to_base_tool(self, binding: ToolBinding) -> BaseTool:
@@ -100,11 +126,15 @@ class ToolBindingResolver:
                     idempotency_key=scope.idempotency_key,
                     turn_id=scope.turn_id,
                     protected=scope.protected,
+                    session_id=scope.session_id,
                 ),
                 actor=current_actor(),
             )
             if not result.ok:
-                raise RuntimeError(result.error_code or "TOOL_FAILED")
+                raise ToolExecutionError(
+                    code=result.error_code or "TOOL_FAILED",
+                    message=result.error_message or result.output,
+                )
             return result.output
 
         schema = _args_schema(binding.spec)
@@ -170,6 +200,8 @@ class ToolScope:
     idempotency_key: str | None = None
     turn_id: str | None = None
     protected: bool = True
+    #: **会话 id** ✓（派生子会话的工具要靠它 ✓ —— 父会话的归属 ✓）。
+    session_id: str | None = None
 
 
 _CURRENT_TOOL_SCOPE: ContextVar[ToolScope | None] = ContextVar(
@@ -238,6 +270,7 @@ __all__ = [
     "RISK_ORDER",
     "BindingPolicy",
     "ToolBindingResolver",
+    "ToolExecutionError",
     "ToolScope",
     "current_actor",
     "current_tool_scope",

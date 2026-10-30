@@ -1191,13 +1191,30 @@ ToolRuntimePort
 | 测试 | 旧 fake 端口补 `write_turn` ✓（`test_graph_recall_hooks.py` / `test_loop_agent.py` ✓）—— 召回调用与写入调用**分开记录** ✓（否则「召回带 user_id」的断言会被写入调用污染 ✗） |
 | 全量回归 | `pytest` **1848 passed** ✓ —— 1 个失败（`modules/model` 的 `test_catalog_http_database`）与 4 个 error（testcontainers 拉镜像超时）**在改动前后完全一致** ✓（HEAD 上同样失败 ✓ —— 环境问题 ✗ 不是本次引入 ✗） |
 
-⚠️ **本 Stage 尚未完成的部分**（A-25 / A-27 / A-28 ✗）：
+#### 实施记录（2026-10-31 · Stage 5 的 **A-25 / A-27 / A-28**）
+
+> ✅ **本 Stage 全部完成** ✓ —— 旧循环**退役** ✓（生产路径跑 runtime 的 `AgentLoopRunner` ✓）。
+
+| 项 | 结果 |
+|---|---|
+| **A-25 循环本体** | runtime 侧 `agent_loop/` ✓：`runner.py`（`AgentLoopRunner` ✓）/ `evaluate.py`（`Evaluator` ✓ —— **六个终止条件的单一判定点** ✓）/ `observe.py`（`Observer` ✓ —— **失败也要回灌** ✓ + 兜底截断 ✓）/ `state.py`（`LoopState` ✓）/ `reason.py`（`Reasoner` ✓ —— Stage 1 迁入 ✓） |
+| **每步的旁路** | `LoopHooks`（`before_step` ✓ / `after_step` ✓）✓ —— ⚠️ **循环本体不碰业务** ✓：上下文压缩 ✓ / **manifest 先于模型落库** ✓ / 成本结算 ✓ / 旁路事件 ✓ 都在**模块侧**的钩子里 ✓ |
+| **专家实例接上** | ⚠️ **Stage 4 只建了没切** ✗✗（`expert_assembler_factory` **零调用方** ✓ —— 典型的「建而不切」✗）→ **本 Stage 补上接线** ✓：web ✓（`session_router.py` ✓）+ IM ✓（`_channel_turn_ports` ✓）**同口径** ✓ —— 专家 = 模型 + 指令 + 工具集 ✓（§4.2 ✓） |
+| **A-27 端到端回归** | ① **整条循环跑完的测试** ✓（`runtimes/agent_runtime/tests/test_agent_loop.py` ✓ —— 13 条 ✓）；② **旧路径的既有测试全部保留** ✓（`modules/agent_runtime/tests/unit/` 118 条 ✓ —— 工具链 ✓ / 步数 ✓ / 空转 ✓ / 审批恢复 ✓ / 记忆写入 ✓ / 压缩 ✓ / 幂等重放 ✓ / 并发 ✓ / 取消 ✓ / 成本 ✓ / 埋点树 ✓）—— **回归网没被拆掉** ✓ |
+| **A-28 停用 + 打点** | ① `runner.py` 的**手写 `while True` 删了** ✓（~250 行 ✓ —— **旧代码真的变小了** ✓）；② 旧打点撤除 ✓（`X17` ✓ / `X5` ✓ —— 占位图**不再构造** ✓）；③ 扫描规则 `_run_turn_inner` **已启用** ✓（零命中 ✓ —— 方法改名 `_drive_turn` ✓） |
+| **执行只有一份** | ⚠️ **工具执行** ✓ —— 新循环走 `ToolRuntimePort` ✓ → 模块侧 `ModuleToolRuntime` ✓ → **旧的 `execute_tool`** ✓（唯一一份 ✓ —— 它包着 `modules/tool` 的 `InvokeToolUseCase` ✓ 唯一权威 ✓）—— Stage 2 的 `ToolRuntimeAdapter` **不再被接线** ✗ → 归 **Stage 7** 删 ✓ |
+| **摘要只有一份** | ⚠️ **参数指纹** ✓ —— `qzdap_kernel/digest.py` ✓（`canonical_json` + `request_hash` ✓）—— **工具幂等** ✓ 与 **审批参数摘要** ✓ **同源** ✓（两份实现 = 判据不一致 ✗✗ —— 那会让审批恢复的校验形同虚设 ✗） |
+| **观测树不变** | `agent.turn` → `agent.llm` / `agent.tool` ✓ —— span 落在**模块侧的适配器**里 ✓（`RuntimeLLMPort` ✓ / `ModuleToolRuntime` ✓）+ 轮次 span 设为当前上下文 ✓ |
+| **行为收紧（一处）** | ⚠️ **模型只能调「绑定集里的工具」** ✓（旧路径是「模型叫什么都执行」 ✗✗ —— 那是个洞 ✓）—— 绑定集来自 **agent 配置** ✓（§5.3.1 ✓） |
+
+⚠️ **本 Stage 留下的尾巴**：
 
 | 项 | 状态 | 门禁 |
 |---|---|---|
-| **A-25 `AgentLoopRunner` + `Evaluator`** | ✗ 未做 | 六个终止条件的**单一判定点** —— 旧循环的终止判定还散在 `runner.py` 里 ✗ |
-| **A-27 端到端回归** | ✗ 未做 | ⚠️ **演示栈没有 LLM 供应商** ✓ → 端到端回归要么补一个 mock 供应商的测试环境 ✓，要么等真实环境 ✓ |
-| **A-28 停用 + 打点 `_run_turn_inner`** | ✗ 未做 | 旧循环**仍在服役** ✓（它是唯一在跑的循环 ✗）→ 归 Stage 7 ✗ |
+| **`sandbox_exec` 的暴露口径** | ✅ **已收紧** ✓ —— 旧路径**无条件**暴露沙箱工具 ✗（等于每个 agent 都凭空多了跑代码的能力 ✗✗）→ 现在**配了沙箱才暴露** ✓（`ToolBindingAdapter(sandbox=True)` ✓） |
+| **Stage 2 的 `ToolRuntimeAdapter`** | ⚠️ **零调用方** ✗ → 归 **Stage 7** 删 ✓（否则就是第二个工具运行时 ✗✗） |
+| **占位图 `compile_loop_graph` 的文件** | ⚠️ **文件还在** ✗（只是不再构造 ✓）→ 归 **Stage 7** 删 ✓ |
+| **`agent_loop/graph.py`（6 节点 LangGraph）** | ⚠️ **没做** ✗ —— 当前实现是**手写循环** ✓（runtime 侧 ✓）—— 六个终止条件的**单一判定点** ✓ 已经达成 ✓；**LangGraph 装配**（`interrupt()` + checkpointer ✓）归 **Stage 6 / 7** ✓ —— 审批挂起现在走**事件 + 落库** ✓（`session_turns.pending_approval` ✓）而不是 `interrupt()` ✓ |
 
 ### Stage 6：Deep Agents（决策 #8 采纳时才做）
 

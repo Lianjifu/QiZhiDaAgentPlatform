@@ -492,11 +492,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ⚠️ 不绑这些端口 = 那一轮**没有工具**（web 侧由 HTTP 层绑；IM 侧在这里
         绑 ✓）—— 少绑一个就是一次静默的功能退化 ✗。
         """
-        from qzdap_schema.ids import TenantId, UserId, WorkspaceId
-
         from qzdap.modules.agent_runtime.adapter.sandbox import SandboxRuntimeAdapter
         from qzdap.modules.agent_runtime.adapter.skills import SkillServiceAdapter
         from qzdap.modules.agent_runtime.adapter.tools import ToolServiceAdapter
+        from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
         tenant_id = TenantId(request.tenant_id)
         workspace_id = WorkspaceId(request.workspace_id)
@@ -526,6 +525,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 owner_id=owner_id,
+            )
+        # ⚠️ **专家装配器** ✓（Agent Stage 4 ✓ / Stage 5 接线 ✓）—— 与 web 侧
+        # **同口径** ✓（同一份装配 ✓ —— 两套就不是同一套了 ✗✗）。
+        expert_factory = getattr(app.state, "expert_assembler_factory", None)
+        if expert_factory is not None:
+            ports["expert_assembler"] = expert_factory.for_scope(
+                request.tenant_id,
+                request.workspace_id,
+                request.owner_id,
+                db_session,
             )
         return ports
 
@@ -822,7 +831,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ⚠️ **请求作用域** ✓ —— 绑定集与工具运行时都绑着租户 / 工作区 / 用户 ✓
     # → **按请求装配** ✓（不是全局单例 ✗ —— 那样会串租户 ✗✗）。
     class _ExpertAssemblerFactory:
-        def for_request(self, request, db_session):  # type: ignore[no-untyped-def]
+        """**按请求装配专家实例** ✓（Agent Stage 4 ✓ / Stage 5 接线 ✓）。
+
+        ⚠️ **请求作用域** ✓ —— 绑定集与工具运行时都绑着租户 / 工作区 / 用户 ✓
+        → **按请求装配** ✓（不是全局单例 ✗ —— 那样会串租户 ✗✗）。
+        """
+
+        def for_scope(self, tenant_id, workspace_id, owner_id, db_session):  # type: ignore[no-untyped-def]
+            from qzdap.modules.agent_runtime.adapter.graph.agent_loop import (
+                ModuleToolRuntime,
+                RuntimeLLMPort,
+                RuntimeModelResolver,
+            )
+            from qzdap.modules.agent_runtime.adapter.sandbox import (
+                SandboxRuntimeAdapter,
+            )
+            from qzdap.modules.agent_runtime.adapter.skills import SkillServiceAdapter
             from qzdap.modules.agent_runtime.adapter.tools.agent_router_adapter import (
                 CatalogAgentLister,
                 CatalogAgentRouter,
@@ -833,25 +857,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from qzdap.modules.agent_runtime.adapter.tools.tool_binding_adapter import (
                 ToolBindingAdapter,
             )
-            from qzdap.modules.agent_runtime.adapter.tools.tool_runtime_adapter import (
-                ToolRuntimeAdapter,
-            )
             from qzdap.modules.agent_runtime.adapter.tools.tool_service_adapter import (
                 ToolServiceAdapter,
             )
             from qzdap_agent_runtime.agent_loop.expert import ExpertAssembler
             from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
-            tenant_id = TenantId(request.tenant_id)
-            workspace_id = WorkspaceId(request.workspace_id)
-            owner_id = UserId(request.owner_id)
+            tid = TenantId(tenant_id)
+            wid = WorkspaceId(workspace_id)
+            uid = UserId(owner_id)
             tool_service = app.state.tool_factory.for_session(db_session)
             tool_port = ToolServiceAdapter(
                 tool_service=tool_service,
-                tenant_id=tenant_id,
-                workspace_id=workspace_id,
-                owner_id=owner_id,
+                tenant_id=tid,
+                workspace_id=wid,
+                owner_id=uid,
             )
+            skill_port = None
+            skill_factory = getattr(app.state, "skill_factory", None)
+            if skill_factory is not None:
+                skill_port = SkillServiceAdapter(
+                    svc=skill_factory.for_session(db_session),
+                    tenant_id=tid,
+                    workspace_id=wid,
+                    owner_id=uid,
+                )
+            sandbox_port = None
+            sandbox_client = getattr(app.state, "sandbox_client", None)
+            if sandbox_client is not None:
+                sandbox_port = SandboxRuntimeAdapter(
+                    sandbox_client,
+                    tenant_id=tid,
+                    workspace_id=wid,
+                    agent_id=None,
+                )
             catalog = AgentCatalogService(
                 SqlCatalogAgentRepository(db_session),
                 SqlCatalogAgentUserStateRepository(db_session),
@@ -863,18 +902,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 ),
                 bindings=ToolBindingAdapter(
                     tools=tool_port,
+                    skills=skill_port,
                     agents=CatalogBindingReader(SqlCatalogAgentRepository(db_session)),
+                    sandbox=sandbox_port is not None,
                 ),
-                llm=LLMPortAdapter(
-                    container.llm_client(),
-                    model_service=model_service,
+                llm=RuntimeLLMPort(
+                    LLMPortAdapter(
+                        container.llm_client(),
+                        model_service=model_service,
+                    )
                 ),
-                resolver=getattr(app.state, "catalog_model_resolver", None),
-                tool_runtime=ToolRuntimeAdapter(
-                    tool_service=tool_service,
-                    tenant_id=tenant_id,
-                    workspace_id=workspace_id,
-                    owner_id=owner_id,
+                resolver=RuntimeModelResolver(
+                    getattr(app.state, "catalog_model_resolver", None)
+                ),
+                # ⚠️ **工具执行只有一份** ✓（旧的 `execute_tool` ✓ —— 它包着
+                # `modules/tool` 的 `InvokeToolUseCase` ✓ 唯一权威 ✓）。
+                tool_runtime=ModuleToolRuntime(
+                    skill_port=skill_port,
+                    sandbox_port=sandbox_port,
+                    tool_port=tool_port,
                 ),
             )
 

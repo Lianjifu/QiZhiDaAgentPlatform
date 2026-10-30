@@ -179,7 +179,7 @@ admin_memory_l3;modules/;X15;M;off
 class MemoryService\b;modules/;X16;M;on
 memory_l2_embeddings;modules/;X19;M;on
 compile_loop_graph;modules/;X5;A;off
-_run_turn_inner;modules/;X17;A;off
+_run_turn_inner;modules/;X17;A;on
 from ...chat_model import ToolCallAccumulator;modules/;X5;A;off
 graph/nodes.py;runtimes/;X1;A;off
 build_session_graph;runtimes/;X1;A;off

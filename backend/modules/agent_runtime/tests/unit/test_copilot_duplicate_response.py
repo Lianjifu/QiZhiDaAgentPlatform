@@ -65,7 +65,7 @@ class _LLM:
     def __init__(self) -> None:
         self.requests: list[ChatRequest] = []
 
-    async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
+    async def stream(self, req: ChatRequest, **kwargs: object) -> AsyncIterator[LLMChunk]:
         self.requests.append(req)
         yield LLMChunk(
             model=req.model,

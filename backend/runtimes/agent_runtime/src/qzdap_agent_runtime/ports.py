@@ -341,6 +341,11 @@ class ToolInvocation:
     #: 这一轮**是不是受保护** ✓（False = unprotected ✓ —— 副作用工具**已被剔除** ✓，
     #: 这里只是把事实带上 ✓ —— 执行侧据此**再确认一次** ✓)。
     protected: bool = True
+    #: **这次调用是不是已经过了审批** ✓（False = 没过 ✓ —— 需要人工确认的
+    #: 工具**不许执行** ✓ —— skill 的 ``confirmed`` 就是它 ✓）。
+    confirmed: bool = True
+    #: **会话 id** ✓（派生子会话的工具要靠它 ✓ —— 父会话的归属 ✓）。
+    session_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

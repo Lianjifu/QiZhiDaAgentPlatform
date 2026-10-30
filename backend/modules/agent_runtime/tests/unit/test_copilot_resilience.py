@@ -82,7 +82,7 @@ class _DomainErrorLLM:
         self._error = error
         self.requests: list[ChatRequest] = []
 
-    async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
+    async def stream(self, req: ChatRequest, **kwargs: object) -> AsyncIterator[LLMChunk]:
         self.requests.append(req)
         yield LLMChunk(model=req.model, delta="partial")
         raise self._error
@@ -97,7 +97,7 @@ class _ExplodingLLM:
     def __init__(self) -> None:
         self.requests: list[ChatRequest] = []
 
-    async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
+    async def stream(self, req: ChatRequest, **kwargs: object) -> AsyncIterator[LLMChunk]:
         self.requests.append(req)
         yield LLMChunk(model=req.model, delta="partial")
         raise RuntimeError("upstream exploded")
@@ -111,7 +111,7 @@ class _RecordingLLM:
         self.requests: list[ChatRequest] = []
         self._tool_calls = tool_calls
 
-    async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
+    async def stream(self, req: ChatRequest, **kwargs: object) -> AsyncIterator[LLMChunk]:
         self.requests.append(req)
         yield LLMChunk(model=req.model, delta="done")
         if self._tool_calls:
@@ -134,7 +134,7 @@ class _SlowLLM:
         self._chunks = chunks
         self._gap = gap
 
-    async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
+    async def stream(self, req: ChatRequest, **kwargs: object) -> AsyncIterator[LLMChunk]:
         for _ in range(self._chunks):
             await asyncio.sleep(self._gap)
             yield LLMChunk(model=req.model, delta="x")
@@ -185,7 +185,18 @@ class _BoomToolPort:
         raise RuntimeError("tool blew up")
 
     async def list_tools(self):
-        return []
+        # ⚠️ **工具要在绑定集里** ✓（新路径只暴露 agent 配置里绑定的工具 ✓
+        # —— 旧路径是「模型叫什么都执行」✗✗ 那是个洞 ✓）。
+        return [
+            {
+                "name": "boom_tool",
+                "description": "boom",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"x": {"type": "integer"}},
+                },
+            }
+        ]
 
 
 class _ScriptedLLM:
@@ -195,7 +206,7 @@ class _ScriptedLLM:
         self._steps = list(steps)
         self.calls = 0
 
-    async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
+    async def stream(self, req: ChatRequest, **kwargs: object) -> AsyncIterator[LLMChunk]:
         idx = min(self.calls, len(self._steps) - 1)
         self.calls += 1
         step = self._steps[idx]
@@ -397,7 +408,7 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
     # deps["llm"] is FakeLLM with raise_on_first_chunk unset → replace the
     # graph with one whose model fails before the first chunk.
     class _FailFast:
-        async def stream(self, req):
+        async def stream(self, req, **kwargs: object):
             raise RuntimeError("no provider")
             yield  # pragma: no cover
 

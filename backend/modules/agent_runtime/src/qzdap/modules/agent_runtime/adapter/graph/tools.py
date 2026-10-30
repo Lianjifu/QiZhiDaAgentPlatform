@@ -45,14 +45,19 @@ async def execute_tool(
     confirmed: bool = False,
     turn_id: UUID | None = None,
     idempotency_key: str | None = None,
+    call_id: UUID | None = None,
 ) -> dict[str, Any]:
     """Run one tool and return a result dict.
 
     Never raises: a tool that blows up must surface to the model as a
     failed tool result, not kill the whole turn. The caller turns
     ``ok=False`` into an error tool message.
+
+    ⚠️ **这是工具执行的唯一一份** ✓（Agent Stage 5 ✓）—— 新的循环也走它 ✓
+    （旧的 `execute_tool` 与新的 `ToolRuntimePort` **不是两套** ✓ —— 后者
+    只是把它包成端口 ✓）。
     """
-    call_id = uuid4()
+    call_id = call_id or uuid4()
     try:
         if name == "sandbox_exec" and sandbox_port is not None:
             return await sandbox_port.exec(

@@ -2,15 +2,29 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import sys as _sys
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
-from time import monotonic
 from typing import Any
 from uuid import UUID, uuid4
 
+from opentelemetry import context as _otel_context
 from opentelemetry import trace as _trace
+from qzdap_agent_runtime.agent_loop.evaluate import Evaluator
+from qzdap_agent_runtime.agent_loop.expert import ExpertAssembler, ExpertInstance
+from qzdap_agent_runtime.agent_loop.observe import Observer
+from qzdap_agent_runtime.agent_loop.reason import Reasoner
+from qzdap_agent_runtime.agent_loop.runner import (
+    AgentLoopRunner,
+    BoundTool,
+    LoopHooks,
+)
+from qzdap_agent_runtime.agent_router.classifier import (
+    DEFAULT_CLASSIFIER,
+    AgentRouteConfig,
+)
 from qzdap_agent_runtime.context.compressor import (
     DEFAULT_WINDOW,
     CompactionOutcome,
@@ -27,6 +41,7 @@ from qzdap_schema.dtos.turn import (
     AttachmentReadyChunk,
     ContextCompactedChunk,
     DoneChunk,
+    ErrorChunk,
     InteractiveActionChunk,
     KnowledgeSearchChunk,
     MemoryWriteChunk,
@@ -45,19 +60,24 @@ from qzdap_vault.actor import ActorContext
 from qzdap.modules.agent_runtime.adapter.context.summary_adapter import (
     LLMSummaryAdapter,
 )
-from qzdap.modules.agent_runtime.adapter.graph.chat_model import stream_chat
-from qzdap.modules.agent_runtime.adapter.graph.loop import (
-    HARD_MAX_STEPS,
-    apply_stall_guard,
-    compile_loop_graph,
-    next_route,
+from qzdap.modules.agent_runtime.adapter.graph.agent_loop import (
+    AgentToolsReader,
+    ModuleToolRuntime,
+    RuntimeLLMPort,
+    RuntimeModelResolver,
+    SessionAgentRouter,
+    to_base_messages,
+    to_dict_messages,
+    to_runtime_actor,
 )
+from qzdap.modules.agent_runtime.adapter.graph.loop import HARD_MAX_STEPS
 from qzdap.modules.agent_runtime.adapter.graph.state import LoopState, estimate_tokens
 from qzdap.modules.agent_runtime.adapter.graph.tools import (
     execute_tool,
-    needs_confirm,
-    parse_arguments,
     result_text,
+)
+from qzdap.modules.agent_runtime.adapter.tools.tool_binding_adapter import (
+    ToolBindingAdapter,
 )
 from qzdap.modules.agent_runtime.application.ports import (
     CatalogModelResolver,
@@ -101,8 +121,11 @@ class SessionGraphRunner:
         self._approval_factory = approval_factory
         self._catalog_model_resolver = catalog_model_resolver
         self._context_manifest_store = context_manifest_store
-        record_legacy_call("X5")  # 占位图 compile_loop_graph
-        self._graph = compile_loop_graph(llm_node=_passthrough_llm, tools_node=_passthrough_tools)
+        # ⚠️ **专家装配器** ✓（Agent Stage 4 ✓）—— **请求作用域** ✓ ——
+        # 绑定集与工具运行时都绑着租户 / 工作区 / 用户 ✓ → **按请求装配** ✓
+        # （不是全局单例 ✗ —— 那样会串租户 ✗✗）。
+        # ⚠️ **没绑就用兜底装配器** ✓（不选专家 ✓ —— 落回会话绑定 ✓）。
+        self._expert_assembler: ExpertAssembler | None = None
         self.last_loop_state: dict[str, Any] = {}
 
     def bind_ports(
@@ -111,6 +134,7 @@ class SessionGraphRunner:
         skill_port: SkillPort | None = None,
         sandbox_port: SandboxPort | None = None,
         tool_port: ToolPort | None = None,
+        expert_assembler: ExpertAssembler | None = None,
     ) -> None:
         """Re-bind request-scoped ports.
 
@@ -123,6 +147,8 @@ class SessionGraphRunner:
             self._sandbox_port = sandbox_port
         if tool_port is not None:
             self._tool_port = tool_port
+        if expert_assembler is not None:
+            self._expert_assembler = expert_assembler
 
     async def run_turn(
         self, *, parent_span_context: Any = None, **kwargs: Any
@@ -146,7 +172,7 @@ class SessionGraphRunner:
         child_ctx = _trace.set_span_in_context(span)
         tools = 0
         try:
-            async with aclosing(self._run_turn_inner(span_ctx=child_ctx, **kwargs)) as inner:
+            async with aclosing(self._drive_turn(span_ctx=child_ctx, **kwargs)) as inner:
                 async for chunk in inner:
                     if getattr(chunk, "kind", None) == "tool_call":
                         tools += 1
@@ -159,7 +185,7 @@ class SessionGraphRunner:
             span.set_attribute("agent.tool_calls", tools)
             span.end()
 
-    async def _run_turn_inner(
+    async def _drive_turn(
         self,
         *,
         span_ctx: Any = None,
@@ -179,8 +205,10 @@ class SessionGraphRunner:
         # Phase 14: 父 session id. delegate_to_agent 工具需要用它 spawn sub-session.
         # 默认 None — 测试 / 评估场景没有父 session.
         session_id: UUID | None = None,
+        # ⚠️ **这一轮是不是受保护** ✓（Gateway 决策 #5 ✓）—— 不受保护就
+        # **剔除副作用工具** ✓（§5.3.1 规则 3 ✓）。
+        protected: bool = True,
     ) -> AsyncGenerator[TurnChunk, None]:
-        record_legacy_call("X17")  # 旧路径的手写推理循环
         seq = 0
         max_steps = 8
         if agent is not None:
@@ -197,7 +225,6 @@ class SessionGraphRunner:
         )
 
         whitelist = await self._whitelist(agent)
-        tools_schema = _openai_tools(whitelist)
         # ⚠️ **走新的 ContextBuilder** ✓（A-26 ✓）—— 旧的上下文组装
         # **已删除** ✓（Context Stage 5 ✓ —— 台账 X8 ✓）。
         assembled, knowledge_hits = await self._assemble_context(
@@ -302,229 +329,232 @@ class SessionGraphRunner:
         input_tokens = 0
         output_tokens = 0
         cost_usd = 0.0
-        while True:
-            # ⚠️ **每次模型调用前压缩** ✓ —— ReAct 里工具结果会不断进上下文
-            # ✓（不压就会撞窗口 ✗）。⚠️ **同一个 Compressor** ✓（不是第二套
-            # 实现 ✗✗）。
+        final = ""
+        model_id: str | None = None
+        # ⚠️ **新循环** ✓（Agent Stage 5 · A-28 ✓）—— 旧的手写 ReAct 循环
+        # **退役** ✓（六个终止条件归 runtime 的 `Evaluator` ✓ —— 单一判定点 ✓）。
+        #
+        # ⚠️ **每步的旁路** ✓（压缩 ✓ / manifest ✓ / 成本 ✓ / 旁路事件 ✓）
+        # 走**钩子** ✓ —— 循环本体不碰业务 ✓。
+        summary_box = {"summary": rolling_summary}
+        cost_box = {"usd": 0.0}
+
+        async def _before_step(loop_state):  # type: ignore[no-untyped-def]
+            """**每步推理之前** ✓（压缩上下文 ✓）。"""
             outcome = await self._compact(
-                messages=list(state.get("messages") or []),
-                rolling_summary=rolling_summary,
+                messages=to_dict_messages(list(loop_state.messages)),
+                rolling_summary=summary_box["summary"],
                 context_window=context_window,
                 model=model,
                 actor=actor,
             )
-            messages = list(outcome.messages)
-            rolling_summary = outcome.summary
-            state["messages"] = messages
+            summary_box["summary"] = outcome.summary
+            loop_state.messages = to_base_messages(list(outcome.messages))
             if _did_compact(outcome):
-                seq += 1
                 yield ContextCompactedChunk(
                     turn_id=turn_id,
-                    seq=seq,
-                    # ⚠️ **不再恒为 0** ✓（环外那一处早就修了 ✗ —— 环内这处
-                    # 漏了 ✗✗ → 事件里「压缩了多少」永远是 0 ✓）。
+                    # ⚠️ **seq 由外层统一编号** ✓（钩子不知道当前序号 ✓）。
+                    seq=0,
                     tokens_before=outcome.tokens_before,
                     tokens_after=outcome.tokens_after,
                     degraded=outcome.degraded,
                 )
-
             # ⚠️ **manifest 先于模型落库** ✓（Context 方案 §5.2 ✓）——
             # 模型已经回答了却查不到那次的组成 ✗✗（审计与评测失去依据 ✗）。
             await self._save_manifest(
                 assembled=assembled,
-                messages=messages,
+                messages=to_dict_messages(list(loop_state.messages)),
                 turn_id=turn_id,
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 session_id=session_id,
-                step=int(state.get("step") or 0),
+                # ⚠️ **步骤号从 0 起** ✓（第一次模型调用是第 0 步 ✓）。
+                step=int(loop_state.step) - 1,
                 compaction_degraded=outcome.degraded,
             )
-            chat_stream = stream_chat(
-                self._llm,
-                model=model or "default",
-                messages=list(state["messages"]),
-                tools=tools_schema,
-                model_id=ModelId(UUID(model)) if _looks_uuid(model) else None,
-                # Phase 12: 策略路由. 当 route_id 提供时, 优先用它走 Phase 7.
-                route_id=route_id,
-                actor=actor,
-                # Phase 1.5: 走 graph 路径时, 让 stream_chat 在 model 是 str 时也 resolve.
-                resolve_model_id=(
-                    self._catalog_model_resolver.resolve
-                    if self._catalog_model_resolver is not None
-                    else None
-                ),
-                resolve_tenant_id=tenant_id,
-                resolve_workspace_id=workspace_id,
-            )
-            assistant: dict[str, Any] | None = None
-            llm_span = _tracer.start_span("agent.llm", context=span_ctx)
-            llm_span.set_attribute("llm.model", model)
-            try:
-                async with aclosing(chat_stream):
-                    async for event in chat_stream:
-                        if isinstance(event, str):
-                            seq += 1
-                            yield MessageChunk(turn_id=turn_id, seq=seq, content=event)
-                        else:
-                            assistant = event
-            except Exception:
-                llm_span.set_status(_trace.Status(_trace.StatusCode.ERROR))
-                raise
-            finally:
-                llm_span.end()
-            if assistant is None:
-                raise RuntimeError("LLM stream ended without an assistant message")
-            resolved_model_id = str(assistant.get("model_id") or "")
 
-            # Round-7: LLM side-channel 注入 plan / artifact / workflow 事件.
-            # 真 LLM 默认 []; mock LLM 按触发词返回 chunk dicts.
-            synth = await self._llm.synthetic_chunks(user_input, turn_id=turn_id)
-            for raw in synth:
-                chunk = _build_synthetic_chunk(raw, turn_id=turn_id, seq=seq + 1)
-                if chunk is None:
-                    continue
-                seq += 1
-                yield chunk
-            usage = assistant.get("usage") or {}
-            step_input = int(usage.get("input_tokens") or 0)
-            step_output = int(usage.get("output_tokens") or 0)
-            input_tokens += step_input
-            output_tokens += step_output
-            step_cost = await self._price_of(
-                resolved_model_id=resolved_model_id,
+        async def _after_step(loop_state):  # type: ignore[no-untyped-def]
+            """**每步推理之后** ✓（manifest ✓ / 成本 ✓ / 旁路事件 ✓）。"""
+            cost_box["usd"] += await self._price_of(
+                resolved_model_id=str(model_id or ""),
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
-                input_tokens=step_input,
-                output_tokens=step_output,
+                input_tokens=int(loop_state.step_input_tokens),
+                output_tokens=int(loop_state.step_output_tokens),
             )
-            cost_usd += step_cost
+            for raw in await self._llm.synthetic_chunks(user_input, turn_id=turn_id):
+                chunk = _build_synthetic_chunk(raw, turn_id=turn_id, seq=0)
+                if chunk is not None:
+                    yield chunk
 
-            state["messages"] = list(state["messages"]) + [assistant]
-            state["step"] = int(state.get("step") or 0) + 1
-            state["final"] = str(assistant.get("content") or state.get("final") or "")
-            state = apply_stall_guard(state, list(assistant.get("tool_calls") or []))
-            if next_route(state) != "tools" or int(state.get("stall_count") or 0) >= 2:
-                break
-
-            interrupt_chunk = None
-            new_messages = list(state["messages"])
-            for call in assistant.get("tool_calls") or []:
-                name = str(call.get("name") or (call.get("function") or {}).get("name") or "")
-                arguments = parse_arguments(
-                    call.get("arguments") or (call.get("function") or {}).get("arguments")
-                )
-                call_uuid = _as_uuid(call.get("id"))
-                seq += 1
-                yield ToolCallChunk(
-                    turn_id=turn_id,
-                    seq=seq,
-                    tool_call_id=call_uuid,
-                    tool_name=name,
-                    arguments=arguments,
-                )
-                meta = whitelist.get(name) or {}
-                if needs_confirm(name, tool_meta=meta) and (resume or {}).get("decision") != "approved":
+        # ⚠️ **专家实例** ✓（Agent Stage 4 ✓）—— 专家 = 模型 + 工具集 ✓
+        # （选专家 ✓ / 取模型 ✓ / 取工具 ✓ —— 全是「取」✓ 不是「挑」✓）。
+        expert = await self._assemble_expert(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_id=owner_id,
+            agent=agent,
+            model=model,
+            route_id=route_id,
+            user_input=user_input,
+            history_count=len(history),
+            actor=actor,
+            protected=protected,
+        )
+        model_id = str((expert.decision.get("model") or {}).get("model_id") or "") or None
+        bound_tools = [
+            BoundTool(tool=tool, binding=binding)
+            for tool, binding in zip(expert.tools, expert.bindings)
+        ]
+        loop = AgentLoopRunner(
+            reasoner=Reasoner(expert.model),
+            evaluator=Evaluator(max_steps=max_steps),
+            observer=Observer(),
+            actor=to_runtime_actor(actor),
+            turn_id=str(turn_id),
+            session_id=str(session_id) if session_id else None,
+            protected=protected,
+            hooks=LoopHooks(before_step=_before_step, after_step=_after_step),
+        )
+        # ⚠️ **把轮次的 span 设为当前** ✓ —— 模型 / 工具的子 span 挂在它
+        # 下面 ✓（观测树不变 ✓ —— ``agent.turn`` → ``agent.llm`` /
+        # ``agent.tool`` ✓）。
+        span_token = (
+            _otel_context.attach(span_ctx) if span_ctx is not None else None
+        )
+        try:
+            async for event in loop.run(
+                messages=to_base_messages(list(state.get("messages") or [])),
+                tools=bound_tools,
+            ):
+                if event.kind == "text":
+                    seq += 1
+                    yield MessageChunk(turn_id=turn_id, seq=seq, content=event.text)
+                elif event.kind == "tool_call":
+                    call = event.tool_call or {}
+                    name = str(call.get("name") or "")
+                    arguments = call.get("args") or {}
+                    if not isinstance(arguments, dict):
+                        arguments = {}
+                    call_uuid = _as_uuid(call.get("id"))
+                    seq += 1
+                    yield ToolCallChunk(
+                        turn_id=turn_id,
+                        seq=seq,
+                        tool_call_id=call_uuid,
+                        tool_name=name,
+                        arguments=dict(arguments),
+                    )
+                    if _binding_kind(bound_tools, name) == "skill":
+                        seq += 1
+                        yield SkillInvocationChunk(
+                            turn_id=turn_id,
+                            seq=seq,
+                            invocation_id=call_uuid,
+                            skill_name=name,
+                            status="started",
+                            tool_call_id=call_uuid,
+                        )
+                elif event.kind == "tool_result":
+                    result = event.tool_result or {}
+                    call_uuid = _as_uuid(result.get("tool_call_id"))
+                    name = str(result.get("name") or "")
+                    is_error = bool(result.get("is_error"))
+                    output = str(result.get("output") or "")
+                    seq += 1
+                    yield ToolResultChunk(
+                        turn_id=turn_id,
+                        seq=seq,
+                        tool_call_id=call_uuid,
+                        output=output,
+                        is_error=is_error,
+                        latency_ms=0,
+                    )
+                    if _binding_kind(bound_tools, name) == "skill":
+                        seq += 1
+                        yield SkillInvocationChunk(
+                            turn_id=turn_id,
+                            seq=seq,
+                            invocation_id=call_uuid,
+                            skill_name=name,
+                            status="failed" if is_error else "succeeded",
+                            tool_call_id=call_uuid,
+                        )
+                    action = _interactive_action(output)
+                    if action is not None:
+                        seq += 1
+                        yield InteractiveActionChunk(
+                            turn_id=turn_id,
+                            seq=seq,
+                            call_id=str(result.get("tool_call_id") or ""),
+                            action=action[0],
+                            payload=action[1],
+                        )
+                elif event.kind == "approval_required":
+                    approval = event.approval or {}
                     approval_id = await self._request_approval(
                         tenant_id=tenant_id,
                         owner_id=owner_id,
-                        tool_name=name,
-                        arguments=arguments,
+                        tool_name=str(approval.get("tool_name") or ""),
+                        arguments=dict(approval.get("arguments") or {}),
                     )
-                    state["pending_approval"] = {
-                        "approval_id": str(approval_id),
-                        "tool_name": name,
-                        "arguments": arguments,
-                        "tool_call_id": str(call.get("id") or call_uuid),
-                        "call_id": str(call_uuid),
-                    }
                     seq += 1
-                    interrupt_chunk = ApprovalRequiredChunk(
+                    yield ApprovalRequiredChunk(
                         turn_id=turn_id,
                         seq=seq,
                         approval_id=approval_id,
-                        tool_name=name,
-                        arguments=arguments,
+                        tool_name=str(approval.get("tool_name") or ""),
+                        arguments=dict(approval.get("arguments") or {}),
                         reason="高风险操作需要确认后才会执行",
                     )
-                    break
-                # Phase 14: 把 parent session_id 注入 delegate_to_agent 的 arguments,
-                # 让 stub tool 知道在哪个 session 上 spawn sub-session.
-                tool_arguments = dict(arguments)
-                if name == "delegate_to_agent" and session_id is not None:
-                    tool_arguments.setdefault("parent_session_id", str(session_id))
-                is_skill = meta.get("kind") == "skill"
-                if is_skill:
-                    seq += 1
-                    yield SkillInvocationChunk(
-                        turn_id=turn_id,
-                        seq=seq,
-                        invocation_id=call_uuid,
-                        skill_name=name,
-                        status="started",
-                        tool_call_id=call_uuid,
-                    )
-                tool_span = _tracer.start_span("agent.tool", context=span_ctx)
-                tool_span.set_attribute("tool.name", name)
-                tool_started = monotonic()
-                try:
-                    result = await execute_tool(
-                        name=name,
-                        arguments=tool_arguments,
-                        skill_port=self._skill_port,
-                        sandbox_port=self._sandbox_port,
-                        tool_port=self._tool_port,
-                        confirmed=False,
-                        turn_id=turn_id,
-                        # ⚠️ **幂等键 = 轮次 + 模型的 tool_call id** ✓ ——
-                        # 同一次模型调用重试时**键不变** ✓（所以能挡住重复执行 ✓），
-                        # 不同的调用**键不同** ✓。
-                        idempotency_key=_tool_idempotency_key(turn_id, call_uuid),
-                    )
-                    tool_span.set_attribute("tool.ok", result.get("ok") is not False)
-                except Exception:
-                    tool_span.set_status(_trace.Status(_trace.StatusCode.ERROR))
-                    raise
-                finally:
-                    tool_span.set_attribute(
-                        "tool.latency_ms", int((monotonic() - tool_started) * 1000)
-                    )
-                    tool_span.end()
-                if is_skill:
-                    seq += 1
-                    yield SkillInvocationChunk(
-                        turn_id=turn_id,
-                        seq=seq,
-                        invocation_id=call_uuid,
-                        skill_name=name,
-                        status="failed" if result.get("ok") is False else "succeeded",
-                        tool_call_id=call_uuid,
-                    )
-                text = result_text(result)
-                new_messages.append(
-                    {
-                        "role": "tool",
-                        "name": name,
-                        "tool_call_id": str(call.get("id") or call_uuid),
-                        "content": text,
+                    # ⚠️ **挂起** ✓ —— 状态留给恢复 ✓（§3.5 ✓）。
+                    loop_state = event.payload
+                    self.last_loop_state = {
+                        "pending_approval": {
+                            "approval_id": str(approval_id),
+                            "tool_name": str(approval.get("tool_name") or ""),
+                            "arguments": dict(approval.get("arguments") or {}),
+                            "tool_call_id": str(approval.get("tool_call_id") or ""),
+                            "call_id": str(approval.get("tool_call_id") or ""),
+                        },
+                        "messages": (
+                            to_dict_messages(list(loop_state.messages))
+                            if loop_state is not None
+                            else []
+                        ),
+                        "step": int(loop_state.step) if loop_state is not None else 0,
                     }
-                )
-                seq += 1
-                yield ToolResultChunk(
-                    turn_id=turn_id,
-                    seq=seq,
-                    tool_call_id=call_uuid,
-                    output=text,
-                    is_error=result.get("ok") is False,
-                    latency_ms=int(result.get("latency_ms") or 0),
-                )
-            if interrupt_chunk is not None:
-                self.last_loop_state = dict(state)
-                yield interrupt_chunk
-                return
-            state["messages"] = new_messages
-
+                    return
+                elif event.kind == "extra":
+                    # ⚠️ **钩子带出来的事件** ✓（压缩 ✓ / 旁路事件 ✓）——
+                    # 本层**不解释它** ✓ —— 只补上序号 ✓。
+                    chunk = event.payload
+                    if chunk is None:
+                        continue
+                    seq += 1
+                    yield chunk.model_copy(update={"seq": seq})
+                elif event.kind == "usage":
+                    input_tokens += int(event.usage.get("input_tokens") or 0)
+                    output_tokens += int(event.usage.get("output_tokens") or 0)
+                elif event.kind == "error":
+                    seq += 1
+                    yield ErrorChunk(
+                        turn_id=turn_id,
+                        seq=seq,
+                        code=str(event.error_code or "AGENT_LOOP_ABORTED"),
+                        message=str(event.error_message or ""),
+                    )
+                elif event.kind == "final":
+                    final = event.text
+                    loop_state = event.payload
+                    if loop_state is not None:
+                        state["messages"] = to_dict_messages(list(loop_state.messages))
+                    state["final"] = final
+        finally:
+            if span_token is not None:
+                _otel_context.detach(span_token)
+        rolling_summary = summary_box["summary"]
+        cost_usd = cost_box["usd"]
         self.last_loop_state = {**dict(state), "pending_approval": None, "rolling_summary": rolling_summary}
         final = str(state.get("final") or "")
         # ⚠️ **摘要写新列** ✓（Context 方案 §5.1 ✓）—— 旧的
@@ -562,7 +592,7 @@ class SessionGraphRunner:
         )
         seq += 1
         yield DoneChunk(turn_id=turn_id, seq=seq, final_message=final)
-        _ = (self._graph, rolling_summary)
+        _ = rolling_summary
 
     def export_loop_state(self, pending: dict[str, Any] | None, messages: list[dict[str, Any]], step: int) -> dict[str, Any]:
         return {"pending_approval": pending, "messages": messages, "step": step}
@@ -687,20 +717,32 @@ class SessionGraphRunner:
     ) -> dict[str, Any]:
         """这一轮**真正喂给模型**的上下文清单 ✓。
 
-        ⚠️ **按「消息对象身份」对齐** ✓ —— 压缩后留下的消息**还是那些对象**
-        ✓（Compressor 复用原对象 ✓）→ 能对上 Builder 的条目 ✓（来源 /
-        ``ref_id`` / ``score`` 都在 ✓）；对不上的是**后来加的消息**（工具
-        结果 / 助手回复 ✓）→ 现算一条 ✓（来源标 ``tool_result`` ✓）。
+        ⚠️ **对不上的是「后来加的消息」** ✓（工具结果 ✓ / 助手回复 ✓）→
+        现算一条 ✓（来源标 ``tool_result`` ✓）。
         """
-        base: dict[int, ManifestEntry] = {}
-        for message, entry in zip(assembled.messages, assembled.manifest.entries):
-            base[id(message)] = entry
+        # ⚠️ **按「内容 + 顺序」对齐** ✓（新路径的消息是**转换过的对象** ✓
+        # —— 身份对不上 ✗）—— 压缩后留下的**内容不变** ✓、**顺序不变** ✓
+        # → 从前往后找同一条 ✓（重复内容也不会错位 ✓ —— 游标只前进 ✓）。
         entries: list[dict[str, Any]] = []
-        for message in messages:
-            entry = base.get(id(message))
-            if entry is not None:
-                entries.append(_entry_to_dict(entry))
+        cursor = 0
+        for message, entry in zip(assembled.messages, assembled.manifest.entries):
+            content = str(message.get("content") or "")
+            role = str(message.get("role") or "")
+            match = None
+            for index in range(cursor, len(messages)):
+                candidate = messages[index]
+                if (
+                    str(candidate.get("content") or "") == content
+                    and str(candidate.get("role") or "") == role
+                ):
+                    match = index
+                    break
+            if match is None:
+                # ⚠️ **被压缩掉了** ✓（这一条没发出去 ✓ —— 不进 manifest ✓）。
                 continue
+            cursor = match + 1
+            entries.append(_entry_to_dict(entry))
+        for message in messages[cursor:]:
             content = str(message.get("content") or "")
             role = str(message.get("role") or "")
             if role == "system" and content.startswith("更早轮次摘要："):
@@ -812,7 +854,7 @@ class SessionGraphRunner:
             try:
                 for item in await self._skill_port.list_executable():
                     allowed[str(item.get("name"))] = {**item, "kind": "skill"}
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
         catalog: dict[str, dict[str, Any]] = {}
         if self._tool_port is not None:
@@ -832,6 +874,86 @@ class SessionGraphRunner:
         selected = {key: value for key, value in allowed.items() if key in named}
         selected.update({key: value for key, value in catalog.items() if key in named})
         return selected
+
+    async def _assemble_expert(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        owner_id: UUID,
+        agent: CatalogAgent | None,
+        model: str,
+        route_id: ModelId | None,
+        user_input: str,
+        history_count: int,
+        actor: ActorContext,
+        protected: bool,
+    ) -> ExpertInstance:
+        """**装配专家实例** ✓（Agent Stage 4 ✓）。
+
+        ⚠️ **模型与工具不是运行时「挑」出来的** ✓（决策 #4 ✓）—— 它们来自
+        **agent 配置** ✓（模型名 ✓ / 绑定集 ✓）—— 运行时只负责**取** ✓。
+
+        ⚠️ **请求里明确指定的模型 / 路由优先** ✓（§5.2.1 取值链的第 1 条 ✓
+        —— 但那仍然是**取值链的输入** ✓ 不是运行时「挑」✗✗）。
+        """
+        _ = owner_id
+        assembler = self._expert_assembler or self._fallback_assembler(agent)
+        classification = DEFAULT_CLASSIFIER.classify(
+            message_count=history_count,
+            tools_count=len(agent.tools) if agent is not None else 0,
+            message_text=user_input,
+            agent_config=AgentRouteConfig(
+                agent_id=str(agent.id) if agent is not None else "",
+                deep_research=bool(
+                    (agent.profile or {}).get("deep_research")
+                )
+                if agent is not None
+                else False,
+            ),
+        )
+        return await assembler.assemble(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            session_agent_id=agent.id if agent is not None else uuid4(),
+            task_kind=classification.kind,
+            confidence=classification.confidence,
+            protected=protected,
+            actor=to_runtime_actor(actor),
+            model_override=model or None,
+            route_id_override=route_id,
+        )
+
+    def _fallback_assembler(self, agent: CatalogAgent | None) -> ExpertAssembler:
+        """**兜底的专家装配器** ✓（没有装配专家路由时落回会话绑定 ✓）。
+
+        ⚠️ **它也走同一套端口** ✓ —— 不是第二套实现 ✓（只是「路由端口」换成
+        「不选专家」的那个 ✓）。
+        """
+        instruction = ""
+        if agent is not None:
+            instruction = str(agent.prompts.get("prompt") or agent.description or "")
+        return ExpertAssembler(
+            router=SessionAgentRouter(
+                agent_id=agent.id if agent is not None else uuid4(),
+                agent_version=agent.version if agent is not None else "",
+                model_name=(agent.model if agent is not None else "") or "default",
+                instruction=instruction,
+            ),
+            bindings=ToolBindingAdapter(
+                tools=self._tool_port,
+                skills=self._skill_port,
+                agents=AgentToolsReader(agent),
+                sandbox=self._sandbox_port is not None,
+            ),
+            llm=RuntimeLLMPort(self._llm),
+            resolver=RuntimeModelResolver(self._catalog_model_resolver),
+            tool_runtime=ModuleToolRuntime(
+                skill_port=self._skill_port,
+                sandbox_port=self._sandbox_port,
+                tool_port=self._tool_port,
+            ),
+        )
 
     async def _request_approval(
         self,
@@ -1004,31 +1126,35 @@ def _tool_idempotency_key(turn_id: UUID, tool_call_id: UUID | str) -> str:
     return f"{turn_id}:{tool_call_id}"
 
 
-async def _passthrough_llm(state: LoopState) -> LoopState:
-    return state
+def _binding_kind(bound_tools: list[BoundTool], name: str) -> str:
+    """**这个工具是哪一类** ✓（skill ✓ / tool ✓）—— 事件形态不一样 ✓。"""
+    for bound in bound_tools:
+        if bound.tool.name == name:
+            return bound.binding.kind
+    return ""
 
 
-async def _passthrough_tools(state: LoopState) -> LoopState:
-    return state
+def _interactive_action(output: str) -> tuple[str, dict[str, Any]] | None:
+    """**工具结果里带前端动作** ✓（旧路径的口径 ✓）。
 
-
-def _openai_tools(whitelist: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    tools = []
-    for name, meta in whitelist.items():
-        parameters = meta.get("parameters")
-        if not isinstance(parameters, dict) or not parameters.get("properties"):
-            parameters = {"type": "object", "properties": {}}
-        tools.append(
-            {
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "description": str(meta.get("description") or name),
-                    "parameters": parameters,
-                },
-            }
-        )
-    return tools
+    ⚠️ **只认白名单里的动作** ✓ —— 别的键不外泄给前端 ✓。
+    """
+    try:
+        payload = json.loads(output)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    action = payload.get("_pending_frontend_action")
+    if action not in {
+        "show_question_card",
+        "toast",
+        "render_plan",
+        "render_todo_list",
+        "delegate_agent",
+    }:
+        return None
+    return str(action), {k: v for k, v in payload.items() if k != "_pending_frontend_action"}
 
 
 def _looks_uuid(value: str) -> bool:

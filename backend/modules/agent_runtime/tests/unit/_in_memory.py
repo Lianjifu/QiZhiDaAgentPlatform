@@ -206,7 +206,7 @@ class FakeLLM(LLMPort):
         self._tool_calls = tool_calls
         self._raise = raise_on_first_chunk
 
-    async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
+    async def stream(self, req: ChatRequest, **kwargs: object) -> AsyncIterator[LLMChunk]:
         if self._raise is not None:
             raise self._raise
         yield LLMChunk(model=req.model, delta=self._content)

@@ -37,6 +37,27 @@ _JSON_TYPES = {
     "object": "object",
 }
 
+#: **沙箱工具的绑定声明** ✓（旧路径里它是**固定提供**的 ✓ —— 高风险 ✓
+#: **必须审批** ✓ —— 不审批就等于让模型直接跑代码 ✗✗）。
+_SANDBOX_BINDING = ToolBinding(
+    name="sandbox_exec",
+    kind="tool",
+    risk="high",
+    requires_approval=True,
+    side_effect=True,
+    spec={
+        "description": "在沙箱里执行一段代码",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "language": {"type": "string"},
+                "code": {"type": "string"},
+                "timeout_ms": {"type": "integer"},
+            },
+        },
+    },
+)
+
 
 class ToolBindingAdapter(ToolBindingPort):
     """**绑定集 → ``ToolBinding`` 列表** ✓。
@@ -47,13 +68,15 @@ class ToolBindingAdapter(ToolBindingPort):
     def __init__(
         self,
         *,
-        tools: ToolPort,
+        tools: ToolPort | None = None,
         skills: SkillPort | None = None,
         agents: AgentBindingReader | None = None,
+        sandbox: bool = False,
     ) -> None:
         self._tools = tools
         self._skills = skills
         self._agents = agents
+        self._sandbox = sandbox
 
     async def bindings(
         self,
@@ -63,21 +86,25 @@ class ToolBindingAdapter(ToolBindingPort):
         agent_id: UUID,
         agent_version: str,
     ) -> list[ToolBinding]:
-        """**取绑定集** ✓ —— 空就是空 ✓（不是错误 ✓）。"""
-        _ = (tenant_id, workspace_id, agent_version)
-        if self._agents is None:
-            return []
-        names = await self._agents.declared(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            agent_id=agent_id,
-            agent_version=agent_version,
-        )
-        if not names:
-            return []
+        """**取绑定集** ✓ —— 空就是空 ✓（不是错误 ✓）。
 
+        ⚠️ **agent 没钉工具时的口径** ✓（与旧路径一致 ✓）—— **给出全部可执行
+        skill** ✓，**不给目录工具** ✓（否则每个 agent 都凭空多出网络 / 文件
+        系统的能力 ✗✗）。
+        """
+        _ = (tenant_id, workspace_id, agent_version)
+        names: tuple[str, ...] = ()
+        if self._agents is not None:
+            names = await self._agents.declared(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                agent_id=agent_id,
+                agent_version=agent_version,
+            )
         catalog = await self._tool_catalog()
         skills = await self._skill_catalog()
+        if not names:
+            names = tuple(skills)
 
         bindings: list[ToolBinding] = []
         for name in names:
@@ -90,9 +117,13 @@ class ToolBindingAdapter(ToolBindingPort):
                 # 的东西 ✗✗（调用时才失败 ✗）。
                 continue
             bindings.append(_tool_binding(name, entry))
+        if self._sandbox:
+            bindings.append(_SANDBOX_BINDING)
         return bindings
 
     async def _tool_catalog(self) -> dict[str, dict[str, Any]]:
+        if self._tools is None:
+            return {}
         try:
             rows = await self._tools.list_tools()
         except Exception:  # noqa: BLE001 — 目录取不到就当没有工具 ✓
@@ -126,7 +157,9 @@ def _tool_binding(name: str, entry: dict[str, Any]) -> ToolBinding:
         name=name,
         kind="mcp" if protocol == "mcp" else "tool",
         risk=risk,  # type: ignore[arg-type]
-        requires_approval=needs_confirm,
+        # ⚠️ **要审批 = 声明要审批 或 风险不是 low** ✓（旧路径 `needs_confirm`
+        # 的口径 ✓ —— 高风险的工具**等审批** ✓ 而不是被悄悄放行 ✓）。
+        requires_approval=needs_confirm or risk != "low",
         # ⚠️ **副作用 = 要审批或高风险** ✓（未受保护的轮次要剔除它们 ✓）。
         side_effect=bool(entry.get("side_effect", needs_confirm or risk == "high")),
         spec=spec,
@@ -143,7 +176,7 @@ def _skill_binding(name: str, entry: dict[str, Any]) -> ToolBinding:
         name=name,
         kind="skill",
         risk=risk,  # type: ignore[arg-type]
-        requires_approval=needs_confirm,
+        requires_approval=needs_confirm or risk != "low",
         side_effect=bool(entry.get("side_effect", needs_confirm or risk == "high")),
         spec={
             "description": str(entry.get("description") or name),

@@ -15,7 +15,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator
+import json
+from collections.abc import AsyncIterator, Iterator, Mapping
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -205,10 +206,21 @@ def _to_tool_call_chunk(raw: dict[str, Any]) -> ToolCallChunk:
     ⚠️ **形状几乎一样** ✓（``name`` / ``args`` / ``id`` / ``index`` ✓）——
     只把 ``arguments`` 改名成 ``args`` ✓（LangChain 的叫法 ✓），
     ``thought_signature`` 之类的**额外字段原样带走** ✓（Gemini 那种 ✓）。
+
+    ⚠️ **参数可能是 dict** ✓（平台的客户端两种都发 ✓）—— **dict 就原样带走**
+    ✓（转成字符串就毁了 ✗✗ —— 单引号的 repr 解析不回来 ✗）。
     """
+    raw_arguments = raw.get("arguments")
+    if isinstance(raw_arguments, Mapping):
+        # ⚠️ **dict 参数要转成 JSON 字符串** ✓（LangChain 的
+        # ``tool_call_chunks`` 只收字符串 ✓）—— **不能用 repr** ✗✗
+        # （单引号 + Python 字面量 ✗ —— 解析不回来 ✗）。
+        args = json.dumps(dict(raw_arguments), ensure_ascii=False)
+    else:
+        args = str(raw_arguments or "")
     chunk = ToolCallChunk(
         name=str(raw.get("name") or ""),
-        args=str(raw.get("arguments") or ""),
+        args=args,
         id=str(raw.get("id") or ""),
         index=int(raw.get("index") or 0),
         type="tool_call_chunk",

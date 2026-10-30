@@ -19,6 +19,7 @@ from qzdap_kernel.errors import (
     RateLimitError,
     ValidationError,
 )
+from qzdap_kernel.digest import canonical_json, request_hash
 from qzdap_kernel.events import DomainEvent
 from qzdap_kernel.principal import Principal, PrincipalType
 
@@ -27,12 +28,14 @@ __all__ = [
     "AuthenticationError",
     "BusinessRuleError",
     "ConflictError",
+    "canonical_json",
     "DomainEvent",
     "ErrorEnvelope",
     "ExternalServiceError",
     "ForbiddenError",
     "InternalError",
     "NotFoundError",
+    "request_hash",
     "Principal",
     "PrincipalType",
     "RateLimitError",

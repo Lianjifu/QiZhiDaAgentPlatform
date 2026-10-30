@@ -133,10 +133,22 @@ async def copilot_dependency(request: Request) -> CopilotSessionService:
                     workspace_id=workspace_id,
                     owner_id=owner_id,
                 )
+            # ⚠️ **专家装配器** ✓（Agent Stage 4 ✓ / Stage 5 接线 ✓）——
+            # **请求作用域** ✓（绑定集 / 工具运行时都绑着租户 ✓）。
+            expert_assembler = None
+            expert_factory = getattr(request.app.state, "expert_assembler_factory", None)
+            if expert_factory is not None:
+                expert_assembler = expert_factory.for_scope(
+                    UUID(tenant_raw),
+                    UUID(workspace_raw),
+                    _owner_id(request, UUID(int=0)),
+                    session,
+                )
             svc.bind_ports(
                 skill_port=skill_port,
                 sandbox_port=sandbox_port,
                 tool_port=tool_port,
+                expert_assembler=expert_assembler,
             )
         try:
             yield svc

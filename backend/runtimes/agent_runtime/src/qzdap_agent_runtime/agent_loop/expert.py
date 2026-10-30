@@ -21,11 +21,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 from uuid import UUID
 
 from langchain_core.tools import BaseTool
+from qzdap_schema.ids import ModelId
 
 from ..agent_router.classifier import TaskKind
 from ..execution.chat_model import QZDAPChatModel
@@ -37,6 +38,7 @@ from ..ports import (
     AgentSelection,
     LLMPort,
     ModelResolverPort,
+    ToolBinding,
     ToolBindingPort,
     ToolRuntimePort,
 )
@@ -49,6 +51,9 @@ class ExpertInstance:
     selection: AgentSelection
     model: QZDAPChatModel
     tools: tuple[BaseTool, ...] = ()
+    #: **绑定声明** ✓（与 ``tools`` **同序** ✓）—— 治理元数据在这里 ✓
+    #: （风险 ✓ / 要审批 ✓ / 副作用 ✓ —— §5.3.1 ✓）。
+    bindings: tuple[ToolBinding, ...] = ()
     #: **留痕载荷** ✓（A-24 ✓ —— 记「用了什么」✓ 不记「为什么」✓）。
     decision: dict[str, Any] = field(default_factory=dict)
 
@@ -118,11 +123,17 @@ class ExpertAssembler:
         protected: bool = True,
         actor: ActorContext | None = None,
         tool_names: tuple[str, ...] = (),
+        model_override: str | None = None,
+        route_id_override: ModelId | None = None,
     ) -> ExpertInstance:
         """**装配一个专家** ✓（模型 ✓ + 工具 ✓）。
 
         ⚠️ **选专家 → 取模型 → 取工具** ✓ —— 三步都**不决策** ✓：
         选专家是路由端口 ✓；模型是查表 ✓；工具是绑定集 + 治理 ✓。
+
+        ⚠️ **显式指定的模型 / 路由优先** ✓（§5.2.1 取值链的第 1 条 ✓ ——
+        请求里明确给了就用它 ✓ —— 但**它仍然是取值链的输入** ✓ 不是运行时
+        「挑」出来的 ✗✗）。
         """
         selection = await self._router.select(
             tenant_id=tenant_id,
@@ -132,6 +143,10 @@ class ExpertAssembler:
             confidence=confidence,
             tool_names=tool_names,
         )
+        if model_override:
+            selection = replace(selection, model_name=model_override)
+        if route_id_override is not None:
+            selection = replace(selection, route_id=route_id_override)
         resolved = await self._caller.resolve(
             model_name=selection.model_name,
             tenant_id=tenant_id,
@@ -142,7 +157,7 @@ class ExpertAssembler:
         )
         model = QZDAPChatModel(
             llm=self._llm,
-            model_name=resolved.model_name,
+            model_name=resolved.model_name or "default",
             model_id=resolved.model_id,
             route_id=resolved.route_id,
             fallback_model_ids=resolved.fallback_model_ids,
@@ -154,17 +169,18 @@ class ExpertAssembler:
             agent_id=selection.agent_id,
             agent_version=selection.agent_version,
         )
-        tools = self._tools.resolve(
+        pairs = self._tools.resolve_pairs(
             bindings, policy=BindingPolicy(unprotected=not protected)
         )
         return ExpertInstance(
             selection=selection,
             model=model,
-            tools=tuple(tools),
+            tools=tuple(tool for _binding, tool in pairs),
+            bindings=tuple(binding for binding, _tool in pairs),
             decision=decision_payload(
                 selection=selection,
                 resolved=resolved,
-                tool_names=tuple(tool.name for tool in tools),
+                tool_names=tuple(tool.name for _binding, tool in pairs),
             ),
         )
 

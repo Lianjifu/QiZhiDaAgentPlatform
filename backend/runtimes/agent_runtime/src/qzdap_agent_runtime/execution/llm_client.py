@@ -85,6 +85,10 @@ class LLMCaller:
                 route_id=route_id,
                 fallback_model_ids=fallback,
             )
+        if model_id is None and _looks_uuid(model_name):
+            # ⚠️ **显式指定的就是模型 id** ✓（取值链第 1 条 ✓ —— 前端传的
+            # 可能就是一个 UUID ✓ —— 那就不该再查表 ✓）。
+            model_id = ModelId(UUID(model_name))
         if model_id is not None:
             return ResolvedModel(
                 model_name=model_name,
@@ -129,6 +133,15 @@ class LLMCaller:
         )
         async for chunk in stream:
             yield chunk
+
+
+def _looks_uuid(value: str) -> bool:
+    """**这个字符串是 UUID 吗** ✓（显式指定的模型有时就是 id ✓）。"""
+    try:
+        UUID(value)
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return True
 
 
 def usage_from_chunks(chunks: Sequence[LLMChunk]) -> dict[str, int]:

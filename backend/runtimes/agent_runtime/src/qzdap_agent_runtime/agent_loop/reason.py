@@ -142,9 +142,11 @@ class Reasoner:
                 # ⚠️ **工具调用的分片不单独推** ✓ —— 只推文本 ✓（§3.1 第 2 条 ✓）
                 if not chunk.content:
                     continue
-            if chunk.content:
+            if chunk.content or chunk.usage_metadata:
                 # ⚠️ **用量要跟着走** ✓（§3.1 第 4 条 ✓）—— 新建 chunk 时
                 # 别把它丢了 ✗✗。
+                # ⚠️ **用量那一段没有正文** ✓（只有 usage ✓）—— **照样要递出去**
+                # ✓（否则这一轮的 token 数永远是 0 ✗✗）。
                 yield AIMessageChunk(
                     content=chunk.content, usage_metadata=chunk.usage_metadata
                 )
