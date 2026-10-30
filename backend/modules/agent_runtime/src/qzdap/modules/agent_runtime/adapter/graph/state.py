@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
+from qzdap_agent_runtime.context.tokens import estimate_message_tokens
+
 
 class LoopState(TypedDict, total=False):
     messages: list[dict[str, Any]]
@@ -22,12 +24,15 @@ def tool_signature(name: str, arguments: dict[str, Any]) -> str:
 
 
 def estimate_tokens(messages: list[dict[str, Any]]) -> int:
-    total = 0
-    for item in messages:
-        total += max(1, len(str(item.get("content") or "")) // 4)
-        for call in item.get("tool_calls") or []:
-            total += max(1, len(str(call)) // 4)
-    return total
+    """一批消息的 token 估算 ✓ —— **口径与 Context 层共用一份** ✓。
+
+    ⚠️ **旧实现按 ``len // 4`` 一刀切** ✗✗ —— 对**中文低估约 4 倍** ✗
+    （「超没超预算」这条判断在中文场景下失真 ✗）。现在改调契约层的
+    **按语种** 估算（Context 方案决策 #2 ✓）—— 中文按 1 字 1 token ✓。
+
+    ⚠️ 空内容现在记 **0** ✓（旧实现记 1 ✗ —— 白占预算 ✗）。
+    """
+    return estimate_message_tokens(messages)
 
 
 __all__ = ["LoopState", "estimate_tokens", "tool_signature"]

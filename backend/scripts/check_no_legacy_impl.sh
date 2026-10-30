@@ -171,7 +171,7 @@ _fail_turn;modules/;X18;X;on
 _publish_chunk;modules/;X18;X;on
 compact.py;modules/;X9;C;off
 _load_messages;modules/;X8;C;off
-build_system_prompt;modules/;X10;C;off
+build_system_prompt;modules/;X10;C;on
 layered.py;modules/;X12;M;off
 _remember;modules/;X11;M;off
 admin_memory_l1;modules/;X13;M;off

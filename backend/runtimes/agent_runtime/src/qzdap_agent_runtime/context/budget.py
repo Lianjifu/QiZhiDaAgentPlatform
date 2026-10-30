@@ -1,12 +1,22 @@
-"""Context 层：token budget + compaction + manifest (§5.3 / §5.4)。
+"""Context 层：**预算 + 压缩 + 装配** 的骨架（Context 方案 §9 Stage 0 之后）。
 
-Stage 3 PR B 范围：
+⚠️ **这个文件是「待拆」的** ✓ —— Context 方案 §8.1 / §8.4 定了终态：
 
-- `ContextBudget`: 简易 token 计数（按字符估算 4 chars ≈ 1 token，
-  CJK 字符按 1 token 算；生产用 tiktoken/transformer）
-- `assemble_context`: 把系统提示 / agent 配置 / tenant workspace /
-  摘要 / L1+L2+L3 召回结果 / 当前 turn 用户输入 按固定优先级拼装
-  + context_manifest 记录每个片段来源/token/过滤原因
+- token 估算 → `tokens.py` ✓（**已拆** ✓）；
+- 契约类型（``AssembledContext`` / ``ContextManifest`` / ``ManifestEntry``）
+  → `types.py` ✓（**已拆** ✓）；
+- 装配 → `builder.py`（Stage 1 重写 ✓）；
+- 压缩 → `compressor.py`（Stage 2 重写 ✓）；
+- **Stage 5 把本文件整个删掉** ✓（台账扫描脚本盯的就是它 ✗）。
+
+⚠️ **token 估算与契约类型现在只有一份** ✓ —— 本文件从 `tokens.py` /
+`types.py` **导入** ✓（不再自己定义 ✗✗ —— 两份算法 = 口径又分叉了 ✗）。
+
+保留的两块（Stage 1 / 2 会重写 ✓）：
+
+- `ContextAssembler`: 把系统提示 / agent 配置 / tenant workspace /
+  摘要 / 召回结果 / 当前 turn 用户输入 按固定优先级拼装
+  + context_manifest 记录每个片段来源/token/过滤原因；
 - `Compactor`: messages 超过 budget 时压缩
   - 优先 LLM 摘要
   - 摘要失败时降级为确定性窗口压缩（旧消息摘要 → 末段保留）
@@ -17,8 +27,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import Any, Protocol, runtime_checkable
+
+from .tokens import estimate_tokens
+from .types import AssembledContext, ContextManifest, ManifestEntry
 
 
 def run_async_from_sync(coro: Any) -> Any:
@@ -29,68 +42,12 @@ def run_async_from_sync(coro: Any) -> Any:
         return asyncio.run(coro)
     # 已在 event loop 中: 用线程池跑
     import concurrent.futures
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
         return ex.submit(asyncio.run, coro).result()
 
+
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Token 估算
-# ---------------------------------------------------------------------------
-
-
-def estimate_tokens(text: str) -> int:
-    """§5.3 token 预算估算（不作为绝对真值）。
-
-    CJK 字符按 1 token 算，ASCII 4 chars ≈ 1 token（§5.10 tiktoken/provider tokenizer）。
-    """
-    cjk_count = sum(1 for c in text if "一" <= c <= "鿿")
-    ascii_count = len(text) - cjk_count
-    return cjk_count + (ascii_count + 3) // 4
-
-
-# ---------------------------------------------------------------------------
-# Context manifest
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class ManifestEntry:
-    """§5.3 context_manifest 单条记录。"""
-
-    source: str  # 'system' | 'agent' | 'tenant' | 'summary' | 'memory_l1' | ...
-    tokens: int
-    filtered_reason: str | None = None
-    version: str | None = None
-
-
-@dataclass(slots=True)
-class ContextManifest:
-    """§5.3 context_manifest — 每次 assemble_context 产出。"""
-
-    entries: list[ManifestEntry] = field(default_factory=list)
-
-    def add(self, entry: ManifestEntry) -> None:
-        self.entries.append(entry)
-
-    @property
-    def total_tokens(self) -> int:
-        return sum(e.tokens for e in self.entries)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "total_tokens": self.total_tokens,
-            "entries": [
-                {
-                    "source": e.source,
-                    "tokens": e.tokens,
-                    "filtered_reason": e.filtered_reason,
-                    "version": e.version,
-                }
-                for e in self.entries
-            ],
-        }
-
 
 # ---------------------------------------------------------------------------
 # Summary compactor
@@ -202,9 +159,7 @@ class Compactor:
             keep_n = min(5, len(messages))
             tail = messages[-keep_n:]
             removed = messages[:-keep_n]
-            new_summary = (
-                f"[deterministic compaction: {len(removed)} messages dropped]"
-            )
+            new_summary = f"[deterministic compaction: {len(removed)} messages dropped]"
             degraded = True
 
         new_messages = tail
@@ -229,15 +184,6 @@ class Compactor:
 # ---------------------------------------------------------------------------
 # Context assembler
 # ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class AssembledContext:
-    """assemble_context 节点输出。"""
-
-    messages: list[Any]  # 最终喂给 LLM 的消息列表
-    manifest: ContextManifest
-    degraded_flags: dict[str, bool]
 
 
 class ContextAssembler:
@@ -265,51 +211,59 @@ class ContextAssembler:
         parts: list[str] = []
 
         # 优先级 1: 安全系统提示
-        manifest.add(ManifestEntry(
-            source="system",
-            tokens=estimate_tokens(system_prompt),
-            version=agent_config.get("version"),
-        ))
+        manifest.add(
+            ManifestEntry(
+                source="system",
+                tokens=estimate_tokens(system_prompt),
+                version=agent_config.get("version"),
+            )
+        )
         parts.append(system_prompt)
 
         # 优先级 2: agent 配置
         agent_text = self._format_agent(agent_config)
-        manifest.add(ManifestEntry(
-            source="agent",
-            tokens=estimate_tokens(agent_text),
-            version=agent_config.get("version"),
-        ))
+        manifest.add(
+            ManifestEntry(
+                source="agent",
+                tokens=estimate_tokens(agent_text),
+                version=agent_config.get("version"),
+            )
+        )
         parts.append(agent_text)
 
         # 优先级 3: tenant / workspace / 用户 / 渠道上下文
         tenant_text = self._format_tenant(tenant_context)
-        manifest.add(ManifestEntry(source="tenant", tokens=estimate_tokens(tenant_text)))
+        manifest.add(
+            ManifestEntry(source="tenant", tokens=estimate_tokens(tenant_text))
+        )
         parts.append(tenant_text)
 
         # 优先级 4: 摘要 + L1/L2/L3 召回
         if rolling_summary:
-            manifest.add(ManifestEntry(
-                source="summary", tokens=estimate_tokens(rolling_summary)
-            ))
+            manifest.add(
+                ManifestEntry(source="summary", tokens=estimate_tokens(rolling_summary))
+            )
             parts.append(f"## 摘要\n{rolling_summary}")
 
         if memory_hits:
             mem_text = self._format_memory(memory_hits)
-            manifest.add(ManifestEntry(source="memory", tokens=estimate_tokens(mem_text)))
+            manifest.add(
+                ManifestEntry(source="memory", tokens=estimate_tokens(mem_text))
+            )
             parts.append(f"## 记忆\n{mem_text}")
 
         if knowledge_hits:
             know_text = self._format_knowledge(knowledge_hits)
-            manifest.add(ManifestEntry(
-                source="knowledge", tokens=estimate_tokens(know_text)
-            ))
+            manifest.add(
+                ManifestEntry(source="knowledge", tokens=estimate_tokens(know_text))
+            )
             parts.append(f"## 知识\n{know_text}")
 
         # 优先级 5: 当前 turn 用户输入 + 工具结果（最近消息）
         recent_text = self._format_recent(recent_messages)
-        manifest.add(ManifestEntry(
-            source="recent", tokens=estimate_tokens(recent_text)
-        ))
+        manifest.add(
+            ManifestEntry(source="recent", tokens=estimate_tokens(recent_text))
+        )
         parts.append(f"## 当前对话\n{recent_text}")
 
         # §5.3 超限按固定降级顺序：旧消息摘要 → 低分召回淘汰 → 附件摘要 → 明确错误
@@ -338,14 +292,14 @@ class ContextAssembler:
     def _format_memory(self, hits: list[dict[str, Any]]) -> str:
         lines = []
         for h in hits:
-            lines.append(f"- ({h.get('layer','?')}) {h.get('content','')}")
+            lines.append(f"- ({h.get('layer', '?')}) {h.get('content', '')}")
         return "\n".join(lines)
 
     def _format_knowledge(self, hits: list[dict[str, Any]]) -> str:
         lines = []
         for h in hits:
             cid = h.get("metadata", {}).get("asset_id", "?")
-            lines.append(f"- [{cid}] {h.get('content','')}")
+            lines.append(f"- [{cid}] {h.get('content', '')}")
         return "\n".join(lines)
 
     def _format_recent(self, msgs: list[dict[str, Any]]) -> str:

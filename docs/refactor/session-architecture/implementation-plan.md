@@ -542,10 +542,10 @@
 
 | Stage | 工作项 | 产出 / 落点 | **删除的旧实现**（台账 / 关注点） | **旧代码减少** | 依赖 |
 |---|---|---|---|---|---|
-| Stage 0 · 契约与迁移 | C-01 建 `context/` 骨架 + `types.py` | `AssembledContext` / `ContextManifest`（**`filtered_reason` 已存在**，`budget.py:62`；本层补 `ref_id` / `score`） | — | 0 | — |
-| | C-02 **迁移 0047** | `rolling_summary` 列 + `session_context_manifests` 表 + **三步回填**（`graph_state` 优先 → `metadata` 兜底 → 清 `metadata`） | — | 0 | **0046 已落（物理顺序 + 需要 `session_messages.session_seq`）** |
-| | C-03 `tokens.py` | 抽出 `budget.py:42` 的**按语种估算**（新 runtime 已是此口径）→ 让旧路径也用它 + 单元测试（中文/英文/混合） | — | 0 | — |
-| | C-04 打点本层旧入口 | `record_legacy_call("X8".."X10")` ×3 | — | 0 | 前置 C2 |
+| Stage 0 · 契约与迁移 | C-01 建 `context/` 骨架 + `types.py` | ✅ **已达成**（2026-10-30，Context Stage 0）—— `context/types.py` ✓（`AssembledContext` / `ContextManifest` / `ManifestEntry` ✓，补齐 `ref_id` / `score` / `degraded` ✓）；`budget.py` 改为**导入**它 ✓（不再自己定义 ✗✗） | — | 0 | — |
+| | C-02 **迁移 0047** | ✅ **已达成** —— `rolling_summary` 列 + `session_context_manifests` 表 + **三步回填** ✓（dev 库已确认存在 ✓）。⚠️ **不清 `metadata['rolling_summary']`** ✓（旧路径仍是当前唯一写者 ✗ → 清理归 Stage 4 之后 ✓） | — | 0 | **0046 已落 ✓** |
+| | C-03 `tokens.py` | ✅ **已达成**（2026-10-30）—— `context/tokens.py` **按语种估算的唯一实现** ✓；**旧路径 `adapter/graph/state.py` 改调它** ✓（不再 `len//4` 一刀切 ✗✗ —— 中文不再被低估 4 倍 ✓）；单元测试 ✓（中/英/混合 ✓ + 对 `tiktoken` 偏差 <15% ✓ + **新旧差异 <10%** ✓ 实测 0% ✓）。⚠️ **压缩触发点因此前移** ✓（中文会话更早压缩 ✓） | — | 0 | — |
+| | C-04 打点本层旧入口 | ✅ **已达成** —— X8 / X9 打点已有 ✓（`runner.py:569` / `runner.py:212` ✓）；X10 的旧入口**已随 Session Stage 5b 删除** ✓ → 打点自然归零 ✓ | — | 0 | 前置 C2 ✓ |
 | Stage 1 · Builder | C-05 `ContextBuilder` | 固定优先级拼装 → `[{role, content}]` | — | 0 | Stage 0 |
 | | C-06 agent prompts 完整接入 | 修「agent 身份不生效」 | — | 0 | C-05 |
 | | C-07 单段式 prompt 渲染 | 合并四套模板 | — | 0 | C-05 |

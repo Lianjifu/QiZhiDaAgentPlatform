@@ -641,6 +641,22 @@ UPDATE agent_sessions s
 **验收**：**新旧两条路径的 token 估算口径一致** —— 同一批中文 / 英文 / 混合语料上，`tokens.py`（按语种）与旧路径 `state.py:24` 的估算差异 **< 10%**；且中文语料上与 `tiktoken` 的偏差 < 15%（**tiktoken 仅作测试期对照，不进生产依赖**）。
 **验收补充**：本层每个台账条目的旧入口都有打点；`/metrics` 能查到 `qzdap_legacy_calls_total`。
 
+#### 实施记录（2026-10-30 · Stage 0：契约与迁移）
+
+| 项 | 结果 |
+|---|---|
+| `context/tokens.py` | **按语种估算的唯一实现** ✓（CJK 1 字 1 token ✓ + 其余 4 字符 1 token ✓）；另带 `estimate_message_tokens` ✓（把**工具调用**也算进去 ✓ —— 它同样进上下文 ✓） |
+| `context/types.py` | `AssembledContext` / `ContextManifest` / `ManifestEntry` ✓ —— 补齐 **``ref_id`` / ``score`` / ``degraded``** 三个字段 ✓（`filtered_reason` 早就存在 ✓）；来源枚举固化为 `CONTEXT_SOURCES` ✓ |
+| `budget.py` | **不再自己定义**估算与契约类型 ✓ —— 改为从 `tokens.py` / `types.py` **导入** ✓（两份算法 = 口径又分叉 ✗✗）；文件本身**待拆**（Stage 1 → `builder.py` ✓、Stage 2 → `compressor.py` ✓、**Stage 5 整个删掉** ✓） |
+| **旧路径改用共享函数** | `adapter/graph/state.py` 的 `estimate_tokens` **不再按 `len // 4` 一刀切** ✗✗ —— 改调契约层的按语种估算 ✓（决策 #2 ✓）。⚠️ **中文不再被低估约 4 倍** ✓ —— 这会**改变压缩触发点** ✓（中文会话更早触发压缩 ✓，方向是对的 ✓：预算控制的意义是「不撞窗口」✓） |
+| 空内容 | 旧实现记 1 token ✗（白占预算 ✗）→ 现在记 **0** ✓ |
+| 迁移 0047 | ✅ **已落地并 apply** ✓（`session_context_manifests` 表 + `agent_sessions.rolling_summary` 列 ✓ —— dev 库已确认存在 ✓） |
+| 打点 | X8 / X9 已有 ✓（`runner.py:569` / `runner.py:212` ✓）；X10 的旧入口（`prompts.py`）**已随 Stage 5b 删除** ✓ → 打点自然归零 ✓（台账已记「已清理」✓） |
+| 测试 | 契约层 10 条 ✓（中/英/混合语料 + 空串 + 工具调用 + **对 `tiktoken` 的偏差 < 15%** ✓ —— 中文实测 3.6% ✓）；模块侧 5 条 ✓（**新旧两条路径差异 < 10%** ✓ —— 实测 **0%** ✓，因为它们调的是同一个函数 ✓） |
+| 依赖 | `tiktoken` 只进 **dev extras** ✓（仅测试期对照 ✓ —— 不进生产依赖 ✓） |
+
+⚠️ **契约层的 `context/` 子包现在**被生产代码引用**了** ✓（`adapter/graph/state.py` ✓）—— 台账 **X1**（整包未接线）就这一块而言**不再是「整包未接线」** ✓。
+
 ### Stage 1：Builder 落地（以旧路径为基准）
 
 | 动作 | 细节 |
