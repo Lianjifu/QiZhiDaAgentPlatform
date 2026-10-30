@@ -738,6 +738,21 @@ UPDATE agent_sessions s
 **旧代码减少**：**行数减少 0**（本 Stage 只搬写入点）—— **写入点迁移**：`metadata['rolling_summary']` → 新列（旧写入点在 `copilot.py:379-380` 与 `runner.py`，**等 Stage 4 停用旧循环后才归零**）。⚠️ **旧写入点还归不了零** —— 它们在 `copilot.py:379-380` 与 `runner.py`（Session / Agent 的文件），要等旧循环退役（Stage 4 停用 + Agent A-26）才归零；本层只保证**新链路不再写 `metadata`**。
 **验收**：任一轮都能查出它的每次模型调用的上下文组成与淘汰原因。
 
+#### 实施记录（2026-10-30 · Stage 3：Persistence 落地）
+
+| 项 | 结果 |
+|---|---|
+| 契约端口 | `context/persistence.py` 的 `ContextManifestStore` ✓ —— **不引框架** ✓（SQL 实现在模块侧 ✓） |
+| 模块实现 | `adapter/persistence/context_manifest_store.py` 的 `PostgresContextManifestStore` ✓ —— 落 `session_context_manifests` ✓ + 写 `agent_sessions.rolling_summary` ✓ |
+| 表结构 | 迁移 **0047** ✓（`manifest` JSONB + `tokens_total` + `degraded` JSONB ✓ + `UNIQUE (turn_id, step)` ✓） |
+| **一次模型调用一条** | 按 `(turn_id, step)` 落 ✓（决策 #6 ✓）—— ReAct 一轮里多次调用 → 多个 step ✓ |
+| **冲突即 bug** | 同一个 `(turn_id, step)` 落两次 → **抛错** ✓（不静默覆盖 ✗✗）；⚠️ 落库后**立刻 flush** ✓ —— 否则唯一约束要到**提交时**才报 ✗✗（那时报出来的是 DB 的错，不是「这是 bug」✗） |
+| **manifest 不是事件** | **不进 outbox** ✓、不投递 ✓（§5.3 ✓）—— 面向审计 / 评测 / 排障 ✓ |
+| 摘要新落点 | `save_rolling_summary` 写**新列** ✓（`agent_sessions.rolling_summary` ✓）；⚠️ 旧副本在 `metadata` 里 ✓ —— **不清** ✓（旧路径仍是当前写者 ✗ → 清理归 Stage 4 之后 ✓） |
+| 租户隔离 | 摘要写入**按租户过滤** ✓ —— 越权写不到别人的会话 ✓（测试断言 ✓） |
+| **只新建，不动调用点** | ✅ 本 Stage **没有**接线 ✓ —— 落库时机「**必须在交付模型之前**」（§5.2 ✓）是**接线阶段**的责任 ✓ → 归 Stage 4 ✓（前置 = Agent A-26 ✗） |
+| 测试 | 真库 5 条 ✓（内容落位 ✓ / 同 step 冲突报错 ✓ / 多 step 多行 ✓ / 摘要进新列 ✓ / 跨租户写不到 ✓） |
+
 ### Stage 4：接线与端到端
 
 | 动作 | 细节 |

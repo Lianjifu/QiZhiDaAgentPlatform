@@ -559,9 +559,9 @@
 | | C-15 真正的降级序 | ✅ **已达成** —— 一级摘要 → 二级确定性窗口 → **明确错误** ✓；⚠️ 降级时**追加**而不是覆盖旧摘要 ✓；工具结果清洗（截 1500 字 ✓）复刻旧路径 ✓ |
 | | C-16 `context_compacted` 事件 | ✅ **已达成** —— `ContextCompactedChunk` 补 `degraded: bool = False` ✓（决策 #7 ✓ 可选字段 ✓）；旧路径的 **`tokens_before=0` 修掉** ✓（改成压缩前的真实 token 数 ✓） |
 | | C-17 **只新建，不动调用点** | ✅ **已达成**（2026-10-30）—— 旧路径 `compact.py` **仍在服役** ✓；Compressor 因此**暂时没有生产调用方** ✓ → 接线归 Stage 4 ✓（前置 = Agent A-26 ✗，归「未接管」表 ✓） |
-| Stage 3 · Persistence | C-18 manifest 落库 | 按 `(turn_id, step)` | — | 0 | Stage 2 |
-| | C-19 `rolling_summary` 读写迁移 | **新写入**改到新列（旧写入点在 `copilot.py:379-380` 与 `runner.py`，等 Stage 4 停用旧循环后才归零） | — | 0 | C-02 |
-| | C-20 交付前落库 | 保证「模型已回答」时 manifest 一定存在 | — | 0 | C-18 |
+| Stage 3 · Persistence | C-18 manifest 落库 | ✅ **已达成**（2026-10-30，Context Stage 3）—— `ContextManifestStore` 端口（契约层 ✓ 不引框架 ✓）+ `PostgresContextManifestStore`（模块侧 ✓）；按 `(turn_id, step)` ✓（一次模型调用一条 ✓）；**同 step 冲突即抛错** ✓（落库后立刻 flush ✓）；**不进 outbox** ✓ |
+| | C-19 `rolling_summary` 读写迁移 | ✅ **新写入已改到新列** ✓（`save_rolling_summary` ✓）—— ⚠️ 旧写入点（`copilot.py:379-380` 与 `runner.py`）**仍写 `metadata`** ✓ → 归零要等 Stage 4 停用旧循环 ✓ |
+| | C-20 交付前落库 | ⚠️ **端口已就位** ✓（写入时机的约束写进了端口的契约 ✓）—— **真正的「交付前落库」是接线阶段的责任** ✓ → 随 Stage 4 一起做 ✓（前置 = Agent A-26 ✗） |
 | Stage 4 · 接线与端到端 | C-21 Agent Loop 调 Context | 替换「自己拼 messages」 | — | 0 | **Agent Stage 5** |
 | | C-22 召回失败的 degraded 标记 | `recall_degraded` 传到前端（键已在 Gateway §9.0 登记）；⚠️ **前端目前零消费 `flags`** → 需一个前端工作项（Stage 4） | — | 0 | C-08 |
 | | C-23 端到端回归 | 长会话、混合中英文、召回为空、摘要模型故障 | — | 0 | C-21 |

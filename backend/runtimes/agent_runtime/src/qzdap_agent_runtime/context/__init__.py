@@ -30,6 +30,7 @@ from .compressor import (
     ContextTooLargeError,
     SummaryModelPort,
 )
+from .persistence import ContextManifestStore
 from .prompts import (
     DEFAULT_SYSTEM_PROMPT,
     render_agent_prompts,
@@ -59,6 +60,7 @@ __all__ = [
     "ContextBuilder",
     "ContextCompressor",
     "ContextManifest",
+    "ContextManifestStore",
     "ContextTooLargeError",
     "InMemorySummaryModel",
     "KnowledgeSearchPort",
