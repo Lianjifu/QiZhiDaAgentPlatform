@@ -4,11 +4,9 @@ Each call:
 
 1. Looks up the ``AgentVersion`` via ``AgentFactoryQueryPort`` so we know
    which ``model_id`` (string) the agent was configured for.
-2. Creates a fresh session against the agent via the agent_runtime's
-   ``CreateSessionUseCase``.
-3. Drains a single turn to completion via
-   ``RunTurnCompletionUseCase`` and returns ``{final_message, ...}`` in
-   the shape the evaluator runner expects.
+2. Creates a fresh session and drains a single turn via the agent_runtime's
+   ``OneShotTurnService`` —— **唯一 turn 实现**（旧的第二套 turn 实现，
+   台账 X2，已删 ✓）。
 
 The adapter raises ``AppError`` on agent_runtime failures so the
 runner can convert them to per-case score errors.
@@ -19,8 +17,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from qzdap.modules.agent_runtime.application.services import (
-    AgentRuntimeService,
+from qzdap.modules.agent_runtime.application.one_shot_turn import (
+    OneShotTurnService,
 )
 from qzdap_kernel.errors import AppError
 from qzdap_schema.ids import (
@@ -43,10 +41,10 @@ class RealSubAgentPort(SubAgentPort):
     def __init__(
         self,
         *,
-        runtime: AgentRuntimeService,
+        one_shot: OneShotTurnService,
         agent_factory: AgentFactoryQueryPort,
     ) -> None:
-        self._runtime = runtime
+        self._one_shot = one_shot
         self._agent_factory = agent_factory
 
     async def run_turn_to_completion(
@@ -89,39 +87,25 @@ class RealSubAgentPort(SubAgentPort):
 
         model_id = version.default_model_id
 
-        # ── create session ────────────────────────────────────────────
-        session = await self._runtime.create_session().execute(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            owner_id=owner_id,
-            agent_id=AgentId(agent_id),  # template UUID re-used as agent id
-            agent_version=str(version.version_tag),
-            metadata={"evaluation": True},
-        )
-
-        # ── drive a single turn to completion ────────────────────────
-        completion = await asyncio.wait_for(
-            self._runtime.run_turn_to_completion().execute(
+        # ── 建会话 + 跑一轮（唯一 turn 实现 ✓）────────────────────────
+        # ⚠️ 会话用**显式的 agent_version**（评测跑的是被测版本 ✓）——
+        # 新链路的会话由 :class:`OneShotTurnService` 建 ✓。
+        turn = await asyncio.wait_for(
+            self._one_shot.run(
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 owner_id=owner_id,
-                session_id=session.id,
+                agent_id=AgentId(agent_id),  # template UUID re-used as agent id
+                agent_version=str(version.version_tag),
                 user_input=user_input,
                 model=model_id,
+                metadata={"evaluation": True},
+                # 关掉会话 —— 别泄漏（与旧实现同口径 ✓）。
+                close_session=True,
             ),
             timeout=timeout_seconds,
         )
-
-        # ── close the session so we don't leak ────────────────────────
-        try:
-            await self._runtime.close_session().execute(
-                tenant_id=tenant_id,
-                workspace_id=workspace_id,
-                owner_id=owner_id,
-                session_id=session.id,
-            )
-        except AppError:  # pragma: no cover — best-effort cleanup
-            pass
+        completion = turn.completion
 
         return {
             "final_message": completion.final_message or "",

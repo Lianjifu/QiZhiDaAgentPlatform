@@ -1,6 +1,7 @@
 # Session 层重构方案
 
-> 版本：1.2（审查修正后 + 按审查结论重排骨架）
+> 版本：1.3（2026-10-30：**Stage 5b 已达成** —— 切 IM 入口到唯一 turn 实现 + 删第二套 turn 实现，与 Gateway Stage 4a 的「切 IM 入口 / 删旧订阅者」**同一个 PR** ✓；台账 **X2 / G9 / R1 已清理** ✓）
+> 沿革：v1.2（审查修正后 + 按审查结论重排骨架）
 > 适用项目：`QiZhiDaAgentPlatform`
 > 状态：**已定稿**（15 条审查问题已修正 + **本轮重排**，逐条见附录 C；附录 A 的 7 条决策于 2026-10-29 逐条确认）
 > 方案集入口：[`README.md`](README.md)
@@ -967,6 +968,37 @@ IM 的事件要进 `session_events`、再由 outbox worker 投递 —— 这正�
 
 **旧代码减少**：第二套 turn 实现（~600 行）—— **这是「两套 turn 实现并存」的终结点**。
 **验收**：IM 渠道上**只剩一套**「跑一轮」的语义；台账 X2 → 已清理。
+
+#### 实施记录（2026-10-30 · Stage 5b：切 IM 入口 + 删第二套 turn 实现）
+
+| 项 | 结果 |
+|---|---|
+| IM 入口 | `dispatch_subscriber.py` **删除** ✓ → 新的 `channel_turn_dispatcher.py`（渠道侧驱动）：解码 → 渠道行 / 服务账号 → **跑一轮** → 出站投递（`ResultSink` ✓） |
+| 会话语义 | **粘性** ✓ —— key = `渠道 id + 聊天 id`（`channel_session_key`）→ `SessionManager.resolve_or_create`（部分唯一索引 ✓ 并发安全 ✓）。**IM 跨消息的上下文因此能续上** ✓（旧行为：每条消息新建会话 → 上下文全丢 ✗，台账 **R1** 已清理 ✓） |
+| turn 实现 | **唯一** ✓ —— `copilot.stream_turn` → 契约层 `TurnRunner`（claim / 幂等 / 取消 / 审批**都在** ✓；旧实现这四样一个都没有 ✗） |
+| 幂等 | **一个来源** ✓ —— 键由 Gateway ③ 派生（`message.idempotency`）→ 会话层消费 ✓。旧路径在驱动里再 claim 一次（**两把键、两个作用域** ✗）→ 撤掉 ✓ |
+| 第二套实现 | `use_cases/run_turn.py`（482 行）+ `run_turn_to_completion.py`（125 行）**删除** ✓；随之空掉的门面 `AgentRuntimeService` + `close_session` / `get_session` **一起删** ✓（copilot 已有同名能力 —— 留着就是第二套 ✗） |
+| 旧调用方 | 三个旧调用方**全部迁到新链路** ✓：子代理（`SubAgentAdapter`）· 评估（`RealSubAgentPort`）· 委派（`DelegateSubagentUseCase`）。「drain 到完成」收敛到**契约层** `session/completion.py` ✓（三处共用同一份 ✓） |
+| 委派用例 | 顺手**修好了**：它原来调 `RunTurnUseCase(sub_service)` —— **签名不对**（照旧会 TypeError ✗ = 委派工具一直是坏的）；应用层的裸 SQL 也改成走端口 ✓ → 架构测试的**豁免表清空** ✓ |
+| 孤儿代码 | `adapter/llm/prompts.py`（四套 system prompt 模板，X10）随 `run_turn.py` **一起删** ✓ —— 它只被那一个文件引用 ✓（留着就是死代码 ✗） |
+| 扫描 | `use_cases\.run_turn` · `RunTurnCompletionUseCase` · `agent_runtime\.application\.services` · `agent_runtime\.adapter\.llm\.prompts` · `dispatch\.dispatch_subscriber` **启用** ✓（植入字面量验证会红 ✓） |
+
+**旧代码减少**：**~1,100 行**（第二套 turn 实现 607 + 门面 70 + 两个会话用例 ~90 +
+旧订阅者 290 + 孤儿模板 120 —— 加上新写的 ~350 行驱动与契约层）。
+
+⚠️ **IM 上还没有「重放」**：重复的 IM 投递会命中幂等 → **不跑第二轮、也不重发** ✓
+（旧路径同样不回 ✓）—— 但「把上一轮的回复再发一遍」要靠事件流重放（web 侧有 ✓），
+IM 侧**未接管**（见下表）。
+
+**仍未接管**：
+
+| # | 事项 | 原因 | 归属 |
+|---|---|---|---|
+| **S-24 / S-26** | outbox dispatcher + worker | **现在才有事件源** ✓（IM 的出站也走 `session_events` 的话要另做）—— 但 outbox 的意义是「投递失败可重试」；IM 出站现在仍是直投（`sink.deliver`）→ 要先把 IM 出站改成**落事件表 + worker 投递** ✓ | Stage 4b（下一轮） |
+| **S-30** | 审批自动过期 | `approvals` 表归**治理域** —— Session 的 sweeper **不该跨域写治理表** ✗ | 治理域 |
+| **S-31** | 审批幂等 | 创建审批在**旧执行器**里（`runner._request_approval`）—— 要等它接上新的挂起落库 ✓ | Agent 层 A-26 |
+| **S-35 / S-36** | `graph_state` 停写 / 旧表 DROP | 前置未满足（≥95% 流量 + ≥7 天只读窗口 + 全量对账差异 = 0）✓ | Stage 6（后续） |
+| **S-21b** | 删 copilot 的薄壳（幂等 + claim + 转发） | 清理窗口 ≥7 天 + 新路径 ≥95% ✓ | Stage 3b（后续） |
 
 ### Stage 6：清理与封口
 

@@ -326,7 +326,7 @@
 | | **G-18a `Gateway.accept` 门面**（①②③）+ ④ 的三个动作 | 编排收进一处：查渠道 → 验签 → 归一化；claim / complete / release 拆给「开始轮次的一方」 | **渠道服务内联的 ②③ 删除**（`_verify_identity` + 归一化段落） | **~70 行** | G-15 |
 | | **G-18b web 入口走门面** | `gateway/web.py`（② principal/租户头、③ 请求体 → 标准消息）+ `container.web_gateway()`；`session_router` 的 SSE 端点改走 `Gateway.accept` | **身份与幂等键各只有一个来源**（原先：端点自取租户头 + copilot 自选键） | **~40 行** | G-18a |
 | | G-19 渠道入站切过来 | `receive_webhook` → `Gateway.accept` → Router | — | 0 | G-18 |
-| | **G-20 切 IM 入口（原子）** | `dispatch_subscriber.py` → `Gateway.accept` → 新链路 | 与 **Session S-30 同 PR**（关注点 #2） | 0（**只切不删**） | G-19 · **Session Stage 5b 同 PR** |
+| | **G-20 切 IM 入口（原子）** | ✅ **已达成**（2026-10-30，Session Stage 5b 同 PR）—— `dispatch_subscriber.py` → `channel_turn_dispatcher.py`（渠道侧驱动）→ Session 层 `ChannelTurnService`（**会话按 `channel_session_key` 粘住** ✓）→ **唯一 turn 实现** ✓ | 与 **Session S-32 同 PR** ✅（关注点 #2） | 0（只切不删） | — |
 | | G-21 `/v1/sessions*` turn 部分停用 + 打点 | — | **G7 / G8** | 0 | G-19 |
 | | G-22 `dispatch_subscriber.py` 停用 + 打点 | — | **G9** | 0 | G-19 |
 | | G-23 重复请求降级路径 | 命中重复但 `session_events` 未就绪 → 202 + `replay_unavailable`（**不静默丢弃**） | — | 0 | G-19 |
@@ -335,7 +335,7 @@
 | | **G-26 重放一致性校验** | `event_digest`（规范化摘要 —— JSONB 不保序，比的不是字节相等）+ seq 连续；真库集成测试断言「copilot 跑一轮 → 事件落库 → 门面重放 → 摘要与原流一致」 | — | 0 | G-24 |
 | | **G-24b Session 侧最小交付（连带落地）** | ⚠️ **方案偏差**（Gateway 附录 C.6 的 **G-31 / G-32**）：Stage 4b 的硬依赖（Session Stage 4「`session_events` 真写真读」）**开工时不满足** —— 表在、**一行没有**。本轮**连带落地**三件事：① `session_turns` **轮次双写**（它是 `session_events.turn_id` 的外键父行）② `session_events` **事件落库**（每 chunk 一行，**先落库再投递**）③ **按 seq 的读取端口**（JOIN 轮次表按租户过滤）+ 迁移 0050 | — | ~250 行 | **Session Stage 0/2/4 的最小部分**（outbox 调度 / 死信 / 保留期仍在 Session Stage 4） |
 | Stage 5 · 清理 | **G-27 删 `/v1/sessions*`（turn 部分 + 列表别名）** | ✅ **已执行**（2026-10-29）：**整个 `adapter/http/router.py` + `mappers.py` 删除**、4 个 DTO 删除、`GET /v1/sessions` 别名删除、`composition/main.py` 挂载删除；仓内调用方（perf 脚本 / 集成测试）同步迁到 `/api` | **G7 / G8** | **~280 行** | ⚠️ 依据是**引用关系**（P-11 确认无仓外消费者），不是指标（偏差 G-38 / G-39） |
-| | **G-28 删 `dispatch_subscriber.py`** | ⚠️ **文件删除归本层**（G9），但**必须与「切 IM 入口」+ Session Stage 5b 同 PR** | **G9** | **~250 行** | 与 **Session S-31 同 PR** |
+| | **G-28 删 `dispatch_subscriber.py`** | ✅ **已达成**（2026-10-30，Session Stage 5b 同 PR）—— 文件**删除** ✓（取代它的是 `channel_turn_dispatcher.py` ✓） | **G9 已清理** ✅ | **~290 行** | — |
 | | G-29 删 `recent_request_ids` 残留列 / 孤儿索引 / 废弃常量 | ✅ **已执行**（2026-10-29）：迁移 **0051**（`metadata - 'recent_request_ids'` + DROP `session_events` 的 `turn_id` 单列索引）—— ⚠️ 它是 **JSONB 里的键**不是列（G-43） | — | 少量 | G-09 |
 | | G-30 启用扫描脚本 Gateway 段 | ✅ **已执行**（2026-10-29）：`backend/scripts/check_no_legacy_impl.sh`（规则表唯一来源 = 台账 §3.1 ✓）+ `.github/workflows/backend.yml` 的 `legacy-scan` job；**8 条 Gateway 规则启用**（G9 仍 off —— 旧实现还在场 ✓） | — | 0 | G-27 |
 | | G-31 更新台账 + 现状文档 | ✅ **已执行**（2026-10-29）：台账（G7 / G8 → 已清理 ✓）+ `docs/copilot-chat-module-architecture.md`（API 表 + 缺陷 #9 ✓）+ 根 `README.md`（API 列表 ✓） | — | 0 | G-30 |
@@ -469,7 +469,7 @@
 | | S-19 成本归属 | ✅ **已具备**（2026-10-30 核对）：`journal.finish_turn(status, cost_usd=...)` 已在写 `session_turns.cost_usd` ✓ | — | 0 | S-16 |
 | | S-20 **切换 web/api 入口** → 新 `turn_runner` | ✅ **已达成**（2026-10-30，Stage 3b）—— web/api 的入口（`session_router.py` → `copilot.stream_turn`）现在**委托**契约层的 `TurnRunner`；copilot 只剩「读 + 组装 + 转发」的薄壳 ✓ | — | 0 | S-16 |
 | | S-21 停用 + 打点 `copilot.py` 的 turn 编排 | ✅ **已达成**（2026-10-30，Stage 3b）—— 旧编排**迁出**（`_fail_turn` / `_publish_chunk` / `_next_seq` / `_auto_title` 全部删除）；旧打点 `record_legacy_call("X18")` **撤除**（旧实现不在场 → 打点该撤 ✓）；**薄壳本身**（幂等 + claim + 转发）的删除落在 **Stage 3b · S-21b**（清理窗口 ≥7 天） | **X18 → 编排已迁出**（关注点 #1） | **~200 行** | S-20 |
-| | S-22 停用 + 打点 `use_cases/run_turn*.py` | ⚠️ **IM 渠道仍在调它** | **X2（IM 侧）→ 已弃用** | — | S-20 |
+| | S-22 停用 + 打点 `use_cases/run_turn*.py` | ✅ **已达成**（2026-10-30，Stage 5b）—— IM 入口切到唯一 turn 实现 ✓ → 两个用例**删除** ✓ → 打点随代码一起撤除 ✓ | **X2 已清理**（关注点 #2） | **~600 行** | S-20 |
 | Stage 3b · 删 Copilot 侧旧 turn 编排 | **S-21b 删 `copilot.py` 的 turn 编排** | ⚠️ **编排已迁出**（2026-10-30，Stage 3b 第一片）：`_fail_turn` / `_publish_chunk` / `_next_seq` / `_auto_title` 都已删 ✓；剩下的是**薄壳**（幂等 accept + claim + 转发）—— 它的删除要等清理窗口 | **X18 → 编排已迁出**（关注点 #1）；薄壳待删 | **~200 行**（已删）· 薄壳 ~60 行 | S-20 · **进入条件**：⚠️ 旧打点已随编排撤除 → 判据改为**引用关系可证**（同 Gateway 附录 C.8 的 G-38 口径）+ 新路径流量 ≥95% |
 | Stage 4 · 事件落库与 outbox | S-23 chunk 写 `session_events` | 先落库再投递 | — | 0 | Stage 3 |
 | | S-24 dispatcher 接线 | 复用 `runtimes/.../outbox/` 的重试与死信 | — | 0 | S-23 |
@@ -480,12 +480,12 @@
 | | **S-29 删 `except Exception: pass`** | ✅ **已提前完成**（2026-10-30，Session Stage 1 —— 台账 **X7 已清理**：改成「记日志 + 再抛」） | **X7 已清理** | **~5 行** | S-28 |
 | | S-30 审批自动过期 | `expire_if_due()` 接入 sweeper | — | 0 | S-27 |
 | | S-31 审批幂等 | 同 `(session_id, tool_call_id, request_hash)` 复用 approval ID | — | 0 | S-27 |
-| Stage 5b · 删第二套 turn 实现 | **S-32 切 IM 入口** | `dispatch_subscriber.py` → 新链路 | 与 **Gateway G-20 同 PR** | 0（**只切不删**） | **Gateway Stage 4a 同 PR** |
-| | **S-33 删 `use_cases/run_turn.py` + `run_turn_to_completion.py`** | — | **X2（IM 侧）**（关注点 #2） | **~600 行** | 与 **Gateway G-20 同 PR** |
+| Stage 5b · 删第二套 turn 实现 | **S-32 切 IM 入口** | ✅ **已达成**（2026-10-30）—— `dispatch_subscriber.py` → `channel_turn_dispatcher.py`（渠道侧驱动）→ Session 层的 `ChannelTurnService`（**会话按 `channel_session_key` 粘住** ✓）→ `copilot.stream_turn` → 契约层 `TurnRunner`（**唯一 turn 实现** ✓） | **与 Gateway G-20 / G-28 同 PR** ✅（IM 未断 ✓） | 0（只切不删） | — |
+| | **S-33 删 `use_cases/run_turn.py` + `run_turn_to_completion.py`** | ✅ **已达成**（2026-10-30）—— 两个用例**删除** ✓；随之空掉的门面 `AgentRuntimeService` + `close_session` / `get_session` 用例**一起删** ✓；「drain 到完成」收敛到契约层 `session/completion.py` ✓（子代理 / 评估 / 委派共用同一份 ✓）；**孤儿的** `adapter/llm/prompts.py` 一并删 ✓（X10 的旧模板） | **X2（IM 侧）已清理** ✅（关注点 #2） | **~800 行**（含门面与用例） | 与 **Gateway G-20 同 PR** ✅ |
 | Stage 6 · 清理与封口 | **S-34 DROP `agent_sessions.wait_status` 列** | ✅ **已达成**（2026-10-30）—— **迁移 0053**（单独迁移 ✓，不与 0046 合并）；ORM 不再映射 ✓ → **代码不再依赖这一列**（DROP 与否都不影响运行 ✓）。⚠️ dev 库待连接释放后 `make db-upgrade`（迁移 0052 / 0053） | **X6 已清理**（关注点 #23） | **1 列** | 读端已改成从轮次表推导 ✓ |
 | | **S-35 停写并废弃 `agent_sessions.graph_state`** | 保留 ≥95% 流量后 ≥7 天的只读期 | **X3**（关注点 #22） | **1 列** | 与 S-34 同 PR |
 | | **S-36 迁数据 + DROP `agent_turns` / `agent_session_messages`** | — | **X4**（关注点 #21） | **2 张表** | **独占（删表）**。前置四条全满足：① 切读（S-15a）已完成；② **新旧表全量对账差异 = 0**；③ **只读窗口 ≥7 天**（S-15b 停旧写之后）；④ 备份恢复**演练过** |
-| | S-37 启用扫描脚本 Session 段 | 台账 X2/X3/X4/X6/X7 段（**X18 的规则在 Stage 3b 随删除一起启用**） | — | 0 | S-33 · S-21b |
+| | S-37 启用扫描脚本 Session 段 | ⚠️ **部分达成**（2026-10-30）：**X2 / X6 / X18 段已启用** ✓（X6 在 Stage 6a、X2 在 Stage 5b）；**X3 / X4 段仍关着** —— 那两条的旧实现还在场（`graph_state` 仍在写 ✓、旧表仍在双写 ✓），关着才是对的 ✓ | X3 / X4 未清理（关注点 #21/#22） | 0 | S-33 · S-21b |
 | | S-38 更新台账 + 现状文档 | — | — | 0 | S-37 |
 
 **退出判据**（本层完成 = 里程碑 **M1 + M2**）：
@@ -1125,10 +1125,10 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] G-15 4 个 inbound adapter · G-16 附件统一
 - [x] G-17 **删 `ParsedMessage` + `ChannelMessageReceived` + IM LRU** → **G4 / G5 / G6**
 - [x] G-18 `ResultSink` · G-19 渠道入站切过来
-- [ ] **G-20 切 IM 入口**（与 **S-32 同 PR**）—— ⏳ **未接管**：IM 仍走旧路径，等 Session 的「唯一 turn 实现」
+- [x] **G-20 切 IM 入口**（与 **S-32 同 PR**）—— ✅ **2026-10-30 达成**（Session Stage 5b 同 PR）：IM 走唯一 turn 实现 ✓
 - [x] G-21 `/v1/sessions*` 停用打点（随后随 Stage 5 删除 ✓）· G-22 `dispatch_subscriber.py` 停用打点 · G-23 重复请求降级路径（Stage 4b 已删除，改重放 ✓）
 - [x] G-24 `Last-Event-ID` 重放 · G-25 降级路径移除 · G-26 重放一致性校验
-- [x] G-27 **删 `/v1/sessions*`** → **G7 / G8** · G-28 **删 `dispatch_subscriber.py`** → **G9** —— ⏳ **未接管**（与 **S-33 同 PR**）
+- [x] G-27 **删 `/v1/sessions*`** → **G7 / G8** · G-28 **删 `dispatch_subscriber.py`** → **G9** —— ✅ **2026-10-30 达成**（与 **S-33 同 PR** ✓，取代它的是 `channel_turn_dispatcher.py`）
 - [x] G-29 残留列 / 孤儿索引 · G-30 启用扫描脚本 Gateway 段 · G-31 更新台账 + 现状文档
 
 ### Router 层（§3.2）—— **删除 R1–R4**
@@ -1150,17 +1150,17 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] S-08 `resolve_or_create` · **S-08b `lookup`（只读，Router 粘性依据）** · S-09 `close`/`archive` · S-10 sweeper 骨架 · S-11 **删 `try_claim` 的 `wait_status` 分支**
 - [ ] S-12 `ingress_seq` · S-13 `session_seq` · S-14 checkpoint 接线 · S-15 启用新表写入
 - [ ] S-16 `turn_runner.py` 落地 · S-17 轮次幂等 · S-18 取消 · S-19 成本归属 · S-20 **切 web/api 入口**
-- [ ] S-21 停用打点 `copilot.py` turn 编排 → **X18** · S-22 停用打点 `use_cases/run_turn*.py` → **X2（IM 侧）**
+- [x] S-21 停用打点 `copilot.py` turn 编排 → **X18** ✅ · S-22 停用打点 `use_cases/run_turn*.py` → **X2（IM 侧）** ✅ 2026-10-30
 - [ ] **S-21b 删 `copilot.py` 的 turn 编排** → **X18 已清理**（Stage 3b；进入条件：指标归零 ≥7 天 + 新路径 ≥95%）
 - [ ] S-23 chunk 写 `session_events` · S-24 dispatcher 接线 · S-25 `Last-Event-ID` 重放 · S-26 outbox worker 接线
 - [x] S-27 审批挂起落库 · S-28 5 项恢复校验（**2026-10-30 完成，Stage 5a** ✓）
 - [x] S-29 **删 `except Exception: pass`** → **X7**（**2026-10-30 已提前完成**，Session Stage 1 ✓）
 - [ ] S-30 审批自动过期（**归治理域** —— approvals 表不归 Session 管；Session 的 sweeper 不该跨域写治理表 ✗）· S-31 审批幂等（同 `(session_id, tool_call_id, request_hash)` 复用 approval ID —— 创建审批在**旧执行器**里（`runner._request_approval`），要等 Agent 层 A-26 才接得上 ✓）
-- [ ] S-32 **切 IM 入口**（与 **G-20 同 PR**）· S-33 **删 `use_cases/run_turn.py` + `run_turn_to_completion.py`** → **X2**
+- [x] S-32 **切 IM 入口**（与 **G-20 同 PR**）✅ 2026-10-30 · S-33 **删 `use_cases/run_turn.py` + `run_turn_to_completion.py`** → **X2** ✅ 2026-10-30
 - [ ] S-15 **双写启用** · **S-15a 切读新表** · **S-15b 停旧写（双写结束）**
 - [x] S-34 **DROP `wait_status`** → **X6** ✅ 2026-10-30（迁移 0053）
 - [ ] S-35 **停写并废弃 `graph_state`** → **X3** · S-36 **迁数据 + DROP 旧表** → **X4**（前置：切读完成 + 全量对账差异 = 0 + 只读窗口 ≥7 天 + 备份恢复演练过）
-- [ ] S-37 启用扫描脚本 Session 段 · S-38 更新台账 + 现状文档
+- [x] S-37 启用扫描脚本 Session 段（**X2 / X6 / X18 段已启用** ✅；X3 / X4 段待旧实现删除）· S-38 更新台账 + 现状文档 ✅
 
 ### Context 层（§3.4）—— **删除 X8 / X9 / X10**
 - [ ] C-01 `context/` 骨架 · C-02 **迁移 0047** · C-03 `tokens.py` · C-04 打点 X8–X10

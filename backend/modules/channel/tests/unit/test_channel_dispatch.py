@@ -1,7 +1,10 @@
-"""Unit tests for ``ChannelDispatchSubscriber``.
+"""Unit tests for ``ChannelTurnDispatcher``.
 
-覆盖：入站消息还原、幂等 claim（取代旧的进程内 LRU）、渠道缺失、
-服务账号物化、出站回写与失败释放。
+覆盖：入站消息还原、渠道缺失、服务账号物化、**会话粘性**（channel_session_key）、
+出站回写与失败不炸总线。
+
+⚠️ **幂等不再由这里做** —— 键由 Gateway ③ 派生、由会话层消费 ✓（同一个平台
+消息重投 → 会话层判重 → 不跑第二轮 ✓）。这里只负责「把消息变成一轮」。
 """
 
 from __future__ import annotations
@@ -12,22 +15,19 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from qzdap.modules.channel.adapter.dispatch.dispatch_subscriber import (
+from qzdap.modules.channel.adapter.dispatch.channel_turn_dispatcher import (
     INBOUND_MESSAGE_EVENT,
-    ChannelDispatchSubscriber,
+    ChannelTurnDispatcher,
 )
 from qzdap.modules.channel.adapter.outbound.result_sink import ChannelResultSink
-from qzdap_agent_runtime.gateway.facade import Gateway
-from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard, InboxScope
-from qzdap_agent_runtime.gateway.identity import HmacWebhookVerifier
 from qzdap_agent_runtime.gateway.types import (
     ActorContext,
     ChannelType,
-    IdempotencyDecision,
     IdempotencyKey,
     InboundMessage,
     KeySource,
 )
+from qzdap_agent_runtime.session.channel_turn import ChannelTurnResult
 
 
 class _FakeChannelRepo:
@@ -68,60 +68,30 @@ class _FakeChannel:
         )
 
 
-class _FakeAgentRuntime:
+class _FakeTurnService:
+    """``ChannelTurnPort`` 的假实现 —— 记录它收到的那一轮 ✓。"""
+
     def __init__(self) -> None:
-        self.created_sessions: list[dict] = []
-        self.turns: list[dict] = []
+        self.requests: list[Any] = []
         self.fail = False
 
-    class _Sessions:
-        def __init__(self, outer: _FakeAgentRuntime) -> None:
-            self._outer = outer
-
-        async def execute(self, **kwargs: Any) -> Any:  # type: ignore[no-untyped-def]
-            session = _FakeSession(uuid4())
-            self._outer.created_sessions.append({"session": session, **kwargs})
-            return session
-
-    class _Turns:
-        def __init__(self, outer: _FakeAgentRuntime) -> None:
-            self._outer = outer
-
-        async def execute(self, **kwargs: Any) -> Any:  # type: ignore[no-untyped-def]
-            from qzdap.modules.agent_runtime.application.use_cases.run_turn_to_completion import (
-                RunTurnCompletionResult,
-            )
-
-            if self._outer.fail:
-                raise RuntimeError("boom")
-            self._outer.turns.append(kwargs)
-            return RunTurnCompletionResult(
-                final_message="hi back",
-                turn_id=uuid4(),
-                input_tokens=0,
-                output_tokens=0,
-                cache_read_tokens=0,
-                cache_write_tokens=0,
-            )
-
-    def create_session(self) -> _Sessions:  # type: ignore[no-untyped-def]
-        return _FakeAgentRuntime._Sessions(self)
-
-    def run_turn_to_completion(self) -> _Turns:  # type: ignore[no-untyped-def]
-        return _FakeAgentRuntime._Turns(self)
+    async def run(self, request: Any) -> ChannelTurnResult:  # type: ignore[no-untyped-def]
+        if self.fail:
+            raise RuntimeError("boom")
+        self.requests.append(request)
+        return ChannelTurnResult(
+            session_id=uuid4(),
+            final_message="hi back",
+            turn_id=uuid4(),
+        )
 
 
-class _FakeSession:
-    def __init__(self, id: UUID) -> None:
-        self.id = id
+class _FakeTurnFactory:
+    def __init__(self, service: _FakeTurnService) -> None:
+        self._service = service
 
-
-class _FakeAgentRuntimeFactory:
-    def __init__(self, runtime: _FakeAgentRuntime) -> None:
-        self._runtime = runtime
-
-    def for_session(self, session: Any) -> _FakeAgentRuntime:  # type: ignore[no-untyped-def]
-        return self._runtime
+    def for_session(self, session: Any) -> _FakeTurnService:  # type: ignore[no-untyped-def]
+        return self._service
 
 
 class _FakeBus:
@@ -153,94 +123,24 @@ class _CtxMgr:
         return None
 
 
-class _FakeStore:
-    """``IdempotencyStore`` 的内存实现 —— 认 strong 键的重复。"""
-
-    def __init__(self) -> None:
-        self.rows: dict[tuple[Any, ...], IdempotencyDecision] = {}
-        self.completed: list[UUID] = []
-        self.released: list[UUID] = []
-
-    async def claim(
-        self,
-        scope: InboxScope,
-        key: IdempotencyKey,
-        *,
-        payload_hash: str,
-        external_message_id: str | None,
-        trace_id: str,
-    ) -> IdempotencyDecision:
-        row_key = (scope.tenant_id, scope.workspace_id, scope.channel_id, key.value)
-        existing = self.rows.get(row_key)
-        if existing is not None:
-            return IdempotencyDecision(
-                outcome="duplicate",
-                key_strength=key.strength,
-                row_id=existing.row_id,
-                status="completed",
-            )
-        decision = IdempotencyDecision(
-            outcome="new",
-            key_strength=key.strength,
-            row_id=uuid4(),
-            status="claimed",
-        )
-        self.rows[row_key] = decision
-        return decision
-
-    async def record_weak(
-        self,
-        scope: InboxScope,
-        key: IdempotencyKey,
-        *,
-        payload_hash: str = "",
-        trace_id: str = "",
-    ) -> IdempotencyDecision:
-        decision = IdempotencyDecision(
-            outcome="new",
-            key_strength="weak",
-            row_id=uuid4(),
-            status="claimed",
-        )
-        return decision
-
-    async def mark_completed(self, row_id: UUID, *, turn_id: UUID | None = None) -> None:
-        self.completed.append(row_id)
-
-    async def release(self, row_id: UUID) -> None:
-        self.released.append(row_id)
-
-
-def _make_subscriber(
+def _make_dispatcher(
     *,
     channel: Any | None,
     outbound: dict | None = None,
-    runtime: _FakeAgentRuntime | None = None,
+    service: _FakeTurnService | None = None,
 ) -> tuple[
-    ChannelDispatchSubscriber, _FakeBus, _FakeChannelRepo, _FakeAgentRuntime, _FakeStore
+    ChannelTurnDispatcher, _FakeBus, _FakeChannelRepo, _FakeTurnService
 ]:
     repo = _FakeChannelRepo(channel)
     bus = _FakeBus()
-    rt = runtime or _FakeAgentRuntime()
-    factory = _FakeAgentRuntimeFactory(rt)
-    session = _FakeSession(uuid4())
-    store = _FakeStore()
-    # ①②③ 的门面 —— 消费方只用它的 ④（claim / complete / release）。
-    gateway = Gateway(
-        channels=None,
-        identity=HmacWebhookVerifier(),
-        normalizers={},
-        idempotency=IdempotencyGuard(store),
-    )
-    subscriber = ChannelDispatchSubscriber(
+    svc = service or _FakeTurnService()
+    dispatcher = ChannelTurnDispatcher(
         channel_repository=repo,
-        agent_runtime_factory=factory,
+        turn_factory=_FakeTurnFactory(svc),
         sink=ChannelResultSink(outbound_registry=outbound or {}),
-        clock=None,
-        open_session=lambda: _CtxMgr(session),
-        gateway=gateway,
+        open_session=lambda: _CtxMgr(object()),
     )
-    return subscriber, bus, repo, rt, store
+    return dispatcher, bus, repo, svc
 
 
 def _msg(**overrides: Any) -> InboundMessage:
@@ -275,92 +175,104 @@ def _msg(**overrides: Any) -> InboundMessage:
 @pytest.mark.asyncio
 async def test_subscribes_by_event_class_name() -> None:
     """总线按**类名**路由 —— 按 dotted topic 订阅是旧实现的真实缺陷。"""
-    sub, bus, *_ = _make_subscriber(channel=None)
-    await sub.install(bus)
+    dispatcher, bus, *_ = _make_dispatcher(channel=None)
+    await dispatcher.install(bus)
     assert INBOUND_MESSAGE_EVENT == "InboundMessage"
     assert list(bus.subs) == ["InboundMessage"]
 
 
 @pytest.mark.asyncio
-async def test_duplicate_message_runs_only_one_turn() -> None:
-    """同一平台消息投递两次 → **只起一轮**（旧的进程内 LRU 已被取代）。"""
-    sub, bus, _, rt, store = _make_subscriber(
-        channel=_FakeChannel(ChannelType.WEB, uuid4())
-    )
-    await sub.install(bus)
-    handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
-    payload = _msg()._as_payload_dict()
-    await handler({"payload": payload})
-    await handler({"payload": payload})
-    assert len(rt.created_sessions) == 1
-    assert len(rt.turns) == 1
-    assert len(store.completed) == 1
-
-
-@pytest.mark.asyncio
-async def test_a_failed_turn_releases_the_key() -> None:
-    """这一轮没跑起来 → 键不该被消费（平台重投还能被受理）。"""
-    rt = _FakeAgentRuntime()
-    rt.fail = True
-    sub, bus, _, _, store = _make_subscriber(
-        channel=_FakeChannel(ChannelType.WEB, uuid4()), runtime=rt
-    )
-    await sub.install(bus)
-    handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
-    await handler({"payload": _msg()._as_payload_dict()})
-    assert len(store.released) == 1
-    assert store.completed == []
-
-
-@pytest.mark.asyncio
-async def test_channel_not_found_drops_event() -> None:
-    sub, bus, repo, rt, _ = _make_subscriber(channel=None)
-    await sub.install(bus)
-    handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
-    await handler({"payload": _msg()._as_payload_dict()})
-    assert repo.calls == 1
-    assert rt.created_sessions == []
-
-
-@pytest.mark.asyncio
-async def test_run_turn_uses_the_channels_service_account() -> None:
+async def test_the_turn_uses_the_channels_service_account() -> None:
     """IM 的 actor 由**渠道登记的服务账号**物化 —— 不再是全局常量（台账 G3）。"""
-    sub, bus, _, rt, _ = _make_subscriber(
+    dispatcher, bus, _, svc = _make_dispatcher(
         channel=_FakeChannel(ChannelType.WEB, uuid4())
     )
-    await sub.install(bus)
+    await dispatcher.install(bus)
     handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
     await handler({"payload": _msg()._as_payload_dict()})
-    assert len(rt.created_sessions) == 1
-    owner_id = rt.created_sessions[0]["owner_id"]
-    assert str(owner_id) == str(_SERVICE_USER_ID)
-    agent_id = rt.created_sessions[0]["agent_id"]
-    assert str(agent_id) == str(_SERVICE_AGENT_ID)
-    assert rt.created_sessions[0]["agent_version"] == _SERVICE_AGENT_VERSION
-    assert len(rt.turns) == 1
+    assert len(svc.requests) == 1
+    request = svc.requests[0]
+    assert str(request.owner_id) == str(_SERVICE_USER_ID)
+    assert str(request.agent_id) == str(_SERVICE_AGENT_ID)
+    assert request.agent_version == _SERVICE_AGENT_VERSION
+
+
+@pytest.mark.asyncio
+async def test_the_session_key_is_sticky_per_channel_and_chat() -> None:
+    """**同一个渠道 + 同一个聊天 = 同一个会话** ✓（台账 R1）。
+
+    ⚠️ 过去 IM 每条消息新建会话 —— 跨消息没有上下文 ✗。
+    """
+    channel_id = uuid4()
+    dispatcher, bus, _, svc = _make_dispatcher(
+        channel=_FakeChannel(ChannelType.WEB, uuid4())
+    )
+    await dispatcher.install(bus)
+    handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
+    for _ in range(2):
+        await handler(
+            {
+                "payload": _msg(
+                    channel_id=channel_id, external_chat_id="chat-9"
+                )._as_payload_dict()
+            }
+        )
+    assert len(svc.requests) == 2
+    keys = {request.channel_session_key for request in svc.requests}
+    assert keys == {f"{channel_id}:chat-9"}
+
+
+@pytest.mark.asyncio
+async def test_different_chats_get_different_session_keys() -> None:
+    """不同的聊天 → 不同的会话 ✓（粘性是**按 chat** 的，不是按渠道）。"""
+    channel_id = uuid4()
+    dispatcher, bus, _, svc = _make_dispatcher(
+        channel=_FakeChannel(ChannelType.WEB, uuid4())
+    )
+    await dispatcher.install(bus)
+    handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
+    for chat in ("chat-a", "chat-b"):
+        await handler(
+            {
+                "payload": _msg(
+                    channel_id=channel_id, external_chat_id=chat
+                )._as_payload_dict()
+            }
+        )
+    keys = {request.channel_session_key for request in svc.requests}
+    assert len(keys) == 2
 
 
 @pytest.mark.asyncio
 async def test_a_channel_without_a_service_account_does_not_run_a_turn() -> None:
     """渠道没登记服务账号 → **不跑这一轮**（配置问题，不是请求问题）。"""
-    sub, bus, _, rt, _ = _make_subscriber(
+    dispatcher, bus, _, svc = _make_dispatcher(
         channel=_FakeChannel(ChannelType.WEB, uuid4(), service_account=None)
     )
-    await sub.install(bus)
+    await dispatcher.install(bus)
     handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
     await handler({"payload": _msg()._as_payload_dict()})
-    assert rt.created_sessions == []
-    assert rt.turns == []
+    assert svc.requests == []
+
+
+@pytest.mark.asyncio
+async def test_channel_not_found_drops_event() -> None:
+    dispatcher, bus, repo, svc = _make_dispatcher(channel=None)
+    await dispatcher.install(bus)
+    handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
+    await handler({"payload": _msg()._as_payload_dict()})
+    assert repo.calls == 1
+    assert svc.requests == []
 
 
 @pytest.mark.asyncio
 async def test_outbound_adapter_invoked_with_reply() -> None:
     outbound = {"web": _FakeOutboundAdapter("web")}
-    sub, bus, *_ = _make_subscriber(
+    dispatcher, bus, *_ = _make_dispatcher(
         channel=_FakeChannel(ChannelType.WEB, uuid4()),
         outbound=outbound,
     )
-    await sub.install(bus)
+    await dispatcher.install(bus)
     handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
     await handler({"payload": _msg()._as_payload_dict()})
     adapter = outbound["web"]
@@ -371,19 +283,32 @@ async def test_outbound_adapter_invoked_with_reply() -> None:
 
 @pytest.mark.asyncio
 async def test_missing_outbound_adapter_drops_reply_silently() -> None:
-    sub, bus, *_ = _make_subscriber(
+    dispatcher, bus, *_ = _make_dispatcher(
         channel=_FakeChannel(ChannelType.WEB, uuid4()),
         outbound={},
     )
-    await sub.install(bus)
+    await dispatcher.install(bus)
+    handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
+    await handler({"payload": _msg()._as_payload_dict()})  # should not raise
+
+
+@pytest.mark.asyncio
+async def test_a_failed_turn_does_not_break_the_bus() -> None:
+    """这一轮炸了 → **记日志、不炸总线** ✓（旧实现也是这个口径）。"""
+    service = _FakeTurnService()
+    service.fail = True
+    dispatcher, bus, *_ = _make_dispatcher(
+        channel=_FakeChannel(ChannelType.WEB, uuid4()), service=service
+    )
+    await dispatcher.install(bus)
     handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
     await handler({"payload": _msg()._as_payload_dict()})  # should not raise
 
 
 @pytest.mark.asyncio
 async def test_invalid_payload_logged_and_skipped() -> None:
-    sub, bus, repo, _, _ = _make_subscriber(channel=None)
-    await sub.install(bus)
+    dispatcher, bus, repo, *_ = _make_dispatcher(channel=None)
+    await dispatcher.install(bus)
     handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
     await handler({"payload": {"unexpected": "shape"}})
     assert repo.calls == 0

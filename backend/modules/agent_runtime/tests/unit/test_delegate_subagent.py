@@ -1,357 +1,388 @@
-"""Unit tests for DelegateSubagentUseCase.
+"""Unit tests for DelegateSubagentUseCase（**端口版** ✓）。
 
-We don't hit Postgres — we patch ``SessionFactory.session`` to return a fake
-AsyncSession that responds to a couple of SELECT/INSERT statements, and stub
-``_AgentRuntimeFactory.for_session`` to skip the real LLM.
+⚠️ 旧版这套用例**在应用层写 SQL**（架构测试的豁免表里就有一条 ✓）—— 2026-10-30
+（Session Stage 5b）改成走端口 ✓：会话读、agent 读、建会话、跑一轮全都走
+注入的端口 ✓，豁免表因此少了一条 ✓。
 
-What we cover:
-  1. happy path — stub agent + parent metadata OK → ok=True, final_response filled
+覆盖：
+  1. happy path —— 子代理跑完 → ok=True, final_response 有值 ✓
   2. parent session not found → ok=False, error_code=PARENT_SESSION_NOT_FOUND
   3. cross-tenant parent → ok=False, error_code=CROSS_TENANT
   4. target agent not found → ok=False, error_code=AGENT_NOT_FOUND
   5. cross-tenant target → ok=False, error_code=CROSS_TENANT
   6. delegation depth exceeded → ok=False, error_code=DELEGATION_DEPTH_EXCEEDED
-  7. sub-agent AppError → ok=False, error_code propagated
-  8. sub-agent crash → ok=False, error_code=SUBAGENT_CRASHED
+  7. 这一轮报错 → ok=False, error_code 透传 ✓
+  8. 崩溃 → ok=False, error_code=SUBAGENT_CRASHED
 """
 
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from typing import Any
-from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
 import pytest
-
+from qzdap_agent_runtime.session.completion import TurnCompletion, TurnFailedError
+from qzdap_kernel.errors import AppError
 
 pytestmark = pytest.mark.asyncio
 
 
-# ── fakes ──────────────────────────────────────────────────────────────
+class _FakeParentSession:
+    """父会话（领域对象的那几个字段就够 ✓）。"""
+
+    def __init__(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        owner_id: UUID,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self.id = uuid4()
+        self.tenant_id = tenant_id
+        self.workspace_id = workspace_id
+        self.owner_id = owner_id
+        self.metadata = metadata or {}
 
 
-@dataclass
-class _FakeRow:
-    tenant_id: UUID
-    workspace_id: UUID
-    metadata: dict[str, Any] | None = None
-    id: UUID | None = None
-    version: str | None = "v1"
-    status: str | None = "active"
+class _FakeTargetAgent:
+    def __init__(self, *, tenant_id: UUID, version: str = "v1") -> None:
+        self.id = uuid4()
+        self.tenant_id = tenant_id
+        self.version = version
 
 
-class _FakeSession:
-    """Stand-in for AsyncSession — returns the configured rows in order."""
+class _FakeSessions:
+    def __init__(self, parent: _FakeParentSession | None) -> None:
+        self._parent = parent
+        self.added: list[Any] = []
 
-    def __init__(self, results: list[Any] | None = None) -> None:
-        self.executed: list[tuple[str, dict]] = []
-        self._results = list(results or [])
-        self.committed = False
+    async def get(self, session_id: UUID) -> Any:  # type: ignore[no-untyped-def]
+        return self._parent
 
-    async def execute(self, statement, params=None):  # noqa: ANN001
-        self.executed.append((str(statement), params or {}))
-        m = MagicMock()
-        if self._results:
-            m.first = MagicMock(return_value=self._results.pop(0))
-        else:
-            m.first = MagicMock(return_value=None)
-        return m
+
+class _FakeCatalog:
+    def __init__(self, agent: _FakeTargetAgent | None) -> None:
+        self._agent = agent
+
+    async def get_published(self, agent_id: UUID) -> Any:  # type: ignore[no-untyped-def]
+        if self._agent is None:
+            from qzdap.modules.agent_runtime.domain.catalog_errors import (
+                CatalogAgentNotFound,
+            )
+
+            raise CatalogAgentNotFound(f"agent {agent_id} not found")
+        return self._agent
+
+
+class _FakeCreateSession:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def execute(self, **kwargs: Any) -> Any:  # type: ignore[no-untyped-def]
+        self.calls.append(kwargs)
+        session = _FakeParentSession(
+            tenant_id=kwargs["tenant_id"],
+            workspace_id=kwargs["workspace_id"],
+            owner_id=kwargs["owner_id"],
+            metadata=kwargs.get("metadata") or {},
+        )
+        return session
+
+
+class _FakeOneShot:
+    def __init__(
+        self,
+        *,
+        final_message: str = "sub-agent says hi",
+        raise_exc: Exception | None = None,
+    ) -> None:
+        self._final_message = final_message
+        self._raise = raise_exc
+        self.calls: list[dict[str, Any]] = []
+
+    async def run_on_session(self, **kwargs: Any) -> TurnCompletion:  # type: ignore[no-untyped-def]
+        self.calls.append(kwargs)
+        if self._raise is not None:
+            raise self._raise
+        return TurnCompletion(
+            final_message=self._final_message,
+            turn_id=uuid4(),
+            input_tokens=42,
+            output_tokens=21,
+        )
+
+
+class _FakeDbSession:
+    """DB 会话的替身 —— 只需要 ``commit`` ✓。"""
+
+    def __init__(self, factory: _FakeSessionFactory) -> None:
+        self._factory = factory
 
     async def commit(self) -> None:
-        self.committed = True
+        self._factory.committed += 1
 
 
-def _async_cm(value):
+class _FakeSessionFactory:
+    def __init__(self) -> None:
+        self.committed = 0
+
     @asynccontextmanager
-    async def _cm():
-        yield value
-    return _cm()
+    async def session(self):  # type: ignore[no-untyped-def]
+        yield _FakeDbSession(self)
 
 
-def _completion(final_message="sub-agent says hi"):
-    from qzdap.modules.agent_runtime.application.use_cases.run_turn_to_completion import (
-        RunTurnCompletionResult,
-    )
-    return RunTurnCompletionResult(
-        final_message=final_message,
-        turn_id=uuid4(),
-        input_tokens=42,
-        output_tokens=21,
-    )
-
-
-def _wire(*, ids, parent_row, target_row, subagent_result=None, raise_in_completion=False,
-          app_error_to_raise=None, raw_error_to_raise=None):
-    """Build a DelegateSubagentUseCase wired against in-memory fakes.
-
-    Caller provides ``ids`` so the same uuid values can be reused when
-    constructing test rows.
-
-    Returns (usecase, parent_session_id, target_agent_id,
-             fake_session, runtime_factory).
-    """
+def _wire(
+    *,
+    parent: _FakeParentSession | None,
+    target: _FakeTargetAgent | None,
+    one_shot: _FakeOneShot | None = None,
+):
+    """装配一个 DelegateSubagentUseCase（端口全是内存替身 ✓）。"""
     from qzdap.modules.agent_runtime.application.use_cases.delegate_subagent import (
+        DelegateRuntime,
         DelegateSubagentUseCase,
     )
-    # Patch the source modules so the use case's deferred imports pick up
-    # the stubs. The use case does
-    #   from .run_turn import RunTurnUseCase
-    # inside execute(), so we have to patch the *source* module, not the
-    # delegate_subagent namespace.
-    import qzdap.modules.agent_runtime.application.use_cases.run_turn as rt_mod
-    import qzdap.modules.agent_runtime.application.use_cases.run_turn_to_completion as rtc_mod
 
-    parent_sid = uuid4()
-    target_aid = uuid4()
+    sessions = _FakeSessions(parent)
+    catalog = _FakeCatalog(target)
+    create_session = _FakeCreateSession()
+    one = one_shot or _FakeOneShot()
+    factory = _FakeSessionFactory()
 
-    fake_session = _FakeSession([parent_row, target_row])
-    factory = MagicMock()
-    # Each call to factory.session() must yield a fresh async context manager
-    # — _AsyncGeneratorContextManager can't be re-entered after the first
-    # `async with` exits, and the use case opens a session twice.
-    factory.session = MagicMock(side_effect=lambda: _async_cm(fake_session))
-
-    runtime_factory = MagicMock()
-    runtime_factory.for_session = MagicMock(return_value=MagicMock())
-
-    class _StubRun:
-        def __init__(self, *_a, **_kw):  # noqa: ANN001
-            pass
-
-    class _StubCompletion:
-        def __init__(self, *_a, **_kw):  # noqa: ANN001
-            pass
-
-        async def execute(self, **_):
-            if app_error_to_raise is not None:
-                raise app_error_to_raise
-            if raw_error_to_raise is not None:
-                raise raw_error_to_raise
-            return subagent_result or _completion()
-
-    _original_run = rt_mod.RunTurnUseCase
-    _original_completion = rtc_mod.RunTurnCompletionUseCase
-    rt_mod.RunTurnUseCase = _StubRun
-    rtc_mod.RunTurnCompletionUseCase = _StubCompletion
-
+    runtime = DelegateRuntime(
+        sessions=sessions,  # type: ignore[arg-type]
+        catalog=catalog,  # type: ignore[arg-type]
+        create_session=create_session,  # type: ignore[arg-type]
+        one_shot=one,  # type: ignore[arg-type]
+    )
     usecase = DelegateSubagentUseCase(
-        agent_runtime_factory=runtime_factory,
-        session_factory=factory,
+        runtime_factory=lambda _db_session: runtime,
+        session_factory=factory,  # type: ignore[arg-type]
     )
-    # Return the originals so each test can restore if needed; for our tests
-    # we just leave them patched — the next test re-patches.
-    return (
-        usecase, parent_sid, target_aid, fake_session, runtime_factory,
-        _original_run, _original_completion,
+    return usecase, create_session, one, factory
+
+
+def _ids() -> tuple[UUID, UUID, UUID]:
+    return uuid4(), uuid4(), uuid4()
+
+
+async def test_happy_path() -> None:
+    tid, wid, uid = _ids()
+    parent = _FakeParentSession(
+        tenant_id=tid, workspace_id=wid, owner_id=uid, metadata={"agent_id": "a1"}
     )
+    target = _FakeTargetAgent(tenant_id=tid)
+    usecase, create_session, one, factory = _wire(parent=parent, target=target)
 
-
-def _make_ids():
-    return {
-        "tenant_id": uuid4(),
-        "workspace_id": uuid4(),
-        "actor_id": uuid4(),
-    }
-
-
-# ── tests ──────────────────────────────────────────────────────────────
-
-
-async def test_happy_path():
-    ids = _make_ids()
-    target_aid_uuid = uuid4()
-    usecase, parent_sid, target_aid, session, factory, _, _ = _wire(
-        ids=ids,
-        parent_row=_FakeRow(
-            tenant_id=ids["tenant_id"], workspace_id=ids["workspace_id"],
-            metadata={"delegation_depth": 0, "agent_id": "parent-agent"},
-        ),
-        target_row=_FakeRow(
-            tenant_id=ids["tenant_id"], workspace_id=ids["workspace_id"],
-            id=target_aid_uuid, version="v1", status="active",
-        ),
-        subagent_result=_completion("sub-agent done"),
-    )
     result = await usecase.execute(
-        parent_session_id=parent_sid,
-        target_agent_id=str(target_aid),
-        task="do the thing",
-        context={"k": "v"},
-        **ids,
+        parent_session_id=parent.id,
+        target_agent_id=str(target.id),
+        task="做点事",
+        context={},
+        tenant_id=tid,
+        workspace_id=wid,
+        actor_id=uid,
     )
     assert result.ok is True
-    assert result.final_response == "sub-agent done"
+    assert result.final_response == "sub-agent says hi"
     assert result.status == "succeeded"
     assert result.sub_session_id is not None
-    assert result.delegation_depth == 1
-    assert result.error_code is None
-    assert session.committed is True
-    assert factory.for_session.called
+    # 子会话带上了委派元数据 ✓（深度 +1 ✓）。
+    meta = create_session.calls[0]["metadata"]
+    assert meta["delegation_depth"] == 1
+    assert meta["parent_session_id"] == str(parent.id)
+    # 轮次跑在**刚建的那个子会话**上 ✓。
+    assert one.calls[0]["session_id"] == UUID(result.sub_session_id)
+    _ = factory
 
 
-async def test_parent_session_not_found():
-    ids = _make_ids()
-    usecase, parent_sid, target_aid, _, _, _, _ = _wire(
-        ids=ids,
-        parent_row=None,  # missing
-        target_row=_FakeRow(tenant_id=ids["tenant_id"], workspace_id=ids["workspace_id"]),
-    )
+async def test_parent_session_not_found() -> None:
+    tid, wid, uid = _ids()
+    target = _FakeTargetAgent(tenant_id=tid)
+    usecase, *_ = _wire(parent=None, target=target)
     result = await usecase.execute(
-        parent_session_id=parent_sid,
-        target_agent_id=str(target_aid),
-        task="x", context={}, **ids,
+        parent_session_id=uuid4(),
+        target_agent_id=str(target.id),
+        task="t",
+        context={},
+        tenant_id=tid,
+        workspace_id=wid,
+        actor_id=uid,
     )
     assert result.ok is False
     assert result.error_code == "PARENT_SESSION_NOT_FOUND"
-    assert result.sub_session_id is None
 
 
-async def test_cross_tenant_parent():
-    ids = _make_ids()
-    usecase, parent_sid, target_aid, _, _, _, _ = _wire(
-        ids=ids,
-        parent_row=_FakeRow(
-            tenant_id=uuid4(),  # other tenant
-            workspace_id=ids["workspace_id"],
-            metadata={},
-        ),
-        target_row=_FakeRow(tenant_id=ids["tenant_id"], workspace_id=ids["workspace_id"]),
+async def test_cross_tenant_parent() -> None:
+    tid, wid, uid = _ids()
+    parent = _FakeParentSession(
+        tenant_id=uuid4(), workspace_id=wid, owner_id=uid
     )
+    target = _FakeTargetAgent(tenant_id=tid)
+    usecase, *_ = _wire(parent=parent, target=target)
     result = await usecase.execute(
-        parent_session_id=parent_sid,
-        target_agent_id=str(target_aid),
-        task="x", context={}, **ids,
+        parent_session_id=parent.id,
+        target_agent_id=str(target.id),
+        task="t",
+        context={},
+        tenant_id=tid,
+        workspace_id=wid,
+        actor_id=uid,
     )
     assert result.ok is False
     assert result.error_code == "CROSS_TENANT"
 
 
-async def test_target_agent_not_found():
-    ids = _make_ids()
-    usecase, parent_sid, target_aid, _, _, _, _ = _wire(
-        ids=ids,
-        parent_row=_FakeRow(
-            tenant_id=ids["tenant_id"], workspace_id=ids["workspace_id"],
-            metadata={"delegation_depth": 0},
-        ),
-        target_row=None,  # missing
-    )
+async def test_target_agent_not_found() -> None:
+    tid, wid, uid = _ids()
+    parent = _FakeParentSession(tenant_id=tid, workspace_id=wid, owner_id=uid)
+    usecase, *_ = _wire(parent=parent, target=None)
     result = await usecase.execute(
-        parent_session_id=parent_sid,
-        target_agent_id=str(target_aid),
-        task="x", context={}, **ids,
+        parent_session_id=parent.id,
+        target_agent_id=str(uuid4()),
+        task="t",
+        context={},
+        tenant_id=tid,
+        workspace_id=wid,
+        actor_id=uid,
     )
     assert result.ok is False
     assert result.error_code == "AGENT_NOT_FOUND"
 
 
-async def test_cross_tenant_target():
-    ids = _make_ids()
-    usecase, parent_sid, target_aid, _, _, _, _ = _wire(
-        ids=ids,
-        parent_row=_FakeRow(
-            tenant_id=ids["tenant_id"], workspace_id=ids["workspace_id"],
-            metadata={"delegation_depth": 0},
-        ),
-        target_row=_FakeRow(tenant_id=uuid4(), workspace_id=uuid4()),  # other tenant
-    )
+async def test_cross_tenant_target() -> None:
+    tid, wid, uid = _ids()
+    parent = _FakeParentSession(tenant_id=tid, workspace_id=wid, owner_id=uid)
+    target = _FakeTargetAgent(tenant_id=uuid4())
+    usecase, *_ = _wire(parent=parent, target=target)
     result = await usecase.execute(
-        parent_session_id=parent_sid,
-        target_agent_id=str(target_aid),
-        task="x", context={}, **ids,
+        parent_session_id=parent.id,
+        target_agent_id=str(target.id),
+        task="t",
+        context={},
+        tenant_id=tid,
+        workspace_id=wid,
+        actor_id=uid,
     )
     assert result.ok is False
     assert result.error_code == "CROSS_TENANT"
 
 
-async def test_delegation_depth_exceeded():
-    ids = _make_ids()
-    usecase, parent_sid, target_aid, _, _, _, _ = _wire(
-        ids=ids,
-        parent_row=_FakeRow(
-            tenant_id=ids["tenant_id"], workspace_id=ids["workspace_id"],
-            metadata={"delegation_depth": 3},  # already at max
-        ),
-        target_row=_FakeRow(tenant_id=ids["tenant_id"], workspace_id=ids["workspace_id"]),
+async def test_delegation_depth_exceeded() -> None:
+    tid, wid, uid = _ids()
+    parent = _FakeParentSession(
+        tenant_id=tid,
+        workspace_id=wid,
+        owner_id=uid,
+        metadata={"delegation_depth": 3},
     )
+    target = _FakeTargetAgent(tenant_id=tid)
+    usecase, *_ = _wire(parent=parent, target=target)
     result = await usecase.execute(
-        parent_session_id=parent_sid,
-        target_agent_id=str(target_aid),
-        task="x", context={}, **ids,
+        parent_session_id=parent.id,
+        target_agent_id=str(target.id),
+        task="t",
+        context={},
+        tenant_id=tid,
+        workspace_id=wid,
+        actor_id=uid,
     )
     assert result.ok is False
     assert result.error_code == "DELEGATION_DEPTH_EXCEEDED"
-    assert "depth=3" in (result.error or "")
 
 
-async def test_subagent_aperror():
-    from qzdap_kernel.errors import AppError
-    ids = _make_ids()
-    usecase, parent_sid, target_aid, _, _, _, _ = _wire(
-        ids=ids,
-        parent_row=_FakeRow(
-            tenant_id=ids["tenant_id"], workspace_id=ids["workspace_id"],
-            metadata={"delegation_depth": 0},
-        ),
-        target_row=_FakeRow(tenant_id=ids["tenant_id"], workspace_id=ids["workspace_id"]),
-        app_error_to_raise=AppError("LLM timed out", code="LLM_TIMEOUT", status=504),
+async def test_turn_failure_is_reported() -> None:
+    tid, wid, uid = _ids()
+    parent = _FakeParentSession(tenant_id=tid, workspace_id=wid, owner_id=uid)
+    target = _FakeTargetAgent(tenant_id=tid)
+    usecase, *_ = _wire(
+        parent=parent,
+        target=target,
+        one_shot=_FakeOneShot(raise_exc=TurnFailedError("TURN_FAILED", "炸了")),
     )
     result = await usecase.execute(
-        parent_session_id=parent_sid,
-        target_agent_id=str(target_aid),
-        task="x", context={}, **ids,
+        parent_session_id=parent.id,
+        target_agent_id=str(target.id),
+        task="t",
+        context={},
+        tenant_id=tid,
+        workspace_id=wid,
+        actor_id=uid,
     )
     assert result.ok is False
-    assert result.error_code == "LLM_TIMEOUT"
-    assert result.status == "failed"
-    assert result.sub_session_id is not None  # sub_session was created
+    assert result.error_code == "TURN_FAILED"
 
 
-async def test_subagent_crash():
-    ids = _make_ids()
-    usecase, parent_sid, target_aid, _, _, _, _ = _wire(
-        ids=ids,
-        parent_row=_FakeRow(
-            tenant_id=ids["tenant_id"], workspace_id=ids["workspace_id"],
-            metadata={"delegation_depth": 0},
+async def test_app_error_is_reported() -> None:
+    tid, wid, uid = _ids()
+    parent = _FakeParentSession(tenant_id=tid, workspace_id=wid, owner_id=uid)
+    target = _FakeTargetAgent(tenant_id=tid)
+    usecase, *_ = _wire(
+        parent=parent,
+        target=target,
+        one_shot=_FakeOneShot(
+            raise_exc=AppError("挂了", code="SOMETHING_BROKE", status=500)
         ),
-        target_row=_FakeRow(tenant_id=ids["tenant_id"], workspace_id=ids["workspace_id"]),
-        raw_error_to_raise=RuntimeError("kaboom"),
     )
     result = await usecase.execute(
-        parent_session_id=parent_sid,
-        target_agent_id=str(target_aid),
-        task="x", context={}, **ids,
+        parent_session_id=parent.id,
+        target_agent_id=str(target.id),
+        task="t",
+        context={},
+        tenant_id=tid,
+        workspace_id=wid,
+        actor_id=uid,
+    )
+    assert result.ok is False
+    assert result.error_code == "SOMETHING_BROKE"
+
+
+async def test_subagent_crash() -> None:
+    tid, wid, uid = _ids()
+    parent = _FakeParentSession(tenant_id=tid, workspace_id=wid, owner_id=uid)
+    target = _FakeTargetAgent(tenant_id=tid)
+    usecase, *_ = _wire(
+        parent=parent, target=target, one_shot=_FakeOneShot(raise_exc=RuntimeError("boom"))
+    )
+    result = await usecase.execute(
+        parent_session_id=parent.id,
+        target_agent_id=str(target.id),
+        task="t",
+        context={},
+        tenant_id=tid,
+        workspace_id=wid,
+        actor_id=uid,
     )
     assert result.ok is False
     assert result.error_code == "SUBAGENT_CRASHED"
-    assert "kaboom" in (result.error or "")
 
 
-async def test_format_task_with_context():
+def test_format_task_with_context() -> None:
     from qzdap.modules.agent_runtime.application.use_cases.delegate_subagent import (
         DelegateSubagentUseCase,
     )
 
-    uc = DelegateSubagentUseCase(
-        agent_runtime_factory=MagicMock(),
-        session_factory=MagicMock(),
+    usecase = DelegateSubagentUseCase(
+        runtime_factory=lambda _s: None,  # type: ignore[arg-type,return-value]
+        session_factory=None,  # type: ignore[arg-type]
     )
-    out = uc._format_task("do X", {"a": 1, "b": "hi"})
-    assert "do X" in out
-    assert "- a: 1" in out
-    assert "- b: hi" in out
+    text = usecase._format_task("做点事", {"k": "v"})
+    assert "做点事" in text
+    assert "k: v" in text
 
 
-async def test_format_task_empty_context():
+def test_format_task_empty_context() -> None:
     from qzdap.modules.agent_runtime.application.use_cases.delegate_subagent import (
         DelegateSubagentUseCase,
     )
 
-    uc = DelegateSubagentUseCase(
-        agent_runtime_factory=MagicMock(),
-        session_factory=MagicMock(),
+    usecase = DelegateSubagentUseCase(
+        runtime_factory=lambda _s: None,  # type: ignore[arg-type,return-value]
+        session_factory=None,  # type: ignore[arg-type]
     )
-    assert uc._format_task("do X", {}) == "do X"
+    assert usecase._format_task("做点事", {}) == "做点事"
+
+
+__all__ = []

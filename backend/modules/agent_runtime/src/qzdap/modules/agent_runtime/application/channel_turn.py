@@ -1,0 +1,113 @@
+"""渠道入站 → 一轮会话（**Session 层**的实现）。
+
+⚠️ **这是「唯一 turn 实现」在渠道侧的落点** —— 旧的
+``use_cases/run_turn_to_completion.py``（第二套 turn 实现，台账 **X2**）由
+本模块取代 ✓。
+
+三件事，按顺序：
+
+1. **会话粘性**（台账 **R1**）：按 ``channel_session_key`` 找到 / 建一个会话
+   —— 同一个渠道 + 同一个聊天 = 同一个会话 ✓（IM 过去每条消息新建会话，
+   跨消息没有上下文 ✗）；
+2. **跑一轮**：交给 :class:`CopilotSessionService`（它内部是契约层的
+   ``TurnRunner`` —— **唯一 turn 实现** ✓）；
+3. **汇总结果**：``drain_to_completion``（契约层 ✓，与子代理 / 评估共用
+   同一份 ✓）。
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable, Mapping
+from typing import Any
+
+from qzdap_agent_runtime.session.channel_turn import (
+    ChannelTurnRequest,
+    ChannelTurnResult,
+)
+from qzdap_agent_runtime.session.completion import drain_to_completion
+from qzdap_agent_runtime.session.manager import (
+    AgentBinding,
+    SessionIdentity,
+    SessionManagerPort,
+)
+
+from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+from qzdap.modules.agent_runtime.domain.errors import DuplicateRequestError
+
+_log = logging.getLogger("qzdap.agent_runtime.channel_turn")
+
+
+class ChannelTurnService:
+    """``ChannelTurnPort`` 的实现 ✓。"""
+
+    def __init__(
+        self,
+        *,
+        sessions: SessionManagerPort,
+        copilot: CopilotSessionService,
+        ports: Callable[[ChannelTurnRequest], Mapping[str, Any]] | None = None,
+    ) -> None:
+        self._sessions = sessions
+        self._copilot = copilot
+        # 请求作用域的端口（skill / sandbox / tool）—— **每请求重新绑定** ✓
+        # （web 侧由 HTTP 层绑；IM 侧由组合根给一个绑定回调 ✓）。
+        self._ports = ports
+
+    async def run(self, request: ChannelTurnRequest) -> ChannelTurnResult:
+        ref = await self._sessions.resolve_or_create(
+            identity=SessionIdentity(
+                tenant_id=request.tenant_id,
+                workspace_id=request.workspace_id,
+                owner_id=request.owner_id,
+                channel_session_key=request.channel_session_key,
+                metadata=dict(request.metadata),
+            ),
+            agent=AgentBinding(
+                agent_id=request.agent_id,
+                agent_version=request.agent_version,
+            ),
+        )
+        if self._ports is not None:
+            self._copilot.bind_ports(**dict(self._ports(request)))
+        chunks = self._copilot.stream_turn(
+            tenant_id=ref.tenant_id,
+            workspace_id=ref.workspace_id,
+            owner_id=ref.owner_id,
+            session_id=ref.session_id,
+            user_input=request.user_input,
+            channel=request.channel_type,
+            idempotency_key=request.idempotency,
+        )
+        try:
+            completion = await drain_to_completion(chunks)
+        except DuplicateRequestError:
+            # **重复请求不是错误**（Gateway §4.5）—— 同一平台消息重投 → 不跑第二轮 ✓。
+            # IM 侧**还没有重放**（事件流重放只接了 web）→ 记一笔就返回 ✓。
+            _log.info(
+                "channel turn duplicated; skipping",
+                extra={"session_id": str(ref.session_id)},
+            )
+            return ChannelTurnResult(
+                session_id=ref.session_id,
+                final_message="",
+                duplicate=True,
+            )
+        _log.info(
+            "channel turn finished",
+            extra={
+                "session_id": str(ref.session_id),
+                "turn_id": str(completion.turn_id),
+                "channel": str(request.channel_type),
+                "created_session": ref.created,
+            },
+        )
+        return ChannelTurnResult(
+            session_id=ref.session_id,
+            final_message=completion.final_message,
+            turn_id=completion.turn_id,
+            waiting_approval=completion.waiting_approval is not None,
+        )
+
+
+__all__ = ["ChannelTurnService"]

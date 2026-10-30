@@ -36,13 +36,10 @@ GATEWAY_PKG = "runtimes/agent_runtime/src/qzdap_agent_runtime/gateway"
 #:
 #: ⚠️ 豁免表**只能变短**：新增一条必须同时说明为什么不能当场修；
 #: 旧实现删掉后**必须**从表里移除（否则豁免会变成永久的通融）。
-KNOWN_EXEMPTIONS: dict[str, str] = {
-    "modules/agent_runtime/src/qzdap/modules/agent_runtime/application/use_cases/delegate_subagent.py": (
-        "子代理委派用例直接写了 SQL（应用层引框架）。"
-        "归属 **Session Stage 5b** —— 它调用的是第二套 turn 实现（X2），"
-        "随那一套一起删。"
-    ),
-}
+#:
+#: ✅ **2026-10-30（Session Stage 5b）**：委派用例的应用层 SQL **已删** ——
+#: 它改成走端口 ✓，随第二套 turn 实现（X2）一起清掉了 ✓ → 表**空了** ✓。
+KNOWN_EXEMPTIONS: dict[str, str] = {}
 
 
 def _backend_root() -> Path:

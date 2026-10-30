@@ -117,9 +117,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         SqlSessionRepository,
         SqlTurnRepository,
     )
-    from qzdap.modules.agent_runtime.application.services import (
-        AgentRuntimeService,
-    )
 
     # P6: model_service may be None when QZDAP_MODEL_MASTER_KEY is unset
     # in dev/test. In production this is a hard fail — the
@@ -141,79 +138,52 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _log.warning("model_service disabled: %s", exc)
 
     # Phase 1: 把 agent.model (upstream 名字符串) 解析成 ModelId (UUID).
-    # 不依赖 master key, 始终可用 — catalog 缺失时返回 None, RunTurnUseCase
+    # 不依赖 master key, 始终可用 — catalog 缺失时返回 None, 运行时
     # 退到 env 默认 LLM. 这样没配 catalog 的旧 agent 仍能跑, 不破坏向后兼容.
     catalog_model_resolver = container.catalog_model_resolver()
 
-    class _AgentRuntimeFactory:
-        def __init__(self) -> None:
-            self._llm_client = container.llm_client()
-            self._bus = container.bus()
-
-        def for_session(self, session):  # type: ignore[no-untyped-def]
-            llm = LLMPortAdapter(
-                self._llm_client,
-                model_service=model_service,
-            )
-            # Lazily resolve the per-request knowledge service and wrap it
-            # in the agent_runtime's KnowledgePort adapter so RunTurnUseCase
-            # can pull RAG context into the system prompt.
-            from qzdap.modules.agent_runtime.adapter.knowledge import (
-                KnowledgeServiceAdapter,
-            )
-            from qzdap.modules.agent_runtime.adapter.memory import (
-                MemoryServiceAdapter,
-            )
-
-            knowledge_adapter: object | None = None
-            knowledge_factory = getattr(app.state, "knowledge_service_factory", None)
-            if knowledge_factory is not None:
-                try:
-                    knowledge_adapter = KnowledgeServiceAdapter(
-                        knowledge_factory.for_session(session)
-                    )
-                except Exception:  # pragma: no cover - defensive  # noqa: BLE001
-                    _log.warning(
-                        "knowledge adapter unavailable; turns will skip RAG",
-                        exc_info=True,
-                    )
-                    knowledge_adapter = None
-
-            memory_adapter: object | None = None
-            memory_factory = getattr(app.state, "memory_service_factory", None)
-            if memory_factory is not None:
-                try:
-                    memory_adapter = MemoryServiceAdapter(
-                        memory_factory.for_session(session)
-                    )
-                except Exception:  # pragma: no cover - defensive  # noqa: BLE001
-                    _log.warning(
-                        "memory adapter unavailable; turns will skip recall",
-                        exc_info=True,
-                    )
-                    memory_adapter = None
-
-            return AgentRuntimeService(
-                sessions=SqlSessionRepository(session),
-                turns=SqlTurnRepository(session),
-                llm=llm,
-                events=AgentRuntimeEventPublisher(self._bus),
-                knowledge_port=knowledge_adapter,
-                memory_port=memory_adapter,
-                # Phase 1: agent.model 名称 → ModelId 解析
-                catalog_model_resolver=catalog_model_resolver,
-            )
-
-    app.state.agent_runtime_factory = _AgentRuntimeFactory()
+    # ⚠️ 旧的 ``_AgentRuntimeFactory``（门面 ``AgentRuntimeService``）**已删**
+    # （2026-10-30，Session Stage 5b）—— 它服务的第二套 turn 实现已删 ✓，
+    # 剩下的会话门面与 copilot 重复 ✗。现在只有 copilot 一条链 ✓。
 
     # Phase 14: 注入 DelegateSubagentUseCase 到 app.state, 让 builtin
     # delegate_to_agent 工具通过 _get_delegate_subagent_usecase() 拿.
     from qzdap.modules.agent_runtime.application.use_cases.delegate_subagent import (
+        DelegateRuntime,
         DelegateSubagentUseCase,
     )
 
+    def _delegate_runtime(db_session):  # type: ignore[no-untyped-def]
+        """委派一次需要的端口（**请求级** ✓）。"""
+        from qzdap.modules.agent_runtime.adapter.events import (
+            AgentRuntimeEventPublisher,
+        )
+        from qzdap.modules.agent_runtime.adapter.persistence.repositories import (
+            SqlSessionRepository,
+        )
+        from qzdap.modules.agent_runtime.application.one_shot_turn import (
+            OneShotTurnService,
+        )
+        from qzdap.modules.agent_runtime.application.use_cases.create_session import (
+            CreateSessionUseCase,
+        )
+
+        sessions = SqlSessionRepository(db_session)
+        create_session = CreateSessionUseCase(
+            sessions, AgentRuntimeEventPublisher(container.bus())
+        )
+        return DelegateRuntime(
+            sessions=sessions,
+            catalog=_AgentCatalogFactory().for_session(db_session),
+            create_session=create_session,
+            one_shot=OneShotTurnService(
+                create_session=create_session,
+                copilot=_CopilotFactory().for_session(db_session),
+            ),
+        )
+
     app.state.delegate_subagent_usecase = DelegateSubagentUseCase(
-        agent_runtime_factory=app.state.agent_runtime_factory,
+        runtime_factory=_delegate_runtime,
         session_factory=container.session_factory(),
     )
     # 把 use case 句柄推到 builtin_extra_tools 那边.
@@ -504,6 +474,69 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.catalog_evaluation_runner = catalog_evaluation_runner
     app.state.copilot_factory = _CopilotFactory()
     app.state.model_service = model_service
+
+    # ── 渠道入站 → 一轮会话（Session Stage 5b）────────────────────────
+    # IM 的入站**不再经过「第二套 turn 实现」**（台账 X2）—— 与 web 走同一条
+    # 链路 ✓：会话粘性（channel_session_key）+ 唯一 turn 实现。
+    def _channel_turn_ports(request, db_session):  # type: ignore[no-untyped-def]
+        """**请求作用域**的端口（skill / sandbox / tool）—— 与 web 侧同口径 ✓。
+
+        ⚠️ 不绑这些端口 = 那一轮**没有工具**（web 侧由 HTTP 层绑；IM 侧在这里
+        绑 ✓）—— 少绑一个就是一次静默的功能退化 ✗。
+        """
+        from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+
+        from qzdap.modules.agent_runtime.adapter.sandbox import SandboxRuntimeAdapter
+        from qzdap.modules.agent_runtime.adapter.skills import SkillServiceAdapter
+        from qzdap.modules.agent_runtime.adapter.tools import ToolServiceAdapter
+
+        tenant_id = TenantId(request.tenant_id)
+        workspace_id = WorkspaceId(request.workspace_id)
+        owner_id = UserId(request.owner_id)
+        ports: dict[str, Any] = {}
+
+        skill_factory = getattr(app.state, "skill_factory", None)
+        if skill_factory is not None:
+            ports["skill_port"] = SkillServiceAdapter(
+                svc=skill_factory.for_session(db_session),
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_id=owner_id,
+            )
+        sandbox_client = getattr(app.state, "sandbox_client", None)
+        if sandbox_client is not None:
+            ports["sandbox_port"] = SandboxRuntimeAdapter(
+                sandbox_client,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                agent_id=None,
+            )
+        tool_factory = getattr(app.state, "tool_factory", None)
+        if tool_factory is not None:
+            ports["tool_port"] = ToolServiceAdapter(
+                tool_service=tool_factory.for_session(db_session),
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_id=owner_id,
+            )
+        return ports
+
+    class _ChannelTurnFactory:
+        """渠道入站的**请求级**装配 ✓。"""
+
+        def for_session(self, db_session):  # type: ignore[no-untyped-def]
+            from qzdap.modules.agent_runtime.application.channel_turn import (
+                ChannelTurnService,
+            )
+
+            return ChannelTurnService(
+                # 会话粘性归 Session Manager（唯一 owner ✓）。
+                sessions=app.state.session_manager_factory.for_session(db_session),
+                copilot=_CopilotFactory().for_session(db_session),
+                ports=lambda request: _channel_turn_ports(request, db_session),
+            )
+
+    app.state.channel_turn_factory = _ChannelTurnFactory()
 
     # Phase 2: 注册 catalog_model_resolver 到 app.state, 让 agent_factory router
     # 在 POST /v1/agents (template) 和 /v1/agents/{aid}/versions (version) 时
@@ -898,7 +931,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             sf = container.session_factory().maker()
             ds_repo = SqlEvalDatasetRepository(sf)
             run_repo = SqlEvalRunRepository(sf)
-            sub_agent_factory = getattr(app.state, "agent_runtime_factory", None)
+            # 评测跑的是**唯一 turn 实现**（copilot 链 ✓）—— 没有它就退到桩 ✓。
+            sub_agent_factory = getattr(app.state, "copilot_factory", None)
             sub_agent = _sub_agent_for_evaluation(sub_agent_factory)
             runner = EvalRunner(
                 run_repo=run_repo,
@@ -922,12 +956,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     def _sub_agent_for_evaluation(ar_factory):  # type: ignore[no-untyped-def]
         """Return the SubAgentPort used to drive evaluation cases.
 
-        Wire to the real ``RealSubAgentPort`` when the agent_runtime
-        factory is available; fall back to the deterministic stub when
-        it is not (legacy dev shells, missing ``QZDAP_MODEL_MASTER_KEY``,
-        boot in a slim test harness). Heuristic scoring against the stub
-        will fail most cases — the gate wiring (pass / fail / no_eval)
-        still validates the lifecycle.
+        Wire to the real ``RealSubAgentPort`` when the copilot factory
+        (the **唯一 turn 实现**) is available; fall back to the deterministic
+        stub when it is not (legacy dev shells, missing
+        ``QZDAP_MODEL_MASTER_KEY``, boot in a slim test harness). Heuristic
+        scoring against the stub will fail most cases — the gate wiring
+        (pass / fail / no_eval) still validates the lifecycle.
         """
         if ar_factory is None:
             from qzdap.modules.evaluation.adapter.sub_agent_stub import (
@@ -951,9 +985,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
 
     class _PerCaseRealSubAgent:
-        """Builds a fresh AgentRuntimeService per case so each eval turn
-        gets an isolated session + connection pool. The AgentRuntimeService
-        is composed from the live container bus + session factory."""
+        """每个评测用例装配一个**请求级**的服务（隔离的会话 + 连接 ✓）。
+
+        ⚠️ 走的是 **copilot 链**（唯一 turn 实现 ✓）—— 旧的 ``AgentRuntimeService``
+        门面已删（Session Stage 5b ✓）。
+        """
 
         def __init__(self, *, container, agent_factory) -> None:  # type: ignore[no-untyped-def]
             self._container = container
@@ -963,44 +999,37 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from qzdap.modules.agent_runtime.adapter.events import (
                 AgentRuntimeEventPublisher,
             )
-            from qzdap.modules.agent_runtime.adapter.llm import LLMPortAdapter
             from qzdap.modules.agent_runtime.adapter.persistence.repositories import (
                 SqlSessionRepository,
-                SqlTurnRepository,
             )
-            from qzdap.modules.agent_runtime.application.services import (
-                AgentRuntimeService,
+            from qzdap.modules.agent_runtime.application.one_shot_turn import (
+                OneShotTurnService,
+            )
+            from qzdap.modules.agent_runtime.application.use_cases.create_session import (
+                CreateSessionUseCase,
             )
             from qzdap.modules.evaluation.adapter.sub_agent_real import (
                 RealSubAgentPort,
             )
 
             sf = self._container.session_factory().maker()
-            # model_service() raises if QZDAP_MODEL_MASTER_KEY is unset;
-            # LLMPortAdapter degrades to the default client on None.
-            try:
-                model_service = self._container.model_service()
-            except RuntimeError:
-                model_service = None
-            # Phase 1: 把 agent.model (str) 解析成 ModelId (UUID) 喂给 ModelService.
-            # resolver 依赖 session_factory, 不会 raise; 任何 catalog 缺失时返回 None,
-            # RunTurnUseCase 自然退到 env 默认 LLM (旧行为).
-            catalog_model_resolver = self._container.catalog_model_resolver()
-            llm = LLMPortAdapter(
-                self._container.llm_client(), model_service=model_service
-            )
-            runtime = AgentRuntimeService(
-                sessions=SqlSessionRepository(sf),
-                turns=SqlTurnRepository(sf),
-                llm=llm,
-                events=AgentRuntimeEventPublisher(self._container.bus()),
-                catalog_model_resolver=catalog_model_resolver,
+            # ⚠️ **唯一 turn 实现**（Session Stage 5b）—— 与 web / IM 同一条链路 ✓
+            one_shot = OneShotTurnService(
+                create_session=CreateSessionUseCase(
+                    SqlSessionRepository(sf),
+                    AgentRuntimeEventPublisher(self._container.bus()),
+                ),
+                copilot=_CopilotFactory().for_session(sf),
             )
             adapter = RealSubAgentPort(
-                runtime=runtime,
+                one_shot=one_shot,
                 agent_factory=self._agent_factory,
             )
-            return await adapter.run_turn_to_completion(**kwargs)
+            try:
+                return await adapter.run_turn_to_completion(**kwargs)
+            finally:
+                # 评测这一轮的轮次行 / 消息要落库 ✓（不提交 = 白跑 ✓）。
+                await sf.commit()
 
     app.state.evaluation_service_factory = _EvaluationFactory()
 
@@ -1181,32 +1210,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # and the agent_runtime factory is available. Older dev shells
     # (legacy / model_service absent) skip this and inbound webhooks
     # simply don't trigger agent replies.
-    ar_factory = getattr(app.state, "agent_runtime_factory", None)
     channel_service_obj = getattr(app.state, "channel_service", None)
-    if channel_service_obj is not None and ar_factory is not None:
-        from qzdap.modules.channel.adapter.dispatch.dispatch_subscriber import (
-            ChannelDispatchSubscriber,
+    if channel_service_obj is not None:
+        from qzdap.modules.channel.adapter.dispatch.channel_turn_dispatcher import (
+            ChannelTurnDispatcher,
         )
 
-        dispatch = ChannelDispatchSubscriber(
+        dispatch = ChannelTurnDispatcher(
             channel_repository=channel_service_obj.channel_repo,
-            agent_runtime_factory=ar_factory,
+            # 跑一轮 —— **唯一 turn 实现**（Session 层）✓（台账 X2 的终结点）。
+            turn_factory=app.state.channel_turn_factory,
             # 出站 —— 统一编码 + 投递（Gateway ① 的出站，§6）。
             sink=container.channel_result_sink(),
-            clock=container.clock(),
             open_session=container.session_factory().maker,
-            # ①②③ 与 ④ 的门面 —— 与渠道服务**共用同一个**（§10 Stage 4a）。
-            gateway=channel_service_obj.gateway,
         )
         await dispatch.install(bus)
-        app.state.channel_dispatch_subscriber = dispatch
-        _log.info("channel dispatch subscriber active")
+        app.state.channel_turn_dispatcher = dispatch
+        _log.info("channel turn dispatcher active")
     else:
-        _log.info(
-            "channel dispatch subscriber skipped (channel_service=%s, ar_factory=%s)",
-            channel_service_obj is not None,
-            ar_factory is not None,
-        )
+        _log.info("channel turn dispatcher skipped (channel_service missing)")
 
     # ── Phase 19: agent_factory.version.released → agent_runtime catalog ──
     # factory 发布时, 若 catalog 里有 id == template_id 的行, 把它推到 published.

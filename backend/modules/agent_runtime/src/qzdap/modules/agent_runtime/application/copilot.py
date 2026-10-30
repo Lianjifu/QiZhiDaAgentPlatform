@@ -34,7 +34,6 @@ from qzdap_schema.dtos.turn import TurnChunk
 from qzdap_schema.ids import (
     AgentId,
     ModelId,
-    SessionId,
     TenantId,
     UserId,
     WorkspaceId,
@@ -47,6 +46,9 @@ from qzdap.modules.agent_runtime.application.ports import (
     SessionJournal,
     SessionRepository,
     TurnRepository,
+)
+from qzdap.modules.agent_runtime.application.use_cases.create_session import (
+    CreateSessionUseCase,
 )
 from qzdap.modules.agent_runtime.domain import Session, SessionStatus, Turn
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
@@ -144,20 +146,15 @@ class CopilotSessionService:
         if route_decision is not None:
             # 路由决策留痕 —— 挂在会话上, 随每一轮写进 ``session_turns``。
             metadata["route_decision"] = route_decision.to_dict()
-        session = Session.create(
-            id=SessionId(uuid4()),
+        # ⚠️ **建会话只有一份实现** —— 旧的门面用例（``CreateSessionUseCase``）
+        # 与这里曾经各写一遍 ✗。现在 copilot 委托给它 ✓（Session Stage 5b）。
+        session = await CreateSessionUseCase(self._sessions, self._events).execute(
             tenant_id=TenantId(tenant_id),
             workspace_id=WorkspaceId(workspace_id),
             owner_id=UserId(owner_id),
             agent_id=AgentId(agent.id),
             agent_version=agent.version or "v1",
             metadata=metadata,
-        )
-        await self._sessions.add(session)
-        await self._events.publish(
-            session.raise_opened_event(),
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
         )
         return _session_detail(session, messages=[], pending=None, agent=agent)
 

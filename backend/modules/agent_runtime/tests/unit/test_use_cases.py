@@ -1,17 +1,16 @@
-"""Use case tests for the agent runtime (in-memory adapters, no DB)."""
+"""会话用例测试（**copilot 链路** —— 唯一 turn 实现那条 ✓）。
+
+⚠️ 旧的 ``AgentRuntimeService`` 门面与它下面的 ``run_turn`` 用例**已删**
+（2026-10-30，Session Stage 5b —— 第二套 turn 实现，台账 X2）✓。
+这里保留的是**会话生命周期**的覆盖：建会话 / 关会话 / 跨租户读不到 ✓。
+"""
 
 from __future__ import annotations
 
 from uuid import UUID, uuid4
 
 import pytest
-from _ar_unit_in_memory import (
-    InMemoryIdempotencyStore,
-    InMemorySessionJournal,
-    make_dependencies,
-    make_turn_runner,
-)
-from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
+from _ar_unit_in_memory import make_copilot
 from qzdap_schema.ids import (
     AgentId,
     TenantId,
@@ -19,15 +18,9 @@ from qzdap_schema.ids import (
     WorkspaceId,
 )
 
-from qzdap.modules.agent_runtime.application.services import AgentRuntimeService
-from qzdap.modules.agent_runtime.domain import (
-    SessionStatus,
-    TurnStatus,
-)
-from qzdap.modules.agent_runtime.domain.errors import (
-    SessionClosedError,
-    SessionNotFound,
-)
+from qzdap.modules.agent_runtime.domain import SessionStatus
+from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
+from qzdap.modules.agent_runtime.domain.errors import SessionNotFound
 
 
 def _make_owners() -> tuple[TenantId, WorkspaceId, UserId, AgentId]:
@@ -39,26 +32,33 @@ def _make_owners() -> tuple[TenantId, WorkspaceId, UserId, AgentId]:
     )
 
 
-@pytest.mark.asyncio
-async def test_create_session_persists_and_emits_event() -> None:
-    deps = make_dependencies()
-    svc = AgentRuntimeService(**deps)
-    tid, wid, uid, aid = _make_owners()
-
-    s = await svc.create_session().execute(
+def _agent(tid: TenantId, wid: WorkspaceId, aid: AgentId) -> CatalogAgent:
+    return CatalogAgent.create(
+        id=aid,
         tenant_id=tid,
         workspace_id=wid,
-        owner_id=uid,
-        agent_id=aid,
-        agent_version="1.0.0",
-        metadata={"source": "unit-test"},
+        name="助手",
+        category="test",
+        owner="test",
+        model="default",
     )
-    assert s.status is SessionStatus.OPEN
-    assert s.agent_version == "1.0.0"
-    assert s.metadata["source"] == "unit-test"
 
-    fetched = await deps["sessions"].get(s.id)
-    assert fetched == s
+
+@pytest.mark.asyncio
+async def test_create_session_persists_and_emits_event() -> None:
+    tid, wid, uid, aid = _make_owners()
+    agent = _agent(tid, wid, aid)
+    svc, deps = make_copilot(agent=agent)
+
+    detail = await svc.create_session(
+        tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
+    )
+    sid = UUID(detail["id"])
+    fetched = await deps["sessions"].get(sid)
+    assert fetched is not None
+    assert fetched.status is SessionStatus.OPEN
+    # 版本**绑自目录里的 agent** ✓（会话与版本一起绑，避免中途换版本 ✗）。
+    assert fetched.agent_version == agent.version
 
     event_types = [type(e).__name__ for e in deps["events"].events]
     assert "SessionOpened" in event_types
@@ -66,19 +66,15 @@ async def test_create_session_persists_and_emits_event() -> None:
 
 @pytest.mark.asyncio
 async def test_close_session_marks_closed_and_emits_event() -> None:
-    deps = make_dependencies()
-    svc = AgentRuntimeService(**deps)
     tid, wid, uid, aid = _make_owners()
-    s = await svc.create_session().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        agent_id=aid,
-        agent_version="1.0.0",
+    svc, deps = make_copilot(agent=_agent(tid, wid, aid))
+    detail = await svc.create_session(
+        tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
     )
+    sid = UUID(detail["id"])
 
-    await svc.close_session().execute(tenant_id=tid, session_id=s.id)
-    closed = await deps["sessions"].get(s.id)
+    await svc.close_session(tenant_id=tid, session_id=sid)
+    closed = await deps["sessions"].get(sid)
     assert closed is not None and closed.status is SessionStatus.CLOSED
 
     event_types = [type(e).__name__ for e in deps["events"].events]
@@ -86,22 +82,17 @@ async def test_close_session_marks_closed_and_emits_event() -> None:
 
 
 @pytest.mark.asyncio
-async def test_close_session_is_idempotent_for_use_case() -> None:
-    """The use case silently no-ops on a second close (so chatty retries
-    don't 500); the domain aggregate itself still raises for audit hygiene."""
-    deps = make_dependencies()
-    svc = AgentRuntimeService(**deps)
+async def test_close_session_is_idempotent() -> None:
+    """重复关会话**不报错**、**不多发事件** ✓（客户端重试不该 500）。"""
     tid, wid, uid, aid = _make_owners()
-    s = await svc.create_session().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        agent_id=aid,
-        agent_version="1.0.0",
+    svc, deps = make_copilot(agent=_agent(tid, wid, aid))
+    detail = await svc.create_session(
+        tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
     )
-    await svc.close_session().execute(tenant_id=tid, session_id=s.id)
-    # Second close: no exception, no extra event.
-    await svc.close_session().execute(tenant_id=tid, session_id=s.id)
+    sid = UUID(detail["id"])
+
+    await svc.close_session(tenant_id=tid, session_id=sid)
+    await svc.close_session(tenant_id=tid, session_id=sid)
     closed_events = [
         e for e in deps["events"].events if type(e).__name__ == "SessionClosed"
     ]
@@ -110,413 +101,14 @@ async def test_close_session_is_idempotent_for_use_case() -> None:
 
 @pytest.mark.asyncio
 async def test_get_session_returns_not_found_for_other_tenant() -> None:
-    deps = make_dependencies()
-    svc = AgentRuntimeService(**deps)
     tid, wid, uid, aid = _make_owners()
-    s = await svc.create_session().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        agent_id=aid,
-        agent_version="1.0.0",
+    svc, _ = make_copilot(agent=_agent(tid, wid, aid))
+    detail = await svc.create_session(
+        tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
     )
     other_tenant = TenantId(uuid4())
     with pytest.raises(SessionNotFound):
-        await svc.get_session().execute(tenant_id=other_tenant, session_id=s.id)
+        await svc.get_session(tenant_id=other_tenant, session_id=UUID(detail["id"]))
 
 
-@pytest.mark.asyncio
-async def test_run_turn_streams_message_done_and_emits_completed() -> None:
-    deps = make_dependencies(llm_content="hi")
-    svc = AgentRuntimeService(**deps)
-    tid, wid, uid, aid = _make_owners()
-    s = await svc.create_session().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        agent_id=aid,
-        agent_version="1.0.0",
-    )
-
-    chunks: list = []
-    async for c in svc.run_turn().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        session_id=s.id,
-        user_input="hello",
-        model="gpt-4o-mini",
-    ):
-        chunks.append(c)
-
-    kinds = [c.kind for c in chunks]
-    assert "message" in kinds
-    assert "done" in kinds
-    done = next(c for c in chunks if c.kind == "done")
-    assert done.final_message == "hi"
-
-    event_types = [type(e).__name__ for e in deps["events"].events]
-    assert "TurnStarted" in event_types
-    assert "TurnCompleted" in event_types
-
-    persisted = [t for t in deps["turns"]._by_id.values()]
-    assert persisted and persisted[0].status is TurnStatus.SUCCEEDED
-    assert persisted[0].final_response == "hi"
-
-
-@pytest.mark.asyncio
-async def test_run_turn_emits_tool_call_chunks_but_does_not_invoke_tools() -> None:
-    deps = make_dependencies(
-        llm_content="ok",
-        tool_calls=[
-            {
-                "id": "00000000-0000-0000-0000-000000000001",
-                "function": {
-                    "name": "lookup_workspace",
-                    "arguments": '{"workspace_id":"ws-1"}',
-                },
-            }
-        ],
-    )
-    svc = AgentRuntimeService(**deps)
-    tid, wid, uid, aid = _make_owners()
-    s = await svc.create_session().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        agent_id=aid,
-        agent_version="1.0.0",
-    )
-
-    chunks = []
-    async for c in svc.run_turn().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        session_id=s.id,
-        user_input="do something",
-        model="gpt-4o-mini",
-    ):
-        chunks.append(c)
-    tool_chunks = [c for c in chunks if c.kind == "tool_call"]
-    assert len(tool_chunks) == 1
-    assert tool_chunks[0].tool_name == "lookup_workspace"
-    assert tool_chunks[0].arguments == {"workspace_id": "ws-1"}
-    # No ToolPort wired → no ToolResultChunk emitted.
-    assert not any(c.kind == "tool_result" for c in chunks)
-
-
-@pytest.mark.asyncio
-async def test_run_turn_invokes_tool_port_when_wired() -> None:
-    from uuid import UUID
-
-    deps = make_dependencies(
-        llm_content="ok",
-        tool_calls=[
-            {
-                "id": "00000000-0000-0000-0000-0000000000aa",
-                "function": {
-                    "name": "echo",
-                    "arguments": '{"hi":"there"}',
-                },
-            }
-        ],
-    )
-    svc = AgentRuntimeService(**deps)
-
-    class _EchoToolPort:
-        async def invoke(self, *, call_id, tool_name, arguments):  # type: ignore[no-untyped-def]
-            return {"echoed": arguments}
-
-    svc.tool_port = _EchoToolPort()
-    tid, wid, uid, aid = _make_owners()
-    s = await svc.create_session().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        agent_id=aid,
-        agent_version="1.0.0",
-    )
-
-    chunks = []
-    async for c in svc.run_turn().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        session_id=s.id,
-        user_input="do something",
-        model="gpt-4o-mini",
-    ):
-        chunks.append(c)
-
-    tool_result = next(c for c in chunks if c.kind == "tool_result")
-    assert tool_result.tool_call_id == UUID("00000000-0000-0000-0000-0000000000aa")
-    assert tool_result.output == {"echoed": {"hi": "there"}}
-    assert tool_result.is_error is False
-    assert tool_result.latency_ms >= 0
-
-
-@pytest.mark.asyncio
-async def test_run_turn_routes_sandbox_exec_and_catalog_skill() -> None:
-    from uuid import UUID
-
-    deps = make_dependencies(
-        llm_content="ok",
-        tool_calls=[
-            {
-                "id": "00000000-0000-0000-0000-0000000000bb",
-                "function": {
-                    "name": "sandbox_exec",
-                    "arguments": '{"language":"python","code":"print(1)"}',
-                },
-            },
-            {
-                "id": "00000000-0000-0000-0000-0000000000cc",
-                "function": {
-                    "name": "周报助手",
-                    "arguments": "{}",
-                },
-            },
-        ],
-    )
-    svc = AgentRuntimeService(**deps)
-
-    class _Sandbox:
-        async def exec(self, *, call_id, language, code, timeout_ms=30000):  # type: ignore[no-untyped-def]
-            return {"ok": True, "stdout": "1", "language": language, "code": code}
-
-    class _Skills:
-        async def list_executable(self):  # type: ignore[no-untyped-def]
-            return [{"name": "周报助手", "description": "x", "inputSchema": []}]
-
-        async def invoke(self, *, call_id, skill_name, arguments):  # type: ignore[no-untyped-def]
-            return {"ok": True, "name": skill_name, "arguments": arguments}
-
-    svc.sandbox_port = _Sandbox()
-    svc.skill_port = _Skills()
-    tid, wid, uid, aid = _make_owners()
-    s = await svc.create_session().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        agent_id=aid,
-        agent_version="1.0.0",
-    )
-    chunks = []
-    async for c in svc.run_turn().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        session_id=s.id,
-        user_input="run",
-        model="gpt-4o-mini",
-    ):
-        chunks.append(c)
-    results = [c for c in chunks if c.kind == "tool_result"]
-    assert results[0].output["stdout"] == "1"
-    assert results[1].output["name"] == "周报助手"
-    _ = UUID
-
-
-@pytest.mark.asyncio
-async def test_run_turn_on_closed_session_raises() -> None:
-    deps = make_dependencies()
-    svc = AgentRuntimeService(**deps)
-    tid, wid, uid, aid = _make_owners()
-    s = await svc.create_session().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        agent_id=aid,
-        agent_version="1.0.0",
-    )
-    await svc.close_session().execute(tenant_id=tid, session_id=s.id)
-
-    with pytest.raises(SessionClosedError):
-        async for _ in svc.run_turn().execute(
-            tenant_id=tid,
-            workspace_id=wid,
-            owner_id=uid,
-            session_id=s.id,
-            user_input="x",
-            model="gpt-4o-mini",
-        ):
-            pass
-
-
-@pytest.mark.asyncio
-async def test_run_turn_unknown_session_raises_not_found() -> None:
-    deps = make_dependencies()
-    svc = AgentRuntimeService(**deps)
-    tid, wid, uid, _aid = _make_owners()
-    with pytest.raises(SessionNotFound):
-        async for _ in svc.run_turn().execute(
-            tenant_id=tid,
-            workspace_id=wid,
-            owner_id=uid,
-            session_id=UUID("00000000-0000-0000-0000-0000000000ff"),
-            user_input="x",
-            model="gpt-4o-mini",
-        ):
-            pass
-
-
-@pytest.mark.asyncio
-async def test_run_turn_first_chunk_yields_within_first_message() -> None:
-    """SLA: first chunk arrives immediately (synchronous fake LLM)."""
-    deps = make_dependencies(llm_content="fast")
-    svc = AgentRuntimeService(**deps)
-    tid, wid, uid, aid = _make_owners()
-    s = await svc.create_session().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        agent_id=aid,
-        agent_version="1.0.0",
-    )
-    it = svc.run_turn().execute(
-        tenant_id=tid,
-        workspace_id=wid,
-        owner_id=uid,
-        session_id=s.id,
-        user_input="x",
-        model="gpt-4o-mini",
-    )
-    first = await it.__anext__()
-    assert first.kind == "message"
-    assert first.content == "fast"
-    # drain
-    async for _ in it:
-        pass
-
-
-@pytest.mark.asyncio
-async def test_legacy_saved_model_stream_preserves_actor_tools_and_fragments() -> None:
-    from qzdap_llm.client import LLMChunk
-    from qzdap_vault.actor import ActorContext
-
-    from qzdap.modules.agent_runtime.adapter.llm import LLMPortAdapter
-
-    tid, wid, uid, aid = _make_owners()
-    saved_id = uuid4()
-    closed = False
-
-    class SavedService:
-        async def stream(self, *, actor, model_id, req):
-            nonlocal closed
-            assert actor == ActorContext(tenant_id=tid, workspace_id=wid, principal_id=uid)
-            assert model_id == saved_id
-            try:
-                yield LLMChunk(model="saved-upstream", delta="first")
-                yield LLMChunk(model="saved-upstream", delta="", tool_calls=[{"index": 0, "id": "call-1", "function": {"name": "look", "arguments": '{"q":'}}])
-                yield LLMChunk(model="saved-upstream", delta="", tool_calls=[{"index": 0, "function": {"name": "up", "arguments": '"ok"}'}}])
-                yield LLMChunk(model="saved-upstream", delta="", finish_reason="tool_calls")
-            finally:
-                closed = True
-
-    deps = make_dependencies()
-    deps["llm"] = LLMPortAdapter(deps["llm"], model_service=SavedService())
-    svc = AgentRuntimeService(**deps)
-    session = await svc.create_session().execute(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid, agent_version="v1")
-    stream = svc.run_turn().execute(tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=session.id, user_input="hi", model=str(saved_id))
-    assert (await anext(stream)).content == "first"
-    remaining = [chunk async for chunk in stream]
-    calls = [chunk for chunk in remaining if chunk.kind == "tool_call"]
-    assert len(calls) == 1
-    assert calls[0].tool_name == "lookup"
-    assert calls[0].arguments == {"q": "ok"}
-    assert closed
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("selection", ["agent", "session", "override"])
-async def test_copilot_saved_model_early_delta_and_close(selection: str) -> None:
-    from qzdap_llm.client import LLMChunk
-    from qzdap_vault.actor import ActorContext
-
-    from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
-    from qzdap.modules.agent_runtime.adapter.llm import LLMPortAdapter
-    from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
-    from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
-
-    tid, wid, uid, aid = _make_owners()
-    saved_id = uuid4()
-    agent = CatalogAgent.create(id=aid, tenant_id=tid, workspace_id=wid, name="test", category="test", owner="test", model=str(saved_id) if selection == "agent" else "default")
-    advanced = False
-    closed = False
-
-    class Catalog:
-        async def get_published(self, agent_id):
-            assert agent_id == aid
-            return agent
-
-    class Messages:
-        def __init__(self) -> None:
-            self.rows: list[dict] = []
-
-        async def list_for_session(self, session_id):
-            return self.rows
-        async def append(self, **kwargs):
-            self.rows.append(kwargs)
-
-        async def next_seq(self, *, session_id):
-            """下一个轮次内序号 ✓（与真实实现同语义）。"""
-            return (self.rows[-1]["seq"] + 1) if self.rows else 0
-
-    class SavedService:
-        async def stream(self, *, actor, model_id, req):
-            nonlocal advanced, closed
-            assert model_id == saved_id
-            assert actor == ActorContext(tenant_id=tid, workspace_id=wid, principal_id=uid)
-            try:
-                yield LLMChunk(model="actual-upstream", delta="early")
-                advanced = True
-                yield LLMChunk(model="actual-upstream", delta=" final", finish_reason="stop")
-            finally:
-                closed = True
-
-    deps = make_dependencies()
-    messages = Messages()
-    journal = InMemorySessionJournal()
-    runner = SessionGraphRunner(llm=LLMPortAdapter(deps["llm"], model_service=SavedService()))
-    svc = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=messages, catalog=Catalog(), events=deps["events"], graph=runner, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()), journal=journal, claim=deps["sessions"].claim, turn_runner=make_turn_runner(graph=runner, turns=deps["turns"], journal=journal, events=deps["events"], messages=messages, sessions=deps["sessions"]))
-    detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
-    sid = UUID(detail["id"])
-    if selection == "session":
-        session = await deps["sessions"].get(sid)
-        await deps["sessions"].update(session.with_runtime(metadata={**session.metadata, "model": str(saved_id)}, graph_state={}))
-    stream = svc.stream_turn(tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=sid, user_input="hi", model=str(saved_id) if selection == "override" else None)
-    assert (await anext(stream)).content == "early"
-    assert not advanced
-    await stream.aclose()
-    assert closed
-    completed = [chunk async for chunk in svc.stream_turn(tenant_id=tid, workspace_id=wid, owner_id=uid, session_id=sid, user_input="hi", model=str(saved_id) if selection == "override" else None)]
-    assert completed[-1].final_message == "early final"
-    assert messages.rows[-1]["role"] == "assistant"
-    assert messages.rows[-1]["content"] == "early final"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("mismatch", ["tenant", "workspace", "owner"])
-async def test_legacy_rejects_caller_scope_mismatch_before_saved_invocation(mismatch: str) -> None:
-    from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
-
-    deps = make_dependencies()
-    svc = AgentRuntimeService(**deps)
-    tid, wid, uid, aid = _make_owners()
-    session = await svc.create_session().execute(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid, agent_version="v1")
-    with pytest.raises(SessionNotFound):
-        await anext(svc.run_turn().execute(
-            tenant_id=TenantId(uuid4()) if mismatch == "tenant" else tid,
-            workspace_id=WorkspaceId(uuid4()) if mismatch == "workspace" else wid,
-            owner_id=uuid4() if mismatch == "owner" else uid,
-            session_id=session.id, user_input="hi", model=str(uuid4()),
-        ))
-    copilot = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=None, catalog=None, events=deps["events"], graph=None, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()), journal=InMemorySessionJournal(), claim=deps["sessions"].claim, turn_runner=None)
-    with pytest.raises(SessionNotFound):
-        await anext(copilot.stream_turn(
-            tenant_id=TenantId(uuid4()) if mismatch == "tenant" else tid,
-            workspace_id=WorkspaceId(uuid4()) if mismatch == "workspace" else wid,
-            owner_id=uuid4() if mismatch == "owner" else uid,
-            session_id=session.id, user_input="hi", model=str(uuid4()),
-        ))
+__all__ = []

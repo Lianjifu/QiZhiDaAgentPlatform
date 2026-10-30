@@ -4,7 +4,6 @@ Public surface re-exports the most common domain types so route / service
 callers can `from qzdap.modules.agent_runtime import Session, Turn, ...`.
 """
 
-from qzdap.modules.agent_runtime.application.services import AgentRuntimeService
 from qzdap.modules.agent_runtime.domain import (
     DomainEvent,
     Session,
@@ -27,7 +26,6 @@ from qzdap.modules.agent_runtime.domain.errors import (
 
 __all__ = [
     "ActionDeniedError",
-    "AgentRuntimeService",
     "ApprovalRequiredError",
     "DomainEvent",
     "Session",

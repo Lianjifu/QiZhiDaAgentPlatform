@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from qzdap.modules.channel.adapter.dispatch.dispatch_subscriber import (
-    ChannelDispatchSubscriber,
+from qzdap.modules.channel.adapter.dispatch.channel_turn_dispatcher import (
+    ChannelTurnDispatcher,
 )
 
-__all__ = ["ChannelDispatchSubscriber"]
+__all__ = ["ChannelTurnDispatcher"]

@@ -344,6 +344,75 @@ def make_dependencies(
     }
 
 
+class InMemoryCatalog:
+    """``AgentCatalogService`` 的替身 —— 只认一个 agent ✓。"""
+
+    def __init__(self, agent: Any) -> None:
+        self._agent = agent
+
+    async def get_published(self, agent_id: Any) -> Any:  # type: ignore[no-untyped-def]
+        return self._agent
+
+    async def get_admin(self, agent_id: Any) -> Any:  # type: ignore[no-untyped-def]
+        return self._agent.to_admin_dict()
+
+
+class InMemoryMessages:
+    """``SessionMessagePort`` 的替身 ✓。"""
+
+    def __init__(self) -> None:
+        self.rows: list[dict] = []
+
+    async def list_for_session(self, session_id: Any) -> list[dict]:  # type: ignore[no-untyped-def]
+        return self.rows
+
+    async def append(self, **kwargs: Any) -> None:  # type: ignore[no-untyped-def]
+        self.rows.append(kwargs)
+
+    async def next_seq(self, *, session_id: Any) -> int:  # type: ignore[no-untyped-def]
+        return (self.rows[-1]["seq"] + 1) if self.rows else 0
+
+
+def make_copilot(*, agent: Any, llm: Any = None, tool_port: Any = None) -> Any:
+    """装配一个**真的** ``CopilotSessionService``（端口全是内存替身 ✓）。
+
+    ⚠️ 这是**唯一 turn 实现**那条链的单测入口 ✓ —— 旧的 ``AgentRuntimeService``
+    门面已删（Session Stage 5b）✓。
+    """
+    from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
+    from qzdap_agent_runtime.session.turn_runner import TurnRunner  # noqa: F401
+
+    from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
+    from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+
+    deps = make_dependencies()
+    messages = InMemoryMessages()
+    runner = SessionGraphRunner(llm=llm or deps["llm"], tool_port=tool_port)
+    journal = InMemorySessionJournal()
+    deps["journal"] = journal
+    deps["messages"] = messages
+    service = CopilotSessionService(
+        sessions=deps["sessions"],
+        turns=deps["turns"],
+        messages=messages,
+        catalog=InMemoryCatalog(agent),
+        events=deps["events"],
+        graph=runner,
+        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+        journal=journal,
+        claim=deps["sessions"].claim,
+        turn_runner=make_turn_runner(
+            graph=runner,
+            turns=deps["turns"],
+            journal=journal,
+            events=deps["events"],
+            messages=messages,
+            sessions=deps["sessions"],
+        ),
+    )
+    return service, deps
+
+
 def make_turn_runner(
     *,
     graph: Any,

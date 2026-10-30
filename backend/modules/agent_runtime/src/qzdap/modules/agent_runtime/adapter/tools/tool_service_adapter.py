@@ -3,7 +3,7 @@
 `ToolPort` is the agent-runtime's view of "run a tool by name" — it
 doesn't care about tenant scoping, workspace resolution, or call
 persistence. The composition root wires a real `ToolService` instance
-into the `AgentRuntimeService` so LLM-streamed tool_call chunks can be
+into the agent runtime so LLM-streamed tool_call chunks can be
 executed and produce `ToolResultChunk` SSE messages.
 """
 

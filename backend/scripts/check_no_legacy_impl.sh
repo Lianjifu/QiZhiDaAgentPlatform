@@ -148,7 +148,7 @@ SYSTEM_USER_ID|SYSTEM_AGENT_ID;modules/;G3;G;on
 _verify_signature;modules/channel/;G2;G;on
 OrderedDict;modules/channel/;G6;G;on
 @router\.(get|post|put|delete|patch)\("/v1/sessions;modules/;G7/G8;G;on
-dispatch_subscriber;modules/;G9;G;off
+dispatch\.dispatch_subscriber;modules/;G9;G;on
 record_legacy_call\("R2"\);modules/;R2;R;on
 (code|reason_code|error_code)\s*=\s*"(CHANNEL_NOT_FOUND|CHANNEL_DISABLED|INBOUND_ADAPTER_MISSING|OUTBOUND_ADAPTER_MISSING|WEBHOOK_SIGNATURE_INVALID|WEBHOOK_TIMESTAMP_SKEW|DUPLICATE_REQUEST|TENANT_DENIED|CHANNEL_SERVICE_ACCOUNT_MISSING|CHANNEL_DELIVERY_FAILED|IDENTITY_REJECTED|IDENTITY_CREDENTIALS_MISSING|TOKEN_INVALID|TOKEN_EXPIRED|SERVICE_ACCOUNT_NOT_CONFIGURED)";modules/;G12;G;on
 (code|reason_code|error_code)\s*=\s*"(CHANNEL_NOT_FOUND|CHANNEL_DISABLED|INBOUND_ADAPTER_MISSING|OUTBOUND_ADAPTER_MISSING|WEBHOOK_SIGNATURE_INVALID|WEBHOOK_TIMESTAMP_SKEW|DUPLICATE_REQUEST|TENANT_DENIED|CHANNEL_SERVICE_ACCOUNT_MISSING|CHANNEL_DELIVERY_FAILED|IDENTITY_REJECTED|IDENTITY_CREDENTIALS_MISSING|TOKEN_INVALID|TOKEN_EXPIRED|SERVICE_ACCOUNT_NOT_CONFIGURED)";libs/;G12;G;on
@@ -159,8 +159,10 @@ def from_url\(url: str\);runtimes/;X20;X;on
 from langgraph\.checkpoint\.postgres import;runtimes/;X20;X;on
 from langgraph\.checkpoint\.postgres import;modules/;X20;X;on
 from langgraph\.checkpoint\.postgres import;composition/;X20;X;on
-RunTurnCompletionUseCase;modules/;X2;X;off
-use_cases.run_turn;modules/;X2;X;off
+RunTurnCompletionUseCase;modules/;X2;X;on
+use_cases\.run_turn;modules/;X2;X;on
+agent_runtime\.application\.services;modules/;X2;X;on
+agent_runtime\.adapter\.llm\.prompts;modules/;X10;X;on
 (\.wait_status\b|wait_status\s*=);modules/;X6;X;on
 graph_state;modules/;X3;X;off
 agent_turns;modules/;X4;X;off

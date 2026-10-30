@@ -1,6 +1,7 @@
 # Gateway 层重构方案
 
-> 版本：1.12（2026-10-29：**Stage 0 的 G-02 / G-02b 已补齐** —— 错误码**收敛 + 投影**落地：15 个 Gateway 域的自由字符串码提升为 `ErrorCode` 枚举成员（台账 **G12 已清理**）+ `ERROR_PROJECTION` 投影表（http / im / web 三套文案）+ 三处投放面接线；**§9.0 的表只列了 7 个** —— 实施时发现 Gateway 自己又造了 8 个，按实况补齐；**其余模块自己的 ~150 个码未接管**；详见附录 C.8）｜ 1.11（2026-10-29：**Stage 5 已实施（部分）** —— 旧的 `/v1/sessions*` **整段删除**（台账 **G7 / G8**；P-11 确认无仓外消费者 → 兼容保留期归零）+ `recent_request_ids` 残留数据清零 + 孤儿索引删除 + 「没有第二套实现」扫描脚本**进 CI** + §11.2 的架构测试落地；**G9（`dispatch_subscriber.py`）与 X2（第二套 turn 实现）仍未接管** —— 必须与 Session Stage 5b 原子切换；详见 §10 Stage 5「实施结果」与附录 C.7）
+> 版本：1.13（2026-10-30：**「切 IM 入口到唯一 turn 实现」已达成** —— 与 **Session Stage 5b 同 PR** ✓：IM 的入站 / 出站 / **轮次编排**全部走唯一实现（会话按 `channel_session_key` 粘住 ✓，台账 **R1 / G9 / X2 已清理**）；旧订阅者 `dispatch_subscriber.py` **删除** ✓）
+> 沿革：v1.12（2026-10-29：**Stage 0 的 G-02 / G-02b 已补齐** —— 错误码**收敛 + 投影**落地：15 个 Gateway 域的自由字符串码提升为 `ErrorCode` 枚举成员（台账 **G12 已清理**）+ `ERROR_PROJECTION` 投影表（http / im / web 三套文案）+ 三处投放面接线；**§9.0 的表只列了 7 个** —— 实施时发现 Gateway 自己又造了 8 个，按实况补齐；**其余模块自己的 ~150 个码未接管**；详见附录 C.8）｜ 1.11（2026-10-29：**Stage 5 已实施（部分）** —— 旧的 `/v1/sessions*` **整段删除**（台账 **G7 / G8**；P-11 确认无仓外消费者 → 兼容保留期归零）+ `recent_request_ids` 残留数据清零 + 孤儿索引删除 + 「没有第二套实现」扫描脚本**进 CI** + §11.2 的架构测试落地；**G9（`dispatch_subscriber.py`）与 X2（第二套 turn 实现）仍未接管** —— 必须与 Session Stage 5b 原子切换；详见 §10 Stage 5「实施结果」与附录 C.7）
 > 沿革：v1.10（2026-10-29：**Stage 4b 已实施** —— 无感重放落地：Gateway 侧新增 `gateway/replay.py`（`StoredEvent` / `EventStore` 读端口 / 规范化摘要 `event_digest`）+ `Gateway.replay()`；**连带落地 Session 侧的最小必要**（`session_turns` 轮次双写 + `session_events` 事件落库 + 按 seq 读取端口，迁移 0050）—— 因为 Stage 4b 的硬前置（Session Stage 4「真写真读」）开工时不满足；**202 降级路径整条删除**，重复命中改为**重放上一轮的事件流**（SSE 带 `id:` 游标，支持 `Last-Event-ID` 续传），重放不了才回 409；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4b「实施结果」与附录 C.6）
 > 沿革：v1.9（2026-10-29：**Stage 4a 两段都已实施** —— 第一段：门面接管 + 出站 sink + 202 降级 + 弃用打点；第二段：**web 入口也走 `Gateway.accept`**（身份与幂等键各只有一个来源）；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4a「实施结果」与附录 C.4 / C.5）
 > 沿革：v1.8（2026-10-29：**Stage 4a 第一段已实施** —— `Gateway.accept` 门面（①②③）+ ④ 的三个动作 + 出站 `ResultSink`（编码 + 卡片降级）+ IM 入站/出站接管 + 重复请求的 202 降级路径 + G7/G9/X2 弃用打点；**「切 IM 入口到唯一 turn 实现」被 Session 阻塞，未接管**；详见 §10 Stage 4a「实施结果」与附录 C.4）
@@ -1116,7 +1117,7 @@ composition
 
 | 未接管项 | 为什么 | 归属 |
 |---|---|---|
-| **切 IM 入口到唯一 turn 实现** | 被 Session 的「唯一 turn 实现（claim / 幂等 / 取消 / 审批合一）」阻塞（§0.5 的前置依赖表）。IM 的**入站与出站**已接管，**轮次编排**仍是第二套实现 | Session（Stage 3–5b）· 切的动作在 Gateway Stage 4a 的下一段，与 Session Stage 5b 同 PR |
+| **切 IM 入口到唯一 turn 实现** | ✅ **2026-10-30 已达成**（Session Stage 5b 同 PR）—— IM 的入站、出站与**轮次编排**现在都走唯一实现 ✓；会话按 `channel_session_key` 粘住 ✓（台账 R1 已清理） | — |
 | **卡片实际下发** | 编码器已产出卡片载荷，但**入站侧还没有「卡片点击 → 审批决策」的回调处理** —— 先发卡片 = 做出一个点了没反应的按钮。本轮一律按「无卡片能力」降级为文本，并把降级记进 `DeliveryOutcome` | Agent Loop / Execution（回调侧）+ 各平台卡片渲染 |
 | **`/v1/sessions*`（路径 C）走门面** | 它走的是**第二套 turn 实现**（无 claim / 幂等 / 取消 / 审批），本轮已加弃用标记 + 打点；「让它走门面」没有意义 —— **它的终态是被删除**（G7/G8，Stage 5） | Gateway Stage 5 |
 | **无感重放** | ✅ **Stage 4b 已实施**（2026-10-29）—— 重复命中改为重放事件流，202 降级路径删除 | — |
@@ -1195,7 +1196,7 @@ composition
 | **IM 入口的无感重放** | 事件落库发生在 **copilot 这条路径**上；IM 的轮次编排仍是**第二套实现**（`use_cases/*`），重复命中的语义由它决定 | Session（Stage 3 / 5b）· 与「切 IM 入口」同 PR |
 | **Session 的 outbox 调度与死信** | `delivery_status` 目前只在轮次**正常收尾**时从 `pending` 标成 `delivered`；「按状态捞待投递 → 重试退避 → 死信」的调度器没有 | Session Stage 4 |
 | **`session_turns` 作为轮次幂等的权威** | 本轮幂等的权威仍是 `session_inbox`（带 TTL 与强弱分层）；`session_turns` 的唯一索引只兜底「同会话不得有两个**在飞的**同键轮次」 | Session Stage 2（双写期结束后再移交） |
-| **切 IM 入口到唯一 turn 实现** | 与 Stage 4a 同一项，仍被 Session 阻塞 | Session（Stage 3–5b） |
+| **切 IM 入口到唯一 turn 实现** | ✅ **2026-10-30 已达成**（与 Session Stage 5b 同 PR） | — |
 
 
 ### Stage 5：旧实现清理
