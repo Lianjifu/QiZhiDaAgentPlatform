@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -146,6 +146,18 @@ class MemoryCatalogRepository(ABC):
 
     @abstractmethod
     async def list_promotions(self, workspace_id: UUID) -> list[PromotionEvent]: ...
+
+    @abstractmethod
+    async def list_policy_workspaces(self) -> list[UUID]:
+        """**有策略的工作区** ✓（淘汰器按工作区跑 ✓）。"""
+        ...
+
+    @abstractmethod
+    async def usage_by_day(
+        self, workspace_id: UUID, *, since: datetime
+    ) -> list[tuple[date, int]]:
+        """**每天被用过的条数** ✓（真实使用趋势 ✓ —— C7 ✓）。"""
+        ...
 
     @abstractmethod
     async def add_policy(self, item: RetentionPolicy) -> None: ...

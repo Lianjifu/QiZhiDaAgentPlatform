@@ -14,10 +14,15 @@ Stage 0 只做**平面分离** ✓（纯重构 ✓，行为不变 ✓）。
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from logging import getLogger
 from uuid import UUID
 
+from qzdap_agent_runtime.memory.eviction import (
+    EvictionPolicy,
+    EvictionReport,
+    Evictor,
+)
 from qzdap_agent_runtime.memory.extraction import RuleFactExtractor
 from qzdap_agent_runtime.memory.policy import MemoryPolicy, RetentionPolicyView
 from qzdap_agent_runtime.memory.redaction import RuleRedactor
@@ -38,6 +43,7 @@ from qzdap.modules.memory.adapter.candidates import (
     PinnedCandidateAdapter,
     VectorCandidateAdapter,
 )
+from qzdap.modules.memory.adapter.eviction import SqlEvictionStore
 from qzdap.modules.memory.adapter.write_adapter import MemoryWriteAdapter
 from qzdap.modules.memory.application.embedding import embed_item
 from qzdap.modules.memory.application.ports import (
@@ -85,6 +91,10 @@ class MemoryRuntimeService:
         #: 上一次召回是否**降级** ✓（C10 ✓ —— 调用方要能知道 ✓）。
         self._last_recall_degraded = False
         self._last_recall_reason = ""
+        #: ⚠️ **淘汰器** ✓（C4 ✓ —— §6 ✓）—— 策略第一次有执行者 ✓。
+        self._evictor = Evictor(
+            store=SqlEvictionStore(catalog, vectors=vectors)
+        )
         # ⚠️ **写入的编排归契约层** ✓ —— 这里只提供落库端口 ✓（§4.1 ✓）。
         self._writer_pipeline = WriterPipeline(
             extractor=RuleFactExtractor(),
@@ -163,6 +173,70 @@ class MemoryRuntimeService:
             eviction=str(policy.eviction),
         )
 
+    async def evict(self, *, now: datetime) -> EvictionReport:
+        """**淘汰** ✓（C4 ✓ —— §6 ✓）。
+
+        ⚠️ **按工作区跑** ✓（策略是工作区级的 ✓）—— 没有策略的工作区
+        **不动** ✓（不猜 ✓）。
+        """
+        workspaces = await self._catalog.list_policy_workspaces()
+        total = EvictionReport()
+        for workspace_id in workspaces:
+            for policy in await self._catalog.list_policies(workspace_id):
+                report = await self._evictor.evict(
+                    workspace_id=workspace_id,
+                    policy=EvictionPolicy(
+                        layer=str(policy.layer),
+                        label=str(policy.label),
+                        ttl_minutes=int(policy.ttl_minutes or 0),
+                        max_items=int(policy.max_items or 0),
+                        storage_mb=int(policy.storage_mb or 0),
+                        eviction=str(policy.eviction),
+                    ),
+                    now=now,
+                )
+                total = EvictionReport(
+                    retired=total.retired + report.retired,
+                    by_ttl=total.by_ttl + report.by_ttl,
+                    by_max_items=total.by_max_items + report.by_max_items,
+                    by_storage=total.by_storage + report.by_storage,
+                    vectors_deleted=total.vectors_deleted + report.vectors_deleted,
+                    kept=total.kept + report.kept,
+                    details=[*total.details, *report.details],
+                )
+        return total
+
+    async def _record_usage(self, hits: list[RecallHit]) -> None:
+        """**召回命中 → 更新使用统计** ✓（C7 ✓ —— 决策 #7 ✓）。
+
+        ⚠️ **淘汰与置信度调整都依赖它** ✓ —— 没有统计就退化成「按写入时间」
+        ✗✗（LRU 就没意义了 ✗✗）。
+        """
+        now = datetime.now(UTC)
+        for hit in hits:
+            try:
+                item_id = UUID(hit.source_id)
+            except (TypeError, ValueError):
+                continue
+            if hit.layer == "l2":
+                fact = await self._catalog.get_l2(item_id)
+                if fact is None:
+                    continue
+                fact.used_count = int(fact.used_count or 0) + 1
+                fact.last_used_at = now
+                fact.usage_history = [
+                    *(fact.usage_history or [])[-29:],
+                    now.isoformat(),
+                ]
+                await self._catalog.update_l2(fact)
+            elif hit.layer == "l3":
+                entry = await self._catalog.get_l3(item_id)
+                if entry is None:
+                    continue
+                entry.hits = int(entry.hits or 0) + 1
+                entry.hits_trend = [*(entry.hits_trend or [])[-29:], entry.hits]
+                await self._catalog.update_l3(entry)
+
     async def refine_buffers(
         self, *, now: datetime, limit: int = 100
     ) -> RefineReport:
@@ -216,7 +290,7 @@ class MemoryRuntimeService:
         )
         self._last_recall_degraded = outcome.degraded
         self._last_recall_reason = outcome.degraded_reason
-        return [
+        hits = [
             RecallHit(
                 layer=str(hit.get("layer") or "l2"),  # type: ignore[arg-type]
                 content=str(hit.get("content") or ""),
@@ -231,6 +305,13 @@ class MemoryRuntimeService:
             )
             for hit in outcome.hits
         ]
+        # ⚠️ **命中要记统计** ✓（C7 ✓ —— 决策 #7 ✓）—— 统计失败**不影响召回**
+        # ✓（召回已经成功了 ✗✗ —— 统计只是附加信息 ✓）。
+        try:
+            await self._record_usage(hits)
+        except Exception:  # noqa: BLE001
+            _log.warning("memory usage stats update failed", exc_info=True)
+        return hits
 
     async def _embed_item(
         self,

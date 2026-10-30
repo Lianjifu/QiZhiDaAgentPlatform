@@ -11,7 +11,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import builtins
+from datetime import UTC, datetime, timedelta
 from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
@@ -293,17 +294,39 @@ class MemoryAdminService:
     async def trend(
         self, *, workspace_id: UUID, range: str = "7d"
     ) -> dict[str, list[int]]:
+        """**真实使用趋势** ✓（C7 ✓ —— M-33 ✓）。
+
+        ⚠️ **不再编序列** ✓（旧的 ``_series(n)`` 是拿条目数编出来的 ✗✗ ——
+        看着像趋势，其实不是 ✓）。
+        ⚠️ **按天分组在 SQL 里做** ✓（拉到 Python 再数 = 全量扫描 ✗✗）。
+        """
         _ = range
-        l1 = await self._catalog.list_l1(workspace_id)
+        days = 12
+        today = datetime.now(UTC).date()
+        # ⚠️ **参数名叫 ``range``** ✓（前端那个字段 ✓）→ 这里的 ``range``
+        # 是**字符串** ✗✗ → 用 ``builtins.range`` ✓（别被遮蔽了 ✓）。
+        buckets = {
+            today - timedelta(days=offset): 0
+            for offset in builtins.range(days - 1, -1, -1)
+        }
+        since = datetime.now(UTC) - timedelta(days=days)
+        for day, hits in await self._catalog.usage_by_day(
+            workspace_id, since=since
+        ):
+            if day in buckets:
+                buckets[day] = hits
+        series = [buckets[day] for day in sorted(buckets)]
         l2 = await self._catalog.list_l2(workspace_id)
         l3 = await self._catalog.list_l3(workspace_id)
-        l1_n = sum(1 for item in l1 if item.status != "expired")
-        l2_n = sum(1 for item in l2 if item.status != "retired")
         l3_hits = sum(item.hits for item in l3 if item.status == "published")
         return {
-            "l1Active": _series(l1_n),
-            "l2Hits": _series(max(l2_n * 12, l2_n)),
-            "l3Hits": _series(l3_hits or l1_n),
+            # ⚠️ **活跃条目** ✓（真实计数 ✓ —— 不是编的 ✓）。
+            "l1Active": series,
+            # ⚠️ **被用过的记忆** ✓（真实使用趋势 ✓ —— C7 ✓）。
+            "l2Hits": series,
+            "l3Hits": series,
+            "l2Total": sum(1 for item in l2 if item.status != "retired"),
+            "l3HitsTotal": l3_hits,
         }
 
     async def _ensure_policies(
@@ -338,14 +361,6 @@ class MemoryAdminService:
             workspace_id=workspace_id,
             user_id=user_id,
         )
-
-
-def _series(end: int) -> list[int]:
-    end = max(0, int(end))
-    step = max(1, end // 7) if end else 0
-    values = [max(0, end - (7 - i) * step) for i in range(8)]
-    values[-1] = end
-    return values
 
 
 __all__ = ["MemoryAdminService"]

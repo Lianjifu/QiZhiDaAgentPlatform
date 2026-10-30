@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import math
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -256,6 +256,24 @@ class InMemoryCatalog(MemoryCatalogRepository):
 
     async def add_promotion(self, item: PromotionEvent) -> None:
         self.promotions[item.id] = item
+
+    async def list_policy_workspaces(self) -> list[UUID]:
+        """**有策略的工作区** ✓（与 SQL 实现同口径 ✓）。"""
+        return list({policy.workspace_id for policy in self.policies.values()})
+
+    async def usage_by_day(
+        self, workspace_id: UUID, *, since: datetime
+    ) -> list[tuple[date, int]]:
+        """**每天被用过的条数** ✓（与 SQL 实现同口径 ✓）。"""
+        buckets: dict[date, int] = {}
+        for item in self.l2.values():
+            if item.workspace_id != workspace_id or item.last_used_at is None:
+                continue
+            if item.last_used_at < since:
+                continue
+            day = item.last_used_at.date()
+            buckets[day] = buckets.get(day, 0) + 1
+        return sorted(buckets.items())
 
     async def list_promotions(self, workspace_id: UUID) -> list[PromotionEvent]:
         return [i for i in self.promotions.values() if i.workspace_id == workspace_id]

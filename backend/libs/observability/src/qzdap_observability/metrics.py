@@ -138,6 +138,14 @@ MEMORY_VECTOR_ENQUEUED_TOTAL = Counter(
     labelnames=("outcome",),
     registry=metrics_registry,
 )
+# ⚠️ **淘汰计数** ✓（Memory 方案 §14.2 ✓）—— 标签是**原因** ✓
+# （``ttl`` / ``max_items`` / ``storage`` ✓）。
+MEMORY_EVICTION_TOTAL = Counter(
+    "qzdap_memory_eviction_total",
+    "Memories retired by the retention policy",
+    labelnames=("reason",),
+    registry=metrics_registry,
+)
 # ⚠️ **会话 key 派生次数** ✓（Router 方案 §12.2 ✓）—— **不记录 key 本身** ✓
 # （避免泄漏身份 ✓ —— key 会进日志 / 审计 / 数据库 ✓）。
 ROUTER_SESSION_KEY_HASH_TOTAL = Counter(
@@ -219,6 +227,16 @@ def record_memory_vector_enqueue(*, dropped: bool = False) -> None:
     MEMORY_VECTOR_ENQUEUED_TOTAL.labels(
         outcome="dropped" if dropped else "enqueued"
     ).inc()
+
+
+def record_memory_eviction(*, reason: str, count: int = 1) -> None:
+    """**记一次淘汰** ✓（Memory 方案 §14.2 ✓ —— ``qzdap_memory_eviction_total`` ✓）。
+
+    ⚠️ **按原因分开** ✓（TTL / 条数 / 容量 ✓）—— 才知道是哪条规则在起作用 ✓。
+    """
+    if count <= 0:
+        return
+    MEMORY_EVICTION_TOTAL.labels(reason=str(reason)).inc(count)
 
 
 def record_router_session_key_hash() -> None:

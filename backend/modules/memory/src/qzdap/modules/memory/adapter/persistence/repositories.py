@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from qzdap_persistence.tenant_guard import current_tenant_id
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from qzdap.modules.memory.adapter.persistence.models import (
@@ -397,6 +397,38 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
                 updated_at=item.created_at,
             )
         )
+
+    async def list_policy_workspaces(self) -> list[UUID]:
+        """**有策略的工作区** ✓（淘汰器按工作区跑 ✓ —— 跨租户扫描 ✓）。"""
+        stmt = select(MemoryPolicyORM.workspace_id).distinct()
+        result = await self._s.execute(stmt)
+        return [row for row in result.scalars().all()]
+
+    async def usage_by_day(
+        self, workspace_id: UUID, *, since: datetime
+    ) -> list[tuple[date, int]]:
+        """**每天被用过的记忆条数** ✓（真实使用趋势 ✓ —— C7 ✓）。
+
+        ⚠️ **按天分组在 SQL 里做** ✓（拉到 Python 再数 = 全量扫描 ✗✗）。
+        """
+        stmt = (
+            select(
+                func.date_trunc("day", MemoryL2ORM.last_used_at).label("day"),
+                func.count(MemoryL2ORM.id).label("hits"),
+            )
+            .where(MemoryL2ORM.workspace_id == workspace_id)
+            .where(MemoryL2ORM.last_used_at.isnot(None))
+            .where(MemoryL2ORM.last_used_at >= since)
+            .group_by("day")
+            .order_by("day")
+        )
+        result = await self._s.execute(stmt)
+        rows: list[tuple[date, int]] = []
+        for day, hits in result.all():
+            if day is None:
+                continue
+            rows.append((day.date(), int(hits)))
+        return rows
 
     async def list_promotions(self, workspace_id: UUID) -> list[PromotionEvent]:
         result = await self._s.execute(

@@ -1563,13 +1563,19 @@ async def _refine_memory_buffers(app: Any, container: Container) -> None:
     try:
         async with container.session_factory() as session:
             service = factory.for_session(session)
-            report = await service.refine_buffers(now=datetime.now(UTC))
+            now = datetime.now(UTC)
+            report = await service.refine_buffers(now=now)
+            # ⚠️ **淘汰器与清扫器同批调度** ✓（Memory 方案 Stage 6 ✓ ——
+            # 「淘汰器与 sweeper 一起调度」✓）—— **策略第一次有执行者** ✓。
+            evicted = await service.evict(now=now)
             await session.commit()
     except Exception:  # noqa: BLE001
         _log.exception("memory buffer refinement failed; will retry next tick")
         return
     if report.total:
         _log.info("memory buffer refine: %s", report)
+    if evicted.total:
+        _log.info("memory eviction: %s", evicted)
 
 
 async def _start_session_sweeper(
