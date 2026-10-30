@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 
 from opentelemetry import context as _otel_context
 from opentelemetry import trace as _trace
-from qzdap_agent_runtime.agent_loop.evaluate import Evaluator
+from qzdap_agent_runtime.agent_loop.evaluate import HARD_MAX_STEPS, Evaluator
 from qzdap_agent_runtime.agent_loop.expert import ExpertAssembler, ExpertInstance
 from qzdap_agent_runtime.agent_loop.observe import Observer
 from qzdap_agent_runtime.agent_loop.reason import Reasoner
@@ -70,7 +70,6 @@ from qzdap.modules.agent_runtime.adapter.graph.agent_loop import (
     to_dict_messages,
     to_runtime_actor,
 )
-from qzdap.modules.agent_runtime.adapter.graph.loop import HARD_MAX_STEPS
 from qzdap.modules.agent_runtime.adapter.graph.state import LoopState, estimate_tokens
 from qzdap.modules.agent_runtime.adapter.graph.tools import (
     execute_tool,
@@ -898,7 +897,9 @@ class SessionGraphRunner:
         —— 但那仍然是**取值链的输入** ✓ 不是运行时「挑」✗✗）。
         """
         _ = owner_id
-        assembler = self._expert_assembler or self._fallback_assembler(agent)
+        assembler = self._expert_assembler or self._fallback_assembler(
+            agent, tenant_id=tenant_id
+        )
         classification = DEFAULT_CLASSIFIER.classify(
             message_count=history_count,
             tools_count=len(agent.tools) if agent is not None else 0,
@@ -924,7 +925,9 @@ class SessionGraphRunner:
             route_id_override=route_id,
         )
 
-    def _fallback_assembler(self, agent: CatalogAgent | None) -> ExpertAssembler:
+    def _fallback_assembler(
+        self, agent: CatalogAgent | None, *, tenant_id: UUID | None = None
+    ) -> ExpertAssembler:
         """**兜底的专家装配器** ✓（没有装配专家路由时落回会话绑定 ✓）。
 
         ⚠️ **它也走同一套端口** ✓ —— 不是第二套实现 ✓（只是「路由端口」换成
@@ -952,6 +955,7 @@ class SessionGraphRunner:
                 skill_port=self._skill_port,
                 sandbox_port=self._sandbox_port,
                 tool_port=self._tool_port,
+                tenant_id=tenant_id,
             ),
         )
 

@@ -1,61 +1,42 @@
-"""qzdap_agent_runtime — LangGraph-based agent runtime library.
+"""qzdap_agent_runtime —— 契约层 ✓（Gateway ✓ / Router ✓ / Session ✓ / Context ✓ / Memory ✓ / Agent Loop ✓）。
 
-见 docs/refactor/session-module-refactor-plan.md §3.1 / §7.2。
+⚠️ **这里是「契约」不是「实现」** ✓ —— 端口 ✓ / DTO ✓ / 判定点 ✓；
+**真实实现**归各模块 ✓（``modules/*`` ✓）—— 契约层**不认识**任何具体实现 ✓。
 
-Stage 1 + Stage 2 PR A/B/C/D 范围内交付：
-
-- `graph.SessionState` TypedDict（19 节点字段对齐）
-- `graph.build_session_graph()` 纯内存 fake 图
-- `agent_router.classify_task_kind_heuristic` (§2.5 阻塞 6 · **已从 `graph.routing` 迁来** ✓)
-- `result.events.ResultEvent` 11 种事件类型（§13.5）
-- `channels.gateway.ChannelMessage` 入站规范化 DTO（§5.1）
-- `ports` 协议：ToolRegistry / LayeredMemory / PolicyGuard / ToolExecutor（§13.3/§13.4/§5.7/§5.8）
-- `execution.lock` LockManager + InMemoryLockManager（§4.2/§4.3）
-- `outbox` OutboxWorker + InMemoryOutboxRepository（§4.4）
-- `graph.from_url` Postgres checkpointer 工厂 → **已删**（同步 saver 会阻塞事件循环，
-  改由 composition 的 lifespan 建 `AsyncPostgresSaver`）
+⚠️ **2026-10-31（Agent Stage 7）** ✓ —— **未接线的整包清掉了** ✓：
+19 节点图 ✓ / 13 个空壳节点 ✓ / 16 个 ``InMemory*`` 假实现 ✓ /
+占位图 ✓ / ``budget.py`` ✓ / ``layered.py`` ✓ —— **生产包零 ``InMemory*``** ✓
+（架构守卫 `tests/architecture/test_single_implementation.py` ✓ 在盯 ✓）。
 """
 
 from __future__ import annotations
 
 from . import (
+    agent_loop,
     agent_router,
     channels,
-    evaluation,
+    context,
     execution,
-    governance,
-    graph,
+    gateway,
     memory,
-    observability,
     outbox,
     ports,
     result,
-    tools,
-)
-from .engine import (
-    ChannelGateway,
-    ResumeRequest,
-    SessionEngine,
-    SessionRef,
-    TurnRequest,
+    router,
+    session,
 )
 
 __all__ = [
-    "ChannelGateway",
-    "ResumeRequest",
-    "SessionEngine",
-    "SessionRef",
-    "TurnRequest",
+    "agent_loop",
     "agent_router",
     "channels",
-    "evaluation",
+    "context",
     "execution",
-    "governance",
-    "graph",
+    "gateway",
     "memory",
-    "observability",
     "outbox",
     "ports",
     "result",
-    "tools",
+    "router",
+    "session",
 ]

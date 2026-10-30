@@ -750,16 +750,16 @@
 | | A-30 `deep/planner.py` | 规划器 + 子代理派发；子代理工具集 = **子代理自己配置里的绑定集** | — | 0 | A-29 |
 | | A-31 预算 | `max_steps` / `max_cost_usd` / `SubAgentSpec` | — | 0 | A-29 |
 | | **A-32 删 `nodes.py` 的 `deep_agent_plan` / `subagent` 空壳** | — | — | **~130 行** | A-29 |
-| Stage 7 · 清理与封口 | **A-33 删 `graph/nodes.py` 的 13 个节点** | 层方案 §2.3 表 | — | **~700 行** | 归零判据满足 |
-| | **A-34 改 `graph/builder.py` 为 6 节点版** | — | — | **~177 行** | A-33 |
-| | **A-35 删 `adapter/graph/runner.py` 的 ReAct 循环** | — | — | **~250 行** | A-27 归零 |
-| | **A-36 删 `adapter/graph/loop.py` 的 `compile_loop_graph`** | ⚠️ **与 X17 同批删**（`runner.py:44` import 它 → 必须活到旧 runner 退役）；台账 §5.4 已同步为 **Agent Stage 7** | **X5**（关注点 #20） | **~70 行** | A-35 |
-| | **A-37 删 `executor.py` 的 `InMemoryToolExecutor`** | — | **关注点 #16** | **~305 行** | A-20 |
-| | **A-38 删 `tools/registry.py` 的 `InMemoryToolRegistry`** | **适配逻辑保留**，只删 `InMemory*` 实现 | **关注点 #29** | ~60 行 | A-10 |
-| | **A-39 删 `result/events.py` 的 16 种 `*Event`** | — | **关注点 #24** | ~200 行 | — |
-| | **A-40 删其余 14 个 `InMemory*`** | §1.5 的表逐条删（`InMemoryApprovalStore` / `InMemoryPolicyGuard` / `InMemoryAuditLogger` / `InMemoryDataSubjectService` / `InMemoryUserDataExportService` / `InMemoryCostAttribution` / `InMemoryResultSink` / `InMemoryOutboxRepository` / `InMemoryLockManager` / `InMemorySummaryModel` / `InMemoryLayeredMemory` / `InMemoryDeepAgentFactory` / `InMemoryDeepAgent` / `InMemoryOnlineEvaluator`） | **关注点 #25–#29** | ~700 行 | 各语义已落地 |
-| | A-41 启用扫描脚本 Agent 段 + `InMemory*` 禁令 | 台账 X5 / X1 段 | — | 0 | A-33 |
-| | A-42 更新台账 + 现状文档 | X5 → 已清理；X1 的 Agent 部分 → 已清理 | — | 0 | A-41 |
+| Stage 7 · 清理与封口 | **A-33 删 `graph/nodes.py` 的 13 个节点** | ✅ **已达成**（2026-10-31，Agent Stage 7）—— `runtimes/agent_runtime/src/qzdap_agent_runtime/graph/` **整包删除** ✓（`nodes.py` ✓ / `builder.py` ✓ / `state.py` ✓ / `deep_agent.py` ✓）| — | **~1000 行** | 归零判据满足 ✓ |
+| | **A-34 改 `graph/builder.py` 为 6 节点版** | ⚠️ **不做了** ✓ —— **6 节点图没有承载者** ✓：新循环是 runtime 的**手写循环** ✓（`AgentLoopRunner` ✓ —— Reason → Observe → Evaluate ✓）+ **`LoopHooks`** ✓（每步旁路 ✓）—— 六个终止条件的**单一判定点** ✓ 已达成 ✓；⚠️ **再造一张图就是第三套** ✗✗（旧图 ✓ + 新图 ✗）→ **整包删掉** ✓ | — | **~177 行**（随 A-33 一起删 ✓） | A-33 ✓ |
+| | **A-35 删 `adapter/graph/runner.py` 的 ReAct 循环** | ✅ **已达成**（2026-10-31，Agent Stage 5）—— 手写 `while True` **删掉** ✓（~250 行 ✓）—— 生产路径跑 runtime 的 `AgentLoopRunner` ✓ | — | **~250 行** | A-27 归零 ✓ |
+| | **A-36 删 `adapter/graph/loop.py` 的 `compile_loop_graph`** | ✅ **已达成**（2026-10-31，Agent Stage 7）—— `adapter/graph/loop.py` **整文件删除** ✓（占位图 ✓ / 旧 `next_route` ✓ / 旧 `apply_stall_guard` ✓ —— 三个都有 runtime 侧的新实现 ✓）；`HARD_MAX_STEPS` **迁到契约层** ✓（`agent_loop/evaluate.py` ✓）| **X5 → 已清理**（关注点 #20）✓ | **~70 行** | A-35 ✓ |
+| | **A-37 删 `executor.py` 的 `InMemoryToolExecutor`** | ✅ **已达成**（2026-10-31，Agent Stage 7）—— `execution/executor.py` **整文件删除** ✓ —— 工具执行的唯一权威是 `modules/tool` 的 `InvokeToolUseCase` ✓ | **关注点 #16** ✓ | **~305 行** | A-20 ✓ |
+| | **A-38 删 `tools/registry.py` 的 `InMemoryToolRegistry`** | ✅ **已达成**（2026-10-31，Agent Stage 7）—— `tools/` **整包删除** ✓ —— 真实注册表是 `modules/tool` 的 `tools` 表 ✓（Stage 2 的 `tool_schema.py` ✓ 保留了适配逻辑 ✓）| **关注点 #29** ✓ | ~60 行 | A-10 ✓ |
+| | **A-39 删 `result/events.py` 的 16 种 `*Event`** | ⚠️ **部分** ⏳ —— ⚠️ **它们已被出站编码器接上** ✓（`modules/channel/.../outbound/encoder.py` ✓ —— 不再是「零引用的平行实现」✓）；⚠️ **直接换 TurnChunk 会丢数据** ✗（usage 的 6 维 ✓ / error 的 `detailed` ✓ / `event_id` ✓）→ **「降级为 TurnChunk 工厂」那半归 Gateway 层** ⏳（要先扩前端契约 ✓）| **关注点 #24**（⏳） | ~200 行（未动 ✓） | — |
+| | **A-40 删其余 14 个 `InMemory*`** | ✅ **已达成**（2026-10-31，Agent Stage 7）—— `governance/` ✓（4 个 ✓）/ `evaluation/` ✓ / `observability/` ✓ / `execution/lock.py` ✓ / `context/budget.py` ✓ / `memory/layered.py` ✓ / `result/sink.py` ✓ / `graph/deep_agent.py` ✓ —— **全删** ✓；⚠️ **`InMemoryOutboxRepository` 保留** ✓（**Session Stage 4b 已取用** ✓ —— 出站重试与死信的**唯一实现** ✓ —— 不是孤儿 ✓）| **关注点 #25–#29** ✓ | ~700 行 | 各语义已落地 ✓ |
+| | A-41 启用扫描脚本 Agent 段 + `InMemory*` 禁令 | ✅ **已达成**（2026-10-31，Agent Stage 7）—— 扫描脚本**启用 38 条** ✓（跳过 7 条 ✓）：`compile_loop_graph` ✓ / `_run_turn_inner` ✓ / `graph/nodes.py` ✓ / `build_session_graph` ✓ / `InMemoryToolExecutor` ✓ / `class InMemory(...)`（14 个名字 ✓）—— **零命中** ✓；⚠️ **架构守卫** ✓（`tests/architecture/test_single_implementation.py` ✓ —— 基线只剩 2 个 ✓ —— `InMemoryOutboxRepository` ✓ + `InMemoryDraftStore` ✓）| — | 0 | A-33 ✓ |
+| | A-42 更新台账 + 现状文档 | ✅ **已达成**（2026-10-31，Agent Stage 7）—— 台账 ✓：**X1 / X5 / X12 / X17 → 已清理** ✓（统计已同步 ✓ —— 未开始 4 ✓ / 已弃用 2 ✓ / 已清理 28 ✓ / 已修复 2 ✓ = 36 ✓）；方案文档 ✓（Agent 方案 Stage 7 记录 ✓ + 实施计划 A-33…A-42 ✓）| — | 0 | A-41 ✓ |
 
 **退出判据**：
 1. **存在一条端到端测试跑完整个循环**（不是逐节点单测）—— 2026-10-15 那次失败的直接教训；六个终止条件各有一条测试；
@@ -1198,12 +1198,12 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] **A-13 在新 AgentLoop 侧注入真实 actor** —— ⚠️ **未做** → **归 Stage 5（A-25）** ✓
 - [x] **A-14 `tool_executions` 开始写**（✅ 2026-10-31 —— `PostgresToolExecutionStore` ✓ 跨 worker 有效 ✓）· [x] **A-15 `request_hash` 冲突拒绝**（✅ —— `TOOL_IDEMPOTENCY_CONFLICT` ✓ + `TOOL_IN_PROGRESS` ✓ **新增** ✓）· [x] **A-16 重试/熔断**（✅ —— 退避 + jitter ✓ + 按工具名熔断 ✓）· [ ] **A-17 修 async**（⚠️ **随 Stage 7** ✓ —— 只在死代码里 ✓）· [ ] **A-18 沙箱接入**（⚠️ **归 Stage 4/5** ✓）· [x] **A-19 成本结算**（✅ LLM 侧已在写 ✓）· [x] **A-20 进程内幂等降级为快速路径**（✅ 权威已换 ✓ —— **类本体归 Stage 7** ✓）· [x] **A-20b `modules/tool` 的 `InvokeToolUseCase` 补幂等 / 重试 / 熔断**（✅ 2026-10-31 —— 改 `modules/tool` ✓）
 - [x] **A-21 `AgentRouter`（选专家）**（✅ 2026-10-31 —— `CatalogAgentRouter` ✓ 确定性匹配 ✓ 落回不报错 ✓）· [x] **A-22 模型解析接线**（✅ —— `ExpertAssembler` ✓ 取值链 ✓ 查表不是决策 ✓）· [x] **A-23 工具绑定接线**（✅ —— 绑定集 + 治理过滤 ✓ → `BaseTool` ✓）· [x] **A-24 路由留痕 `agent_decision`**（✅ —— 快照 ✓ + `agent.expert.selected` 事件 ✓ —— **不写 `route_decision`** ✓）—— ⚠️ **装配器还没有生产调用方** ✓ → **接线落在 Stage 5** ✓
-- [ ] **A-25 `AgentLoopRunner` + `Evaluator`** · [x] **A-26 把 `_run_turn_inner` 改接新 Builder / Writer** ✓ · [ ] **A-27 端到端回归** · [ ] **A-28 停用打点 `_run_turn_inner`** → **X17** —— ⬜ **Stage 5 未做** ✓
+- [x] **A-25 `AgentLoopRunner` + `Evaluator`**（✅ 2026-10-31 —— runtime 侧 `agent_loop/` ✓ —— **六个终止条件的单一判定点** ✓）· [x] **A-26 把 `_run_turn_inner` 改接新 Builder / Writer** ✓ · [x] **A-27 端到端回归**（✅ —— 整条循环 13 条 ✓ + 旧回归网 118 条 ✓）· [x] **A-28 停用打点 `_run_turn_inner`**（✅ —— 手写循环删 ✓ —— **X17 → 已清理** ✓）
 - [ ] **A-28b 加 `deepagents` 依赖** · [ ] **A-29 `deep/factory.py`** · [ ] **A-30 `deep/planner.py`** · [ ] **A-31 预算** · [ ] **A-32 删 deep 空壳** —— ⬜ **Stage 6（可选** —— 决策 #8：先验证再接 ✓）
-- [ ] **A-33 删 `nodes.py` 13 节点** · [ ] **A-34 改 `builder.py` 为 6 节点版** · [ ] **A-35 删 `runner.py` ReAct 循环** · [ ] **A-36 删 `compile_loop_graph`** → **X5** —— ⬜ **Stage 7 未做** ✓
-- [ ] **A-37 删 `InMemoryToolExecutor`** → **#16** · [ ] **A-38 删 `InMemoryToolRegistry`** → **#29** —— ⬜ 未做 ✓
-- [ ] **A-39 删平行 `*Event` 16 种** → **#24** · [ ] **A-40 删其余 14 个 `InMemory*`** → **#25–#29** —— ⬜ 未做 ✓
-- [ ] **A-41 启用扫描脚本 Agent 段 + `InMemory*` 禁令** · [ ] **A-42 更新台账 + 现状文档** —— ⬜ 未做 ✓
+- [x] **A-33 删 `nodes.py` 13 节点**（✅ 2026-10-31 —— `graph/` 整包删 ✓）· [x] **A-34 改 `builder.py` 为 6 节点版**（⚠️ **不做** ✓ —— 没有承载者 ✓ —— 随 A-33 一起删 ✓）· [x] **A-35 删 `runner.py` ReAct 循环**（✅）· [x] **A-36 删 `compile_loop_graph`** → **X5 → 已清理** ✓
+- [x] **A-37 删 `InMemoryToolExecutor`** → **#16**（✅）· [x] **A-38 删 `InMemoryToolRegistry`** → **#29**（✅）—— 工具执行统一走 `modules/tool` ✓
+- [ ] **A-39 删平行 `*Event` 16 种** → **#24**（⚠️ **已被出站编码器接上** ✓ —— 降级为 TurnChunk 工厂那半归 **Gateway 层** ⏳）· [x] **A-40 删其余 14 个 `InMemory*`** → **#25–#29**（✅ —— `InMemoryOutboxRepository` 保留 ✓ —— 已被 Session Stage 4b 取用 ✓）
+- [x] **A-41 启用扫描脚本 Agent 段 + `InMemory*` 禁令**（✅ —— 38 条规则启用 ✓）· [x] **A-42 更新台账 + 现状文档**（✅ —— 台账 X1/X5/X12/X17 → 已清理 ✓）
 
 ## 附录 B：台账条目 → **层 · Stage** 推进表
 

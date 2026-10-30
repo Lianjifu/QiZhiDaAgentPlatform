@@ -16,7 +16,6 @@ from qzdap_schema.ids import TenantId, ToolId, UserId, WorkspaceId
 
 from qzdap.modules.agent_runtime.adapter.tools import (
     ToolBindingAdapter,
-    ToolRuntimeAdapter,
     ToolServiceAdapter,
 )
 
@@ -316,16 +315,30 @@ class _FakeInvokeService:
 class TestToolRuntimeAdapter:
     """**真实 actor 才能执行工具** ✓。"""
 
+    @staticmethod
+    def _runtime(service: object) -> object:
+        from qzdap.modules.agent_runtime.adapter.graph.agent_loop import (
+            ModuleToolRuntime,
+        )
+        from qzdap.modules.agent_runtime.adapter.tools.tool_service_adapter import (
+            ToolServiceAdapter,
+        )
+
+        return ModuleToolRuntime(
+            tool_port=ToolServiceAdapter(
+                tool_service=service,  # type: ignore[arg-type]
+                tenant_id=_TENANT,
+                workspace_id=_WORKSPACE,
+                owner_id=_OWNER,
+            ),
+            tenant_id=_TENANT,
+        )
+
     @pytest.mark.asyncio
     async def test_the_call_without_an_actor_is_refused(self) -> None:
         service = _FakeInvokeService({"ok": True})
-        adapter = ToolRuntimeAdapter(
-            tool_service=service,  # type: ignore[arg-type]
-            tenant_id=_TENANT,
-            workspace_id=_WORKSPACE,
-            owner_id=_OWNER,
-        )
-        result = await adapter.invoke(
+        runtime = self._runtime(service)
+        result = await runtime.invoke(
             ToolInvocation(tool_name="echo", arguments={"text": "hi"}),
             actor=ActorContext(
                 actor_id="", tenant_id=str(_TENANT), workspace_id=str(_WORKSPACE)
@@ -338,13 +351,8 @@ class TestToolRuntimeAdapter:
     @pytest.mark.asyncio
     async def test_the_actor_of_another_tenant_is_refused(self) -> None:
         service = _FakeInvokeService({"ok": True})
-        adapter = ToolRuntimeAdapter(
-            tool_service=service,  # type: ignore[arg-type]
-            tenant_id=_TENANT,
-            workspace_id=_WORKSPACE,
-            owner_id=_OWNER,
-        )
-        result = await adapter.invoke(
+        runtime = self._runtime(service)
+        result = await runtime.invoke(
             ToolInvocation(tool_name="echo", arguments={"text": "hi"}),
             actor=ActorContext(
                 actor_id="u-1", tenant_id=str(uuid4()), workspace_id=str(_WORKSPACE)
@@ -357,13 +365,8 @@ class TestToolRuntimeAdapter:
     @pytest.mark.asyncio
     async def test_the_result_comes_back_as_text(self) -> None:
         service = _FakeInvokeService({"echo": "hi"})
-        adapter = ToolRuntimeAdapter(
-            tool_service=service,  # type: ignore[arg-type]
-            tenant_id=_TENANT,
-            workspace_id=_WORKSPACE,
-            owner_id=_OWNER,
-        )
-        result = await adapter.invoke(
+        runtime = self._runtime(service)
+        result = await runtime.invoke(
             ToolInvocation(tool_name="echo", arguments={"text": "hi"}), actor=_ACTOR
         )
         assert result.ok is True

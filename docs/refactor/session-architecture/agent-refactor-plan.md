@@ -965,13 +965,16 @@ ToolRuntimePort
 
 | 类别 | 具体 | 阶段 |
 |---|---|---|
-| 19 节点图的骨架 | `graph/nodes.py` 中被 §2.3 判为「✗」的 13 个节点函数 | **Stage 7** |
-| 19 节点的装配 | `graph/builder.py` 的 `build_session_graph` → 改为 6 节点版 | **Stage 7** |
-| 同步 saver 工厂 | `builder.py` 的 `from_url`（同步 `PostgresSaver`） | **Stage 7**（随 19 节点装配一并删除）。⚠️ **接线的改造不归本层** —— 归 **Session §5.3 / 迁移 0046**（改用 `AsyncPostgresSaver` + 建 checkpoint 表） |
-| 进程内幂等缓存 | `executor.py` 的 `_idempotency_cache` 作为**权威**（降级为快速路径） | Stage 3 |
-| 硬编码 actor | `nodes.py:644` 的 `actor_id="u-1"` | Stage 2 |
-| 旧 runner 的 ReAct 循环 | `adapter/graph/runner.py` `_run_turn_inner` | **Stage 5（停用 + 打点）→ Stage 7（删除）** |
-| 旧路径的**残留 LangGraph** | `adapter/graph/loop.py` 的 `compile_loop_graph`（**X5**） | **Agent Stage 7**（与 X17 **同一批**删）—— ⚠️ `runner.py:44` import 它 → 它必须活到旧 runner 退役；初稿在同一行里既写「Stage 7」又写「Session Stage 3」，已统一（台账 §5.4 同步） |
+| 19 节点图的骨架 | `graph/nodes.py` 中被 §2.3 判为「✗」的 13 个节点函数 | ✅ **Stage 7 已删**（2026-10-31 —— 整包删除 ✓） |
+| 19 节点的装配 | `graph/builder.py` 的 `build_session_graph` | ✅ **Stage 7 已删**（⚠️ **不改 6 节点版** ✓ —— 没有承载者 ✓） |
+| 同步 saver 工厂 | `builder.py` 的 `from_url`（同步 `PostgresSaver`） | ✅ **Stage 7 已删**（随整包 ✓）—— ⚠️ **接线的改造不归本层** ✓（Session §5.3 / 迁移 0046 ✓ 早已完成 ✓） |
+| 进程内幂等缓存 | `executor.py` 的 `_idempotency_cache` 作为**权威**（降级为快速路径） | ✅ **Stage 3**（权威是 `tool_executions` ✓）+ **Stage 7 删文件** ✓ |
+| 硬编码 actor | `nodes.py:644` 的 `actor_id="u-1"` | ✅ **Stage 2**（真实 actor ✓）—— 随整包删除 ✓ |
+| 旧 runner 的 ReAct 循环 | `adapter/graph/runner.py` `_run_turn_inner` | ✅ **Stage 5 停用 + 打点** → ✅ **Stage 7 删除**（2026-10-31） |
+| 旧路径的**残留 LangGraph** | `adapter/graph/loop.py` 的 `compile_loop_graph`（**X5**） | ✅ **Agent Stage 7 已删**（2026-10-31 —— 整文件删除 ✓） |
+| 未接线的**整包** | `engine.py` ✓ / `governance/` ✓ / `evaluation/` ✓ / `observability/` ✓ / `tools/` ✓ / `execution/executor.py` ✓ / `execution/lock.py` ✓ / `context/budget.py` ✓ / `memory/layered.py` ✓ / `result/sink.py` ✓ | ✅ **Agent Stage 7 已删**（2026-10-31 —— 台账 **X1** ✓） |
+| 旧模块侧的模型流 | `adapter/graph/chat_model.py`（`stream_chat` / `complete_chat` / 旧的 `ToolCallAccumulator`） | ✅ **Agent Stage 7 已删**（2026-10-31 —— 工具调用装配迁到 runtime 的 `agent_loop/reason.py` ✓） |
+| 模块侧的**第二个工具运行时** | `adapter/tools/tool_runtime_adapter.py`（Stage 2 的 `ToolRuntimeAdapter`） | ✅ **Agent Stage 7 已删**（2026-10-31 —— 工具执行统一走 `ModuleToolRuntime` ✓ → `execute_tool` ✓ → `modules/tool` ✓） |
 
 ---
 
@@ -1246,6 +1249,23 @@ ToolRuntimePort
 
 **旧代码减少**：§8.4 删除清单**归零** —— `graph/nodes.py` 的 13 个错位节点（~700 行）+ `graph/builder.py` 的 19 节点装配（~177 行）+ `adapter/graph/runner.py` 的 `_run_turn_inner`（~250 行）+ `adapter/graph/loop.py` 的 `compile_loop_graph`（~70 行）+ `executor.py` 的 `InMemoryToolExecutor`（~305 行），**合计约 1500 行**。
 **验收**：台账 X5 与 X1 的 Agent 部分「已清理」；扫描脚本无命中。
+
+#### 实施记录（2026-10-31 · Stage 7：清理与封口）
+
+> ✅ **本 Stage 完成** ✓ —— 台账 **X1 / X5 / X12 / X17 全部「已清理」** ✓。
+
+| 项 | 结果 |
+|---|---|
+| **删了什么** | runtime 里**未接线的整包** ✓：`graph/`（`nodes.py` ✓ / `builder.py` ✓ / `state.py` ✓ / `deep_agent.py` ✓）· `engine.py` ✓ · `governance/`（4 个 `InMemory*` ✓）· `evaluation/` ✓ · `observability/` ✓ · `tools/` ✓ · `execution/executor.py` ✓ · `execution/lock.py` ✓ · `context/budget.py` ✓ · `memory/layered.py` ✓ · `result/sink.py` ✓ —— **约 3000 行** ✓ |
+| **A-34 改成 6 节点图** | ⚠️ **不做** ✓ —— **没有承载者** ✓：新循环是 runtime 的**手写循环** ✓（`AgentLoopRunner` ✓ + `LoopHooks` ✓）—— 六个终止条件的**单一判定点** ✓ 已达成 ✓；⚠️ **再造一张图就是第三套** ✗✗ → 整包删 ✓ |
+| **工具执行** | ⚠️ **只有一份** ✓ —— `modules/tool` 的 `InvokeToolUseCase` ✓（唯一权威 ✓）—— 旧路径的 `execute_tool` ✓ **留着** ✓（它是那条路的**适配器** ✓ 不是第二个执行器 ✓）；Stage 2 的 `ToolRuntimeAdapter` ✓ **零调用方** ✗ → 删 ✓ |
+| **`HARD_MAX_STEPS`** | 迁到**契约层** ✓（`agent_loop/evaluate.py` ✓）—— 与旧值一致 ✓（16 ✓） |
+| **生产包零 `InMemory*`** | ✅ —— 只剩 **2 个** ✓：`InMemoryOutboxRepository` ✓（**Session Stage 4b 已取用** ✓ —— 出站重试与死信的唯一实现 ✓）+ `InMemoryDraftStore` ✓（self_evolution ✓）—— **架构守卫在盯** ✓（基线同步收窄 ✓） |
+| **扫描脚本** | ✅ **启用 38 条** ✓（跳过 7 条 ✓）—— `compile_loop_graph` ✓ / `_run_turn_inner` ✓ / `graph/nodes.py` ✓ / `build_session_graph` ✓ / `InMemoryToolExecutor` ✓ / `class InMemory(...)`（14 个名字 ✓）—— **零命中** ✓ |
+| **死脚本** | `scripts/verify_e2e.py` ✓（716 行 ✓ —— 验的是**旧 runtime** ✓）—— **删除** ✓ |
+| **台账** | **X1 / X5 / X12 / X17 → 已清理** ✓ —— 统计同步 ✓（未开始 4 ✓ / 已弃用 2 ✓ / 已清理 28 ✓ / 已修复 2 ✓ = **36** ✓） |
+| ⚠️ **留下的尾巴** | **A-39 `result/events.py` 的 16 种 `*Event`** ⏳ —— ⚠️ **它们已被出站编码器接上** ✓（`modules/channel/.../outbound/encoder.py` ✓）—— 不再是「零引用的平行实现」✓；**直接换 TurnChunk 会丢数据** ✗（usage 的 6 维 ✓ / error 的 `detailed` ✓ / `event_id` ✓）→ **归 Gateway 层** ⏳（先扩前端契约 ✓） |
+
 
 ### 阶段与「旧代码减少」对照
 

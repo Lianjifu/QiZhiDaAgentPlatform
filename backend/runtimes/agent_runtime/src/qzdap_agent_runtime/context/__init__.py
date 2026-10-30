@@ -7,13 +7,6 @@ Context 方案决策 #2 ✓）。
 
 from __future__ import annotations
 
-from .budget import (
-    Compactor,
-    ContextAssembler,
-    InMemorySummaryModel,
-    SummaryError,
-    SummaryModel,
-)
 from .builder import (
     KNOWLEDGE_TOP_K,
     MEMORY_TOP_K,
@@ -55,19 +48,14 @@ __all__ = [
     "WINDOW_RATIO",
     "AssembledContext",
     "CompactionOutcome",
-    "Compactor",
-    "ContextAssembler",
     "ContextBuilder",
     "ContextCompressor",
     "ContextManifest",
     "ContextManifestStore",
     "ContextTooLargeError",
-    "InMemorySummaryModel",
     "KnowledgeSearchPort",
     "ManifestEntry",
     "MemoryRecallPort",
-    "SummaryError",
-    "SummaryModel",
     "SummaryModelPort",
     "estimate_message_tokens",
     "estimate_tokens",

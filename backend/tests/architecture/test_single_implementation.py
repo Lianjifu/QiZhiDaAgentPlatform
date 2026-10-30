@@ -72,23 +72,10 @@ CLOSED_CONCERNS: tuple[tuple[str, str, str, str], ...] = (
 #: （数据源 = 实施方案 §1.5；2026-10-29 核对：self_evolution 的
 #: ``InMemoryDraftStore`` 是白名单定稿之后新增的，已补进基线。）
 INMEMORY_BASELINE = {
-    "InMemoryOutboxRepository",
-    "InMemoryResultSink",
-    "InMemoryDeepAgentFactory",
-    "InMemoryDeepAgent",
-    "InMemoryToolRegistry",
-    "InMemoryLayeredMemory",
-    "InMemoryCostAttribution",
-    "InMemorySummaryModel",
-    "InMemoryLockManager",
-    "InMemoryPolicyGuard",
-    "InMemoryAuditLogger",
-    "InMemoryApprovalStore",
-    "InMemoryDataSubjectService",
-    "InMemoryUserDataExportService",
-    "InMemoryToolExecutor",
-    "InMemoryOnlineEvaluator",
-    "InMemoryDraftStore",
+    # ⚠️ **只剩两个** ✓（2026-10-31：Agent Stage 7 把 runtime 里那 16 个
+    # 全删了 ✓ —— 生产包零 ``InMemory*`` ✓ 归 Agent 层 ✓）。
+    "InMemoryOutboxRepository",   # runtime 的 outbox ✓（Session Stage 4b 取用 ✓）
+    "InMemoryDraftStore",         # self_evolution 的草稿存储 ✓（归 self_evolution ✓）
 }
 
 #: 生产包的受检根（相对 backend/）。

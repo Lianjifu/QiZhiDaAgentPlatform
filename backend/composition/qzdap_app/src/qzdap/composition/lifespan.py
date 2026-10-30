@@ -921,6 +921,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     skill_port=skill_port,
                     sandbox_port=sandbox_port,
                     tool_port=tool_port,
+                    tenant_id=tenant_id,
                 ),
             )
 

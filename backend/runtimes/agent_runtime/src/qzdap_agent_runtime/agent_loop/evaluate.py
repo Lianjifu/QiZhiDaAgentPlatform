@@ -28,6 +28,9 @@ from .state import LoopState
 
 TerminationAction = Literal["continue", "suspend", "exit", "abort"]
 
+#: **步数的硬上限** ✓（与旧路径同值 ✓ —— 决策 #7 的「两级都有」✓）。
+HARD_MAX_STEPS = 16
+
 #: **预算超限的错误码** ✓（方案 §3.3 ✓ —— ⚠️ 原先只是新 runtime 里的字符串
 #: 常量 ✓ → **已提升为 `ErrorCode` 枚举成员** ✓ —— 前端不认识裸码 ✗）。
 BUDGET_EXCEEDED = "DEEP_AGENT_BUDGET_EXCEEDED"
@@ -138,4 +141,10 @@ def _tool_signature(call: dict[str, Any]) -> str:
     return f"{name}:{sorted((str(k), str(v)) for k, v in arguments.items())}"
 
 
-__all__ = ["BUDGET_EXCEEDED", "Evaluator", "Termination", "apply_stall_guard"]
+__all__ = [
+    "BUDGET_EXCEEDED",
+    "HARD_MAX_STEPS",
+    "Evaluator",
+    "Termination",
+    "apply_stall_guard",
+]

@@ -131,10 +131,12 @@ class ModuleToolRuntime(ToolRuntimePort):
         skill_port: SkillPort | None = None,
         sandbox_port: SandboxPort | None = None,
         tool_port: ToolPort | None = None,
+        tenant_id: UUID | None = None,
     ) -> None:
         self._skills = skill_port
         self._sandbox = sandbox_port
         self._tools = tool_port
+        self._tenant_id = tenant_id
 
     async def invoke(
         self,
@@ -147,7 +149,20 @@ class ModuleToolRuntime(ToolRuntimePort):
         ⚠️ **执行只有一份** ✓ —— 走 ``execute_tool`` ✓（旧的执行器 ✓）——
         这里只做**翻译** ✓（端口形状 ✓）。
         """
-        _ = actor
+        # ⚠️ **执行必须带真实 actor** ✓ —— 工具执行是**谁的权限**就得用**谁的
+        # actor** ✗✗（用别人的身份调工具 ✗✗✗）。
+        if not actor.actor_id:
+            return ToolInvocationResult(
+                ok=False, error_code="TOOL_ACTOR_MISSING", is_error=True
+            )
+        if (
+            self._tenant_id is not None
+            and actor.tenant_id
+            and actor.tenant_id != str(self._tenant_id)
+        ):
+            return ToolInvocationResult(
+                ok=False, error_code="TOOL_ACTOR_TENANT_MISMATCH", is_error=True
+            )
         arguments = dict(invocation.arguments or {})
         # ⚠️ **派生子会话的工具要父会话 id** ✓（旧路径由 runner 注入 ✓ ——
         # 模型不该凭空造一个归属 ✗✗）。

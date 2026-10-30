@@ -1,4 +1,9 @@
-"""Result 协议层：ResultEvent 内部事件 + 与对外 TurnChunk 适配 + Sink 分发 (§3.2 / §5.9 / §13.5)。"""
+"""Result 层：内部事件类型 ✓（⚠️ **对外契约只有前端那一套** ✓）。
+
+⚠️ **事件类型有两套** ✓ —— 本模块的是**内部**的 ✓（出站编码器在用 ✓），
+**前端契约**是 ``libs/schema/dtos/turn.py`` 的 ``TurnChunk`` ✓
+（关注点 #24 ✓ —— 两套并存归 Agent Stage 7 收口 ✓）。
+"""
 
 from __future__ import annotations
 
@@ -11,33 +16,23 @@ from .events import (
     KnowledgeSearchEvent,
     MemoryWriteEvent,
     MessageEvent,
+    ResultEvent,
     SkillInvocationEvent,
     ToolCallEvent,
     ToolResultEvent,
     UsageEvent,
-    ResultEvent,
-)
-from .sink import (
-    DispatchError,
-    InMemoryResultSink,
-    ResultDispatcher,
-    ResultSink,
 )
 
 __all__ = [
     "ApprovalRequiredEvent",
     "ContextCompactedEvent",
-    "DispatchError",
     "DoneEvent",
     "ErrorEvent",
     "EventKind",
-    "InMemoryResultSink",
     "KnowledgeSearchEvent",
     "MemoryWriteEvent",
     "MessageEvent",
-    "ResultDispatcher",
     "ResultEvent",
-    "ResultSink",
     "SkillInvocationEvent",
     "ToolCallEvent",
     "ToolResultEvent",

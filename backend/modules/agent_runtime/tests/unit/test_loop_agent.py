@@ -6,6 +6,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from qzdap_agent_runtime.agent_loop.evaluate import HARD_MAX_STEPS
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
@@ -16,12 +17,6 @@ from qzdap_schema.dtos.turn import (
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
-from qzdap.modules.agent_runtime.adapter.graph.chat_model import complete_chat
-from qzdap.modules.agent_runtime.adapter.graph.loop import (
-    HARD_MAX_STEPS,
-    apply_stall_guard,
-    next_route,
-)
 from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
 from qzdap.modules.agent_runtime.adapter.llm import LLMPortAdapter
 from qzdap.modules.agent_runtime.application.ports import LLMPort
@@ -189,17 +184,6 @@ async def test_max_steps_stops() -> None:
     assert llm.calls <= 3
 
 
-def test_stall_guard_breaks_identical_tools() -> None:
-    call = {"name": "lookup", "arguments": {"q": "same"}}
-    state = {"messages": [], "last_tool_sig": "", "stall_count": 0}
-    state = apply_stall_guard(state, [call])  # type: ignore[arg-type]
-    state = apply_stall_guard(state, [call])  # type: ignore[arg-type]
-    state = apply_stall_guard(state, [call])  # type: ignore[arg-type]
-    assert state["stall_count"] >= 2
-    assert any(m.get("role") == "system" for m in state["messages"])
-    assert next_route({"messages": [{"role": "assistant", "content": "ok"}], "step": 1, "max_steps": 8}) == "end"
-
-
 @pytest.mark.asyncio
 async def test_high_risk_emits_approval_and_resume_executes() -> None:
     call_id = str(uuid4())
@@ -317,30 +301,6 @@ async def test_compact_chunk_on_long_history() -> None:
 
 
 @pytest.mark.asyncio
-async def test_complete_chat_merges_indexed_tool_fragments_and_streams_deltas() -> None:
-    calls: list[dict] = []
-
-    class FragmentLLM(LLMPort):
-        async def stream(self, req: ChatRequest, **kwargs: object):
-            calls.append(dict(kwargs))
-            yield LLMChunk(model=req.model, delta="早")
-            yield LLMChunk(model=req.model, delta="见", tool_calls=[{"index": 0, "id": "call-1", "thought_signature": "sig", "function": {"name": "lo", "arguments": '{"q":'}}])
-            yield LLMChunk(model=req.model, delta="", tool_calls=[{"index": 0, "function": {"name": "ok", "arguments": '"x"}'}}])
-            yield LLMChunk(model=req.model, delta="", finish_reason="tool_calls")
-
-    deltas: list[str] = []
-    async def on_delta(piece: str) -> None:
-        deltas.append(piece)
-
-    result = await complete_chat(FragmentLLM(), model="demo", messages=[], on_delta=on_delta)
-    assert "".join(deltas) == "早见"
-    assert len(result["tool_calls"]) == 1
-    assert result["tool_calls"][0]["name"] == "look"
-    assert result["tool_calls"][0]["arguments"] == '{"q":"x"}'
-    assert result["tool_calls"][0]["thought_signature"] == "sig"
-    assert calls == [{}]
-
-
 @pytest.mark.asyncio
 async def test_saved_adapter_passes_actor_and_closes_stream() -> None:
     model_id = ModelId(uuid4())
