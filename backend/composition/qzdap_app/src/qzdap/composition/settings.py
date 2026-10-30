@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     database_pool_recycle: int = 3600
     database_echo: bool = False
 
+    # ── Router（排队语义）──────────────────────────────────────────────
+    # ⚠️ **排队是破坏性契约变更** ✓（Router 方案 §0.7 ✓）—— 默认**关** ✓
+    # （关着 = 旧语义「拒绝 409 SESSION_BUSY」✓）；前端先兼容 `queued`
+    # chunk ✓ 再开这个开关 ✓。
+    router_queue_enabled: bool = False
+
     # redis
     redis_url: str = "redis://localhost:9154/0"
     redis_max_connections: int = 50

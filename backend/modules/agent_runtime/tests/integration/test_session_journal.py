@@ -40,6 +40,10 @@ CREATE TABLE "{schema}".agent_sessions (
     -- ⚠️ **摘要是独立的一列** ✓（Context 方案 §5.1 ✓）—— ORM 现在映射它 ✓
     rolling_summary text NOT NULL DEFAULT '',
     wait_status varchar(32) NOT NULL DEFAULT 'idle',
+    -- ⚠️ **Router 的入站序号** ✓（迁移 0045 ✓ —— 排队语义用 ✓）。
+    current_turn_id uuid,
+    next_ingress_seq integer NOT NULL DEFAULT 0,
+    last_completed_seq integer NOT NULL DEFAULT 0,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 )

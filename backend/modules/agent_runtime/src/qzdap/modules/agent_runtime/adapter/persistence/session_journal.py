@@ -71,8 +71,9 @@ class PostgresSessionJournal:
         user_input: str | None = None,
         trace_id: str | None = None,
         route_decision: dict[str, Any] | None = None,
+        ingress_seq: int | None = None,
     ) -> None:
-        """写一行轮次 —— 状态 ``running``（在飞）。
+        """写一行轮次 —— 状态 ``running``（在飞）/ ``queued``（排队中 ✓）。
 
         这是 ``session_events`` 的**外键父行**，必须先于事件写入。
 
@@ -90,7 +91,11 @@ class PostgresSessionJournal:
             session_id=session_id,
             idempotency_key=idempotency_key,
             key_strength=key_strength,
-            status="running",
+            # ⚠️ **排队中的轮次落 ``queued``** ✓（Router 方案 §4.2 ✓）——
+            # 放行时**原子地**改成 ``running`` ✓（决策 #9 ✓ —— 唯一权威 ✓）。
+            status="queued" if ingress_seq is not None else "running",
+            # ⚠️ **入站序号** ✓（FIFO 的排序依据 ✓）。
+            ingress_seq=ingress_seq,
             agent_version=agent_version,
             model_version=model_version,
             # 这一轮用户说了什么 ✓（停旧写之后，任务卡片只能从这里取 ✓）。
@@ -144,7 +149,12 @@ class PostgresSessionJournal:
         error_code: str | None = None,
         cost_usd: float | None = None,
     ) -> None:
-        """把轮次落到终态 —— 重放时用它判断「这一轮结束了没有」。"""
+        """把轮次落到终态 —— 重放时用它判断「这一轮结束了没有」。
+
+        ⚠️ **同事务更新会话的入站序号快照** ✓（Router 方案 §4.2 ✓）——
+        轮次终态与会话行 ``last_completed_seq`` **一起落** ✓ → 正常路径上
+        **不一致窗口 = 0** ✓（不一致 → 兜底路径 ✓ + 告警 ✓）。
+        """
         if status not in FINISHED_STATUSES:
             raise ValueError(f"not a terminal turn status: {status}")
         async with self._sf.session() as session, session.begin():
@@ -157,6 +167,22 @@ class PostgresSessionJournal:
                     cost_usd=cost_usd,
                     finished_at=func.now(),
                 )
+            )
+            # ⚠️ **快照推进** ✓ —— **任何终态都推进** ✓（失败的那一轮也推进 ✓
+            # —— 否则队列会卡在失败那一轮 ✗✗）。
+            await session.execute(
+                text(
+                    """
+                    UPDATE agent_sessions s
+                       SET last_completed_seq = t.ingress_seq
+                      FROM session_turns t
+                     WHERE t.id = :turn_id
+                       AND t.session_id = s.id
+                       AND t.ingress_seq IS NOT NULL
+                       AND s.last_completed_seq < t.ingress_seq
+                    """
+                ),
+                {"turn_id": turn_id},
             )
 
     async def write_pending_approval(

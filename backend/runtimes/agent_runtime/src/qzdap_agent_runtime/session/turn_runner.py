@@ -43,11 +43,19 @@ from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
     DoneChunk,
     ErrorChunk,
+    QueuedChunk,
     UsageChunk,
 )
 from qzdap_schema.ids import ModelId
 
 from qzdap_agent_runtime.session.approval import PendingApproval, arguments_digest
+from qzdap_agent_runtime.session.queue import (
+    QueueCancelled,
+    QueueFullError,
+    QueueTimeoutError,
+    TurnQueuePort,
+    wait_for_turn_slot,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -93,6 +101,9 @@ class TurnRequest:
     route_decision: Mapping[str, Any] | None = None
     parent_span_context: Any = None
     trace_id: str | None = None
+    #: **入站序号** ✓（Router 方案 §4.2 ✓）—— **有值就排队** ✓
+    #: （``None`` = 不排队 ✓ —— 开关关掉时的旧语义 ✓）。
+    ingress_seq: int | None = None
 
 
 @runtime_checkable
@@ -202,12 +213,16 @@ class TurnRunner:
         messages: Any,
         session_state: SessionStatePort,
         cancel: CancelProbePort,
+        # ⚠️ **排队端口** ✓（Router Stage 3 ✓）—— **没有它就不排队** ✓
+        # （开关关掉时的旧语义 ✓ —— 「拒绝 409」✓）。
+        queue: TurnQueuePort | None = None,
     ) -> None:
         self._executor = executor
         self._lifecycle = lifecycle
         self._messages = messages
         self._session_state = session_state
         self._cancel = cancel
+        self._queue = queue
 
     async def run(self, *, request: TurnRequest) -> AsyncIterator[Any]:
         """跑一轮 —— **产出 chunk 流** ✓。
@@ -221,6 +236,12 @@ class TurnRunner:
         metadata = dict(request.session_metadata)
 
         await self._lifecycle.start_turn(request=request)
+
+        # ⚠️ **排队** ✓（Router Stage 3 · 决策 #1「S1 严格排队」✓）——
+        # **开关关掉时这段不跑** ✓（旧语义：「拒绝 409 SESSION_BUSY」✓）。
+        if self._queue is not None and request.ingress_seq is not None:
+            async for queued in self._wait_for_slot(request=request):
+                yield queued
 
         seq = await self._messages.next_seq(session_id=request.session_id)
         if not request.resume:
@@ -373,6 +394,52 @@ class TurnRunner:
                 ),
                 seq=event_seq,
             )
+
+    async def _wait_for_slot(self, *, request: TurnRequest) -> AsyncIterator[Any]:
+        """**等 FIFO 位** ✓（Router 方案 §4.2 ✓）。
+
+        ⚠️ **等待期间要发「排队中」** ✓（Router 方案 §0.7 ✓）—— 否则前端
+        只能一直转圈到首 chunk 到达 ✓。
+        """
+        assert self._queue is not None
+        assert request.ingress_seq is not None
+        seq = 1
+        try:
+            async for decision in wait_for_turn_slot(
+                self._queue,
+                tenant_id=request.tenant_id,
+                session_id=request.session_id,
+                turn_id=request.turn_id,
+                ingress_seq=request.ingress_seq,
+                cancelled=lambda: self._cancel.is_cancel_requested(
+                    session_id=request.session_id
+                ),
+            ):
+                yield await self._publish_chunk(
+                    turn_id=request.turn_id,
+                    chunk=QueuedChunk(
+                        turn_id=request.turn_id,
+                        seq=0,
+                        position=decision.position,
+                        waited_ms=decision.waited_ms,
+                        estimated_wait_seconds=decision.estimated_wait_seconds,
+                    ),
+                    seq=seq,
+                )
+                seq += 1
+        except QueueCancelled as exc:
+            # ⚠️ **取消 = 轮次落终态** ✓（不留一行 running ✗✗）。
+            await self._lifecycle.finish_turn(
+                turn_id=request.turn_id, status="cancelled"
+            )
+            raise TurnCancelled(str(exc)) from exc
+        except (QueueFullError, QueueTimeoutError):
+            # ⚠️ **超限 / 超时 → 轮次落 cancelled** ✓（可查 ✓ —— 决策 #7 ✓）
+            # —— **不静默丢弃** ✓。
+            await self._lifecycle.finish_turn(
+                turn_id=request.turn_id, status="cancelled"
+            )
+            raise
 
     async def _publish_chunk(self, *, turn_id: UUID, chunk: Any, seq: int) -> Any:
         """把 chunk 落进事件流并重新编号 —— **落库先于投递**（Session §7）。

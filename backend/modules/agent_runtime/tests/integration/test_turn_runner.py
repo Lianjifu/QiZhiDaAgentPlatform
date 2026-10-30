@@ -62,6 +62,7 @@ CREATE TABLE "{schema}".agent_sessions (
     agent_version_pinned varchar(64),
     channel_session_key varchar(512),
     next_ingress_seq integer NOT NULL DEFAULT 0,
+    last_completed_seq integer NOT NULL DEFAULT 0,
     next_message_seq integer NOT NULL DEFAULT 0,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()

@@ -34,6 +34,9 @@ ChunkKind = Literal[
     # emit 时若 output 含 _pending_frontend_action, 同时发一个
     # interactive_action chunk, payload 透传 result.
     "interactive_action",
+    # 排队中 (Router Stage 3 · 决策 #1「S1 严格排队」) —— 同会话的第二条
+    # 消息**排队**而不是被拒 ✓。前端据此显示「排队中」✓。
+    "queued",
 ]
 
 
@@ -115,6 +118,22 @@ class UsageChunk(ChunkEnvelope):
 class DoneChunk(ChunkEnvelope):
     kind: Literal["done"] = "done"
     final_message: str | None = None
+
+
+class QueuedChunk(ChunkEnvelope):
+    """**排队中** ✓（Router Stage 3 · 决策 #1「S1 严格排队」✓）。
+
+    ⚠️ **前端需要它** ✓ —— 否则用户只能一直转圈到首 chunk 到达 ✓
+    （Router 方案 §0.7 ✓）。
+    """
+
+    kind: Literal["queued"] = "queued"
+    #: **队列位置** ✓（1 = 下一个就跑 ✓）。
+    position: int = Field(ge=0)
+    #: **已经等了多久** ✓（毫秒 ✓）。
+    waited_ms: int = Field(ge=0)
+    #: **预计还要等多久** ✓（秒 ✓ —— 估不出来就 0 ✓）。
+    estimated_wait_seconds: float = Field(ge=0, default=0.0)
 
 
 class ErrorChunk(ChunkEnvelope):
@@ -225,4 +244,5 @@ TurnChunk = (
     | AttachmentReadyChunk
     | WorkflowInvocationChunk
     | InteractiveActionChunk
+    | QueuedChunk
 )

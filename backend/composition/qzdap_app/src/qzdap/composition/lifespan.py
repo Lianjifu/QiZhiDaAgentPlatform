@@ -370,6 +370,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             messages_store = PostgresSessionMessageStore(session)
             # **唯一 turn 实现**（契约层，Session 方案 §6）—— 编排在这里装配，
             # 能力全部走端口 ✓。
+            # ⚠️ **排队** ✓（Router Stage 3 · 决策 #1「S1 严格排队」✓）——
+            # **开关默认关** ✓（Router 方案 §0.7 ✓ —— 破坏性契约变更 ✓
+            # 要先上前端兼容 ✓）。关着 = 旧语义「拒绝 409」✓。
+            queue = None
+            sequence = None
+            if container.settings.router_queue_enabled:
+                from qzdap.modules.agent_runtime.adapter.persistence.session_queue import (
+                    PostgresTurnQueue,
+                )
+                from qzdap.modules.agent_runtime.adapter.persistence.session_sequence import (
+                    PostgresSessionSequence,
+                )
+
+                queue = PostgresTurnQueue(session)
+                sequence = PostgresSessionSequence(session)
             turn_runner = TurnRunner(
                 executor=SessionGraphExecutor(graph),
                 lifecycle=TurnLifecycle(
@@ -379,6 +394,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 messages=messages_store,
                 session_state=SqlSessionState(sessions_repo),
                 cancel=SqlCancelProbe(sessions_repo),
+                queue=queue,
             )
             return CopilotSessionService(
                 sessions=sessions_repo,
@@ -394,6 +410,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 idempotency=IdempotencyGuard(
                     PostgresIdempotencyStore(container.session_factory())
                 ),
+                # ⚠️ **排队** ✓（Router Stage 3 ✓）—— 序号分配 ✓ + 放行判定 ✓。
+                sequence=sequence,
+                queue=queue,
                 # 新架构的轮次 + 事件日志 —— 重放的落点（Stage 4b）。
                 journal=container.session_journal(),
                 # 会话执行权（互斥）—— 轮次表是唯一权威（Session 方案 §4.4）。
@@ -551,6 +570,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 sessions=app.state.session_manager_factory.for_session(db_session),
                 copilot=_CopilotFactory().for_session(db_session),
                 ports=lambda request: _channel_turn_ports(request, db_session),
+                # ⚠️ **Router 的规则链** ✓（台账 R19 ✓）—— 渠道入站**也走规则
+                # 链** ✓（与 web 侧**同一条链** ✓ —— 渠道登记的 agent 只是
+                # 「显式指定」这一条规则的输入 ✓）。
+                strategy=app.state.router_strategy_factory.for_session(db_session),
             )
 
     app.state.channel_turn_factory = _ChannelTurnFactory()

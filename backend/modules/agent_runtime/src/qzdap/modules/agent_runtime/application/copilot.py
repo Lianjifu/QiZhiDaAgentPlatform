@@ -22,6 +22,8 @@ from qzdap_agent_runtime.router.types import RouteDecision
 from qzdap_agent_runtime.session.approval import PendingApproval, arguments_digest
 from qzdap_agent_runtime.session.claim import TurnClaimPort
 from qzdap_agent_runtime.session.message import SessionMessagePort
+from qzdap_agent_runtime.session.queue import TurnQueuePort
+from qzdap_agent_runtime.session.sequence import SessionSequencePort
 from qzdap_agent_runtime.session.turn_runner import (
     AgentSnapshot,
     TurnRequest,
@@ -80,6 +82,11 @@ class CopilotSessionService:
         journal: SessionJournal,
         claim: TurnClaimPort,
         turn_runner: TurnRunner,
+        # ⚠️ **入站序号分配器** ✓（Router 方案 §4.2 ✓）—— **排队时才用** ✓。
+        sequence: SessionSequencePort | None = None,
+        # ⚠️ **排队端口** ✓（Router Stage 3 ✓）—— **没有它就不排队** ✓
+        # （开关关掉时的旧语义 ✓ —— 「拒绝 409」✓）。
+        queue: TurnQueuePort | None = None,
     ) -> None:
         self._sessions = sessions
         self._turns = turns
@@ -95,6 +102,9 @@ class CopilotSessionService:
         self._claim = claim
         # **唯一 turn 实现**（契约层）—— 编排不再留在本文件 ✓。
         self._turn_runner = turn_runner
+        # ⚠️ **排队** ✓（Router Stage 3 ✓）—— 序号分配 ✓ + 放行判定 ✓。
+        self._sequence = sequence
+        self._queue = queue
 
     def bind_ports(self, **ports: Any) -> None:
         """Re-bind request-scoped ports (tenant/workspace are per request)."""
@@ -307,18 +317,32 @@ class CopilotSessionService:
         # **之前**（否则「会话忙」时会留下一行失败的轮次 —— 那是给用户看的
         # 噪音 ✗✗）。
         turn_id = uuid4()
-        claimed = await self._claim.claim(
-            tenant_id=tenant_id, session_id=session_id, turn_id=turn_id
-        )
-        if not claimed:
-            # 这一轮根本没跑起来 → 键不能被消费, 否则调用方用同一个键重试
-            # 会被误判成重复请求.
-            with contextlib.suppress(Exception):
-                await self._idempotency.release(decision)
-            raise SessionBusyError(
-                f"session {session_id} already has a turn in flight",
-                code="SESSION_BUSY",
+        # ⚠️ **排队模式** ✓（Router Stage 3 · 决策 #1 ✓）—— 有排队端口就**分配
+        # 入站序号** ✓ —— 轮次行先落 ``queued`` ✓，然后**等自己的 FIFO 位** ✓
+        # （放行由轮次行的状态 CAS 决定 ✓ —— 决策 #9 ✓）。
+        #
+        # ⚠️ **排队模式不再抢会话占用** ✓ —— 占用由放行那一步**原子地**做 ✓
+        # （抢占用 + 放行分成两步会插进另一轮 ✗✗）。
+        ingress_seq: int | None = None
+        sequence = self._sequence
+        queueing = self._queue is not None and sequence is not None
+        if queueing and sequence is not None:
+            ingress_seq = await sequence.next_ingress_seq(
+                tenant_id=tenant_id, session_id=session_id
             )
+        else:
+            claimed = await self._claim.claim(
+                tenant_id=tenant_id, session_id=session_id, turn_id=turn_id
+            )
+            if not claimed:
+                # 这一轮根本没跑起来 → 键不能被消费, 否则调用方用同一个键重试
+                # 会被误判成重复请求.
+                with contextlib.suppress(Exception):
+                    await self._idempotency.release(decision)
+                raise SessionBusyError(
+                    f"session {session_id} already has a turn in flight",
+                    code="SESSION_BUSY",
+                )
         try:
             async for chunk in self._run_turn(
                 tenant_id=tenant_id,
@@ -332,6 +356,7 @@ class CopilotSessionService:
                 parent_span_context=parent_span_context,
                 idempotency_key=key,
                 turn_id=turn_id,
+                ingress_seq=ingress_seq,
             ):
                 yield chunk
         finally:
@@ -391,6 +416,7 @@ class CopilotSessionService:
         parent_span_context: Any = None,
         idempotency_key: IdempotencyKey,
         turn_id: UUID,
+        ingress_seq: int | None = None,
     ) -> AsyncIterator[TurnChunk]:
         """组装这一轮的输入 → **交给唯一 turn 实现**（契约层的 ``TurnRunner``）✓。
 
@@ -458,6 +484,8 @@ class CopilotSessionService:
             route_decision=session.metadata.get("route_decision"),
             parent_span_context=parent_span_context,
             trace_id=current_trace_id(),
+            # ⚠️ **入站序号** ✓（有值 = 排队 ✓ —— Router 方案 §4.2 ✓）。
+            ingress_seq=ingress_seq,
         )
         async for chunk in self._turn_runner.run(request=request):
             yield chunk

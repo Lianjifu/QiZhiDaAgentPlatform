@@ -51,6 +51,8 @@ _SERVICE_ACCOUNT = {
 }
 
 
+_TENANT_ID = UUID("00000000-0000-0000-0000-000000000001")
+
 _UNSET = object()
 
 
@@ -146,7 +148,9 @@ def _make_dispatcher(
 def _msg(**overrides: Any) -> InboundMessage:
     base: dict[str, Any] = {
         "actor": ActorContext(
-            tenant_id=uuid4(),
+            # ⚠️ **同一个渠道的消息属于同一个租户** ✓ —— 固定值 ✓
+            # （原来每次随机 ✓ —— 那会让「同一渠道同一聊天」算出两个 key ✓✗）。
+            tenant_id=_TENANT_ID,
             workspace_id=None,
             actor_id=_SERVICE_USER_ID,
             roles=("service_account",),
@@ -219,7 +223,12 @@ async def test_the_session_key_is_sticky_per_channel_and_chat() -> None:
         )
     assert len(svc.requests) == 2
     keys = {request.channel_session_key for request in svc.requests}
-    assert keys == {f"{channel_id}:chat-9"}
+    assert len(keys) == 1
+    key = keys.pop()
+    # ⚠️ **哈希版** ✓（Router 方案 §4.1 ✓ —— 台账 R4 ✓）—— **原文不进库**
+    # ✓（渠道 ID / 群 ID 是身份 ✓ —— §12.2 的观测约束 ✓）。
+    assert str(channel_id) not in key
+    assert "chat-9" not in key
 
 
 @pytest.mark.asyncio

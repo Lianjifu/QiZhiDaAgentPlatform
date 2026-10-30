@@ -175,7 +175,7 @@ Agent / Execution 层方案**暂不编写**，但读码时核实到以下事实�
 | `tool_executions` / `outbox_dead_letters` | 迁移 0035 | 待启用（Agent Loop / Execution 层） |
 | `agent_sessions.channel_session_key` | 迁移 0035 | 待启用（Router Stage 2）+ 加唯一索引 |
 | `agent_sessions.current_revision` | 迁移 0035 | 待启用（Session 层乐观并发；旧路径从不使用） |
-| `agent_sessions.next_ingress_seq` | 待新增（迁移 0045） | Router Stage 3 |
+| `agent_sessions.next_ingress_seq` | 迁移 0045 ✓ | ✅ **已加**（Router Stage 3 ✓ —— `last_completed_seq` 同批 ✓） |
 | `admin_agents.visible_scope` / `category` / `tags` / `profile` | 现有 | **已在用**（作为 Strategy 的策略依据，不新建策略表） |
 
 ---
@@ -525,7 +525,7 @@ def record_legacy_call(entry: str) -> None:
 | 方案 | 条目 | 编号 |
 |---|---|---|
 | Gateway | 12 | G1–G12（G7 / G8 / **G12** 已清理；**G9 未接管** —— 等 Session Stage 5b 的原子切换） |
-| Router | 4 | R1–R4（**R2 / R4 已清理** —— Router Stage 1 / Stage 2；R1 待 Stage 2；R3 的 owner 是 Session） |
+| Router | 4 | R1–R4（**全部「已清理」** ✓ —— R2/R4 归 Router Stage 1/2 ✓；R1 归 Session Stage 5b ✓；R3 的 owner 是 Session ✓ 已清理 ✓） |
 | Session（跨层） | 6 | X2、X3、X4、X6、X7、X18 |
 | Context（跨层） | 3 | X8、X9、X10 |
 | Memory（跨层） | 7 | X11、X12、X13、X14、X15、X16、X19 |
@@ -556,9 +556,9 @@ def record_legacy_call(entry: str) -> None:
 | G7、G8、G9 | `gateway-refactor-plan.md` §9.4、Stage 4 | Gateway Stage 5 —— G7 / G8 ✅ **已执行**（2026-10-29）；**G9 未接管**（等 Session Stage 5b 的原子切换） |
 | G11 | `gateway-refactor-plan.md` §4.5、§10 Stage 4b | Gateway Stage 4b —— ✅ **已执行**（2026-10-29：202 降级路径删除，改重放事件流） |
 | G7、G8 | `gateway-refactor-plan.md` §9.4、§10 Stage 5 | Gateway Stage 5 —— ✅ **已执行**（2026-10-29：整个 `/v1/sessions*` 删除） |
-| R1 | `router-refactor-plan.md` §7.2、§7.4 | Router Stage 2（**行为替换**；文件删除归 Gateway G9） |
+| R1 | `router-refactor-plan.md` §7.2、§7.4 | Router Stage 2（**行为替换**；文件删除归 Gateway G9）—— ✅ **已清理**（2026-10-30：Session Stage 5b —— IM 会话按「渠道 + 聊天」粘住 ✓） |
 | R2 | `router-refactor-plan.md` §7.2 | Router **Stage 1**（`agentId` 直取 → 策略链）—— ✅ **已执行**（2026-10-29：直取删除，改为「显式指定」规则；扫描规则 `record_legacy_call("R2")` 启用） |
-| R3 | `router-refactor-plan.md` §7.4 | ⚠️ **owner 是 Session**（`try_claim` 的**互斥**职责 → `session_turns.status` 的 CAS；**它没有顺序职责**，旧路径从未有过序号机制 —— Router 的 FIFO 是全新建） |
+| R3 | `router-refactor-plan.md` §7.4 | ⚠️ **owner 是 Session**（`try_claim` 的**互斥**职责 → `session_turns.status` 的 CAS；**它没有顺序职责**，旧路径从未有过序号机制 —— Router 的 FIFO 是全新建）—— ✅ **已清理**（2026-10-30：Session Stage 3a —— `try_claim` 及 `wait_status` CAS 删除 ✓） |
 | R4 | `router-refactor-plan.md` §7.4 | Router Stage 5（删 `build_session_key`）—— ✅ **已执行**（2026-10-29：删旧函数 + 换成 `router/session_key.py` 的哈希版；扫描规则目录改正并启用） |
 | X2 | `gateway-refactor-plan.md` §9.4（配合）；`session-refactor-plan.md` §8 | Session Stage 3（停用）→ **Stage 5b（删除，与 Gateway 的 IM 入口切换同 PR）** |
 | X3、X6 | `session-refactor-plan.md` §7.3、§8 | Session Stage 6 |

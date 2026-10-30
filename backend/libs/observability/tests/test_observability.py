@@ -9,6 +9,10 @@ from qzdap_observability.metrics import (
     LEGACY_CALLS_TOTAL,
     record_http_request,
     record_legacy_call,
+    record_router_concurrency_rejected,
+    record_router_queue_depth,
+    record_router_queue_wait,
+    record_router_session_key_hash,
     render_prometheus,
 )
 from qzdap_observability.tracing import configure_tracing, get_tracer
@@ -61,6 +65,19 @@ def test_legacy_metric_is_exposed() -> None:
     record_legacy_call("R3")
     body, _ = render_prometheus()
     assert b'qzdap_legacy_calls_total{entry="R3"}' in body
+
+
+def test_the_router_queue_metrics_are_exposed() -> None:
+    """**Router 的排队指标** ✓（Router 方案 §12.2 ✓）。"""
+    record_router_queue_depth(tenant_id="t1", depth=3)
+    record_router_queue_wait(tenant_id="t1", waited_s=0.5)
+    record_router_concurrency_rejected(reason="queue_full")
+    record_router_session_key_hash()
+    body, _ = render_prometheus()
+    assert b'qzdap_router_queue_depth{tenant_id="t1"}' in body
+    assert b'qzdap_router_queue_wait_seconds_count{tenant_id="t1"}' in body
+    assert b'qzdap_router_concurrency_rejected_total{reason="queue_full"}' in body
+    assert b"qzdap_router_session_key_hash_total" in body
 
 
 def test_configure_tracing_is_idempotent() -> None:

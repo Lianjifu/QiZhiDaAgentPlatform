@@ -36,6 +36,7 @@ from qzdap_agent_runtime.outbox import (
     OutboxEvent,
     OutboxRepository,
 )
+from qzdap_agent_runtime.router.session_key import derive_session_key
 from qzdap_agent_runtime.session.channel_turn import (
     ChannelTurnFactoryPort,
     ChannelTurnRequest,
@@ -148,7 +149,17 @@ class ChannelTurnDispatcher:
             agent_id=account.agent_id,
             agent_version=account.agent_version,
             # **粘性的唯一依据** ✓ —— 同一个渠道 + 同一个聊天 = 同一个会话。
-            channel_session_key=f"{channel_id}:{chat_id}",
+            # ⚠️ **哈希版** ✓（Router 方案 §4.1 ✓ —— 台账 R4 ✓）—— 旧的
+            # 冒号拼接版已删 ✓ —— 这里的 key 会进数据库 ✓ → **不能带原文**
+            # （渠道 ID / 群 ID 是身份 ✓ —— §12.2 的观测约束 ✓）。
+            channel_session_key=derive_session_key(
+                tenant_id=str(tenant_id),
+                workspace_id=str(channel.workspace_id),
+                channel_type=channel_type,
+                channel_id=str(channel_id),
+                external_chat_id=str(chat_id),
+                external_user_id=str(account.user_id),
+            ),
             channel_type=message.channel_type,
             user_input=f"[channel={channel_type} chat={chat_id}] {message.text}",
             idempotency=message.idempotency,
@@ -156,6 +167,9 @@ class ChannelTurnDispatcher:
                 "channel_id": str(channel_id),
                 "channel_type": channel_type,
                 "external_chat_id": chat_id,
+                # ⚠️ **服务账号的角色** ✓（台账 R19 ✓）—— Router 的「用户标签」
+                # 规则要它 ✓（渠道侧只负责带过来 ✓ —— 路由判断在 Router 侧 ✓）。
+                "roles": list(account.roles),
             },
         )
 

@@ -71,6 +71,9 @@ class TurnLifecycle(TurnLifecyclePort):
             route_decision=dict(request.route_decision)
             if request.route_decision
             else None,
+            # ⚠️ **入站序号** ✓（Router 方案 §4.2 ✓）—— **有值就排队** ✓
+            # （轮次行先落 ``queued`` ✓ —— 等 FIFO 位 ✓）。
+            ingress_seq=request.ingress_seq,
         )
         await self._events.publish(
             turn.raise_started_event(),

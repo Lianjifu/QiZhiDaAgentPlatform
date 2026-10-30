@@ -269,6 +269,7 @@ class InMemorySessionJournal(SessionJournal):
         user_input: str | None = None,
         trace_id: str | None = None,
         route_decision: dict[str, Any] | None = None,
+        ingress_seq: int | None = None,
     ) -> None:
         self.turns[turn_id] = {
             "tenant_id": tenant_id,
@@ -279,7 +280,10 @@ class InMemorySessionJournal(SessionJournal):
             "agent_version": agent_version,
             "model_version": model_version,
             "user_input": user_input or "",
-            "status": "running",
+            # ⚠️ **排队中的轮次落 ``queued``** ✓（Router 方案 §4.2 ✓）——
+            # 与真库实现同口径 ✓。
+            "status": "queued" if ingress_seq is not None else "running",
+            "ingress_seq": ingress_seq,
             "started_at": datetime.now(UTC),
             "finished_at": None,
             "error_code": None,
@@ -460,6 +464,7 @@ def make_turn_runner(
     events: EventPublisher,
     messages: Any,
     sessions: SessionRepository,
+    queue: Any = None,
 ) -> Any:
     """契约层的**真** ``TurnRunner`` + 模块侧的真实适配器 ✓。
 
@@ -482,6 +487,8 @@ def make_turn_runner(
         messages=messages,
         session_state=SqlSessionState(sessions),
         cancel=SqlCancelProbe(sessions),
+        # ⚠️ **排队端口** ✓（Router Stage 3 ✓）—— 没有它就不排队 ✓。
+        queue=queue,
     )
 
 

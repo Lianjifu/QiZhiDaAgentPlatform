@@ -99,6 +99,44 @@ ROUTER_ROUTE_DURATION = Histogram(
     labelnames=("strategy",),
     registry=metrics_registry,
 )
+# ⚠️ **入站序号快照漂移** ✓（Router 方案 §4.2 ✓）—— 兜底放行路径的命中
+# 次数 ✓。**正常应恒为 0** ✓ —— 持续 > 0 说明有系统性问题 ✓
+# （轮次终态与会话快照的更新不在同一个事务里 ✓）。
+ROUTER_SEQ_SNAPSHOT_DRIFT_TOTAL = Counter(
+    "qzdap_router_seq_snapshot_drift_total",
+    "FIFO fallback releases caused by a stale last_completed_seq snapshot",
+    registry=metrics_registry,
+)
+# ⚠️ **当前排队深度** ✓（Router 方案 §12.2 ✓）—— 只在排队开关打开时上报 ✓
+# （标签是租户 ✓ —— 不打会话 key ✓ —— key 是哈希的 ✓）。
+ROUTER_QUEUE_DEPTH = Gauge(
+    "qzdap_router_queue_depth",
+    "Turns currently waiting for their FIFO slot",
+    labelnames=("tenant_id",),
+    registry=metrics_registry,
+)
+# ⚠️ **排队等待时长** ✓（Router 方案 §12.2 ✓）。
+ROUTER_QUEUE_WAIT = Histogram(
+    "qzdap_router_queue_wait_seconds",
+    "Time a turn waited for its FIFO slot",
+    labelnames=("tenant_id",),
+    registry=metrics_registry,
+)
+# ⚠️ **因并发上限被拒** ✓（Router 方案 §12.2 ✓）—— 排队语义下「被拒」=
+# **队列满 / 等超时** ✓（`reason`：``queue_full`` / ``queue_timeout`` ✓）。
+ROUTER_CONCURRENCY_REJECTED_TOTAL = Counter(
+    "qzdap_router_concurrency_rejected_total",
+    "Turns refused by the per-session concurrency limit",
+    labelnames=("reason",),
+    registry=metrics_registry,
+)
+# ⚠️ **会话 key 派生次数** ✓（Router 方案 §12.2 ✓）—— **不记录 key 本身** ✓
+# （避免泄漏身份 ✓ —— key 会进日志 / 审计 / 数据库 ✓）。
+ROUTER_SESSION_KEY_HASH_TOTAL = Counter(
+    "qzdap_router_session_key_hash_total",
+    "Session keys derived from external identities",
+    registry=metrics_registry,
+)
 
 
 def record_http_request(
@@ -134,6 +172,39 @@ def record_router_route(*, strategy: str, outcome: str, duration_s: float = 0.0)
     ROUTER_ROUTE_TOTAL.labels(strategy=strategy, outcome=outcome).inc()
     if duration_s:
         ROUTER_ROUTE_DURATION.labels(strategy=strategy).observe(duration_s)
+
+
+def record_router_seq_snapshot_drift() -> None:
+    """**记一次快照漂移** ✓（Router 方案 §4.2 的兜底路径命中 ✓）。
+
+    ⚠️ **正常应恒为 0** ✓ —— 持续 > 0 说明轮次终态与会话快照的更新**没在
+    同一个事务里** ✓（系统性问题 ✓）。
+    """
+    ROUTER_SEQ_SNAPSHOT_DRIFT_TOTAL.inc()
+
+
+def record_router_queue_depth(*, tenant_id: str, depth: int) -> None:
+    """**上报当前排队深度** ✓（Router 方案 §12.2 ✓）。"""
+    ROUTER_QUEUE_DEPTH.labels(tenant_id=str(tenant_id)).set(int(depth))
+
+
+def record_router_queue_wait(*, tenant_id: str, waited_s: float) -> None:
+    """**上报排队等待时长** ✓（Router 方案 §12.2 ✓）。"""
+    ROUTER_QUEUE_WAIT.labels(tenant_id=str(tenant_id)).observe(float(waited_s))
+
+
+def record_router_concurrency_rejected(*, reason: str) -> None:
+    """**记一次被拒** ✓（队列满 / 等超时 ✓ —— Router 方案 §12.2 ✓）。
+
+    ⚠️ **排队语义下也有「被拒」** ✓ —— 决策 #7：超限**不静默丢弃** ✓，
+    而是把这一轮落成终态并报上来 ✓。
+    """
+    ROUTER_CONCURRENCY_REJECTED_TOTAL.labels(reason=str(reason)).inc()
+
+
+def record_router_session_key_hash() -> None:
+    """**记一次会话 key 派生** ✓（Router 方案 §12.2 ✓ —— 不记录 key 本身 ✓）。"""
+    ROUTER_SESSION_KEY_HASH_TOTAL.inc()
 
 
 def render_prometheus() -> tuple[bytes, str]:

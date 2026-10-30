@@ -279,6 +279,16 @@ ERROR_PROJECTION: Mapping[ErrorCode, ErrorCopy] = {
         im="这个会话还在处理上一条消息，请稍等。",
         web="这个会话还在处理上一条消息，请稍等。",
     ),
+    ErrorCode.QUEUE_FULL: ErrorCopy(
+        http="该会话排队已满，请稍后再发",
+        im="这个会话排队的消息太多了，请稍后再发。",
+        web="这个会话排队的消息太多了，请稍后再发。",
+    ),
+    ErrorCode.QUEUE_TIMEOUT: ErrorCopy(
+        http="排队等待超时，这一轮没有执行",
+        im="等太久了，这一轮没有执行，请重发。",
+        web="等太久了，这一轮没有执行，请重发。",
+    ),
     ErrorCode.CHANNEL_NOT_FOUND: ErrorCopy(
         http="渠道不存在",
         im="找不到对应的渠道，请检查配置。",

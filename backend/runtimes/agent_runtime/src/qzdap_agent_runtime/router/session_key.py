@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import hashlib
 
+from qzdap_observability.metrics import record_router_session_key_hash
+
 #: 参与派生的维度（顺序固定 —— 变了就是另一个 key）。
 SESSION_KEY_DIMS: tuple[str, ...] = (
     "tenant_id",
@@ -60,7 +62,11 @@ def derive_session_key(
     )
     # 长度前缀 —— 逐段自描述，拼接后**无歧义**。
     canonical = "".join(f"{len(part)}:{part}" for part in parts)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    # ⚠️ **只计数，不记录 key** ✓（Router 方案 §12.2 ✓ —— key 会进日志 /
+    # 审计 / 数据库 ✓ —— 原文一律不出现 ✓）。
+    record_router_session_key_hash()
+    return digest
 
 
 __all__ = ["SESSION_KEY_DIMS", "derive_session_key"]

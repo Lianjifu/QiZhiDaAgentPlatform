@@ -154,8 +154,9 @@ class SessionJournal(ABC):
         user_input: str | None = None,
         trace_id: str | None = None,
         route_decision: dict[str, Any] | None = None,
+        ingress_seq: int | None = None,
     ) -> None:
-        """写一行轮次（状态 ``running``）—— 事件行的外键父行。
+        """写一行轮次（状态 ``running`` / 排队时 ``queued``）—— 事件行的外键父行。
 
         ``user_input`` 是这一轮用户说了什么 ✓（任务卡片要显示 ✓）。
 
