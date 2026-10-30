@@ -284,6 +284,7 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
         FakeLLM,
         InMemoryIdempotencyStore,
         InMemorySessionRepository,
+        InMemoryTurnClaim,
         InMemoryTurnRepository,
         RecordingEventPublisher,
     )
@@ -334,6 +335,7 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
         graph=SessionGraphRunner(llm=FakeLLM(content="hi back")),
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
+        claim=InMemoryTurnClaim(),
     )
     detail = await svc.create_session(
         tenant_id=TenantId(tenant),

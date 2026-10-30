@@ -13,6 +13,7 @@
 （决策 #10：Router 不直接写会话表 ✓）。
 """
 
+from qzdap_agent_runtime.session.claim import TurnClaimPort
 from qzdap_agent_runtime.session.manager import (
     AgentBinding,
     CloseReason,
@@ -56,6 +57,7 @@ __all__ = [
     "SessionSequencePort",
     "SessionStatus",
     "SessionStorePort",
+    "TurnClaimPort",
     "TurnStatus",
     "assert_session_transition",
     "assert_turn_transition",

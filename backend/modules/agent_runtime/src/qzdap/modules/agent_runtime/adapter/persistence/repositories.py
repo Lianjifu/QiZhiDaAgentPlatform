@@ -7,14 +7,11 @@ installed by `qzdap_persistence.tenant_guard.install_tenant_loader`.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from typing import Any, cast
 from uuid import UUID
 
 from qzdap_observability.metrics import record_legacy_call
 from qzdap_persistence.tenant_guard import current_tenant_id
-from sqlalchemy import func, or_, select, update
-from sqlalchemy.engine import CursorResult
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from qzdap.modules.agent_runtime.adapter.persistence.mappers import (
@@ -87,44 +84,6 @@ class SqlSessionRepository(SessionRepository):
             return None
         return session_orm_to_domain(o)
 
-    async def try_claim(self, session_id: UUID) -> bool:
-        """Atomically claim the session for one turn.
-
-        The UPDATE + COMMIT is the compare-and-set: a second turn on the
-        same session sees ``wait_status='running'`` and is rejected. The
-        commit is immediate — the claim has to be visible to other workers
-        before the turn starts streaming.
-        """
-        record_legacy_call("X6")  # agent_sessions.wait_status 列
-        record_legacy_call("R3")  # try_claim 的会话互斥职责
-        stale_before = datetime.now(UTC) - timedelta(minutes=CLAIM_STALE_MINUTES)
-        result = await self._s.execute(
-            update(SessionORM)
-            .where(
-                SessionORM.id == session_id,
-                or_(
-                    SessionORM.wait_status != "running",
-                    # 兜底: 上一次轮次异常退出没释放, 超过阈值就当它死了.
-                    SessionORM.updated_at < stale_before,
-                ),
-            )
-            .values(wait_status="running", updated_at=func.now())
-        )
-        claimed = bool(cast("CursorResult[Any]", result).rowcount)
-        await self._s.commit()
-        return claimed
-
-    async def release(self, session_id: UUID) -> None:
-        """Release the claim — but leave a session that is waiting on an
-        approval alone (``wait_status='waiting_approval'``)."""
-        result = await self._s.execute(
-            update(SessionORM)
-            .where(SessionORM.id == session_id, SessionORM.wait_status == "running")
-            .values(wait_status="idle", updated_at=func.now())
-        )
-        if cast("CursorResult[Any]", result).rowcount:
-            await self._s.commit()
-
     async def cancel_requested(self, session_id: UUID) -> bool:
         """Has the user asked for this session's turn to stop?
 
@@ -138,7 +97,11 @@ class SqlSessionRepository(SessionRepository):
         return bool((raw or {}).get("cancel_requested"))
 
     async def request_cancel(self, session_id: UUID) -> bool:
-        """Ask the running turn to stop. Returns True when a turn was live."""
+        """Ask the running turn to stop. Returns True when a turn was live.
+
+        ⚠️ **「是否在飞」看 ``current_turn_id``** —— 不再看 ``wait_status``
+        （那列的互斥职责已迁到 Session 层的 claim 端口 ✓，台账 R3）。
+        """
         session = await self.get(session_id)
         if session is None:
             return False
@@ -146,7 +109,9 @@ class SqlSessionRepository(SessionRepository):
         meta["cancel_requested"] = True
         await self.update(session.with_runtime(metadata=meta))
         await self._s.commit()
-        return session.wait_status == "running"
+        return await self._s.scalar(
+            select(SessionORM.current_turn_id).where(SessionORM.id == session_id)
+        ) is not None
 
     async def clear_cancel(self, session_id: UUID) -> None:
         """Drop a stale cancel flag — a new turn starts fresh."""

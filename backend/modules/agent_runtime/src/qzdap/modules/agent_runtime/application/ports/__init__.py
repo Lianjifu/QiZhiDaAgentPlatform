@@ -25,6 +25,14 @@ from qzdap.modules.agent_runtime.domain import Session, Turn
 
 
 class SessionRepository(ABC):
+    """会话行的读写。
+
+    ⚠️ **执行权（互斥）不在这里** —— 它归 Session 层的 ``TurnClaimPort``
+    （``agent_sessions.current_turn_id`` + ``session_turns.status`` 推导 ✓，
+    台账 R3）：旧实现是这里的 ``wait_status`` CAS，语义与「审批挂起」混装
+    在一列 ✗。
+    """
+
     @abstractmethod
     async def add(self, session: Session) -> None: ...
     @abstractmethod
@@ -53,21 +61,6 @@ class SessionRepository(ABC):
     ) -> list[Session]:
         """派生 /api/tasks: 多一层 workspace 过滤, 默认 limit 更大."""
         ...
-
-    async def try_claim(self, session_id: UUID) -> bool:
-        """Claim the session for one turn.
-
-        Returns False when another turn already holds the claim — two
-        turns on one session interleave their messages and race on the
-        message sequence number. The default implementation allows
-        everything; repositories that can do an atomic compare-and-set
-        should override it.
-        """
-        return True
-
-    async def release(self, session_id: UUID) -> None:
-        """Release a claim taken by :meth:`try_claim`."""
-        return
 
     async def cancel_requested(self, session_id: UUID) -> bool:
         """Has the user asked for the running turn to stop?"""

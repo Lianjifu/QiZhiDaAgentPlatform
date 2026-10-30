@@ -129,6 +129,7 @@ async def _make_service(agent: CatalogAgent, owner_id: UserId):
         graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=InMemorySessionJournal(),
+        claim=deps["sessions"].claim,
     )
     tid = TenantId(agent.tenant_id)
     wid = WorkspaceId(agent.workspace_id)

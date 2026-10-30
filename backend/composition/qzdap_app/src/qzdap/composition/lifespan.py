@@ -228,6 +228,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         SqlCatalogAgentRepository,
         SqlCatalogAgentUserStateRepository,
     )
+    from qzdap.modules.agent_runtime.adapter.persistence.session_claim import (
+        PostgresTurnClaim,
+    )
     from qzdap.modules.agent_runtime.adapter.persistence.session_messages import (
         PostgresSessionMessageStore,
     )
@@ -395,6 +398,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 ),
                 # 新架构的轮次 + 事件日志（双写期）—— 重放的落点（Stage 4b）。
                 journal=container.session_journal(),
+                # 会话执行权（互斥）—— 轮次表是唯一权威（Session 方案 §4.4）。
+                claim=PostgresTurnClaim(session),
             )
 
     async def catalog_evaluation_runner(

@@ -463,12 +463,12 @@
 | | S-15 **双写启用**：`session_turns` / `session_messages` 开始写 | ✅ **已实施**（2026-10-30）：`session_turns` 的轮次双写早于本轮（Gateway Stage 4b ✓）；`session_messages` 的**消息双写**本轮落地 —— `PostgresSessionMessageStore`（新表 + 旧表都写），**调用方（copilot）改为依赖 `SessionMessagePort` 契约**（不再直接依赖旧表 repo ✓） | — | 写入点切换 | S-12 |
 | | S-15a **切读新表** | ⚠️ **未接管**（2026-10-30）：切读要等**对账窗口**（新旧全量对账差异 = 0）—— 本轮**读仍走旧表**（`PostgresSessionMessageStore.list_for_session` 委托旧 repo）✓ 行为不变 | — | 读路径切换 | S-15 · 双写期对账无差异 |
 | | S-15b **停旧写（双写结束）** | ⚠️ **未接管**（2026-10-30）：前置是 S-15a（切读 + 对账）—— 本轮**旧表仍在写**（双写期）| — | 旧表写入归零 | S-15a |
-| Stage 3 · 唯一 turn 实现 | S-16 `turn_runner.py` 落地 | **合并两套的治理语义**（claim / 幂等 / 取消 / 审批） | — | 0 | Stage 1–2 |
-| | S-17 轮次幂等 | `session_turns.idempotency_key` 唯一约束 | — | 0 | S-16 |
-| | S-18 取消 | 独立列 `cancel_requested` + 轮询 | — | 0 | S-16 |
-| | S-19 成本归属 | 写 `session_turns.cost_usd` | — | 0 | S-16 |
-| | S-20 **切换 web/api 入口** → 新 `turn_runner` | `session_router.py` 的 turn 部分改走新实现 | — | 0 | S-16 |
-| | S-21 停用 + 打点 `copilot.py` 的 turn 编排 | Copilot 侧已无调用方；**本项只停用不删** | **X18 → 已弃用**（关注点 #1） | **0（删除见 Stage 3b · S-21b）** | S-20 |
+| Stage 3 · 唯一 turn 实现 | S-16 `turn_runner.py` 落地 | ⚠️ **未达成**（2026-10-30）—— 编排尚未迁到契约层；**Stage 3a 先迁了互斥职责**（台账 **R3 已清理** ✓）：新契约 `session/claim.py`（`TurnClaimPort`）+ `PostgresTurnClaim`（`current_turn_id` 原子 CAS + 轮次状态/僵尸判定），`try_claim` 与 `SessionRepository.try_claim` **删除** | **R3 已清理**（`try_claim` 的会话互斥职责） | ~25 行（旧 CAS 删除） | Stage 1–2 |
+| | S-17 轮次幂等 | ✅ **已具备**（2026-10-30 核对）：`session_turns.idempotency_key` 的**部分唯一索引**（迁移 0050）+ Gateway 的 `IdempotencyGuard`（`session_inbox` strong 键原子 claim）—— 幂等**已在服役**，等 S-16 把编排迁过去时**沿用**它，不重写 | — | 0 | S-16 |
+| | S-18 取消 | ✅ **已具备**（2026-10-30 核对）：`session_turns.cancel_requested` 列（迁移 0046）+ copilot 的取消轮询（`CANCEL_POLL_SECONDS`）—— 跨进程机制**已在服役**；⚠️ **「是否在飞」的判定**本轮从 `wait_status` 改成了 `current_turn_id`（互斥迁走后的必然调整 ✓） | — | 0 | S-16 |
+| | S-19 成本归属 | ✅ **已具备**（2026-10-30 核对）：`journal.finish_turn(status, cost_usd=...)` 已在写 `session_turns.cost_usd` ✓ | — | 0 | S-16 |
+| | S-20 **切换 web/api 入口** → 新 `turn_runner` | ⚠️ **未达成**（2026-10-30）—— 依赖 S-16（编排迁到契约层） | — | 0 | S-16 |
+| | S-21 停用 + 打点 `copilot.py` 的 turn 编排 | ⚠️ **未达成**（2026-10-30）—— copilot 仍在编排（互斥职责已迁走 ✓，编排本身还在）；打点 `record_legacy_call("X18")` **保留**（旧实现仍在服役 ✓） | **X18 → 已弃用**（关注点 #1）—— **未达成** | **0（删除见 Stage 3b · S-21b）** | S-20 |
 | | S-22 停用 + 打点 `use_cases/run_turn*.py` | ⚠️ **IM 渠道仍在调它** | **X2（IM 侧）→ 已弃用** | — | S-20 |
 | Stage 3b · 删 Copilot 侧旧 turn 编排 | **S-21b 删 `copilot.py` 的 turn 编排** | 会话执行 / chunk 转发 / 取消轮询 / 审批恢复（语义已在 Stage 3 迁入 `turn_runner.py`）；`copilot.py` 降级为 HTTP 薄壳（≤120 行） | **X18 → 已清理**（关注点 #1） | **~600 行** | S-20 · **进入条件**：`qzdap_legacy_calls_total{entry="X18"}` 连续 ≥7 天为 0 **且**新路径流量 ≥95% |
 | Stage 4 · 事件落库与 outbox | S-23 chunk 写 `session_events` | 先落库再投递 | — | 0 | Stage 3 |

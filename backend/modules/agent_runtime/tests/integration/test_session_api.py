@@ -22,6 +22,7 @@ from _ar_unit_in_memory import (
     InMemoryIdempotencyStore,
     InMemorySessionJournal,
     InMemorySessionRepository,
+    InMemoryTurnClaim,
     InMemoryTurnRepository,
     RecordingEventPublisher,
 )
@@ -101,6 +102,7 @@ def _build_test_app(
     from qzdap_agent_runtime.router.strategy import RuleChainStrategy
 
     sessions = InMemorySessionRepository()
+    claim = InMemoryTurnClaim()
     turns = InMemoryTurnRepository()
     llm = FakeLLM(content=llm_content, raise_on_first_chunk=raise_on_first_chunk)
     events = RecordingEventPublisher()
@@ -115,6 +117,7 @@ def _build_test_app(
         graph=SessionGraphRunner(llm=llm),
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
+        claim=claim,
     )
     # Router 的规则链（真实现，候选池来自同一个 catalog 替身）。
     strategy = RuleChainStrategy(catalog=CatalogRoutingAdapter(catalog))  # type: ignore[arg-type]

@@ -87,7 +87,7 @@
 |---|---|---|---|---|---|
 | R1 | IM 每条消息新建临时 session | `modules/channel/adapter/dispatch/dispatch_subscriber.py:175-186` | `channel_session_key` → `session_id` 映射 | 未开始 | Router Stage 2（停用）→ Stage 5（删） |
 | R2 | `agentId` 直取（无任何策略） | ~~`modules/agent_runtime/adapter/http/session_router.py:162-171`~~（**已删**） | `qzdap_agent_runtime/router/strategy.py` 的规则链 | **已清理**（2026-10-29：Router Stage 1 —— `create_session` 的 `agentId` 直取**删除**，改为把请求里的 agentId 作为「**显式指定**」这一条规则的输入交给 `RuleChainStrategy`；旧的 `record_legacy_call("R2")` 打点撤除（打点是清理**前**的观测手段），改打 `record_new_call("R2")`。⚠️ **没有策略就没有会话** —— 一条规则都没命中且工作区无兜底默认 agent 时返回 400 并说明缺什么，**不静默换 agent**） | Router Stage 1 |
-| R3 | **`try_claim` 的会话互斥职责**（CAS `wait_status='running'`；⚠️ **它只有这一个职责** —— 实测无任何序号/顺序语义，旧路径从未有过顺序机制。2026-10-29 审查更正：原描述「混在一起的顺序职责」不成立） | `modules/agent_runtime/adapter/persistence/repositories.py:85-108` | `session_turns.status` 的状态 CAS（执行权） | **已开始**（2026-10-30：Session Stage 1 —— **已打点** `record_legacy_call("R3")`（`repositories.try_claim` + copilot 调用点）；**替代物**（`session_turns.status` 的 CAS）要等 Stage 3 的唯一 turn 实现） | **Session**（原写 Router Stage 3 —— 互斥归 Session 的执行权；Router 的 FIFO 是**全新建**，不是拆分） |
+| R3 | **`try_claim` 的会话互斥职责**（CAS `wait_status='running'`；⚠️ **它只有这一个职责** —— 实测无任何序号/顺序语义，旧路径从未有过顺序机制） | ~~`modules/agent_runtime/adapter/persistence/repositories.py:85-108`~~（**已删**） | `agent_sessions.current_turn_id` + `session_turns.status` 推导（执行权）—— 契约 `session/claim.py`（`TurnClaimPort`）+ 实现 `PostgresTurnClaim`（原子 CAS） | **已清理**（2026-10-30：Session Stage 3a —— `try_claim` 及其 `wait_status` CAS **删除**（`SessionRepository` 协议里的方法一并删）；执行权迁到「`current_turn_id` 占用 + 轮次状态/僵尸判定」（Session 方案 §4.4 ✓）；旧打点 `record_legacy_call("R3")` 撤除；扫描规则启用） | **Session**（Stage 3a ✅） |
 | R4 | `build_session_key`（冒号拼接版） | ~~`runtimes/agent_runtime/src/qzdap_agent_runtime/channels/gateway.py`~~（**已删**） | 哈希版 `derive_session_key`（`runtimes/agent_runtime/src/qzdap_agent_runtime/router/session_key.py`） | **已清理**（2026-10-29：Router Stage 2 的 key 派生 —— 旧函数**删除**，改为 `router/session_key.py` 的**长度前缀 + sha256**（6 维，含 `channel_type` ✓）；引用点同步改（从未接线的 `engine.py` / `scripts/verify_e2e.py` / 单测）。⚠️ **扫描规则的目录原本写错**（扫 `modules/`，而旧实现在 `runtimes/` ✗ → 规则**从来没生效过**）→ 已改正并**启用**。⚠️ 按台账 §3.2，「停用 + 打点」**做不了** —— 旧实现无生产调用方，打点会得到恒为 0 的指标（比没有指标更危险 ✓）→ 按 Gateway 附录 C.8 的 **G-38 口径**（引用关系可证即当场删 ✓）执行） | Router Stage 2 |
 
 ### 2.3 跨层 / 历史遗留
@@ -99,7 +99,7 @@
 | X3 | `agent_sessions.graph_state`（续传状态与业务数据混装同列） | `modules/agent_runtime/adapter/persistence/models.py:56-61` | `session_events` / `session_turns` | 未开始（**替代物开始有数据**，2026-10-29：Gateway Stage 4b 连带落地了 `session_events` 的事件落库 —— 事件流真写真读了；`graph_state` 仍在写，迁移归 Session Stage 1/6。2026-10-30：Session Stage 1 补齐**旧入口打点** `record_legacy_call("X3")` —— 「没有打点就没有清理判据」） | Session 层 |
 | X4 | `agent_turns` / `agent_session_messages` 表 | `migrations/versions/`（早期） | `session_turns` / `session_messages` | 未开始（**双写期已开始**，2026-10-29：Gateway Stage 4b 连带落地了 `session_turns` 的**轮次双写** —— 它是 `session_events` 的外键父行；旧表仍在写，删除归 Session Stage 6。2026-10-30：Session Stage 1 补齐**旧表写入点的打点** `record_legacy_call("X4")`（`SqlTurnRepository.add` / `SqlSessionMessageRepository.append`）—— 旧表什么时候不再被写，指标说了算。2026-10-30：Session Stage 2 落地**消息双写**（新表 `session_messages` + 旧表 `agent_session_messages` 都写）；**读仍走旧表**（切读 S-15a 要等对账窗口）。旧 ORM 改名 `LegacySessionMessageORM` —— 新旧两张表都叫「会话消息」，同名会让人以为只有一张 ✗） | Session 层（Router 决策 #2） |
 | X5 | 占位图 `compile_loop_graph`（节点全是 `_passthrough_*`） | `modules/agent_runtime/adapter/graph/loop.py:63-69`、`runner.py:92` | Agent Loop 方案的真实图 | 未开始 | Agent 层（Stage 7） |
-| X6 | `agent_sessions.wait_status` 列（与 `status` 表达同一状态机，取值还不一致） | `modules/agent_runtime/adapter/persistence/models.py:63-67` | `current_turn_id` + `session_turns.status` 推导 | 未开始（2026-10-30：Session Stage 1 —— 旧入口**已打点** `record_legacy_call("X6")`；⚠️ **写入点归零做不到**：第二套 turn 实现（X2）还靠 `try_claim` 的 `wait_status` 分支，必须等 Stage 3 的唯一 turn 实现） | Session 层 |
+| X6 | `agent_sessions.wait_status` 列（与 `status` 表达同一状态机，取值还不一致） | `modules/agent_runtime/adapter/persistence/models.py:63-67` | `current_turn_id` + `session_turns.status` 推导 | 未开始（2026-10-30：Session Stage 1 —— 旧入口**已打点** `record_legacy_call("X6")`；Stage 3a 已把**互斥职责**迁走（台账 R3 ✅）。⚠️ **写入点仍不为零**：那列现在只剩「审批挂起」的语义 —— 停写要等 **Stage 5** 把审批挂起落进 `session_turns.pending_approval`） | Session 层 |
 | X7 | 审批异常吞噬 `except Exception: pass`（吞掉 `ApproverMustDiffer` / `ApprovalExpired` / `ApprovalAlreadyDecided` → 工具照常执行） | `modules/agent_runtime/src/qzdap/modules/agent_runtime/application/copilot.py:466-471` | `ErrorChunk` + 明确错误码（Session 方案 §5.6 校验清单） | **已清理**（2026-10-30：Session Stage 1 —— `except Exception: pass` 换成「记日志 + **再抛**」：审批失败（`ApproverMustDiffer` / `ApprovalExpired` / `ApprovalAlreadyDecided`）不再被吞掉，**工具不会照常执行** ✗→✓；旧打点撤除） | Session 层（**Stage 1**，比原定的 Stage 5 提前） |
 | X8 | 旧上下文组装 `_load_messages`（**在跑**，消息形状正确，是新 Builder 的实现基础）—— ⚠️ 但**召回失败被静默吞掉**（`runner.py:523,549`，无 `recall_degraded`），且 `top_k`（8/6）与每条 400 字截断需一并复刻 | `modules/agent_runtime/src/qzdap/modules/agent_runtime/adapter/graph/runner.py:495-566` | `context/builder.py`（迁入后删除原处） | 未开始 | Context 层 |
 | X9 | 旧上下文压缩 `compact_messages`（纯字符截断：每条 180 字 × 20 条，无摘要模型）—— ⚠️ 但它的**工具结果清洗（截 1500 字）/ 首个 system 保留 / 摘要累加**三项行为必须复刻 | `modules/agent_runtime/src/qzdap/modules/agent_runtime/adapter/graph/compact.py:14-50` | `context/compressor.py`（async 摘要 + 确定性降级，**降级时追加而非覆盖摘要**） | 未开始 | Context 层 |
@@ -251,6 +251,7 @@ _scan "build_session_key"         runtimes/        "R4"
 _scan "RunTurnCompletionUseCase"  modules/          "X2"
 _scan "use_cases.run_turn"        modules/          "X2"
 _scan "wait_status"               modules/          "X6"
+_scan "try_claim"                 modules/          "R3"
 
 # Session 域（X2 / X3 / X4）
 _scan "graph_state"               modules/          "X3"
@@ -399,6 +400,7 @@ def record_legacy_call(entry: str) -> None:
 | **R2** `agentId` 直取 | **旧实现已删除**（2026-10-29 Router Stage 1，改为策略链的「显式指定」规则）—— 打点随代码一起撤除 |
 | **X7** 审批异常吞噬 | **旧实现已删除**（2026-10-30 Session Stage 1，改为「记日志 + 再抛」）—— 打点随代码一起撤除 |
 | **X20** 同步 `PostgresSaver` 工厂 | **旧实现已删除**（2026-10-30 Session Stage 0）—— 打点随代码一起撤除 |
+| **R3** `try_claim` 的会话互斥职责 | **旧实现已删除**（2026-10-30 Session Stage 3a）—— 执行权迁到 `current_turn_id` + 轮次状态推导，打点随代码一起撤除 |
 
 > **下表这 18 条**必须改用替代判据（扫描 / 测试 / 删除 / 「无生产调用方」），
 > **不得**用「指标为 0」判清零。

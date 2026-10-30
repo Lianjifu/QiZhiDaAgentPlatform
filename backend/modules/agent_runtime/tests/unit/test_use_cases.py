@@ -473,7 +473,7 @@ async def test_copilot_saved_model_early_delta_and_close(selection: str) -> None
     deps = make_dependencies()
     messages = Messages()
     runner = SessionGraphRunner(llm=LLMPortAdapter(deps["llm"], model_service=SavedService()))
-    svc = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=messages, catalog=Catalog(), events=deps["events"], graph=runner, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()), journal=InMemorySessionJournal())
+    svc = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=messages, catalog=Catalog(), events=deps["events"], graph=runner, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()), journal=InMemorySessionJournal(), claim=deps["sessions"].claim)
     detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
     sid = UUID(detail["id"])
     if selection == "session":
@@ -506,7 +506,7 @@ async def test_legacy_rejects_caller_scope_mismatch_before_saved_invocation(mism
             owner_id=uuid4() if mismatch == "owner" else uid,
             session_id=session.id, user_input="hi", model=str(uuid4()),
         ))
-    copilot = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=None, catalog=None, events=deps["events"], graph=None, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()), journal=InMemorySessionJournal())
+    copilot = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=None, catalog=None, events=deps["events"], graph=None, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()), journal=InMemorySessionJournal(), claim=deps["sessions"].claim)
     with pytest.raises(SessionNotFound):
         await anext(copilot.stream_turn(
             tenant_id=TenantId(uuid4()) if mismatch == "tenant" else tid,

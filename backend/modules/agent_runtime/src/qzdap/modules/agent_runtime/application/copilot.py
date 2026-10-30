@@ -20,6 +20,7 @@ from qzdap_agent_runtime.gateway.idempotency import (
 from qzdap_agent_runtime.gateway.normalizer import resolve_idempotency_key
 from qzdap_agent_runtime.gateway.types import ChannelType, IdempotencyKey
 from qzdap_agent_runtime.router.types import RouteDecision
+from qzdap_agent_runtime.session.claim import TurnClaimPort
 from qzdap_agent_runtime.session.message import SessionMessagePort
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_observability.metrics import record_legacy_call
@@ -80,6 +81,7 @@ class CopilotSessionService:
         graph: SessionGraphRunner,
         idempotency: IdempotencyGuard,
         journal: SessionJournal,
+        claim: TurnClaimPort,
     ) -> None:
         self._sessions = sessions
         self._turns = turns
@@ -90,6 +92,9 @@ class CopilotSessionService:
         self._idempotency = idempotency
         # 新架构的轮次 + 事件日志（双写期）—— 重放的落点（Gateway §4.5）。
         self._journal = journal
+        # 会话执行权（互斥）—— **轮次表是唯一权威**（Session 方案 §4.4 / §6）。
+        # 旧的 ``wait_status`` CAS 已迁走（台账 R3 已清理）✓。
+        self._claim = claim
 
     def bind_ports(self, **ports: Any) -> None:
         """Re-bind request-scoped ports (tenant/workspace are per request)."""
@@ -284,8 +289,13 @@ class CopilotSessionService:
                 code=ErrorCode.DUPLICATE_REQUEST.value,
                 turn_id=decision.turn_id,
             )
-        claimed = await self._sessions.try_claim(session_id)
-        record_legacy_call("R3")  # try_claim 的会话互斥职责
+        # ⚠️ **turn_id 预先生成** —— claim 需要它, 而 claim 必须在建轮次行
+        # **之前**（否则「会话忙」时会留下一行失败的轮次 —— 那是给用户看的
+        # 噪音 ✗✗）。
+        turn_id = uuid4()
+        claimed = await self._claim.claim(
+            tenant_id=tenant_id, session_id=session_id, turn_id=turn_id
+        )
         if not claimed:
             # 这一轮根本没跑起来 → 键不能被消费, 否则调用方用同一个键重试
             # 会被误判成重复请求.
@@ -295,7 +305,6 @@ class CopilotSessionService:
                 f"session {session_id} already has a turn in flight",
                 code="SESSION_BUSY",
             )
-        turn_id: UUID | None = None
         try:
             async for chunk in self._run_turn(
                 tenant_id=tenant_id,
@@ -308,8 +317,8 @@ class CopilotSessionService:
                 resume=resume,
                 parent_span_context=parent_span_context,
                 idempotency_key=key,
+                turn_id=turn_id,
             ):
-                turn_id = getattr(chunk, "turn_id", None) or turn_id
                 yield chunk
         finally:
             with contextlib.suppress(Exception):
@@ -317,7 +326,11 @@ class CopilotSessionService:
                     self._idempotency.complete(decision, turn_id=turn_id)
                 )
             with contextlib.suppress(Exception):
-                await asyncio.shield(self._sessions.release(session_id))
+                await asyncio.shield(
+                    self._claim.release(
+                        tenant_id=tenant_id, session_id=session_id, turn_id=turn_id
+                    )
+                )
 
     def _select_key(
         self,
@@ -363,6 +376,7 @@ class CopilotSessionService:
         resume: dict[str, Any] | None = None,
         parent_span_context: Any = None,
         idempotency_key: IdempotencyKey,
+        turn_id: UUID,
     ) -> AsyncIterator[TurnChunk]:
         session = await self._require_session(tenant_id, session_id)
         if session.workspace_id != workspace_id or session.owner_id != owner_id:
@@ -389,7 +403,7 @@ class CopilotSessionService:
             if item.get("role") in {"user", "assistant", "tool", "system"}
         ]
         turn = Turn.create(
-            id=TurnId(uuid4()),
+            id=TurnId(turn_id),
             tenant_id=TenantId(tenant_id),
             workspace_id=WorkspaceId(workspace_id),
             session_id=session.id,

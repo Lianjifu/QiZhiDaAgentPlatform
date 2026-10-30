@@ -120,6 +120,7 @@ async def _make_service(agent: CatalogAgent, owner_id: UserId):  # type: ignore[
         graph=SessionGraphRunner(llm=_LLM()),
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=InMemorySessionJournal(),
+        claim=deps["sessions"].claim,
     )
     tid = TenantId(agent.tenant_id)
     wid = WorkspaceId(agent.workspace_id)

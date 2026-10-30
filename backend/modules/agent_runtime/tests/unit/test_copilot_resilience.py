@@ -236,6 +236,7 @@ async def _make_service(
         graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=InMemorySessionJournal(),
+        claim=deps["sessions"].claim,
     )
     tid = TenantId(agent.tenant_id)
     wid = WorkspaceId(agent.workspace_id)
@@ -351,6 +352,7 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
         graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=InMemorySessionJournal(),
+        claim=deps["sessions"].claim,
     )
     detail = await svc.create_session(
         tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
@@ -698,6 +700,7 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
         graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=InMemorySessionJournal(),
+        claim=deps["sessions"].claim,
     )
     detail = await svc.create_session(
         tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid

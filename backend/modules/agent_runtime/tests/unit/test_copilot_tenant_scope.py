@@ -54,6 +54,7 @@ async def test_listing_sessions_only_returns_the_requested_tenant() -> None:
         graph=None,  # type: ignore[arg-type]
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=InMemorySessionJournal(),
+        claim=deps["sessions"].claim,
     )
 
     listed_a = await svc.list_sessions(tenant_id=tenant_a, owner_id=owner_id)
@@ -85,6 +86,7 @@ async def test_listing_sessions_skips_closed_ones() -> None:
         graph=None,  # type: ignore[arg-type]
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=InMemorySessionJournal(),
+        claim=deps["sessions"].claim,
     )
 
     listed = await svc.list_sessions(tenant_id=tenant_id, owner_id=owner_id)

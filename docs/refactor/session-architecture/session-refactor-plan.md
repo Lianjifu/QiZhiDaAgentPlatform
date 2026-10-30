@@ -776,7 +776,8 @@ DROP TABLE IF EXISTS checkpoints;
 
 | # | 事项 | 原因 | 归属 |
 |---|---|---|---|
-| **S-06 / S-11** | `wait_status` 写入点归零 / 删 `try_claim` 的 `wait_status` 分支 | **第二套 turn 实现（X2）仍靠它做互斥** —— 删了 IM 侧就没有互斥 ✗✗ | **Stage 3**（唯一 turn 实现）落地后才能做；本轮改为**旧入口打点**（`record_legacy_call("X6")` / `("R3")`） |
+| **S-06** | `wait_status` 写入点归零 | ⚠️ **原记录的理由有误**（「X2 仍靠它做互斥」—— 实测 `try_claim` 的唯一调用者是 copilot，X2 没有互斥语义 ✓，已于 **Stage 3a** 迁走）。**现在那列只剩「审批挂起」的语义** —— 停写要等 Stage 5 把审批挂起落进 `session_turns.pending_approval`（否则「等待确认」的展示会退化 ✗） | **Stage 5** |
+| **S-11** | 删 `try_claim` 的 `wait_status` 分支 | ✅ **Stage 3a 已完成**（台账 R3 已清理）—— 执行权迁到 `current_turn_id` + 轮次状态推导 | — |
 | **清扫第 2 类** | 审批过期 | 归**治理域**（`approval_service.expire_if_due`） | 治理域 / Session Stage 5（S-30） |
 | **清扫第 3 类** | 会话空闲（30 天） | **必须等「复活」路径**（Stage 2）—— 只关不复活 = 用户的旧对话从列表里消失 ✗✗ | Stage 2 |
 | **S-07** | `X7`（审批吞异常）**提前清理** | 该缺陷 = 审批失败后**工具照常执行**；本轮改成「记日志 + **再抛**」（旧打点撤除） | 比原定的 Stage 5 提前到 Stage 1 |
@@ -827,6 +828,30 @@ DROP TABLE IF EXISTS checkpoints;
 | **停用 + 打点** `use_cases/run_turn*.py` | 台账 X2（IM 侧）→ 已弃用。⚠️ **但 IM 渠道仍在调它** —— 只有 Stage 5b 切了 IM 入口才真能删 |
 
 **旧代码减少**：**本 Stage 不删行** —— X18 与 X2 都只「停用 + 打点」；**X18 的删除在 Stage 3b**（7 天清理窗口后），**X2 的删除在 Stage 5b**（与 Gateway 的 IM 入口切换同 PR）。旧路径**变小**：web/api 的旧编排不再被任何入口调用（**存活实现只剩一套**，代码行数待 Stage 3b / 5b 兑现）。
+
+#### 实施记录（2026-10-30 · Stage 3a：互斥职责迁移）
+
+本 Stage 是**本层最大的工作量**，按片推进。本片只做**互斥职责**（台账 **R3**）——
+它是「唯一 turn 实现」的前置：编排迁走之后，会话执行权不能还挂在旧列上。
+
+| 项 | 结果 |
+|---|---|
+| 契约 | `session/claim.py`：`TurnClaimPort`（`claim` / `release` / `current_turn_status`）+ `checkpoint_thread_id` 已在 `sequence.py` |
+| 实现 | `adapter/persistence/session_claim.py`：`PostgresTurnClaim` —— **`agent_sessions.current_turn_id` 原子 CAS** + 轮次状态/僵尸判定（方案 §4.4 ✓） |
+| 旧实现 | `SqlSessionRepository.try_claim` / `release` **删除**；`SessionRepository` 协议里的两个方法**一并删** ✓（不留在协议里当第二套语义 ✗） |
+| 连带 | 「是否在飞」的判定（`request_cancel`）从 `wait_status` 改看 `current_turn_id` ✓；copilot 的 `turn_id` **预先生成**（claim 在建轮次行**之前** —— 否则「会话忙」时会留下一行失败的轮次，那是给用户看的噪音 ✗✗） |
+| 台账 | **R3 已清理**（旧打点撤除 + 扫描规则 `try_claim;modules/;R3;R;on` 启用 ✓） |
+| 测试 | 真库集成 7 条（互斥 / 不同会话互不干扰 / release / **僵尸接管** / 终态轮次自愈 / 跨租户 / 当前轮次状态） |
+
+**更正上一轮记录**：Stage 1 时我写的「S-06 / S-11 阻塞在 Stage 3，因为**第二套 turn 实现（X2）还靠 `try_claim`**」—— **这个理由不成立** ✗：实测 `try_claim` 的**唯一**调用者是 copilot，X2（IM 侧）**根本没有互斥语义** ✓（方案 §6 的表也是这么写的）。互斥已于本片迁走（R3 ✅）。
+
+**仍未接管**：
+
+| # | 事项 | 原因 | 归属 |
+|---|---|---|---|
+| **S-16 / S-20 / S-21** | 编排迁到 `session/turn_runner.py` + 切 web/api 入口 + 停用 copilot 旧编排 | 本层最大的工作量 —— 需要把 copilot 的 ~300 行编排逐段搬进契约层（端口化） | Stage 3b |
+| **S-06** | `wait_status` 写入点归零 | 那列现在**只剩**「审批挂起」的语义 —— 停写要等 **Stage 5** 把审批挂起落进 `session_turns.pending_approval`（否则「等待确认」的展示会退化 ✗） | Stage 5 |
+| **S-22** | 停用 `use_cases/run_turn*.py`（X2） | IM 渠道仍在调它 —— 删除要与 **Gateway 的 IM 入口切换同 PR**（原子） | Stage 5b |
 **验收**：同一 `clientRequestId` 重复到达 → 只起一轮；取消跨 worker 生效；**web/api 上只有一套「跑一轮」的语义**。
 
 ### Stage 3b：删 Copilot 侧旧 turn 编排（**X18**）
