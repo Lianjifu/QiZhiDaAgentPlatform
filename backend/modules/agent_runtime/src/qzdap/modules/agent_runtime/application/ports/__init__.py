@@ -223,8 +223,21 @@ class SessionJournal(ABC):
 
 class ToolPort(Protocol):
     async def invoke(
-        self, *, call_id: UUID, tool_name: str, arguments: dict
-    ) -> dict: ...
+        self,
+        *,
+        call_id: UUID,
+        tool_name: str,
+        arguments: dict,
+        turn_id: UUID | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict:
+        """执行一次工具调用 ✓。
+
+        ⚠️ **``turn_id`` + ``idempotency_key`` 是幂等的入口** ✓ ——
+        `tool_executions` 靠它们挂到轮次上 ✓（没有就**没有幂等** ✓ ——
+        不静默假装有 ✓）。
+        """
+        ...
 
     async def list_tools(self) -> list[dict]:
         """Catalog of invocable tools.

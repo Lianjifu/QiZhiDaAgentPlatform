@@ -60,15 +60,20 @@ class ToolRuntimeAdapter(ToolRuntimePort):
                 ok=False, error_code="TOOL_ACTOR_TENANT_MISMATCH", is_error=True
             )
         arguments = dict(invocation.arguments or {})
-        call_id = _as_uuid(invocation.call_id) or uuid4()
+        call_id = _as_uuid(invocation.tool_call_id) or uuid4()
+        turn_id = _as_uuid(invocation.turn_id or "")
         try:
             call = await self._svc.invoke_tool().execute(
                 tenant_id=self._tenant_id,
                 workspace_id=self._workspace_id,
                 owner_id=self._owner_id,
-                tool_name=invocation.name,
+                tool_name=invocation.tool_name,
                 arguments=arguments,
                 call_id=call_id,
+                # ⚠️ **幂等靠这两个** ✓ —— 没有轮次就没有 `tool_executions`
+                # 记录 ✓（执行侧就**没有幂等** ✓ —— 不静默假装有 ✓）。
+                turn_id=turn_id,
+                idempotency_key=invocation.idempotency_key,
             )
         except ToolNotFound:
             # ⚠️ **skill 走 skill 的路径** ✓（工具目录里没有这个名字 ✓）。
@@ -82,8 +87,10 @@ class ToolRuntimeAdapter(ToolRuntimePort):
             return ToolInvocationResult(
                 ok=False,
                 error_code=_error_code(exc),
+                error_message=str(exc),
                 output=str(exc),
                 is_error=True,
+                retry_after_ms=int(getattr(exc, "retry_after_ms", 0) or 0),
             )
         return ToolInvocationResult(ok=True, output=_as_text(call.result))
 
@@ -98,7 +105,7 @@ class ToolRuntimeAdapter(ToolRuntimePort):
             return None
         result = await self._skills.invoke(
             call_id=call_id,
-            skill_name=invocation.name,
+            skill_name=invocation.tool_name,
             arguments=dict(invocation.arguments or {}),
             confirmed=False,
         )

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from qzdap.modules.agent_runtime.application.ports import SandboxPort, SkillPort, ToolPort
+from qzdap.modules.agent_runtime.application.ports import (
+    SandboxPort,
+    SkillPort,
+    ToolPort,
+)
 
 
 def parse_arguments(raw: Any) -> dict[str, Any]:
@@ -39,6 +43,8 @@ async def execute_tool(
     sandbox_port: SandboxPort | None,
     tool_port: ToolPort | None,
     confirmed: bool = False,
+    turn_id: UUID | None = None,
+    idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     """Run one tool and return a result dict.
 
@@ -65,8 +71,14 @@ async def execute_tool(
             if result.get("error_code") != "SKILL_NOT_FOUND":
                 return result
         if tool_port is not None:
+            # ⚠️ **幂等键与轮次一起传下去** ✓ —— `tool_executions` 的唯一
+            # 权威要靠它们 ✓（没有轮次就没有幂等记录 ✗）。
             return await tool_port.invoke(
-                call_id=call_id, tool_name=name, arguments=arguments
+                call_id=call_id,
+                tool_name=name,
+                arguments=arguments,
+                turn_id=turn_id,
+                idempotency_key=idempotency_key,
             )
         return {
             "ok": False,

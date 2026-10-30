@@ -91,8 +91,16 @@ class ToolBindingResolver:
                 raise RuntimeError(
                     f"tool {binding.name} has no runtime — bind a ToolRuntimePort"
                 )
+            scope = current_tool_scope()
             result = await self._runtime.invoke(
-                ToolInvocation(name=binding.name, arguments=arguments),
+                ToolInvocation(
+                    tool_name=binding.name,
+                    arguments=arguments,
+                    tool_call_id=scope.tool_call_id,
+                    idempotency_key=scope.idempotency_key,
+                    turn_id=scope.turn_id,
+                    protected=scope.protected,
+                ),
                 actor=current_actor(),
             )
             if not result.ok:
@@ -150,6 +158,40 @@ def require_actor(actor: ActorContext | None) -> ActorContext:
     return actor
 
 
+@dataclass(frozen=True, slots=True)
+class ToolScope:
+    """**这一轮工具调用的上下文** ✓（幂等键 ✓ / 轮次 ✓ / 是否受保护 ✓）。
+
+    ⚠️ **挂在上下文变量上** ✓ —— 与 actor 同一个理由 ✓：`BaseTool` 的函数
+    签名里只有**模型的参数** ✓，带不进调用 id ✓。
+    """
+
+    tool_call_id: str = ""
+    idempotency_key: str | None = None
+    turn_id: str | None = None
+    protected: bool = True
+
+
+_CURRENT_TOOL_SCOPE: ContextVar[ToolScope | None] = ContextVar(
+    "qzdap_current_tool_scope", default=None
+)
+
+
+def set_current_tool_scope(scope: ToolScope) -> Token[ToolScope | None]:
+    """**设置当前工具上下文** ✓ —— 返回 token ✓（调用方负责 reset ✓）。"""
+    return _CURRENT_TOOL_SCOPE.set(scope)
+
+
+def reset_current_tool_scope(token: Token[ToolScope | None]) -> None:
+    """**还原工具上下文** ✓（一步做完就还原 ✓ —— 否则下一步会继承上一步的幂等键 ✗✗）。"""
+    _CURRENT_TOOL_SCOPE.reset(token)
+
+
+def current_tool_scope() -> ToolScope:
+    """**当前工具上下文** ✓（没有就是空上下文 ✓ —— 不报错 ✓）。"""
+    return _CURRENT_TOOL_SCOPE.get() or ToolScope()
+
+
 def _args_schema(spec: Mapping[str, Any]) -> dict[str, Any]:
     """**绑定声明 → 参数 schema** ✓。
 
@@ -196,9 +238,13 @@ __all__ = [
     "RISK_ORDER",
     "BindingPolicy",
     "ToolBindingResolver",
+    "ToolScope",
     "current_actor",
+    "current_tool_scope",
     "require_actor",
     "reset_current_actor",
+    "reset_current_tool_scope",
     "set_current_actor",
+    "set_current_tool_scope",
     "tool_schema",
 ]

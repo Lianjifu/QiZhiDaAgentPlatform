@@ -326,7 +326,7 @@ class TestToolRuntimeAdapter:
             owner_id=_OWNER,
         )
         result = await adapter.invoke(
-            ToolInvocation(name="echo", arguments={"text": "hi"}),
+            ToolInvocation(tool_name="echo", arguments={"text": "hi"}),
             actor=ActorContext(
                 actor_id="", tenant_id=str(_TENANT), workspace_id=str(_WORKSPACE)
             ),
@@ -345,7 +345,7 @@ class TestToolRuntimeAdapter:
             owner_id=_OWNER,
         )
         result = await adapter.invoke(
-            ToolInvocation(name="echo", arguments={"text": "hi"}),
+            ToolInvocation(tool_name="echo", arguments={"text": "hi"}),
             actor=ActorContext(
                 actor_id="u-1", tenant_id=str(uuid4()), workspace_id=str(_WORKSPACE)
             ),
@@ -364,7 +364,7 @@ class TestToolRuntimeAdapter:
             owner_id=_OWNER,
         )
         result = await adapter.invoke(
-            ToolInvocation(name="echo", arguments={"text": "hi"}), actor=_ACTOR
+            ToolInvocation(tool_name="echo", arguments={"text": "hi"}), actor=_ACTOR
         )
         assert result.ok is True
         assert result.output == '{"echo": "hi"}'

@@ -9,6 +9,7 @@ resolver at the composition root.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
@@ -49,6 +50,57 @@ class ToolCallRepository(ABC):
     async def add(self, call: ToolCall) -> None: ...
     @abstractmethod
     async def get(self, call_id: UUID) -> ToolCall | None: ...
+
+
+class ToolExecutionPort(Protocol):
+    """**`tool_executions` 的窄端口** ✓（幂等的唯一权威 ✓ —— Agent 方案 §5.3.2 ✓）。
+
+    ⚠️ **实现在会话域** ✓（`tool_executions.turn_id` 外键指向 `session_turns` ✓
+    —— 表归会话域 ✓）—— 工具模块只**声明要什么** ✓（不引框架 ✓ 不跨域写表 ✓）。
+    """
+
+    async def begin(
+        self,
+        *,
+        idempotency_key: str,
+        request_hash: str,
+        tool_call_id: str,
+        turn_id: UUID,
+        tenant_id: UUID,
+        workspace_id: UUID,
+    ) -> ToolExecutionClaim:
+        """**占一次执行权** ✓。
+
+        ⚠️ **抢到就返回 ``claimed=True``** ✓；**抢不到就返回既有行** ✓
+        （冲突读回 ✓ —— 由调用方判断「同参复用」还是「异参拒绝」✓）。
+        """
+        ...
+
+    async def finish(
+        self,
+        *,
+        idempotency_key: str,
+        status: str,
+        result_ref: str | None = None,
+    ) -> None:
+        """**收尾** ✓（状态 ✓ + 结果指针 ✓）。"""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class ToolExecutionClaim:
+    """**一次幂等占位的结果** ✓。"""
+
+    #: 本次调用**抢到了执行权**吗 ✓。
+    claimed: bool
+    #: 既有行的状态 ✓（`pending` / `running` / `succeeded` / `failed` / `timeout` ✓）。
+    status: str = "pending"
+    #: 既有行的参数指纹 ✓（与本次算的不一致 → **拒绝** ✓）。
+    request_hash: str = ""
+    #: 既有行的结果指针 ✓（`tool_calls.id` 的字符串 ✓ —— `tool_calls.result` 才是正文 ✓）。
+    result_ref: str | None = None
+    #: 既有行的工具调用 id ✓。
+    tool_call_id: str = ""
 
 
 class EventPublisher(ABC):

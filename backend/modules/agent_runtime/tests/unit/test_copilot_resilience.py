@@ -181,7 +181,7 @@ class _PricingLLM:
 
 
 class _BoomToolPort:
-    async def invoke(self, *, call_id, tool_name, arguments):
+    async def invoke(self, *, call_id, tool_name, arguments, **kwargs):
         raise RuntimeError("tool blew up")
 
     async def list_tools(self):
@@ -221,7 +221,7 @@ class _CatalogToolPort:
         self._tools = tools
         self.invoked: list[tuple[str, dict]] = []
 
-    async def invoke(self, *, call_id, tool_name, arguments):
+    async def invoke(self, *, call_id, tool_name, arguments, **kwargs):
         self.invoked.append((tool_name, arguments))
         return {"ok": True, "output": "tool output"}
 

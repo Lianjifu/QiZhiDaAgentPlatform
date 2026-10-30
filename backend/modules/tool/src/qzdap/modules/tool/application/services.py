@@ -21,8 +21,10 @@ from qzdap.modules.tool.application.ports import (
     MCPRuntime,
     OpenAPIRuntime,
     ToolCallRepository,
+    ToolExecutionPort,
     ToolRepository,
 )
+from qzdap.modules.tool.application.reliability import CircuitBreaker
 from qzdap.modules.tool.application.tool_factory import ToolServiceFactory
 from qzdap.modules.tool.application.use_cases import (
     BatchInvokeToolsUseCase,
@@ -44,6 +46,13 @@ class ToolService:
     mcp: MCPRuntime
     events: EventPublisher
     tool_call_timeout_seconds: float = 30.0
+    #: **幂等的唯一权威** ✓（`tool_executions` ✓ —— Agent 方案 §5.3.2 ✓）
+    executions: ToolExecutionPort | None = None
+    #: **熔断器** ✓（按工具名 ✓ —— ⚠️ **必须是进程内共享的那一个** ✓ ——
+    #: 每请求新建一个 = 永远不熔断 ✗✗）
+    breaker: CircuitBreaker | None = None
+    #: **最多试几次** ✓（含首次 ✓ —— 默认 3 ✓）
+    max_attempts: int = 3
 
     def register_tool(self) -> RegisterToolUseCase:
         return RegisterToolUseCase(self.tools, self.events)
@@ -69,6 +78,9 @@ class ToolService:
             mcp=self.mcp,
             events=self.events,
             timeout_seconds=self.tool_call_timeout_seconds,
+            executions=self.executions,
+            breaker=self.breaker,
+            max_attempts=self.max_attempts,
         )
 
     def batch_invoke_tools(

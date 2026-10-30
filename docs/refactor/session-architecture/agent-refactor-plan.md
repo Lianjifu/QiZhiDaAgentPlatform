@@ -1098,6 +1098,31 @@ ToolRuntimePort
 **旧代码减少**：进程内幂等缓存降级为快速路径。`nodes.py` 的 `execute` 节点**留到 Stage 7 随整文件删除**。
 **验收**：同一 `idempotency_key` 在**两个 worker** 上并发调用 → **只执行一次**；`tool_executions` 有真实行；同键不同参数 → 明确错误；成本落到 `session_turns.cost_usd`。
 
+#### 实施记录（2026-10-31 · Stage 3：Tool Runtime 落库化（幂等 / 重试 / 熔断））
+
+| 项 | 结果 |
+|---|---|
+| **A-14 `tool_executions` 开始写** | ✅ **达成** —— **唯一权威** ✓（方案 §5.3.2 ✓）：`modules/agent_runtime/.../adapter/persistence/tool_executions.py` ✓（`ToolExecutionORM` ✓ —— **不继承 `TenantScopedMixin`** ✓ —— 那会凭空多出 `id` 列 ✗ 这张表的主键是 `tool_call_id` ✓ —— 租户过滤**显式写** ✓）；`PostgresToolExecutionStore` ✓（`INSERT ... ON CONFLICT (idempotency_key) DO NOTHING RETURNING` ✓ —— **抢到 / 冲突读回** ✓）。⚠️ **不需要新迁移** ✓（列在 0035 建齐 ✓ —— **此前从未被写** ✓ → 幂等只在进程内 dict 里 ✗✗ → **跨 worker / 重启后失效** ✗）。⚠️ **`tool_call_id` 是 `String(64)`** ✓ —— 写入必须 `str(uuid)` ✓（方案 §5.3.2 的警告 ✓） |
+| **A-15 `request_hash` 冲突拒绝** | ✅ **达成** —— 指纹 = `sha256(canonical_json(arguments))` ✓（`modules/tool/.../application/idempotency.py` ✓ —— **键排序** ✓ → 键顺序不同不算不同参数 ✓）；**同键异参 → 拒绝** ✓（`TOOL_IDEMPOTENCY_CONFLICT` ✓ —— **该码原先不存在** ✓ → **新增** ✓（`libs/schema` 的 `ErrorCode` ✓ + 投影文案 ✓ + HTTP 409 ✓）；⚠️ **前端把错误码当不透明字符串** ✓ → **前端无需改** ✓（但投影表必须有文案 ✓ —— 否则用户看到裸码 ✗））。**同键同参且已成功 → 直接返回既有结果** ✓（**不重复执行** ✓）；**同键且还在跑 → 拒绝** ✓（`TOOL_IN_PROGRESS` ✓ —— **新增** ✓ + 409 ✓） |
+| **A-16 重试 / 熔断** | ✅ **达成** —— `modules/tool/.../application/reliability.py` ✓：**指数退避 + jitter** ✓（`retry_delay_ms` ✓ —— **jitter 是必需的** ✓ —— 固定退避会让一批调用同时重试 ✗✗ 惊群 ✓）；**只重试「幂等工具的瞬时错误」** ✓（§5.3.3 ✓ —— 重试有副作用的工具可能**执行两次** ✗✗）；**按工具名熔断** ✓（`CircuitBreaker` ✓ —— 连续失败达阈值就熔断 ✓ → `TOOL_RATE_LIMITED` ✓ + **带 `retry_after_ms`** ✓；**半开** ✓ —— 熔断期满放一次探测 ✓）。⚠️ **内置工具的幂等标记** ✓ —— `tool_catalog.BUILTIN_TOOL_SPECS` 给 **20 个只读工具**加 `"idempotent": True` ✓（写类工具**不加** ✓ —— 重试它们 = 可能执行两次 ✗✗） |
+| **A-17 修复 async** | ⚠️ **随 Stage 7** ✓ —— `run_async_from_sync` 只在**死代码**里 ✓（`context/budget.py` ✓ —— C-29 删 ✓ / `memory/__init__.py` ✓ + `graph/nodes.py` ✓ —— **19 节点图没有生产调用方** ✓）→ 按方案 §9 Stage 3 的说明「`nodes.py` 的 `execute` 节点**留到 Stage 7 随整文件删除**」✓ —— **现在改它是改死代码** ✗✗ |
+| **A-18 沙箱接入** | ⚠️ **归 Stage 4/5** ✓ —— 沙箱作为**一类工具**走同一 `ToolRuntime` ✓ 需要新的 `AgentLoopRunner` 才有承载处 ✓（Stage 5 ✓） |
+| **A-19 成本结算** | ✅ **LLM 侧已在写** ✓ —— 旧 runner 的 `journal.finish_turn(status, cost_usd=...)` ✓（Session S-19 ✓ —— `session_turns.cost_usd` ✓）；⚠️ **工具侧无独立成本项** ✓（工具不计 token ✓ —— 计划里的 `usage` + `price_of` 指的就是模型调用 ✓） |
+| **A-20 进程内幂等降级为快速路径** | ✅ **达成** —— `runtime/execution/executor.py` 的 `InMemoryToolExecutor` 幂等缓存**不再是权威** ✓（权威是 `tool_executions` ✓ —— 跨 worker 有效 ✓）；⚠️ **该类本体仍在** ✗ → 删除归 **Stage 7（A-37）** ✓ |
+| **A-20b `modules/tool` 的 `InvokeToolUseCase` 补幂等 / 重试 / 熔断** | ✅ **达成（改 `modules/tool` ✓ —— 归属已拍板 ✓）** —— `InvokeToolUseCase.execute(...)` 新增 `turn_id` ✓ / `idempotency_key` ✓；**幂等流程** ✓（占权 → 同参复用 / 异参拒绝 / 进行中拒绝 ✓）+ **重试** ✓ + **熔断** ✓。⚠️ **端口在工具模块** ✓（`ToolExecutionPort` ✓ —— 工具模块只**声明要什么** ✓），**实现在会话域** ✓（agent_runtime ✓ —— `turn_id` 外键指向 `session_turns` ✓ —— 表归会话域 ✓） |
+| **旧路径真的变小** | ✅ **变大的是「真链路」** ✓ —— 旧 runner 的工具执行**现在会写 `tool_executions`** ✓（`runner.py` 的两处 `execute_tool(...)` 带上 `turn_id` ✓ + **幂等键 = 轮次 + 模型的 tool_call id** ✓ —— 同一次模型调用重试**键不变** ✓ → 挡住重复执行 ✓；审批恢复后重跑**键一致** ✓ → 挡住「点两次同意」✓）。⚠️ **进程内幂等缓存仍在** ✗ → 归 Stage 7 ✓ |
+| 测试 | 新增 `modules/tool/tests/unit/test_tool_idempotency.py` ✓（13 条 ✓：**指纹稳定** ✓ / **同键同参不重复执行** ✓ / **同键异参拒绝** ✓ / **执行中拒绝** ✓ / **收尾写状态与指针** ✓ / **没有轮次就没有幂等** ✓ / **幂等工具会重试** ✓ / **非幂等工具不重试** ✓ / **熔断挡住后续调用** ✓ / 退避 helper ✓）；新增 `modules/agent_runtime/tests/integration/test_tool_executions.py` ✓（2 条 ✓ **真库** ✓ —— 抢权 + 冲突读回 ✓ / 收尾 ✓） |
+| **真机验证** | ✅ **dev 库实跑** ✓ —— 同键调两次 → **自定义工具只被执行了 1 次** ✓（`custom invoker calls: 1` ✓）→ `tool_executions` 落一行 ✓（`status=succeeded` ✓ + `request_hash` ✓ + `result_ref` **指针** ✓）→ 第二次返回**同样的结果** ✓。⚠️ **演示栈跑不了这一步** ✗（demo **没配 LLM 供应商** ✓ → 轮次走不到工具调用 ✓）—— 故用 dev 库直连验证 ✓ |
+
+⚠️ **本 Stage 之后仍未做的**（归后续 Stage ✓）：
+
+| 项 | 归属 |
+|---|---|
+| **`tool_executions` 的成本 / 审计落 `session_turns.agent_decision`** | **Stage 4** ✓ |
+| **沙箱作为一类工具走同一 `ToolRuntime`** ✓ | **Stage 4/5** ✓ |
+| **新的 `AgentLoopRunner`** ✓（含真实 actor ✓ + `interrupt()` 审批 ✓ + 端到端 ✓） | **Stage 5（A-25）** ✓ |
+| **删 `InMemoryToolExecutor`** ✓ + **删 `run_async_from_sync`** ✓ + **删 `budget.py`** ✓ | **Stage 7** ✓ |
+
 ### Stage 4：专家 Agent 选择 + 配置取值接线
 
 > **开工前置**：**Session 迁移 0046 已落地**（`session_turns.agent_decision` 列存在 —— 本层的路由留痕要写它）。本阶段**不依赖** Session 的 turn 实现，只依赖**表结构**。

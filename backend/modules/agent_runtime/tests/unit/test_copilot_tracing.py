@@ -90,7 +90,7 @@ class _ToolPort:
     def __init__(self) -> None:
         self.invoked: list[tuple[str, dict]] = []
 
-    async def invoke(self, *, call_id, tool_name, arguments):
+    async def invoke(self, *, call_id, tool_name, arguments, **kwargs):
         self.invoked.append((tool_name, arguments))
         return {"ok": True, "output": "tool output"}
 

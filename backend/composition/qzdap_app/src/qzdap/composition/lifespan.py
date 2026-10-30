@@ -783,11 +783,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     custom_invoker.register("todo_write", built_in_invoke_todo_write)
     custom_invoker.register("delegate_to_agent", built_in_invoke_delegate_to_agent)
 
+    # ⚠️ **熔断器是进程内共享的单例** ✓ —— 每请求新建一个 = **永远不熔断** ✗✗
+    # （那是「有熔断代码但没熔断」✗）。
+    from qzdap.modules.tool.application.reliability import CircuitBreaker
+
+    tool_circuit_breaker = CircuitBreaker()
+
     class _ToolFactory:
         def __init__(self) -> None:
             self._bus = container.bus()
 
         def for_session(self, session):  # type: ignore[no-untyped-def]
+            from qzdap.modules.agent_runtime.adapter.persistence.tool_executions import (
+                PostgresToolExecutionStore,
+            )
+
             return ToolService(
                 tools=SqlToolRepository(session),
                 calls=SqlToolCallRepository(session),
@@ -796,6 +806,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 mcp=mcp_rt,
                 events=ToolEventPublisher(self._bus),
                 tool_call_timeout_seconds=container.settings.tool_call_timeout_seconds,
+                # ⚠️ **幂等的唯一权威** ✓（`tool_executions` ✓ —— 跨 worker 有效 ✓
+                # —— 此前**从未被写** ✓ → 幂等只在进程内 dict 里 ✗✗）。
+                executions=PostgresToolExecutionStore(session),
+                breaker=tool_circuit_breaker,
             )
 
     app.state.tool_factory = _ToolFactory()

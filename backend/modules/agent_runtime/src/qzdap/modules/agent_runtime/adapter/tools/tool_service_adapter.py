@@ -37,7 +37,15 @@ class ToolServiceAdapter(ToolPort):
         self._workspace_id = workspace_id
         self._owner_id = owner_id
 
-    async def invoke(self, *, call_id: UUID, tool_name: str, arguments: dict) -> dict:
+    async def invoke(
+        self,
+        *,
+        call_id: UUID,
+        tool_name: str,
+        arguments: dict,
+        turn_id: UUID | None = None,
+        idempotency_key: str | None = None,
+    ) -> dict:
         call = await self._svc.invoke_tool().execute(
             tenant_id=self._tenant_id,
             workspace_id=self._workspace_id,
@@ -45,6 +53,8 @@ class ToolServiceAdapter(ToolPort):
             tool_name=tool_name,
             arguments=arguments,
             call_id=call_id,
+            turn_id=turn_id,
+            idempotency_key=idempotency_key,
         )
         # The invoke_tool use case mutates the ToolCall id from the passed
         # call_id; if the caller didn't supply one (LLM-driven streams may

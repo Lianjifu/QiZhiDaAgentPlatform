@@ -316,24 +316,39 @@ class AgentRouterPort(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class ToolInvocation:
-    """一次工具调用 ✓（**参数形状** ✓ —— 不是执行语义 ✓）。"""
+    """一次工具调用 ✓（**参数形状** ✓ —— 不是执行语义 ✓）。
 
-    name: str
+    ⚠️ **字段与方案 §5.4 的统一契约一一对应** ✓（`tool_call_id` /
+    `tool_name` / `arguments` / `idempotency_key` / `turn_id` / `protected` ✓）——
+    **口径统一** ✓（别各写一套 ✗✗）。
+    """
+
+    tool_name: str
     arguments: Mapping[str, Any] = field(default_factory=dict)
-    call_id: str = ""
+    tool_call_id: str = ""
     #: 幂等键 ✓（**由调用方给** ✓ —— `tool_executions` 的唯一权威 ✓）。
     idempotency_key: str | None = None
+    #: 轮次 id ✓（`tool_executions.turn_id` 的外键 ✓ —— 幂等记录挂在轮次上 ✓）。
+    turn_id: str | None = None
+    #: 这一轮**是不是受保护** ✓（False = unprotected ✓ —— 副作用工具**已被剔除** ✓，
+    #: 这里只是把事实带上 ✓ —— 执行侧据此**再确认一次** ✓)。
+    protected: bool = True
 
 
 @dataclass(frozen=True, slots=True)
 class ToolInvocationResult:
-    """一次工具调用的结果 ✓。"""
+    """一次工具调用的结果 ✓（方案 §5.4 ✓）。"""
 
     ok: bool
     output: str = ""
     error_code: str | None = None
-    latency_ms: int = 0
+    error_message: str = ""
     is_error: bool = False
+    #: 建议的重试等待 ✓（熔断 / 限流时给出 ✓ —— 调用方据此退避 ✓）。
+    retry_after_ms: int = 0
+    latency_ms: int = 0
+    #: **实际尝试了几次** ✓（幂等命中 → 1 ✓；重试 → >1 ✓）。
+    attempts: int = 1
 
 
 @runtime_checkable

@@ -476,6 +476,11 @@ class SessionGraphRunner:
                         sandbox_port=self._sandbox_port,
                         tool_port=self._tool_port,
                         confirmed=False,
+                        turn_id=turn_id,
+                        # ⚠️ **幂等键 = 轮次 + 模型的 tool_call id** ✓ ——
+                        # 同一次模型调用重试时**键不变** ✓（所以能挡住重复执行 ✓），
+                        # 不同的调用**键不同** ✓。
+                        idempotency_key=_tool_idempotency_key(turn_id, call_uuid),
                     )
                     tool_span.set_attribute("tool.ok", result.get("ok") is not False)
                 except Exception:
@@ -928,6 +933,13 @@ class SessionGraphRunner:
             sandbox_port=self._sandbox_port,
             tool_port=self._tool_port,
             confirmed=True,
+            turn_id=turn_id,
+            # ⚠️ **审批恢复后重跑同一个 tool_call** ✓ —— 幂等键**必须一样** ✓
+            # （不然审批后的执行会变成第二次执行 ✗✗ —— 审批前那次没执行 ✓
+            # 但键一致才挡得住「点了两次同意」✓）。
+            idempotency_key=_tool_idempotency_key(
+                turn_id, str(pending.get("tool_call_id") or pending.get("call_id") or "")
+            ),
         )
         if is_skill:
             call_id = _as_uuid(pending.get("call_id"))
@@ -981,6 +993,15 @@ class SessionGraphRunner:
                               if k != "_pending_frontend_action"},
                 ))
         return out, state
+
+
+def _tool_idempotency_key(turn_id: UUID, tool_call_id: UUID | str) -> str:
+    """**一次模型工具调用的幂等键** ✓。
+
+    ⚠️ **键 = 轮次 + tool_call id** ✓ —— 同一次调用重试**键不变** ✓（挡住重复
+    执行 ✓）；不同调用**键不同** ✓（不误伤 ✓）。
+    """
+    return f"{turn_id}:{tool_call_id}"
 
 
 async def _passthrough_llm(state: LoopState) -> LoopState:

@@ -80,6 +80,12 @@ class ErrorCode(str, Enum):
     SERVICE_ACCOUNT_NOT_CONFIGURED = "SERVICE_ACCOUNT_NOT_CONFIGURED"
     # Session Stage 0 · S-04 —— 审批人不能是发起人（自审批拦截 ✓）。
     APPROVER_MUST_DIFFER = "APPROVER_MUST_DIFFER"
+    # Agent Stage 3 · A-15 —— **同一幂等键配了不同参数** ✓
+    # （`tool_executions` 的 `request_hash` 与既有行不一致 ✓ —— **调用方的 bug**
+    # ✓ → 必须**暴露** ✓ 不静默返回旧结果 ✗✗）。
+    TOOL_IDEMPOTENCY_CONFLICT = "TOOL_IDEMPOTENCY_CONFLICT"
+    # Agent Stage 3 —— **同一个幂等键的另一次调用还在跑** ✓ → 不重复执行 ✓
+    TOOL_IN_PROGRESS = "TOOL_IN_PROGRESS"
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +115,9 @@ _HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.TOOL_ARGUMENT_INVALID: 400,
     ErrorCode.TOOL_TIMEOUT: 504,
     ErrorCode.TOOL_RATE_LIMITED: 429,
+    # Agent Stage 3 · A-15 —— 幂等键复用但参数不同 → 409（冲突 ✓ 不是限流 ✓）
+    ErrorCode.TOOL_IDEMPOTENCY_CONFLICT: 409,
+    ErrorCode.TOOL_IN_PROGRESS: 409,
     # Router 排队语义
     ErrorCode.QUEUE_FULL: 429,
     ErrorCode.QUEUE_TIMEOUT: 503,
@@ -244,6 +253,16 @@ ERROR_PROJECTION: Mapping[ErrorCode, ErrorCopy] = {
         http="服务内部错误",
         im="服务出错了，请稍后重试。",
         web="服务出错了，请稍后重试。",
+    ),
+    ErrorCode.TOOL_IDEMPOTENCY_CONFLICT: ErrorCopy(
+        http="工具调用的幂等键与参数不匹配",
+        im="这次工具调用的参数和之前不一致，请重试。",
+        web="这次工具调用的参数和之前不一致，请重试。",
+    ),
+    ErrorCode.TOOL_IN_PROGRESS: ErrorCopy(
+        http="同样的工具调用正在执行中",
+        im="这个操作正在执行，请稍等。",
+        web="这个操作正在执行，请稍等。",
     ),
     ErrorCode.CONTEXT_TOO_LARGE: ErrorCopy(
         http="上下文超出模型上限",

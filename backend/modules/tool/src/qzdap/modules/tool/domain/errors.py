@@ -48,6 +48,39 @@ class ToolCallTimeout(ToolError):
     status = 504
 
 
+class ToolIdempotencyConflict(ToolError):
+    """**同一个幂等键配了不同参数** ✓ —— 调用方的 bug ✓ → 必须暴露 ✓。
+
+    ⚠️ **不静默返回旧结果** ✓ —— 那会让调用方以为「按新参数执行过了」✗✗。
+    """
+
+    code = "TOOL_IDEMPOTENCY_CONFLICT"
+    status = 409
+
+
+class ToolExecutionInProgress(ToolError):
+    """**同一个幂等键的另一次调用还在跑** ✓ → 不重复执行 ✓。"""
+
+    code = "TOOL_IN_PROGRESS"
+    status = 409
+
+
+class ToolRateLimited(ToolError):
+    """**工具被熔断** ✓（连续失败达阈值 ✓ —— 按工具名计 ✓）。
+
+    ⚠️ **带上建议的等待时间** ✓ —— 调用方据此退避 ✓（塞进 ``details`` ✓ ——
+    信封里能带出去 ✓）。
+    """
+
+    code = "TOOL_RATE_LIMITED"
+    status = 429
+
+    def __init__(self, message: str = "", *, retry_after_ms: int = 0, **kwargs) -> None:
+        super().__init__(message, **kwargs)
+        self.retry_after_ms = retry_after_ms
+        self.details["retry_after_ms"] = retry_after_ms
+
+
 class UpstreamUnavailable(ToolError):
     code = "UPSTREAM_UNAVAILABLE"
     status = 502

@@ -14,6 +14,16 @@ dependencies = [
     # ActorContext 的来源（qzdap_vault.actor）—— 本模块有 5 个文件 import 它，
     # 不声明的话 isolated install 环境直接 ModuleNotFoundError.
     "qzdap-vault",
+    # 本模块的适配器**直接 import** 这些模块（adapter/tools ✓ / adapter/skills ✓
+    # / adapter/memory ✓ / adapter/knowledge ✓ / adapter/routing ✓）——
+    # 直接 import 的依赖就该写出来 ✓（否则 isolated install 一样炸 ✗）。
+    # ⚠️ **方向不反** ✓：这些模块都不依赖 qzdap-agent-runtime ✓（无环 ✓）。
+    "qzdap-tool",
+    "qzdap-skill",
+    "qzdap-memory",
+    "qzdap-model",
+    "qzdap-knowledge",
+    "qzdap-governance",
     # Gateway 层契约（qzdap_agent_runtime.gateway）—— 幂等键与判定结果类型.
     "qzdap-agent-runtime-runtime",
     "fastapi>=0.115.0",

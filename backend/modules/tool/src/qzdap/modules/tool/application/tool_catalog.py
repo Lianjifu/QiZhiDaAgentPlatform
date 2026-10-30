@@ -32,16 +32,19 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
     "echo": {
         "description": "回显传入的文本，用于连通性自检。",
         "parameters": {"type": "object", "properties": {"text": _S}},
+        "idempotent": True,
         "risk": "low",
     },
     "reverse": {
         "description": "把传入文本反转。",
         "parameters": {"type": "object", "properties": {"text": _S}},
+        "idempotent": True,
         "risk": "low",
     },
     "clock": {
         "description": "返回当前服务器时间。",
         "parameters": {"type": "object", "properties": {}},
+        "idempotent": True,
         "risk": "low",
     },
     "web_search": {
@@ -54,6 +57,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             },
             "required": ["query"],
         },
+        "idempotent": True,
         "risk": "medium",
     },
     "http_fetch": {
@@ -66,6 +70,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             },
             "required": ["url"],
         },
+        "idempotent": True,
         "risk": "medium",
     },
     "fetch_url_with_auth": {
@@ -110,6 +115,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             },
             "required": ["path"],
         },
+        "idempotent": True,
         "risk": "medium",
     },
     "write_file": {
@@ -151,6 +157,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
                 "include_hidden": _p(type="boolean", description="是否包含隐藏文件。"),
             },
         },
+        "idempotent": True,
         "risk": "low",
     },
     "glob": {
@@ -164,6 +171,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             },
             "required": ["pattern"],
         },
+        "idempotent": True,
         "risk": "low",
     },
     "grep": {
@@ -178,6 +186,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
                 "max_results": _p(type="integer", description="最多返回多少条。"),
             },
         },
+        "idempotent": True,
         "risk": "low",
     },
     "apply_patch": {
@@ -210,6 +219,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
                 "context_lines": _p(type="integer", description="上下文行数，默认 3。"),
             },
         },
+        "idempotent": True,
         "risk": "low",
     },
     "image_view": {
@@ -223,6 +233,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             },
             "required": ["path"],
         },
+        "idempotent": True,
         "risk": "low",
     },
     "pdf_read": {
@@ -236,6 +247,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             },
             "required": ["path"],
         },
+        "idempotent": True,
         "risk": "low",
     },
     "json_query": {
@@ -248,6 +260,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             },
             "required": ["data", "path"],
         },
+        "idempotent": True,
         "risk": "low",
     },
     "csv_query": {
@@ -262,11 +275,13 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             },
             "required": ["path"],
         },
+        "idempotent": True,
         "risk": "low",
     },
     "git_status": {
         "description": "查看工作区的 git 状态。",
         "parameters": {"type": "object", "properties": {}},
+        "idempotent": True,
         "risk": "low",
     },
     "git_diff": {
@@ -278,6 +293,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
                 "context_lines": _p(type="integer", description="上下文行数。"),
             },
         },
+        "idempotent": True,
         "risk": "low",
     },
     "git_log": {
@@ -286,6 +302,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             "type": "object",
             "properties": {"n": _p(type="integer", description="返回条数，默认 10。")},
         },
+        "idempotent": True,
         "risk": "low",
     },
     "code_search": {
@@ -301,6 +318,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             },
             "required": ["pattern"],
         },
+        "idempotent": True,
         "risk": "low",
     },
     "convert_format": {
@@ -315,6 +333,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             },
             "required": ["from", "to"],
         },
+        "idempotent": True,
         "risk": "low",
     },
     "calculator": {
@@ -326,6 +345,7 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             },
             "required": ["expression"],
         },
+        "idempotent": True,
         "risk": "low",
     },
     "ask_user_question": {
