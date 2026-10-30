@@ -1077,6 +1077,19 @@ ALTER TABLE admin_memory_policies
 **旧代码减少**：无（修复）。
 **验收**：**用户 A 的会话召回结果里不含用户 B 的记忆**（租户 / 工作区 / 用户三层隔离各有测试）。
 
+#### 实施记录（2026-10-30 · Stage 1：作用域过滤 —— **早已落地** ✓）
+
+⚠️ **这一 Stage 的工作在更早的 X14 修复里就完成了** ✓（2026-10-29 ✓）——
+本轮**核对并补记** ✓（不是新写的 ✓）。
+
+| 项 | 结果 |
+|---|---|
+| **M-06 L2 召回加 `user_id` 过滤** | ✅ **下推到 SQL 的 WHERE** ✓ —— `SqlMemoryCatalogRepository.list_l2` 里 `where(MemoryL2ORM.user_id == user_id)` ✓；⚠️ **归属不明（`user_id IS NULL`）的行不召回** ✓（宁可不可见，也不要串号 ✓） |
+| **M-07 向量检索加 `user_id` payload 过滤** | ✅ **下沉到 pgvector** ✓（决策 #2 ✓）—— `PgMemoryVectorAdapter.search` 把 `user_id` 放进 `filters` ✓（`payload->>'user_id'` ✓） |
+| **M-08 历史向量回填** | ✅ **迁移 0048 已做** ✓ —— `UPDATE admin_memory_vec ... FROM admin_memory_l2 ...` ✓（按 id 关联 ✓ —— 向量 id 就是 L2 行 id ✓）；关联不上的行**保持没有 user_id** ✓ → 按用户过滤时不可见 ✓（决策 #11 的方向 ✓） |
+| **M-09 L3 的 `visible_scope` ACL** | ⚠️ **跳过** ✓ —— 决策 #1：L3 **退役**（知识统一归 `modules/knowledge` ✓）→ 不再给 L3 加 ACL ✓（加了也是白加 ✓） |
+| 验收（三层隔离各有测试） | ✅ 租户 ✓（`_cross_tenant` ✓）/ 工作区 ✓（`list_l2` 按 workspace ✓ + `flush_rejects_other_workspace` ✓）/ 用户 ✓（`test_recall_does_not_leak_across_users` ✓ + `test_unowned_memories_are_not_recalled` ✓） |
+
 ### Stage 2：C2 Retrieval 重写
 
 | 动作 | 细节 |

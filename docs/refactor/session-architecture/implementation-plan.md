@@ -621,10 +621,10 @@
 | | **M-03b 写入侧持久化 `owner_id`** | ✅ **早已落地** ✓ —— `write()` 把 `owner_id` 写进 `L2Fact.user_id` ✓（`user_id` 唯一可靠的来源 ✓） |
 | | M-04 `RecallHit` 扩字段 | ✅ **已达成** —— 契约的 `RecallHit` 补 `scope` / `used_count` / **`ref_id`** / **`version`** ✓（后两个是 Context manifest 依赖的 ✓）；**生产返回改用 `RecallHit`** ✓（不再返回 5 键 dict ✓），dict 转换只在 agent_runtime 的适配器一处 ✓ |
 | | M-05 打点本层旧入口 | `record_legacy_call("X11".."X16")` ×6 | — | 0 | 前置 C2 |
-| Stage 1 · 作用域过滤 | M-06 L2 召回加 `user_id` 过滤 | **下推到 SQL 的 WHERE** | — | 0 | Stage 0 |
-| | M-07 向量检索加 `user_id` payload 过滤 | 落在 **`admin_memory_vec`**（0023，生产在用的向量表；不是 0036 的死表 `memory_l2_embeddings`） | — | 0 | M-06 |
-| | M-08 历史向量回填 | 向量 id **就是 L2 行 id** → 按 id 关联回填 `payload.user_id`；孤儿向量（对应 L2 已删）一并清理 | — | 0 | M-07 |
-| | M-09 L3 的 `visible_scope` ACL（若保留 L3） | — | — | 0 | 决策 #1 |
+| Stage 1 · 作用域过滤 | M-06 L2 召回加 `user_id` 过滤 | ✅ **早已落地** ✓（X14 修复 ✓，2026-10-29 ✓）—— 下推到 SQL 的 WHERE ✓；**归属不明的行不召回** ✓ |
+| | M-07 向量检索加 `user_id` payload 过滤 | ✅ **早已落地** ✓ —— 下沉到 pgvector ✓（决策 #2 ✓），落在 `admin_memory_vec` ✓ |
+| | M-08 历史向量回填 | ✅ **早已落地** ✓（迁移 **0048** ✓）—— 按 id 关联回填 `payload.user_id` ✓；关联不上的行**保持无 user_id** ✓（按用户过滤时不可见 ✓）|
+| | M-09 L3 的 `visible_scope` ACL（若保留 L3） | ⚠️ **跳过** ✓ —— 决策 #1：L3 **退役** ✓（知识归 `modules/knowledge` ✓）→ 不加 ACL ✓ |
 | | **X14 修复完成即「已弃用」** | — | **X14**（**修复类条目，不是删除类**） | — | M-06 |
 | Stage 2 · C2 Retrieval 重写 | M-10 向量优先 + 词法兜底 | 替代全量扫描 | — | 0 | Stage 1 |
 | | M-11 候选集 `top_k × 4` | 替代全量 | — | 0 | M-10 |
