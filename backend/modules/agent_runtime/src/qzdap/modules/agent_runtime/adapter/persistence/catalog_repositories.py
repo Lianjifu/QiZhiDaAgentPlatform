@@ -182,27 +182,9 @@ class SqlSessionMessageRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
 
-    async def list_for_session(self, session_id: UUID) -> list[dict]:
-        result = await self._s.execute(
-            select(LegacySessionMessageORM)
-            .where(LegacySessionMessageORM.session_id == session_id)
-            .order_by(LegacySessionMessageORM.seq.asc())
-        )
-        out = []
-        for row in result.scalars().all():
-            if _cross_tenant(row):
-                continue
-            out.append(
-                {
-                    "id": str(row.id),
-                    "role": row.role,
-                    "content": row.content,
-                    "toolName": row.tool_name,
-                    "seq": row.seq,
-                    "turnId": str(row.turn_id) if row.turn_id else None,
-                }
-            )
-        return out
+    # ⚠️ **读已切到新表**（2026-10-30，S-15a ✓）—— 旧表的读取方法**删除** ✓
+    # （留着就是第二条读路径 ✗）。旧表现在**只写**（双写期 ✓），
+    # 到 Stage 6 的 S-15b（停旧写）之后连写也停 ✓。
 
     async def append(
         self,

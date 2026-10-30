@@ -891,9 +891,14 @@ async def seed_demo_conversations(
 
     from qzdap.modules.agent_runtime.adapter.persistence.catalog_repositories import (
         SqlCatalogAgentRepository,
-        SqlSessionMessageRepository,
     )
-    from qzdap.modules.agent_runtime.adapter.persistence.models import SessionORM
+    from qzdap.modules.agent_runtime.adapter.persistence.models import (
+        SessionORM,
+        SessionTurnORM,
+    )
+    from qzdap.modules.agent_runtime.adapter.persistence.session_messages import (
+        PostgresSessionMessageStore,
+    )
     from qzdap.modules.agent_runtime.adapter.persistence.repositories import (
         SqlSessionRepository,
     )
@@ -905,7 +910,9 @@ async def seed_demo_conversations(
     agent_repo = SqlCatalogAgentRepository(session)
     agents = {agent.name: agent for agent in await agent_repo.list_for_workspace(workspace_id)}
     session_repo = SqlSessionRepository(session)
-    message_repo = SqlSessionMessageRepository(session)
+    # ⚠️ **切读（S-15a）之后读的是新表** ✓ —— 种子必须写新表 ✓
+    # （旧的种子只写旧表 ✗ → 演示会话点开会是**空的** ✗✗）。
+    message_store = PostgresSessionMessageStore(session)
 
     users = {
         str(email): user
@@ -968,17 +975,34 @@ async def seed_demo_conversations(
         )
         await session_repo.add(conversation)
 
+        # ⚠️ **新表的消息必须挂在一个轮次上** ✓（外键指向 ``session_turns`` ✗）
+        # —— 演示数据没有真轮次 ✓ → 造一个「演示轮次」✓（幂等键带上会话 id ✓）。
+        demo_turn_id = uuid4()
+        session.add(
+            SessionTurnORM(
+                id=demo_turn_id,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                session_id=conversation.id,
+                idempotency_key=f"demo:{conversation.id}",
+                key_strength="strong",
+                status="succeeded",
+                agent_version=conversation.agent_version or "v1",
+                model_version=agent.model or "default",
+            )
+        )
+
         for seq, message in enumerate(messages):
             role = message[0]
             if role == "tool":
                 tool_name, content = message[1], message[2]
             else:
                 tool_name, content = "", message[1]
-            await message_repo.append(
+            await message_store.append(
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 session_id=conversation.id,
-                turn_id=None,
+                turn_id=demo_turn_id,
                 seq=seq,
                 role=role,
                 content=content,

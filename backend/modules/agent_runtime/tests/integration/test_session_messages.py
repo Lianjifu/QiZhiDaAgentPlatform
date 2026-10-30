@@ -305,8 +305,12 @@ async def test_the_session_sequence_is_monotonic_across_turns(seq_ctx) -> None: 
 
 
 @pytest.mark.asyncio
-async def test_reading_still_comes_from_the_legacy_table(seq_ctx) -> None:  # type: ignore[no-untyped-def]
-    """**双写期读旧表** —— 切读（S-15a）要等对账窗口，不是本 Stage ✓。"""
+async def test_reading_comes_from_the_new_table(seq_ctx) -> None:  # type: ignore[no-untyped-def]
+    """**切读（S-15a）** —— 读的是**新表** ✓。
+
+    ⚠️ 判据不是「两张表都读得出来」（双写期都一样 ✓，那证明不了什么 ✗）——
+    而是**把旧表的行删掉，读仍然有** ✓✓。
+    """
     tenant = uuid4()
     session_id, turn_id = await _session(seq_ctx, tenant_id=tenant)
 
@@ -323,7 +327,97 @@ async def test_reading_still_comes_from_the_legacy_table(seq_ctx) -> None:  # ty
         )
         await session.commit()
 
+    # 旧表的行删掉 —— 读**仍然有** ✓（说明读的是新表 ✓）。
+    async with seq_ctx.session() as session, session.begin():
+        await session.execute(
+            text("DELETE FROM agent_session_messages WHERE session_id = :s"),
+            {"s": session_id},
+        )
+
     async with seq_ctx.session() as session:
         store = PostgresSessionMessageStore(session)
         rows = await store.list_for_session(session_id)
     assert [row["content"] for row in rows] == ["你好"]
+    assert rows[0]["turnId"] == str(turn_id)
+
+
+@pytest.mark.asyncio
+async def test_the_tool_name_survives_in_the_new_table(seq_ctx) -> None:  # type: ignore[no-untyped-def]
+    """工具名进 ``metadata_`` ✓ —— 不带上它，切读后工具消息会**丢掉工具名** ✗✗。"""
+    tenant = uuid4()
+    session_id, turn_id = await _session(seq_ctx, tenant_id=tenant)
+
+    async with seq_ctx.session() as session:
+        store = PostgresSessionMessageStore(session)
+        await store.append(
+            tenant_id=tenant,
+            workspace_id=uuid4(),
+            session_id=session_id,
+            turn_id=turn_id,
+            seq=0,
+            role="tool",
+            content="磁盘已清理",
+            tool_name="wipe_disk",
+            extra={"duration_ms": 12},
+        )
+        await session.commit()
+
+    async with seq_ctx.session() as session:
+        store = PostgresSessionMessageStore(session)
+        rows = await store.list_for_session(session_id)
+    assert rows[0]["toolName"] == "wipe_disk"
+    assert rows[0]["content"] == "磁盘已清理"
+
+
+@pytest.mark.asyncio
+async def test_the_history_is_ordered_by_session_seq(seq_ctx) -> None:  # type: ignore[no-untyped-def]
+    """**按会话内的写入顺序**排 ✓。
+
+    ⚠️ 旧表只能按**轮次内**的 ``seq`` 排 ✗ → 多轮会话的历史会**交错** ✗✗
+    （第一轮的第 2 条排在第二轮的第 1 条后面 ✗）。新表有 ``session_seq`` ✓。
+    """
+    tenant = uuid4()
+    session_id, turn_a = await _session(seq_ctx, tenant_id=tenant)
+    turn_b = uuid4()
+    async with seq_ctx.session() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO session_turns (id, tenant_id, workspace_id, session_id, "
+                " idempotency_key, status, agent_version, model_version) "
+                "VALUES (:id, :t, :w, :s, 'k2', 'running', 'v1', 'm')"
+            ),
+            {
+                "id": turn_b,
+                "t": tenant,
+                "w": uuid4(),
+                "s": session_id,
+            },
+        )
+
+    async with seq_ctx.session() as session:
+        store = PostgresSessionMessageStore(session)
+        # 第一轮：seq 0 / 1；第二轮：seq 0 —— 两轮的序号会**交错** ✗
+        for turn_id, seq, content in (
+            (turn_a, 0, "第一轮第一条"),
+            (turn_a, 1, "第一轮第二条"),
+            (turn_b, 0, "第二轮第一条"),
+        ):
+            await store.append(
+                tenant_id=tenant,
+                workspace_id=uuid4(),
+                session_id=session_id,
+                turn_id=turn_id,
+                seq=seq,
+                role="user",
+                content=content,
+            )
+        await session.commit()
+
+    async with seq_ctx.session() as session:
+        store = PostgresSessionMessageStore(session)
+        rows = await store.list_for_session(session_id)
+    assert [row["content"] for row in rows] == [
+        "第一轮第一条",
+        "第一轮第二条",
+        "第二轮第一条",
+    ]

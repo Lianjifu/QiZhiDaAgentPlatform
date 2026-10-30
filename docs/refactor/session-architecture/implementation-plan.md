@@ -461,7 +461,7 @@
 | | S-13 消息序列 `session_seq` | ✅ **已实施**（2026-10-30）：新表 `session_messages` 的 ORM（`SessionMessageORM`）+ **计数器列** `agent_sessions.next_message_seq`（**迁移 0052**，Session 层 DDL）；分配同样是原子自增 —— ⚠️ `MAX(session_seq)+1` 在两个写者之间会撞唯一索引 ✗✗ | — | 0 | S-02 |
 | | S-14 checkpoint 接线 | ⚠️ **未达成**（2026-10-30）：** saver 已在 lifespan**（Stage 0 ✓）+ **thread_id 契约已给**（`session/sequence.py::checkpoint_thread_id` = `session_id` ✓）—— 但「真正用它跑图」**阻塞在 langgraph 的 19 节点图没有生产调用方**（生产走的是 `modules` 的 `SessionGraphRunner`）→ 那是 **Agent Loop 层**的接线（A-26） | — | 0 | S-05 |
 | | S-15 **双写启用**：`session_turns` / `session_messages` 开始写 | ✅ **已实施**（2026-10-30）：`session_turns` 的轮次双写早于本轮（Gateway Stage 4b ✓）；`session_messages` 的**消息双写**本轮落地 —— `PostgresSessionMessageStore`（新表 + 旧表都写），**调用方（copilot）改为依赖 `SessionMessagePort` 契约**（不再直接依赖旧表 repo ✓） | — | 写入点切换 | S-12 |
-| | S-15a **切读新表** | ⚠️ **未接管**（2026-10-30）：切读要等**对账窗口**（新旧全量对账差异 = 0）—— 本轮**读仍走旧表**（`PostgresSessionMessageStore.list_for_session` 委托旧 repo）✓ 行为不变 | — | 读路径切换 | S-15 · 双写期对账无差异 |
+| | S-15a **切读新表** | ✅ **已达成**（2026-10-30，Stage 6c）—— 读端改成**新表** ✓（`PostgresSessionMessageStore.list_for_session` JOIN 轮次表按租户过滤 ✓ + 按 `session_seq` 排 ✓）；**工具名**进 `metadata_` ✓（否则切读后工具消息丢工具名 ✗）；旧表的**读方法删除** ✓（不留第二条读路径 ✗）。⚠️ **顺带修掉一个真 bug**：旧表只能按**轮次内**的 `seq` 排 ✗ → 多轮会话的历史**交错** ✗✗；新表按 `session_seq` 排 = 真实先后 ✓。⚠️ **demo 种子改成写新表** ✓（旧种子只写旧表 ✗ → 演示会话会点不开 ✗）⚠️ **已种下的 demo 数据要重种** ✗（旧种子的消息 `turn_id` 为空 ✗ → 搬不动 ✗）| — | 0 | S-15 |
 | | S-15b **停旧写（双写结束）** | ⚠️ **未接管**（2026-10-30）：前置是 S-15a（切读 + 对账）—— 本轮**旧表仍在写**（双写期）| — | 旧表写入归零 | S-15a |
 | Stage 3 · 唯一 turn 实现 | S-16 `turn_runner.py` 落地 | ✅ **已达成**（2026-10-30，Stage 3b）—— 编排（轮次行 / 消息 / 事件 / 终态 / 取消 / 审批挂起）迁到契约层 `session/turn_runner.py`；能力全部走**窄端口**（执行器 / 生命周期 / 消息 / 会话状态 / 取消）；模块侧适配器在 `adapter/turn/`。⚠️ **执行器仍是旧的 graph runner**（台账 X17，归 Agent 层 A-26）—— 本层只管编排 ✓ | **X18 编排已迁出**（旧编排的私有符号 `_fail_turn` / `_publish_chunk` 都已消失 ✓） | ~200 行（copilot 里的旧编排删除） | Stage 1–2 |
 | | S-17 轮次幂等 | ✅ **已具备**（2026-10-30 核对）：`session_turns.idempotency_key` 的**部分唯一索引**（迁移 0050）+ Gateway 的 `IdempotencyGuard`（`session_inbox` strong 键原子 claim）—— 幂等**已在服役**，等 S-16 把编排迁过去时**沿用**它，不重写 | — | 0 | S-16 |
@@ -1157,7 +1157,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] S-29 **删 `except Exception: pass`** → **X7**（**2026-10-30 已提前完成**，Session Stage 1 ✓）
 - [ ] S-30 审批自动过期（**归治理域** —— approvals 表不归 Session 管；Session 的 sweeper 不该跨域写治理表 ✗）· S-31 审批幂等（同 `(session_id, tool_call_id, request_hash)` 复用 approval ID —— 创建审批在**旧执行器**里（`runner._request_approval`），要等 Agent 层 A-26 才接得上 ✓）
 - [x] S-32 **切 IM 入口**（与 **G-20 同 PR**）✅ 2026-10-30 · S-33 **删 `use_cases/run_turn.py` + `run_turn_to_completion.py`** → **X2** ✅ 2026-10-30
-- [ ] S-15 **双写启用** · **S-15a 切读新表** · **S-15b 停旧写（双写结束）**
+- [x] S-15 **双写启用** ✅ · **S-15a 切读新表** ✅ 2026-10-30 · [ ] **S-15b 停旧写（双写结束）**
 - [x] S-34 **DROP `wait_status`** → **X6** ✅ 2026-10-30（迁移 0053）
 - [ ] S-35 **停写并废弃 `graph_state`** → **X3** · S-36 **迁数据 ✅（迁移 0054）+ DROP 旧表** → **X4**（前置：切读完成 + 全量对账差异 = 0 + 只读窗口 ≥7 天 + 备份恢复演练过）
 - [x] S-37 启用扫描脚本 Session 段（**X2 / X6 / X18 段已启用** ✅；X3 / X4 段待旧实现删除）· S-38 更新台账 + 现状文档 ✅
