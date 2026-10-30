@@ -471,10 +471,10 @@
 | | S-21 停用 + 打点 `copilot.py` 的 turn 编排 | ✅ **已达成**（2026-10-30，Stage 3b）—— 旧编排**迁出**（`_fail_turn` / `_publish_chunk` / `_next_seq` / `_auto_title` 全部删除）；旧打点 `record_legacy_call("X18")` **撤除**（旧实现不在场 → 打点该撤 ✓）；**薄壳本身**（幂等 + claim + 转发）的删除落在 **Stage 3b · S-21b**（清理窗口 ≥7 天） | **X18 → 编排已迁出**（关注点 #1） | **~200 行** | S-20 |
 | | S-22 停用 + 打点 `use_cases/run_turn*.py` | ✅ **已达成**（2026-10-30，Stage 5b）—— IM 入口切到唯一 turn 实现 ✓ → 两个用例**删除** ✓ → 打点随代码一起撤除 ✓ | **X2 已清理**（关注点 #2） | **~600 行** | S-20 |
 | Stage 3b · 删 Copilot 侧旧 turn 编排 | **S-21b 删 `copilot.py` 的 turn 编排** | ⚠️ **编排已迁出**（2026-10-30，Stage 3b 第一片）：`_fail_turn` / `_publish_chunk` / `_next_seq` / `_auto_title` 都已删 ✓；剩下的是**薄壳**（幂等 accept + claim + 转发）—— 它的删除要等清理窗口 | **X18 → 编排已迁出**（关注点 #1）；薄壳待删 | **~200 行**（已删）· 薄壳 ~60 行 | S-20 · **进入条件**：⚠️ 旧打点已随编排撤除 → 判据改为**引用关系可证**（同 Gateway 附录 C.8 的 G-38 口径）+ 新路径流量 ≥95% |
-| Stage 4 · 事件落库与 outbox | S-23 chunk 写 `session_events` | 先落库再投递 | — | 0 | Stage 3 |
-| | S-24 dispatcher 接线 | 复用 `runtimes/.../outbox/` 的重试与死信 | — | 0 | S-23 |
-| | S-25 `Last-Event-ID` 重放 | 从 `session_events` 按 seq 重放 | — | 0 | S-23 |
-| | S-26 outbox worker 接线 | 与 sweeper 一起进 lifespan | — | 0 | S-24 |
+| Stage 4 · 事件落库与 outbox | S-23 chunk 写 `session_events` | ✅ **已达成**（2026-10-29，Gateway Stage 4b 连带落地）—— 每个 chunk 一行 ✓，**落库先于投递** ✓ | — | 0 | Stage 3 |
+| | S-24 dispatcher 接线 | ✅ **已达成**（2026-10-30，Stage 4b）—— `ChannelOutboxDispatcher`（渠道侧）+ 契约层的 `OutboxWorker`（**重试 / 退避 / 死信只有一份** ✓） | — | 0 | S-23 |
+| | S-25 `Last-Event-ID` 重放 | ✅ **已达成**（2026-10-29，Gateway Stage 4b）—— 从 `session_events` 按 seq 重放 ✓ | — | 0 | S-23 |
+| | S-26 outbox worker 接线 | ✅ **已达成**（2026-10-30，Stage 4b）—— `PostgresOutboxRepository`（`session_events` 上的队列 ✓）+ worker **进 lifespan** ✓（与清扫器同生命周期 ✓，可注入以便离线测 ✓） | — | 0 | S-24 |
 | Stage 5 · 审批加固 | S-27 审批挂起落库 | ✅ **已实施**（2026-10-30，Stage 5a）—— 挂起时把 `approval_id` / `tool_name` / **`arguments_digest`** / `session_id` / `turn_id` / `created_at` 落进 `session_turns.pending_approval`，同时轮次状态转 `waiting` ✓（契约 `session/approval.py`；落库在 `journal.write_pending_approval` ✓） | — | 0 | Stage 3 |
 | | S-28 恢复校验清单 | ✅ **已实施**（2026-10-30，Stage 5a）—— 恢复前逐项校验（层方案 §8）：挂起记录存在且是**这个**审批 / 属于**这个会话**（`APPROVAL_NOT_MATCH`）· 审批未过期（`APPROVAL_EXPIRED`）· **审批记录里的参数摘要**与挂起时一致（`TOOL_ARGUMENT_INVALID`）；自审批与「已决策」由 governance 的 `approve()` 把关 ✓。⚠️ **比对的是审批记录里的参数**（权威 ✓），不是前端传回来的参数 | — | 0 | S-27 |
 | | **S-29 删 `except Exception: pass`** | ✅ **已提前完成**（2026-10-30，Session Stage 1 —— 台账 **X7 已清理**：改成「记日志 + 再抛」） | **X7 已清理** | **~5 行** | S-28 |
@@ -1152,7 +1152,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] S-16 `turn_runner.py` 落地 · S-17 轮次幂等 · S-18 取消 · S-19 成本归属 · S-20 **切 web/api 入口**
 - [x] S-21 停用打点 `copilot.py` turn 编排 → **X18** ✅ · S-22 停用打点 `use_cases/run_turn*.py` → **X2（IM 侧）** ✅ 2026-10-30
 - [ ] **S-21b 删 `copilot.py` 的 turn 编排** → **X18 已清理**（Stage 3b；进入条件：指标归零 ≥7 天 + 新路径 ≥95%）
-- [ ] S-23 chunk 写 `session_events` · S-24 dispatcher 接线 · S-25 `Last-Event-ID` 重放 · S-26 outbox worker 接线
+- [x] S-23 chunk 写 `session_events` ✅ · S-24 dispatcher 接线 ✅ 2026-10-30 · S-25 `Last-Event-ID` 重放 ✅ · S-26 outbox worker 接线 ✅ 2026-10-30
 - [x] S-27 审批挂起落库 · S-28 5 项恢复校验（**2026-10-30 完成，Stage 5a** ✓）
 - [x] S-29 **删 `except Exception: pass`** → **X7**（**2026-10-30 已提前完成**，Session Stage 1 ✓）
 - [ ] S-30 审批自动过期（**归治理域** —— approvals 表不归 Session 管；Session 的 sweeper 不该跨域写治理表 ✗）· S-31 审批幂等（同 `(session_id, tool_call_id, request_hash)` 复用 approval ID —— 创建审批在**旧执行器**里（`runner._request_approval`），要等 Agent 层 A-26 才接得上 ✓）

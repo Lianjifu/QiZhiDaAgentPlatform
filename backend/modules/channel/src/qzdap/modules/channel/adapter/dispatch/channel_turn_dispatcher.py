@@ -23,13 +23,19 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
-from qzdap_agent_runtime.gateway.channels import capabilities_for
+from qzdap.modules.channel.adapter.outbound.channel_outbox_dispatcher import (
+    ChannelOutboxDispatcher,
+)
 from qzdap_agent_runtime.gateway.identity import ServiceAccount
-from qzdap_agent_runtime.gateway.outbound import OutboundTarget, ResultSink
+from qzdap_agent_runtime.gateway.outbound import ResultSink
 from qzdap_agent_runtime.gateway.types import InboundMessage
-from qzdap_agent_runtime.result.events import MessageEvent
+from qzdap_agent_runtime.outbox import (
+    IM_REPLY_EVENT_TYPE,
+    DispatchError,
+    OutboxEvent,
+    OutboxRepository,
+)
 from qzdap_agent_runtime.session.channel_turn import (
     ChannelTurnFactoryPort,
     ChannelTurnRequest,
@@ -59,12 +65,17 @@ class ChannelTurnDispatcher:
         turn_factory: ChannelTurnFactoryPort,
         sink: ResultSink,
         open_session: Any,
+        outbox: OutboxRepository | None = None,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         self._channels = channel_repository
         self._turns = turn_factory
         self._sink = sink
         self._open_session = open_session
+        # 出站队列 —— **回复先入队、再投递** ✓（投递失败 worker 能重试 ✓）。
+        self._outbox = outbox
+        # 投递**只有一份实现** ✓ —— 即时投递与 worker 重试都走它 ✓。
+        self._dispatcher = ChannelOutboxDispatcher(sink=sink)
         self._timeout = timeout_seconds
 
     async def install(self, event_bus: Any) -> None:
@@ -160,7 +171,7 @@ class ChannelTurnDispatcher:
             )
             return
 
-        if not result.final_message:
+        if not result.final_message or result.turn_id is None:
             return
 
         await self._send_reply(
@@ -186,33 +197,71 @@ class ChannelTurnDispatcher:
         text: str,
         turn_id: UUID | None,
     ) -> None:
-        """出站 —— **走统一编码 + 投递**（Gateway ① 的出站，§6）。"""
-        metadata: dict[str, str] = {"channel_id": str(message.channel_id)}
-        if turn_id is not None:
-            metadata["turn_id"] = str(turn_id)
-        event = MessageEvent(
-            turn_id=str(turn_id or message.trace_id or "im-turn"),
-            seq=0,
-            event_id=str(uuid4()),
-            trace_id=message.trace_id or None,
-            delta=text,
+        """出站 —— **先入队、再投递** ✓（事务性 outbox ✓）。
+
+        ⚠️ **入队先于投递** ✓ —— 投递失败时那一行还在队列里 → worker 会重试
+        ✓（投递成功才标 delivered ✓）。没有这一步，一次网络抖动就**丢消息** ✗✗。
+        """
+        if turn_id is None:
+            return
+        payload = {
+            "content": text,
+            "channel_type": str(channel_type),
+            "chat_id": message.external_chat_id,
+            "trace_id": message.trace_id or "",
+        }
+        if self._outbox is None:
+            # 没有队列（未接线）→ **直投**（不丢消息 ✓，但没有重试 ✗）。
+            try:
+                await self._deliver_now(
+                    OutboxEvent(
+                        turn_id=str(turn_id),
+                        seq=0,
+                        event_type=IM_REPLY_EVENT_TYPE,
+                        payload=payload,
+                        delivery_status="pending",
+                        delivery_attempts=0,
+                    )
+                )
+            except DispatchError as exc:
+                # 投递失败**不炸主链路** ✓（那一轮已经成功 ✓）。
+                _log.warning(
+                    "im reply not delivered: %s",
+                    exc,
+                    extra={"channel_id": str(message.channel_id)},
+                )
+            return
+
+        outbound = await self._outbox.enqueue(
+            turn_id=str(turn_id),
+            event_type=IM_REPLY_EVENT_TYPE,
+            payload=payload,
         )
-        outcome = await self._sink.deliver(
-            event,
-            target=OutboundTarget(
-                channel_type=channel_type,
-                external_chat_id=message.external_chat_id,
-                capabilities=capabilities_for(channel_type),
-                metadata=metadata,
-            ),
+        event = OutboxEvent(
+            turn_id=outbound.turn_id,
+            seq=outbound.seq,
+            event_type=outbound.event_type,
+            payload=payload,
+            delivery_status="pending",
+            delivery_attempts=0,
         )
-        if not outcome.ok:
+        try:
+            await self._deliver_now(event)
+        except DispatchError as exc:
+            # 投递失败 → **留在队列里** ✓，worker 稍后重试 ✓。
+            await self._outbox.mark_failed(outbound.turn_id, outbound.seq, 1, str(exc))
             _log.warning(
-                "im reply not delivered: status=%s error=%s",
-                outcome.status,
-                outcome.error,
+                "im reply queued for retry: turn_id=%s error=%s",
+                outbound.turn_id,
+                exc,
                 extra={"channel_id": str(message.channel_id)},
             )
+            return
+        await self._outbox.mark_delivered(outbound.turn_id, outbound.seq)
+
+    async def _deliver_now(self, event: OutboxEvent) -> None:
+        """即时投递 —— 走**统一编码 + 投递**（Gateway ① 的出站，§6）✓。"""
+        await self._dispatcher.dispatch(event)
 
 
 __all__ = ["INBOUND_MESSAGE_EVENT", "ChannelTurnDispatcher"]

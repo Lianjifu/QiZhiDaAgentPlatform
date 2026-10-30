@@ -1212,6 +1212,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # simply don't trigger agent replies.
     channel_service_obj = getattr(app.state, "channel_service", None)
     if channel_service_obj is not None:
+        from qzdap.modules.agent_runtime.adapter.persistence.outbox_repository import (
+            PostgresOutboxRepository,
+        )
         from qzdap.modules.channel.adapter.dispatch.channel_turn_dispatcher import (
             ChannelTurnDispatcher,
         )
@@ -1223,6 +1226,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             # 出站 —— 统一编码 + 投递（Gateway ① 的出站，§6）。
             sink=container.channel_result_sink(),
             open_session=container.session_factory().maker,
+            # 出站队列 —— **回复先入队、投递失败可重试** ✓（Session 方案 §7）。
+            outbox=PostgresOutboxRepository(container.session_factory()),
         )
         await dispatch.install(bus)
         app.state.channel_turn_dispatcher = dispatch
@@ -1258,6 +1263,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ① 超时清扫器 —— **幂等键过期是 Gateway 的硬依赖**（过期行留在表里，
     #    同一个键重发仍会命中冲突 → 表无限膨胀）✓
     app.state.session_sweeper_stop = await _start_session_sweeper(container)
+    # ③ 出站队列 worker —— **IM 的回复先入队、投递失败可重试** ✓
+    #    （Session 方案 §7；台账 S-24 / S-26）
+    app.state.outbox_worker_stop = await _start_outbox_worker(container)
     # ② checkpoint saver —— **异步**版；同步版会阻塞事件循环 ✗
     app.state.checkpointer_cm, app.state.checkpointer = await _start_checkpointer(
         container
@@ -1274,6 +1282,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         stop_sweeper = getattr(app.state, "session_sweeper_stop", None)
         if stop_sweeper is not None:
             await stop_sweeper()
+        stop_outbox = getattr(app.state, "outbox_worker_stop", None)
+        if stop_outbox is not None:
+            await stop_outbox()
         checkpointer_cm = getattr(app.state, "checkpointer_cm", None)
         if checkpointer_cm is not None:
             await checkpointer_cm.__aexit__(None, None, None)
@@ -1318,6 +1329,64 @@ async def _start_session_sweeper(container: Container) -> Callable[[], Awaitable
 
     task = asyncio.create_task(_loop())
     _log.info("session_sweeper_started interval=%ds", interval)
+
+    async def _stop() -> None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    return _stop
+
+
+async def _start_outbox_worker(
+    container: Container,
+    *,
+    repo: Any | None = None,
+    dispatcher: Any | None = None,
+) -> Callable[[], Awaitable[None]]:
+    """起**出站队列**的后台任务 —— 重试与死信 ✓。
+
+    ⚠️ **队列里只有「出站消息」**（``im_reply`` 那一类 ✓）—— 轮次里的 chunk
+    事件是**事件日志**（供重放 ✓），不是队列 ✗（混在一起会把 web 的 chunk
+    投到 IM 渠道 ✗✗）。
+
+    ⚠️ **投递失败不炸主链路** ✓ —— 那一轮已经成功；回复晚到一步，比丢掉好 ✓。
+    """
+    from qzdap.modules.agent_runtime.adapter.persistence.outbox_repository import (
+        PostgresOutboxRepository,
+    )
+    from qzdap.modules.channel.adapter.outbound.channel_outbox_dispatcher import (
+        ChannelOutboxDispatcher,
+    )
+    from qzdap_agent_runtime.outbox import OutboxWorker
+
+    interval = max(1, int(os.environ.get("QZDAP_OUTBOX_INTERVAL", "10")))
+    # ⚠️ **可注入**（repo / dispatcher）—— 接线层要能**离线**测 ✓
+    # （「接了但没跑」是静默的 ✗✗）。
+    worker = OutboxWorker(
+        repo=repo
+        or PostgresOutboxRepository(container.session_factory()),
+        dispatcher=dispatcher
+        or ChannelOutboxDispatcher(sink=container.channel_result_sink()),
+    )
+
+    async def _loop() -> None:
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                processed = await worker.tick()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                _log.exception("outbox tick failed; will retry next tick")
+                continue
+            if processed:
+                _log.info("outbox tick: %s", worker.stats)
+
+    task = asyncio.create_task(_loop())
+    _log.info("outbox_worker_started interval=%ds", interval)
 
     async def _stop() -> None:
         task.cancel()

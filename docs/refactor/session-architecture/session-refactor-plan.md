@@ -900,26 +900,41 @@ turn），而是让**模块侧组装** `TurnRequest`（读都在那边 ✓）。
 
 > **这是 Gateway 决策 #4「无感重放」的落地依赖**，完成后 Gateway 的重复请求才能真正无感。
 
-#### 实施记录（2026-10-30 · Stage 4 的现状核对）
+#### 实施记录（2026-10-30 · Stage 4b：IM 出站走队列 + worker 接线）
 
-**S-23 / S-25 已具备** ✓ —— chunk 落 `session_events`（落库先于投递 ✓）与
+**S-23 / S-25 早已具备** ✓ —— chunk 落 `session_events`（落库先于投递 ✓）与
 `Last-Event-ID` 重放都在 **Gateway Stage 4b** 落地了 ✓。
 
-⚠️ **S-24 / S-26（outbox dispatcher + worker）本轮不做的原因**：`session_events`
-现在存的是 **web 的 chunk 流**（SSE 投递 + 断线重放 ✓），而 **IM 的出站目前
-是直投**（`dispatch_subscriber → sink.deliver`）—— **不经过事件表** ✗。
-
-也就是说：**现在没有「需要 outbox 投递」的事件源** —— 若此时接上 outbox worker，
+⚠️ **S-24 / S-26 当时没做的原因**：`session_events` 存的是 **web 的 chunk 流**
+（SSE 投递 + 断线重放 ✓），而 **IM 的出站是直投**（`sink.deliver`）——
+**不经过事件表** ✗ → **没有「需要 outbox 投递」的事件源**；此时接上 worker，
 它会把 **web 的 chunk 当成 IM 消息投出去** ✗✗（重复投递）。
 
-IM 的事件要进 `session_events`、再由 outbox worker 投递 —— 这正是 **Stage 5b
-的 IM 入口切换**（与 Gateway Stage 4a 同 PR）的一部分 ✓。所以：
+> 那个「顺序」现在解开了 ✓ —— **Stage 5b 已把 IM 切到唯一 turn 实现** ✓，
+> 事件源出现了 ✓（IM 的出站可以先落库、再投递 ✓）。
 
-| 项 | 归属 |
+| 项 | 结果 |
 |---|---|
-| S-24 dispatcher 接线 · S-26 outbox worker 进 lifespan | **Stage 5b**（与 Gateway 的 IM 入口切换同 PR）—— 事件源在那时才出现 ✓ |
+| 队列 | `session_events` 上的**一个子集**（按 `event_type` 过滤 ✓）—— 只有 `im_reply` 那一类行进队列 ✓。⚠️ **chunk 事件不进队列** ✓（那是「事件日志」，供重放 ✓；混在一起会把 web 的 chunk 投到 IM 渠道 ✗✗） |
+| 入队 | **先入队、再投递** ✓（事务性 outbox 的核心 ✓）—— 投递失败时那一行还在 → worker 能重试 ✓；投递成功才标 `delivered` ✓ |
+| 投递 | `ChannelOutboxDispatcher`（渠道侧）—— **即时投递与 worker 重试共用同一份实现** ✓（否则两处各写一遍 ✗✗） |
+| 失败 | 抛 `DispatchError` → worker 记 `failed` + 计数 ✓ → 超 8 次**进死信表** ✓（`outbox_dead_letters`）✓ |
+| worker | 契约层的 `OutboxWorker`（**重试 / 指数退避 / 死信只有一份** ✓ —— `runtimes/.../outbox/` 那个从没接线的包**终于被接上了** ✓）+ `PostgresOutboxRepository`（真库）✓ |
+| lifespan | worker **进 lifespan** ✓（与清扫器同生命周期 ✓，间隔 `QZDAP_OUTBOX_INTERVAL`（默认 10s）✓，可注入以便离线测 ✓） |
+| 主链路 | 投递失败**不炸那一轮** ✓（那一轮已经成功；回复晚到一步，比丢掉好 ✓） |
 
-⚠️ 这不是「拖」，是**顺序**：先有事件源，再有调度器 —— 反过来做就是重复投递 ✗。
+**顺带清掉的旧账**：`runtimes/.../outbox/__init__.py` 里 **worker 的方法被重复
+定义了两遍** ✓（后一份覆盖前一份 —— 能跑，但没人看得出来 ✗）→ 已删 ✓。
+
+**仍未接管**：
+
+| # | 事项 | 原因 | 归属 |
+|---|---|---|---|
+| **IM 的「重放」** | 重复的 IM 投递命中幂等 → 不跑第二轮、**也不重发** ✓（与旧路径同口径 ✓）；「把上一轮的回复再发一遍」要靠事件流重放（web 侧有 ✓），IM 侧未接管 | Gateway 决策 #4 的「无感重放」只覆盖 web ✓ | Gateway Stage 4b（后续） |
+| **审批决策的入站回调** | 卡片点击 → 审批决策（G10）—— 编码器已产出卡片载荷，但入站侧没有回调处理 ✓ | 与本层无关 ✓ | Agent Loop / Execution |
+| **S-30 / S-31** | 审批自动过期 / 审批幂等 | 跨层（治理域 / Agent 层）✓ | 治理域 / Agent 层 A-26 |
+| **S-35 / S-36** | `graph_state` 停写 / 旧表 DROP | 前置未满足（≥95% 流量 + ≥7 天只读窗口 + 全量对账差异 = 0）✓ | Stage 6（后续） |
+| **S-21b** | 删 copilot 的薄壳 | 清理窗口 ≥7 天 + 新路径 ≥95% ✓ | Stage 3b（后续） |
 
 ### Stage 5：审批中断恢复加固
 
@@ -994,7 +1009,7 @@ IM 侧**未接管**（见下表）。
 
 | # | 事项 | 原因 | 归属 |
 |---|---|---|---|
-| **S-24 / S-26** | outbox dispatcher + worker | **现在才有事件源** ✓（IM 的出站也走 `session_events` 的话要另做）—— 但 outbox 的意义是「投递失败可重试」；IM 出站现在仍是直投（`sink.deliver`）→ 要先把 IM 出站改成**落事件表 + worker 投递** ✓ | Stage 4b（下一轮） |
+| ~~**S-24 / S-26**~~ | outbox dispatcher + worker | ✅ **已在 Stage 4b 达成**（IM 出站改成**落事件表 + worker 投递** ✓） | — |
 | **S-30** | 审批自动过期 | `approvals` 表归**治理域** —— Session 的 sweeper **不该跨域写治理表** ✗ | 治理域 |
 | **S-31** | 审批幂等 | 创建审批在**旧执行器**里（`runner._request_approval`）—— 要等它接上新的挂起落库 ✓ | Agent 层 A-26 |
 | **S-35 / S-36** | `graph_state` 停写 / 旧表 DROP | 前置未满足（≥95% 流量 + ≥7 天只读窗口 + 全量对账差异 = 0）✓ | Stage 6（后续） |
@@ -1047,7 +1062,7 @@ IM 侧**未接管**（见下表）。
 | Stage 1 | `wait_status` 写入点 | ~20 行 | 同上 | 直接替换 |
 | Stage 2 | 旧表写入点 | — | **双写期**：新旧两套表同时写（迁移期成本翻倍） | 直接替换（读保留用于迁移） |
 | Stage 3 | `copilot.py` 的 turn 编排（**X18**）**停用 + 打点** | 0（删除见 Stage 3b） | 同上 | **停用 + 打点** → 清理窗口 → **Stage 3b 删除**。`runner.py` 的 ReAct 循环（**X17**）**归 Agent 层**（Stage 5 接线 → Stage 7 删），本层不碰 |
-| Stage 4 | 无（事件落库 + outbox） | 0 | **`session_events`：每个 chunk 一行**（一次对话平均 5–20 行）；`outbox_dead_letters` 少量 | ⚠️ **事件落库已随 Gateway Stage 4b 连带落地**（2026-10-29：`session_turns` 轮次双写 + `session_events` 每个 chunk 一行 + 按 seq 的读取端口）；**outbox 调度 / 重试退避 / 死信 / 保留期仍在 Stage 4** |
+| Stage 4 | 无（事件落库 + outbox） | 0 | **`session_events`：每个 chunk 一行**（一次对话平均 5–20 行）+ **每条 IM 回复一行**（出站队列 ✓）；`outbox_dead_letters` 少量 | ✅ **outbox 已接线**（2026-10-30，Stage 4b —— 队列 = `session_events` 的 `im_reply` 子集 ✓；worker 进 lifespan ✓；重试退避 / 死信用契约层那一份 ✓）。⚠️ **保留期仍未做**（`session_events` 只增不减 —— 事件日志的清理策略还没定 ✓） |
 | Stage 5 | 审批异常吞噬（`copilot.py` 的 `except Exception: pass`） | ~5 行 | 同上 | **删除**（X7） |
 | Stage 5b | 第二套 turn 实现（`use_cases/run_turn.py` + `run_turn_to_completion.py`） | ~600 行 | 同上 | **删除**（与 Gateway 的 IM 入口切换同 PR · X2 的 IM 侧） |
 | Stage 3b | Copilot 侧旧 turn 编排（`copilot.py` 的 turn 编排 · **X18**） | ~600 行 | 同上 | **删除**（清理窗口 ≥7 天且指标归零后；与 Stage 3 的切换分离，留回退窗口） |
