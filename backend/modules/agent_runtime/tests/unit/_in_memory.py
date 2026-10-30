@@ -315,6 +315,39 @@ def make_dependencies(
     }
 
 
+def make_turn_runner(
+    *,
+    graph: Any,
+    turns: TurnRepository,
+    journal: SessionJournal,
+    events: EventPublisher,
+    messages: Any,
+    sessions: SessionRepository,
+) -> Any:
+    """契约层的**真** ``TurnRunner`` + 模块侧的真实适配器 ✓。
+
+    ⚠️ 执行器是真的 graph（产出 chunk）—— 端口全是模块侧的真实实现
+    （生命周期 / 会话状态 / 取消）✓，所以单测**仍然覆盖编排** ✓
+    （不是「fake 掉编排」✗）。
+    """
+    from qzdap_agent_runtime.session.turn_runner import TurnRunner
+
+    from qzdap.modules.agent_runtime.adapter.turn.cancel import SqlCancelProbe
+    from qzdap.modules.agent_runtime.adapter.turn.executor import (
+        SessionGraphExecutor,
+    )
+    from qzdap.modules.agent_runtime.adapter.turn.lifecycle import TurnLifecycle
+    from qzdap.modules.agent_runtime.adapter.turn.session_state import SqlSessionState
+
+    return TurnRunner(
+        executor=SessionGraphExecutor(graph),
+        lifecycle=TurnLifecycle(turns=turns, journal=journal, events=events),
+        messages=messages,
+        session_state=SqlSessionState(sessions),
+        cancel=SqlCancelProbe(sessions),
+    )
+
+
 class InMemoryIdempotencyStore:
     """幂等守卫的测试替身 —— 语义对齐 ``PostgresIdempotencyStore``，只在进程内。
 

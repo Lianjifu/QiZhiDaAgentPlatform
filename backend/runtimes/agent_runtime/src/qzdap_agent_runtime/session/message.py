@@ -30,6 +30,14 @@ class SessionMessagePort(Protocol):
         """
         ...
 
+    async def next_seq(self, *, session_id: UUID) -> int:
+        """下一个**轮次内**消息序号 —— 从会话已有的最大序号 +1 ✓。
+
+        ⚠️ 与 ``session_seq``（会话内序号）**不是一回事**：那个由计数器分配
+        （原子 ✓），这个是「本轮第几条」的序号 ✓。
+        """
+        ...
+
     async def append(
         self,
         *,

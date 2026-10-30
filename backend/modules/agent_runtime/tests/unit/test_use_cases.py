@@ -9,6 +9,7 @@ from _ar_unit_in_memory import (
     InMemoryIdempotencyStore,
     InMemorySessionJournal,
     make_dependencies,
+    make_turn_runner,
 )
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_schema.ids import (
@@ -458,6 +459,10 @@ async def test_copilot_saved_model_early_delta_and_close(selection: str) -> None
         async def append(self, **kwargs):
             self.rows.append(kwargs)
 
+        async def next_seq(self, *, session_id):
+            """下一个轮次内序号 ✓（与真实实现同语义）。"""
+            return (self.rows[-1]["seq"] + 1) if self.rows else 0
+
     class SavedService:
         async def stream(self, *, actor, model_id, req):
             nonlocal advanced, closed
@@ -472,8 +477,9 @@ async def test_copilot_saved_model_early_delta_and_close(selection: str) -> None
 
     deps = make_dependencies()
     messages = Messages()
+    journal = InMemorySessionJournal()
     runner = SessionGraphRunner(llm=LLMPortAdapter(deps["llm"], model_service=SavedService()))
-    svc = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=messages, catalog=Catalog(), events=deps["events"], graph=runner, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()), journal=InMemorySessionJournal(), claim=deps["sessions"].claim)
+    svc = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=messages, catalog=Catalog(), events=deps["events"], graph=runner, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()), journal=journal, claim=deps["sessions"].claim, turn_runner=make_turn_runner(graph=runner, turns=deps["turns"], journal=journal, events=deps["events"], messages=messages, sessions=deps["sessions"]))
     detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
     sid = UUID(detail["id"])
     if selection == "session":
@@ -506,7 +512,7 @@ async def test_legacy_rejects_caller_scope_mismatch_before_saved_invocation(mism
             owner_id=uuid4() if mismatch == "owner" else uid,
             session_id=session.id, user_input="hi", model=str(uuid4()),
         ))
-    copilot = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=None, catalog=None, events=deps["events"], graph=None, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()), journal=InMemorySessionJournal(), claim=deps["sessions"].claim)
+    copilot = CopilotSessionService(sessions=deps["sessions"], turns=deps["turns"], messages=None, catalog=None, events=deps["events"], graph=None, idempotency=IdempotencyGuard(InMemoryIdempotencyStore()), journal=InMemorySessionJournal(), claim=deps["sessions"].claim, turn_runner=None)
     with pytest.raises(SessionNotFound):
         await anext(copilot.stream_turn(
             tenant_id=TenantId(uuid4()) if mismatch == "tenant" else tid,

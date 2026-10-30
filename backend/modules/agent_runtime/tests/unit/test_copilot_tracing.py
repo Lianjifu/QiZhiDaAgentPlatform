@@ -20,6 +20,7 @@ from _ar_unit_in_memory import (
     InMemoryIdempotencyStore,
     InMemorySessionJournal,
     make_dependencies,
+    make_turn_runner,
 )
 from opentelemetry import trace as otel_trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -54,6 +55,9 @@ class _Messages:
 
     async def append(self, **kwargs):
         self.rows.append(kwargs)
+    async def next_seq(self, *, session_id):  # type: ignore[no-untyped-def]
+        """下一个轮次内序号 ✓（与真实实现同语义）。"""
+        return (self.rows[-1]["seq"] + 1) if self.rows else 0
 
 
 class _ToolLLM:
@@ -120,16 +124,26 @@ def _by_name(exporter: InMemorySpanExporter) -> dict[str, list]:
 async def _make_service(agent: CatalogAgent, owner_id: UserId):
     deps = make_dependencies()
     runner = SessionGraphRunner(llm=_ToolLLM(), tool_port=_ToolPort())
+    messages = _Messages()
+    journal = InMemorySessionJournal()
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
-        messages=_Messages(),
+        messages=messages,
         catalog=_Catalog(agent),
         events=deps["events"],
         graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
-        journal=InMemorySessionJournal(),
+        journal=journal,
         claim=deps["sessions"].claim,
+        turn_runner=make_turn_runner(
+            graph=runner,
+            turns=deps["turns"],
+            journal=journal,
+            events=deps["events"],
+            messages=messages,
+            sessions=deps["sessions"],
+        ),
     )
     tid = TenantId(agent.tenant_id)
     wid = WorkspaceId(agent.workspace_id)

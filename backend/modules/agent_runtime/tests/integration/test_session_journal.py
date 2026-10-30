@@ -285,6 +285,7 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
         InMemoryIdempotencyStore,
         InMemorySessionRepository,
         InMemoryTurnClaim,
+        make_turn_runner,
         InMemoryTurnRepository,
         RecordingEventPublisher,
     )
@@ -317,6 +318,9 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
         async def append(self, **kwargs):  # type: ignore[no-untyped-def]
             return None
 
+        async def next_seq(self, *, session_id):  # type: ignore[no-untyped-def]
+            return 0
+
     agent = CatalogAgent.create(
         id=AgentId(uuid4()),
         tenant_id=TenantId(tenant),
@@ -326,16 +330,28 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
         owner="test",
         model="default",
     )
+    sessions = InMemorySessionRepository()
+    messages = _Messages()  # type: ignore[arg-type]
+    runner = SessionGraphRunner(llm=FakeLLM(content="hi back"))
+    events = RecordingEventPublisher()
     svc = CopilotSessionService(
-        sessions=InMemorySessionRepository(),
+        sessions=sessions,
         turns=InMemoryTurnRepository(),
-        messages=_Messages(),  # type: ignore[arg-type]
+        messages=messages,  # type: ignore[arg-type]
         catalog=_Catalog(agent),  # type: ignore[arg-type]
-        events=RecordingEventPublisher(),
-        graph=SessionGraphRunner(llm=FakeLLM(content="hi back")),
+        events=events,
+        graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
         claim=InMemoryTurnClaim(),
+        turn_runner=make_turn_runner(
+            graph=runner,
+            turns=InMemoryTurnRepository(),
+            journal=journal,
+            events=events,
+            messages=messages,
+            sessions=sessions,
+        ),
     )
     detail = await svc.create_session(
         tenant_id=TenantId(tenant),

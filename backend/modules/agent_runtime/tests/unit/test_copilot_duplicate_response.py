@@ -18,6 +18,7 @@ from _ar_unit_in_memory import (
     InMemoryIdempotencyStore,
     InMemorySessionJournal,
     make_dependencies,
+    make_turn_runner,
 )
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -51,6 +52,10 @@ class _Messages:
 
     async def append(self, **kwargs):  # type: ignore[no-untyped-def]
         self.rows.append(kwargs)
+
+    async def next_seq(self, *, session_id):  # type: ignore[no-untyped-def]
+        """下一个轮次内序号 ✓（与真实实现同语义）。"""
+        return (self.rows[-1]["seq"] + 1) if self.rows else 0
 
 
 class _LLM:
@@ -111,16 +116,27 @@ def _events(body: str) -> list[StoredEvent]:
 
 async def _make_service(agent: CatalogAgent, owner_id: UserId):  # type: ignore[no-untyped-def]
     deps = make_dependencies()
+    messages = _Messages()
+    runner = SessionGraphRunner(llm=_LLM())
+    journal = InMemorySessionJournal()
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
-        messages=_Messages(),
+        messages=messages,
         catalog=_Catalog(agent),
         events=deps["events"],
-        graph=SessionGraphRunner(llm=_LLM()),
+        graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
-        journal=InMemorySessionJournal(),
+        journal=journal,
         claim=deps["sessions"].claim,
+        turn_runner=make_turn_runner(
+            graph=runner,
+            turns=deps["turns"],
+            journal=journal,
+            events=deps["events"],
+            messages=messages,
+            sessions=deps["sessions"],
+        ),
     )
     tid = TenantId(agent.tenant_id)
     wid = WorkspaceId(agent.workspace_id)

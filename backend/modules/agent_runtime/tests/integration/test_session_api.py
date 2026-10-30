@@ -22,6 +22,7 @@ from _ar_unit_in_memory import (
     InMemoryIdempotencyStore,
     InMemorySessionJournal,
     InMemorySessionRepository,
+    make_turn_runner,
     InMemoryTurnClaim,
     InMemoryTurnRepository,
     RecordingEventPublisher,
@@ -73,6 +74,9 @@ class _Messages:
 
     async def append(self, **kwargs):  # type: ignore[no-untyped-def]
         self.rows.append(kwargs)
+    async def next_seq(self, *, session_id):  # type: ignore[no-untyped-def]
+        """下一个轮次内序号 ✓（与真实实现同语义）。"""
+        return (self.rows[-1]["seq"] + 1) if self.rows else 0
 
 
 def _agent() -> CatalogAgent:
@@ -108,16 +112,26 @@ def _build_test_app(
     events = RecordingEventPublisher()
     journal = InMemorySessionJournal()
     catalog = _Catalog(_agent())
+    messages = _Messages()
+    runner = SessionGraphRunner(llm=llm)
     svc = CopilotSessionService(
         sessions=sessions,
         turns=turns,
-        messages=_Messages(),  # type: ignore[arg-type]
+        messages=messages,  # type: ignore[arg-type]
         catalog=catalog,  # type: ignore[arg-type]
         events=events,
-        graph=SessionGraphRunner(llm=llm),
+        graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
         claim=claim,
+        turn_runner=make_turn_runner(
+            graph=runner,
+            turns=turns,
+            journal=journal,
+            events=events,
+            messages=messages,
+            sessions=sessions,
+        ),
     )
     # Router 的规则链（真实现，候选池来自同一个 catalog 替身）。
     strategy = RuleChainStrategy(catalog=CatalogRoutingAdapter(catalog))  # type: ignore[arg-type]

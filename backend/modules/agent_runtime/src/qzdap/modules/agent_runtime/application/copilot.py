@@ -6,8 +6,6 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncIterator
-from contextlib import aclosing
-from time import monotonic
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -22,22 +20,19 @@ from qzdap_agent_runtime.gateway.types import ChannelType, IdempotencyKey
 from qzdap_agent_runtime.router.types import RouteDecision
 from qzdap_agent_runtime.session.claim import TurnClaimPort
 from qzdap_agent_runtime.session.message import SessionMessagePort
-from qzdap_kernel.contextvars import current_trace_id
-from qzdap_observability.metrics import record_legacy_call
-from qzdap_schema.dtos.errors import ErrorCode, project_error_message
-from qzdap_schema.dtos.turn import (
-    ApprovalRequiredChunk,
-    DoneChunk,
-    ErrorChunk,
-    TurnChunk,
-    UsageChunk,
+from qzdap_agent_runtime.session.turn_runner import (
+    AgentSnapshot,
+    TurnRequest,
+    TurnRunner,
 )
+from qzdap_kernel.contextvars import current_trace_id
+from qzdap_schema.dtos.errors import ErrorCode
+from qzdap_schema.dtos.turn import TurnChunk
 from qzdap_schema.ids import (
     AgentId,
     ModelId,
     SessionId,
     TenantId,
-    TurnId,
     UserId,
     WorkspaceId,
 )
@@ -61,13 +56,6 @@ from qzdap.modules.agent_runtime.domain.errors import (
 
 _log = logging.getLogger(__name__)
 
-# 用户点「停止」后, 最多隔多久检查一次停止标记.
-CANCEL_POLL_SECONDS = 1.0
-
-
-class _TurnCancelled(Exception):
-    """内部信号: 用户请求停止当前轮次."""
-
 
 class CopilotSessionService:
     def __init__(
@@ -82,6 +70,7 @@ class CopilotSessionService:
         idempotency: IdempotencyGuard,
         journal: SessionJournal,
         claim: TurnClaimPort,
+        turn_runner: TurnRunner,
     ) -> None:
         self._sessions = sessions
         self._turns = turns
@@ -95,6 +84,8 @@ class CopilotSessionService:
         # 会话执行权（互斥）—— **轮次表是唯一权威**（Session 方案 §4.4 / §6）。
         # 旧的 ``wait_status`` CAS 已迁走（台账 R3 已清理）✓。
         self._claim = claim
+        # **唯一 turn 实现**（契约层）—— 编排不再留在本文件 ✓。
+        self._turn_runner = turn_runner
 
     def bind_ports(self, **ports: Any) -> None:
         """Re-bind request-scoped ports (tenant/workspace are per request)."""
@@ -261,8 +252,9 @@ class CopilotSessionService:
         """
         # 先校验会话存在且未关闭, 再抢占用 —— 否则「会话不存在」会被误报成
         # 「会话忙」.
-        # 收敛打点：旧实现被调用 = 「旧路径还在服役」的**可观测事实**。
-        record_legacy_call("X18")  # copilot.py 的 turn 编排
+        # ⚠️ **旧编排的打点已撤除**（2026-10-30，Session Stage 3b）——
+        # 编排迁到契约层的 ``session/turn_runner.py`` 之后，这里只剩
+        # 「读 + 组装 + 转发」的薄壳 ✓（旧实现不在场 → 打点该撤 ✓）。
         await self._require_session(tenant_id, session_id)
         key = idempotency_key or self._select_key(
             client_request_id=client_request_id,
@@ -378,6 +370,12 @@ class CopilotSessionService:
         idempotency_key: IdempotencyKey,
         turn_id: UUID,
     ) -> AsyncIterator[TurnChunk]:
+        """组装这一轮的输入 → **交给唯一 turn 实现**（契约层的 ``TurnRunner``）✓。
+
+        ⚠️ **这里只做「读 + 组装」** —— 轮次的编排（轮次行 / 消息 / 事件 /
+        终态 / 取消 / 审批挂起）全在契约层（Session 方案 §6 ✓）。
+        旧实现（X18）那段 ~200 行的编排**已迁走** ✓。
+        """
         session = await self._require_session(tenant_id, session_id)
         if session.workspace_id != workspace_id or session.owner_id != owner_id:
             raise SessionNotFound(f"session {session_id} not found")
@@ -402,236 +400,42 @@ class CopilotSessionService:
             for item in history
             if item.get("role") in {"user", "assistant", "tool", "system"}
         ]
-        turn = Turn.create(
-            id=TurnId(turn_id),
-            tenant_id=TenantId(tenant_id),
-            workspace_id=WorkspaceId(workspace_id),
-            session_id=session.id,
-            user_input=user_input if not resume else (user_input or "继续"),
-        )
-        await self._turns.add(turn)
-        # 新表（**双写期**，Session 方案 §12）—— 它同时是 ``session_events``
-        # 的外键父行：事件必须挂在一个已存在的轮次上。
-        await self._journal.start_turn(
-            turn_id=turn.id,
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            session_id=session.id,
-            idempotency_key=idempotency_key.value,
-            key_strength=idempotency_key.strength,
-            agent_version=session.agent_version,
-            model_version=model_used,
-            trace_id=current_trace_id(),
-            # 路由决策随轮次留痕（``session_turns.route_decision``）——
-            # **产出者是 Router**，这里只是把它带进轮次行。
-            route_decision=session.metadata.get("route_decision"),
-        )
-        await self._events.publish(
-            turn.raise_started_event(),
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            trace_id=current_trace_id(),
-        )
-        seq = await self._next_seq(session_id)
-        if not resume:
-            await self._messages.append(
-                tenant_id=tenant_id,
-                workspace_id=workspace_id,
-                session_id=session_id,
-                turn_id=turn.id,
-                seq=seq,
-                role="user",
-                content=user_input,
-            )
-            seq += 1
-            # 会话标题还没定的话, 用第一句话当标题 —— 会话列表里全是
-            # 「与 XX 对话」根本没法认.
-            if session.metadata.get("title_auto"):
-                meta = dict(session.metadata)
-                meta["title"] = _auto_title(user_input)
-                meta["title_auto"] = False
-                session = session.with_runtime(metadata=meta)
-                await self._sessions.update(session)
-        graph_resume = dict(session.graph_state or {})
+        # 续传状态 = 会话里存的 + 本轮恢复带进来的（后者覆盖前者 ✓）。
+        graph_state = dict(session.graph_state or {})
         if resume:
-            graph_resume = {**graph_resume, **resume}
-        assistant_parts: list[str] = []
-        turn_usage: UsageChunk | None = None
-        graph_stream = self._graph.run_turn(
+            graph_state = {**graph_state, **resume}
+        request = TurnRequest(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             owner_id=owner_id,
-            turn_id=turn.id,
+            session_id=session_id,
+            turn_id=turn_id,
             user_input=user_input,
+            idempotency_key=idempotency_key.value,
+            key_strength=idempotency_key.strength,
+            agent=AgentSnapshot(
+                agent_id=session.agent_id,
+                agent_version=session.agent_version,
+                model=model_used,
+                name=str(getattr(agent_row, "name", "") or ""),
+                # 执行器要用 agent 的完整配置（工具 / 模型）—— 契约层不解释它 ✓
+                raw=agent_row,
+            ),
             history=hist_msgs,
-            agent=agent_row,
             model=model_used,
-            # Phase 12: 策略路由. 当 route_id 提供时, 优先用它走 Phase 7 select_chain_for_strategy
+            resume=resume,
             route_id=route_id,
             rolling_summary=str(session.metadata.get("rolling_summary") or ""),
-            resume=graph_resume
-            if graph_resume.get("pending_approval") or resume
-            else None,
-            # Phase 14: 把 session_id 透给 graph, 让 delegate_to_agent 工具 stub
-            # 知道在哪个 session 上 spawn sub-session.
-            session_id=session_id,
+            session_metadata=dict(session.metadata),
+            graph_state=graph_state,
+            # 路由决策随轮次留痕（``session_turns.route_decision``）——
+            # **产出者是 Router**，这里只是把它带进轮次行。
+            route_decision=session.metadata.get("route_decision"),
             parent_span_context=parent_span_context,
+            trace_id=current_trace_id(),
         )
-        emitted = False
-        # 事件序号 —— 轮次内严格递增，且与 SSE 的 ``id:`` 一致（客户端断线
-        # 重连时把它作为 ``Last-Event-ID`` 带回来）。
-        event_seq = 1
-        last_cancel_check = monotonic()
-        try:
-            async with aclosing(graph_stream):
-                async for chunk in graph_stream:
-                    emitted = True
-                    now = monotonic()
-                    if now - last_cancel_check >= CANCEL_POLL_SECONDS:
-                        last_cancel_check = now
-                        if await self._sessions.cancel_requested(session_id):
-                            raise _TurnCancelled("用户请求停止生成")
-                    chunk = await self._publish_chunk(turn, chunk, seq=event_seq)
-                    event_seq += 1
-                    yield chunk
-                    if getattr(chunk, "kind", None) == "message":
-                        assistant_parts.append(getattr(chunk, "content", "") or "")
-                    if isinstance(chunk, ApprovalRequiredChunk):
-                        meta = dict(session.metadata)
-                        meta["preview"] = "等待确认操作"
-                        updated = session.with_runtime(
-                            metadata=meta,
-                            graph_state=dict(self._graph.last_loop_state),
-                            wait_status="waiting_approval",
-                        )
-                        await self._sessions.update(updated)
-                    if isinstance(chunk, UsageChunk):
-                        turn_usage = chunk
-                    if isinstance(chunk, DoneChunk):
-                        final = chunk.final_message or "".join(assistant_parts)
-                        await self._messages.append(
-                            tenant_id=tenant_id,
-                            workspace_id=workspace_id,
-                            session_id=session_id,
-                            turn_id=turn.id,
-                            seq=seq,
-                            role="assistant",
-                            content=final,
-                        )
-                        meta = dict(session.metadata)
-                        meta["preview"] = final[:80]
-                        summary = str(
-                            (self._graph.last_loop_state or {}).get("rolling_summary")
-                            or meta.get("rolling_summary")
-                            or ""
-                        )
-                        meta["rolling_summary"] = summary
-                        updated = session.with_runtime(
-                            metadata=meta,
-                            graph_state=dict(self._graph.last_loop_state or {}),
-                            wait_status="idle",
-                        )
-                        await self._sessions.update(updated)
-                        finished = turn.succeed(
-                            final_response=final,
-                            input_tokens=turn_usage.input_tokens
-                            if turn_usage
-                            else None,
-                            output_tokens=turn_usage.output_tokens
-                            if turn_usage
-                            else None,
-                            cost_usd=turn_usage.cost_usd if turn_usage else None,
-                        )
-                        await self._turns.add(finished)
-                        await self._journal.finish_turn(
-                            turn_id=turn.id,
-                            status="succeeded",
-                            cost_usd=turn_usage.cost_usd if turn_usage else None,
-                        )
-                        await self._journal.mark_delivered(turn_id=turn.id)
-        except _TurnCancelled as exc:
-            await self._fail_turn(turn, code="TURN_CANCELLED", message=str(exc))
-            yield await self._publish_chunk(
-                turn,
-                ErrorChunk(
-                    turn_id=turn.id,
-                    seq=0,
-                    code="TURN_CANCELLED",
-                    message="已停止生成",
-                    retriable=True,
-                ),
-                seq=event_seq,
-            )
-        except (asyncio.CancelledError, GeneratorExit):
-            # 客户端断开 / 请求被取消 (GeneratorExit = 响应体生成器被关闭):
-            # 轮次必须落到 failed, 否则它会永远停在 running, 任务列表里一直
-            # 显示「执行中」.
-            with contextlib.suppress(Exception):
-                await asyncio.shield(self._fail_turn(turn, code="TURN_CANCELLED"))
-            raise
-        except Exception as exc:  # 失败必须可见
-            _log.warning("copilot turn failed turn_id=%s", turn.id, exc_info=True)
-            await self._fail_turn(turn, code="TURN_FAILED", message=str(exc))
-            if not emitted:
-                # 一个 chunk 都没产出 → 轮次根本没起来. 抛给 HTTP 层, 让状态码
-                # 表达失败 (而不是 200 + error 事件).
-                raise
-            yield await self._publish_chunk(
-                turn,
-                ErrorChunk(
-                    turn_id=turn.id,
-                    seq=0,
-                    code="TURN_FAILED",
-                    # web 投放面：**没写消息的领域异常** → 用投影文案
-                    # （别把 "EXTERNAL_SERVICE_ERROR" 甩到聊天气泡里）；
-                    # 有具体消息的保留原样，技术细节留在日志 ✓。
-                    message=project_error_message(
-                        str(getattr(exc, "code", "")),
-                        str(exc) or type(exc).__name__,
-                        "web",
-                    ),
-                    retriable=False,
-                ),
-                seq=event_seq,
-            )
-
-    async def _publish_chunk(
-        self, turn: Turn, chunk: TurnChunk, *, seq: int
-    ) -> TurnChunk:
-        """把 chunk 落进事件流并重新编号 —— **落库先于投递**（Session §7）。
-
-        事件序号由**这里**统一分配：轮次内严格递增，与 SSE 的 ``id:`` 一致
-        （客户端断线重连时把它作为 ``Last-Event-ID`` 带回来）。
-
-        ⚠️ **重新编号**：上游（graph runner）的 seq 有两套编号空间（chunk 序号
-        与消息序号），还会出现重复 —— 直接拿它当事件主键会撞
-        ``session_events`` 的 ``(turn_id, seq)``。
-        """
-        stamped = chunk.model_copy(update={"seq": seq})
-        await self._journal.append_event(
-            turn_id=turn.id,
-            seq=seq,
-            event_type=str(stamped.kind),
-            payload=stamped.model_dump(mode="json"),
-        )
-        return stamped
-
-    async def _fail_turn(self, turn: Turn, *, code: str, message: str = "") -> None:
-        """Persist a failed turn. Best effort — never raises."""
-        try:
-            await self._turns.add(
-                turn.fail(error_code=code, error_message=message or None)
-            )
-        except Exception:  # noqa: BLE001
-            _log.exception("failed to persist failed turn turn_id=%s", turn.id)
-        try:
-            await self._journal.finish_turn(
-                turn_id=turn.id,
-                status="cancelled" if code == "TURN_CANCELLED" else "failed",
-                error_code=code,
-            )
-        except Exception:  # noqa: BLE001
-            _log.exception("failed to close session_turns row turn_id=%s", turn.id)
+        async for chunk in self._turn_runner.run(request=request):
+            yield chunk
 
     async def decide_approval(
         self,

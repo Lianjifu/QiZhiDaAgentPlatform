@@ -234,8 +234,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from qzdap.modules.agent_runtime.adapter.persistence.session_messages import (
         PostgresSessionMessageStore,
     )
+    from qzdap.modules.agent_runtime.adapter.turn.cancel import SqlCancelProbe
+    from qzdap.modules.agent_runtime.adapter.turn.executor import SessionGraphExecutor
+    from qzdap.modules.agent_runtime.adapter.turn.lifecycle import TurnLifecycle
+    from qzdap.modules.agent_runtime.adapter.turn.session_state import SqlSessionState
     from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
     from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+    from qzdap_agent_runtime.session.turn_runner import TurnRunner
 
     async def _evaluate_catalog_agent(*, agent, prompt):
         result = await catalog_evaluation_runner(
@@ -382,12 +387,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 catalog_model_resolver=catalog_model_resolver,
             )
             _ = (TenantId, UserId, WorkspaceId)
+            sessions_repo = SqlSessionRepository(session)
+            messages_store = PostgresSessionMessageStore(session)
+            # **唯一 turn 实现**（契约层，Session 方案 §6）—— 编排在这里装配，
+            # 能力全部走端口 ✓。
+            turn_runner = TurnRunner(
+                executor=SessionGraphExecutor(graph),
+                lifecycle=TurnLifecycle(
+                    turns=SqlTurnRepository(session),
+                    journal=container.session_journal(),
+                    events=AgentRuntimeEventPublisher(container.bus()),
+                ),
+                messages=messages_store,
+                session_state=SqlSessionState(sessions_repo),
+                cancel=SqlCancelProbe(sessions_repo),
+            )
             return CopilotSessionService(
-                sessions=SqlSessionRepository(session),
+                sessions=sessions_repo,
                 turns=SqlTurnRepository(session),
                 # 消息存取归 Session 层（新表 + 旧表双写，Stage 2）——
                 # 调用方不再直接依赖旧表 repo ✓（切读/停旧写只改实现）。
-                messages=PostgresSessionMessageStore(session),
+                messages=messages_store,
                 catalog=catalog,
                 events=AgentRuntimeEventPublisher(container.bus()),
                 graph=graph,
@@ -400,6 +420,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 journal=container.session_journal(),
                 # 会话执行权（互斥）—— 轮次表是唯一权威（Session 方案 §4.4）。
                 claim=PostgresTurnClaim(session),
+                turn_runner=turn_runner,
             )
 
     async def catalog_evaluation_runner(

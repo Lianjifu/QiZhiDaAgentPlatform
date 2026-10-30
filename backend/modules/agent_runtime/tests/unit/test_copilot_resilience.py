@@ -24,8 +24,12 @@ from _ar_unit_in_memory import (
     InMemoryIdempotencyStore,
     InMemorySessionJournal,
     make_dependencies,
+    make_turn_runner,
 )
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
+from qzdap.modules.agent_runtime.adapter.turn.executor import (
+    SessionGraphExecutor,
+)
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 from qzdap_schema.dtos.turn import ApprovalRequiredChunk
 from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
@@ -61,6 +65,9 @@ class _Messages:
 
     async def append(self, **kwargs):
         self.rows.append(kwargs)
+    async def next_seq(self, *, session_id):  # type: ignore[no-untyped-def]
+        """下一个轮次内序号 ✓（与真实实现同语义）。"""
+        return (self.rows[-1]["seq"] + 1) if self.rows else 0
 
 
 class _DomainErrorLLM:
@@ -227,6 +234,7 @@ async def _make_service(
     deps = make_dependencies()
     messages = _Messages()
     runner = SessionGraphRunner(llm=llm, tool_port=tool_port)
+    journal = InMemorySessionJournal()
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
@@ -235,8 +243,16 @@ async def _make_service(
         events=deps["events"],
         graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
-        journal=InMemorySessionJournal(),
+        journal=journal,
         claim=deps["sessions"].claim,
+        turn_runner=make_turn_runner(
+            graph=runner,
+            turns=deps["turns"],
+            journal=journal,
+            events=deps["events"],
+            messages=messages,
+            sessions=deps["sessions"],
+        ),
     )
     tid = TenantId(agent.tenant_id)
     wid = WorkspaceId(agent.workspace_id)
@@ -343,6 +359,7 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
     deps = make_dependencies()
     messages = _Messages()
     runner = SessionGraphRunner(llm=deps["llm"])
+    journal = InMemorySessionJournal()
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
@@ -351,8 +368,16 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
         events=deps["events"],
         graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
-        journal=InMemorySessionJournal(),
+        journal=journal,
         claim=deps["sessions"].claim,
+        turn_runner=make_turn_runner(
+            graph=runner,
+            turns=deps["turns"],
+            journal=journal,
+            events=deps["events"],
+            messages=messages,
+            sessions=deps["sessions"],
+        ),
     )
     detail = await svc.create_session(
         tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
@@ -368,7 +393,10 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
         async def synthetic_chunks(self, user_input, *, turn_id):
             return []
 
+    # ⚠️ 执行器在 turn_runner 里（**唯一 turn 实现** ✓）—— 换 graph 要连
+    # executor 一起换，否则跑的还是旧 graph ✗。
     svc._graph = SessionGraphRunner(llm=_FailFast())
+    svc._turn_runner._executor = SessionGraphExecutor(svc._graph)
 
     with pytest.raises(RuntimeError):
         async for _ in svc.stream_turn(
@@ -537,9 +565,10 @@ async def test_second_concurrent_turn_is_rejected() -> None:
 
 @pytest.mark.asyncio
 async def test_cancel_request_stops_the_running_turn(monkeypatch) -> None:
-    from qzdap.modules.agent_runtime.application import copilot as copilot_mod
+    # 取消轮询的间隔现在住在**契约层**（唯一 turn 实现 ✓）
+    from qzdap_agent_runtime.session import turn_runner as turn_runner_mod
 
-    monkeypatch.setattr(copilot_mod, "CANCEL_POLL_SECONDS", 0.01)
+    monkeypatch.setattr(turn_runner_mod, "CANCEL_POLL_SECONDS", 0.01)
     tid, wid, uid, aid = _owners()
     agent = CatalogAgent.create(
         id=aid,
@@ -574,9 +603,10 @@ async def test_cancel_request_stops_the_running_turn(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_a_new_turn_is_not_cancelled_by_a_stale_flag(monkeypatch) -> None:
-    from qzdap.modules.agent_runtime.application import copilot as copilot_mod
+    # 取消轮询的间隔现在住在**契约层**（唯一 turn 实现 ✓）
+    from qzdap_agent_runtime.session import turn_runner as turn_runner_mod
 
-    monkeypatch.setattr(copilot_mod, "CANCEL_POLL_SECONDS", 0.01)
+    monkeypatch.setattr(turn_runner_mod, "CANCEL_POLL_SECONDS", 0.01)
     tid, wid, uid, aid = _owners()
     agent = CatalogAgent.create(
         id=aid,
@@ -691,6 +721,7 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
     runner = SessionGraphRunner(
         llm=_PricingLLM(), catalog_model_resolver=_PricingResolver()
     )
+    journal = InMemorySessionJournal()
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
@@ -699,8 +730,16 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
         events=deps["events"],
         graph=runner,
         idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
-        journal=InMemorySessionJournal(),
+        journal=journal,
         claim=deps["sessions"].claim,
+        turn_runner=make_turn_runner(
+            graph=runner,
+            turns=deps["turns"],
+            journal=journal,
+            events=deps["events"],
+            messages=messages,
+            sessions=deps["sessions"],
+        ),
     )
     detail = await svc.create_session(
         tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid

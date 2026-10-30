@@ -165,8 +165,8 @@ wait_status;modules/;X6;X;off
 graph_state;modules/;X3;X;off
 agent_turns;modules/;X4;X;off
 agent_session_messages;modules/;X4;X;off
-_fail_turn;modules/;X18;X;off
-async def _run_turn(;modules/;X18;X;off
+_fail_turn;modules/;X18;X;on
+_publish_chunk;modules/;X18;X;on
 compact.py;modules/;X9;C;off
 _load_messages;modules/;X8;C;off
 build_system_prompt;modules/;X10;C;off

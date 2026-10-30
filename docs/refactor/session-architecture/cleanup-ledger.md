@@ -109,7 +109,7 @@
 | X13 | `admin_memory_l1`（无 `session_id` / 无 `user_id`，只写不读，与 STM 无关） | `modules/memory/src/qzdap/modules/memory/adapter/persistence/models.py:21-33` | 退役，或改造为带 `session_id` 的 STM 缓冲（**决策 #5**：L1 处置） | 未开始 | Memory 层 |
 | X14 | 记忆召回缺用户隔离（`list_l2` 与向量检索均只按 `workspace_id` 过滤 → 工作区内跨用户泄漏）。**L3 不计入**：L3 是**工作区级共享**的团队知识（决策 #1 后迁往 `modules/knowledge`），按设计对工作区内所有人可见 | `modules/memory/src/qzdap/modules/memory/adapter/persistence/repositories.py:161-165`、`adapter/persistence/vector_adapter.py:62` | 作用域过滤下推到 SQL / 向量 payload | **已修复**（2026-10-29：写入侧持久化 `owner_id` → `admin_memory_l2.user_id`（迁移 0048）+ `list_l2` 按 `user_id` 过滤 + 向量 payload 带 `user_id` 且过滤下推到 pgvector；回归测试 `modules/memory/tests/unit/test_memory_scope_isolation.py` 4 条） | Memory 层（**Stage 1**） |
 | X17 | **旧路径的手写推理循环**：`runner._run_turn_inner` 的 `while True`（含 `runner.py` 里「自己拼 messages」与「自己写记忆」的分支） | `modules/agent_runtime/src/qzdap/modules/agent_runtime/adapter/graph/runner.py:149`（调 `_load_messages` 于 `:179`、`_remember` 于 `:467`；两方法的**唯一调用点**） | `agent_loop/runner.py`（6 节点 LangGraph 图） | 未开始 | Agent 层（Stage 5 停用 → Stage 7 删，~250 行） |
-| X18 | **`copilot.py` 的 turn 编排**（~600 行；claim / 幂等 / 取消 / 审批语义的**权威来源**） | `modules/agent_runtime/src/qzdap/modules/agent_runtime/application/copilot.py` | `session/turn_runner.py`（**语义迁入后删**，不是重写） | 未开始 | Session 层（**Stage 3 停用并迁出 → Stage 3b 删除**：清理窗口 ≥7 天且指标归零后） |
+| X18 | **`copilot.py` 的 turn 编排**（~600 行；claim / 幂等 / 取消 / 审批语义的**权威来源**） | `modules/agent_runtime/src/qzdap/modules/agent_runtime/application/copilot.py` | `session/turn_runner.py`（**语义迁入后删**，不是重写） | **编排已迁出**（2026-10-30：Session Stage 3b —— 编排（轮次行 / 消息 / 事件 / 终态 / 取消 / 审批挂起）**迁到契约层的 `session/turn_runner.py`** ✓；copilot 只剩「读 + 组装 + 转发」的薄壳。扫描规则收窄到旧编排的私有符号 `_fail_turn` / `_publish_chunk`（**两个都已迁走** ✓；`async def _run_turn(` 仍在 —— 那是薄壳的入口，不是旧编排 ✗）） | Session 层（**Stage 3b 删薄壳里的剩余**：清理窗口 ≥7 天且指标归零后） |
 | X16 | `MemoryService` 同时提供运行时（`recall`/`write`）与管理面（`list_*/trend`）语义；管理端 `PATCH /l2/{id}` 绕过写入侧的脱敏与去重 | `modules/memory/src/qzdap/modules/memory/application/services.py`、`adapter/persistence/repositories.py:167-175` | 拆为 `MemoryRuntimeService`（平面 A）+ `MemoryAdminService`（平面 B） | 未开始 | Memory 层 |
 | X15 | **L3 与 `modules/knowledge` 职责重叠 → 运行时双份注入**（L3 内容进「相关记忆」，knowledge chunks 进「相关知识」；且 L3 无向量而 chunks 有向量） | `modules/memory/.../domain/entities.py:119-188`（L3Entry）、`modules/agent_runtime/.../runner.py:517-559` | 决策 #1：L3 退役（知识统一归 knowledge）或 knowledge 降级为管道 | 未开始 | Memory 层 |
 | X19 | **死表 `memory_l2_embeddings`**（迁移 0036 建，列齐全 —— 连 `user_id` / `content_hash` 都有 —— 但**零代码引用**；与生产在用的向量表 `admin_memory_vec` 职责重复） | `migrations/versions/0036_memory_l2_embeddings.py` | **DROP**（迁移 0048 内；真正的向量表是 `admin_memory_vec`，迁移 0023） | **待清理**（迁移 0048 已实现并在 dev 库执行成功；**不可逆** —— 回滚不重建该表） | Memory 层（**Stage 0**） |
@@ -269,7 +269,7 @@ _scan 'from langgraph\.checkpoint\.postgres import'  composition/ "X20"
 #   ⚠️ 只绑旧编排的私有符号 —— copilot.py 保留为 HTTP 薄壳，
 #      stream_turn / decide_approval 在薄壳里仍会出现，不能作为扫描目标。
 _scan "_fail_turn"               modules/          "X18"
-_scan "async def _run_turn("     modules/          "X18"
+_scan "_publish_chunk"           modules/          "X18"
 
 # Context 域（X8 / X9 / X10）
 _scan "compact.py"                modules/          "X9"
@@ -401,6 +401,7 @@ def record_legacy_call(entry: str) -> None:
 | **X7** 审批异常吞噬 | **旧实现已删除**（2026-10-30 Session Stage 1，改为「记日志 + 再抛」）—— 打点随代码一起撤除 |
 | **X20** 同步 `PostgresSaver` 工厂 | **旧实现已删除**（2026-10-30 Session Stage 0）—— 打点随代码一起撤除 |
 | **R3** `try_claim` 的会话互斥职责 | **旧实现已删除**（2026-10-30 Session Stage 3a）—— 执行权迁到 `current_turn_id` + 轮次状态推导，打点随代码一起撤除 |
+| **X18** `copilot.py` 的 turn 编排 | **编排已迁出**（2026-10-30 Session Stage 3b）—— 编排迁到契约层的 `session/turn_runner.py`，旧编排的私有符号（`_fail_turn` / `_publish_chunk`）都已消失，打点一并撤除；**薄壳的删除**落在 Stage 3b（清理窗口 ≥7 天） |
 
 > **下表这 18 条**必须改用替代判据（扫描 / 测试 / 删除 / 「无生产调用方」），
 > **不得**用「指标为 0」判清零。

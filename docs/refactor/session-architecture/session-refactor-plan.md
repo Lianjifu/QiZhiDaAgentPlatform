@@ -845,11 +845,26 @@ DROP TABLE IF EXISTS checkpoints;
 
 **更正上一轮记录**：Stage 1 时我写的「S-06 / S-11 阻塞在 Stage 3，因为**第二套 turn 实现（X2）还靠 `try_claim`**」—— **这个理由不成立** ✗：实测 `try_claim` 的**唯一**调用者是 copilot，X2（IM 侧）**根本没有互斥语义** ✓（方案 §6 的表也是这么写的）。互斥已于本片迁走（R3 ✅）。
 
+#### 实施记录（2026-10-30 · Stage 3b：唯一 turn 实现落地）
+
+| 项 | 结果 |
+|---|---|
+| 契约 | `session/turn_runner.py`：`TurnRequest` / `AgentSnapshot` + 五个**窄端口**（执行器 / 生命周期 / 消息 / 会话状态 / 取消）+ `TurnRunner`（编排） |
+| 适配器 | `adapter/turn/`：`executor.py`（执行器）· `lifecycle.py`（轮次行 + 事件 + 终态）· `session_state.py`（会话读改）· `cancel.py`（取消探针） |
+| copilot | 旧编排（~200 行：轮次行 / 消息 / 事件 / 终态 / 取消 / 审批挂起）**迁出** —— copilot 只剩「读 + 组装 + 转发」✓；`_fail_turn` / `_publish_chunk` / `_next_seq` / `_auto_title` 全部删除 ✓ |
+| 打点 | 旧编排的打点 `record_legacy_call("X18")` **撤除**（旧实现不在场 ✓）；扫描规则收窄到旧编排的私有符号（`_fail_turn` / `_publish_chunk`）✓ |
+| 测试 | **真库端到端**（`test_turn_runner.py`）：跑一轮之后**每一张表**都对 —— 旧表轮次（succeeded + 最终回复）· 新表轮次（succeeded + **成本归属**）· 事件流（seq 连续）· 两张消息表（双写 + `session_seq` 单调）· 会话预览与自动标题 ✓ |
+
+⚠️ **关键设计：窄端口 + DTO** —— 契约层**不认**模块侧的领域对象（agent / session /
+turn），而是让**模块侧组装** `TurnRequest`（读都在那边 ✓）。把领域实体搬进契约层
+是一次大得多的重构，且**不解决任何当前的问题** ✓。
+
 **仍未接管**：
 
 | # | 事项 | 原因 | 归属 |
 |---|---|---|---|
-| **S-16 / S-20 / S-21** | 编排迁到 `session/turn_runner.py` + 切 web/api 入口 + 停用 copilot 旧编排 | 本层最大的工作量 —— 需要把 copilot 的 ~300 行编排逐段搬进契约层（端口化） | Stage 3b |
+| **S-21b** | 删 copilot 里的**薄壳**（幂等 + claim + 转发） | 需要「清理窗口 ≥7 天且旧路径无流量」的判据 | Stage 3b（下一片） |
+| **执行器本身** | 跑轮次的仍是旧的手写循环（`SessionGraphRunner`，台账 **X17**） | 归 **Agent 层**的 A-26（旧循环改接新 Builder / Writer）—— 本层只管编排 ✓ | **Agent 层 A-26** |
 | **S-06** | `wait_status` 写入点归零 | 那列现在**只剩**「审批挂起」的语义 —— 停写要等 **Stage 5** 把审批挂起落进 `session_turns.pending_approval`（否则「等待确认」的展示会退化 ✗） | Stage 5 |
 | **S-22** | 停用 `use_cases/run_turn*.py`（X2） | IM 渠道仍在调它 —— 删除要与 **Gateway 的 IM 入口切换同 PR**（原子） | Stage 5b |
 **验收**：同一 `clientRequestId` 重复到达 → 只起一轮；取消跨 worker 生效；**web/api 上只有一套「跑一轮」的语义**。

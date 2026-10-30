@@ -50,6 +50,15 @@ class PostgresSessionMessageStore(SessionMessagePort):
         """会话的消息列表 —— **仍读旧表**（切读在 S-15a ✓）。"""
         return await self._legacy.list_for_session(session_id)
 
+    async def next_seq(self, *, session_id: UUID) -> int:
+        """下一个轮次内消息序号 —— 读旧表的最大序号 +1 ✓。
+
+        ⚠️ **双写期读旧表**（切读在 S-15a ✓）—— 两张表的序号同步写入，
+        读哪张都一样 ✓。
+        """
+        rows = await self._legacy.list_for_session(session_id)
+        return (rows[-1]["seq"] + 1) if rows else 0
+
     async def append(
         self,
         *,
