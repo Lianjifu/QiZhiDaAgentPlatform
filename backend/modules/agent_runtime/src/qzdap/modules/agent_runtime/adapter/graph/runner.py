@@ -530,8 +530,8 @@ class SessionGraphRunner:
             session_id=session_id,
             summary=rolling_summary,
         )
-        # ⚠️ **走新的 Writer** ✓（A-26 ✓）—— 旧的 `_remember` 从此没有
-        # 调用方 ✓（删它归 Memory Stage 7 ✓）。
+        # ⚠️ **走新的 Writer** ✓（A-26 ✓）—— 旧的记忆写入**已删除** ✓
+        # （Memory Stage 7 ✓ —— 台账 X11 ✓）。
         writes = await self._write_memories(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -863,9 +863,6 @@ class SessionGraphRunner:
     ) -> list[tuple[str, str]]:
         """**用新的 Writer 沉淀记忆** ✓（Agent Stage 5 · A-26 ✓）。
 
-        ⚠️ **旧的 `_remember` 从此没有调用方了** ✓ —— 它归 Memory Stage 7
-        删除 ✓（台账 X11 ✓）。
-
         ⚠️ **输入只有本轮对话** ✓（**不含召回结果** ✓ —— Memory 方案 §4.6 ✓）。
         """
         policy = (
@@ -892,39 +889,6 @@ class SessionGraphRunner:
         # ⚠️ **只报一层** ✓ —— 新 Writer 写的是 L2 ✓（旧的 L1/L2 两层报法是
         # L1 缓冲表的产物 ✓，那张表要退役 ✓）。
         return [("l2", final[:80])]
-
-    async def _remember(
-        self,
-        *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        owner_id: UUID,
-        agent: CatalogAgent | None,
-        user_input: str,
-        final: str,
-    ) -> list[tuple[str, str]]:
-        record_legacy_call("X11")  # 旧记忆写入 _remember
-        policy = dict(agent.memory_policy) if agent is not None else {"enabled": True, "autoSummarize": True}
-        if not policy.get("enabled", True) or self._memory_port is None or not final.strip():
-            return []
-        content = f"用户：{user_input}\n助手：{final}"
-        meta: dict[str, Any] = {
-            "scope": policy.get("scope") or "user",
-            "agentName": agent.name if agent else "助手",
-            "key": "会话事实",
-            "category": "fact",
-        }
-        await self._memory_port.write(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            owner_id=owner_id,
-            content=content[:4000],
-            metadata=meta,
-        )
-        out: list[tuple[str, str]] = [("l1", final[:80])]
-        if policy.get("autoSummarize"):
-            out.append(("l2", final[:80]))
-        return out
 
     async def _finish_pending(
         self,

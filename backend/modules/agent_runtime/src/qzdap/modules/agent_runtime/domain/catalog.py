@@ -41,6 +41,17 @@ def _empty_prompts() -> dict[str, str]:
 
 
 def _default_memory() -> dict[str, Any]:
+    """agent 的记忆策略默认值 ✓。
+
+    ⚠️ **四个字段里运行时只消费 `enabled`** ✓（Memory 方案 §1.7 ✓）——
+    `retentionDays` / `autoSummarize` **没有任何实现** ✗（旧的 `autoSummarize`
+    只会往返回值里塞一个字符串 ✗ —— 那个写入点已随旧循环的删除而消失 ✓）；
+    `scope` 的**存储作用域**语义由契约层 `MemoryPolicy` 定义 ✓（接线归
+    Memory Stage 4 ✗）。
+
+    ⚠️ **字段形状保留** ✓ —— 前端的智能体表单按这四个字段读写 ✓（删字段会
+    弄坏那个表单 ✗✗）；**「无效」指的是运行时不再消费它们** ✓。
+    """
     return {
         "enabled": True,
         "retentionDays": 30,

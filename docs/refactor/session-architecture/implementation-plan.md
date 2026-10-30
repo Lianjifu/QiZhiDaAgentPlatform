@@ -660,12 +660,12 @@
 | | M-40 乐观并发 | 人工编辑走版本号，冲突返回 **409**（**不静默后写覆盖**） | — | 0 | M-37 |
 | | M-41 敏感闸门补齐 | 管理端 `PATCH /l2/{id}` 补上与平面 A 相同的脱敏 + 去重 | — | 0 | M-37 |
 | | M-42 管理端直写路径停用 + 打点 | — | — | **~150 行（清理窗口后删）** | M-36 |
-| Stage 7 · 清理与封口 | **M-43 删 `runner._remember`** | ⚠️ 前置：**Agent Stage 5 的 A-26 已完成**（旧循环已改接 `memory/writer.py`，`_remember` 才无调用方） | **X11**（关注点 #12） | **~30 行** | 归零判据满足 + **Agent A-26** |
-| | **M-44 删 `runtimes/.../memory/layered.py`** | — | **X12**（关注点 #13） | **317 行** | 同上 |
-| | **M-45 删 `graph/nodes.py` 的 `remember` 节点** | — | **X12** | **~30 行** | 同上 |
-| | **M-46 退役 `admin_memory_l1`** | 决策 #5 | **X13**（关注点 #14） | **1 张表** | 决策 #5 |
-| | **M-47 退役 `admin_memory_l3`** | 决策 #1 | **X15**（关注点 #14） | **1 张表** | 决策 #1 |
-| | M-48 清理 `memory_policy` 的无效语义 | `autoSummarize` / `scope` 标签用法 | — | 少量 | Stage 4–5 |
+| Stage 7 · 清理与封口 | **M-43 删 `runner._remember`** | ✅ **已达成**（2026-10-30，Memory Stage 7）—— 方法已删 ✓；**旧写入路径**（`MemoryRuntimeService.write` 87 行 ✓ + 适配器 ✓ + 端口 ✓）**一起删** ✓（它们唯一的生产调用方就是旧循环 ✓） | **X11 → 已清理**（关注点 #12） | **~117 行** | 归零判据满足 + **Agent A-26** ✓ |
+| | **M-44 删 `runtimes/.../memory/layered.py`** | ⚠️ **未删** —— 它还被新 runtime 的 `engine.py` 与 19 节点图的 `nodes.py` import ✓（都是**没有生产调用方的死代码** ✓）→ 删除归 **Agent Stage 7** ✓ | **X12**（关注点 #13） | **317 行** | **Agent Stage 7** |
+| | **M-45 删 `graph/nodes.py` 的 `remember` 节点** | ⚠️ **未删** —— `nodes.py` 整体归 **Agent Stage 7** ✓ | **X12** | **~30 行** | **Agent Stage 7** |
+| | **M-46 退役 `admin_memory_l1`** | ⚠️ **写侧已退役** ✓（旧写入点全删 ✓ → X13 打点归零 ✓）；**表还没 DROP** ✗ —— 管理端的 4 个 L1 端点还读它 ✓ → 要连接口与前端一起改 ✓ | **X13**（关注点 #14） | **1 张表** | 决策 #5 ✓ · **未接管** |
+| | **M-47 退役 `admin_memory_l3`** | ⚠️ **未做** —— 决策 #1 的**数据要先迁到 `modules/knowledge`** ✓（团队知识不能直接丢 ✗✗） | **X15**（关注点 #14） | **1 张表** | 决策 #1 · **未接管** |
+| | M-48 清理 `memory_policy` 的无效语义 | ✅ **已达成**（2026-10-30）—— 旧 `autoSummarize` / `scope` 标签用法的**唯一消费者**（旧写入点）已删 ✓；**字段形状保留** ✓（前端表单按这四个字段读写 ✓）—— 「无效」指的是**运行时不再消费** ✓ | — | 少量 | Stage 4–5 ✓ |
 | | **M-49 删原 `MemoryService` 单类** | ⚠️ 平面 A / B 两个服务类**必须保留** | **X16**（关注点 #15） | 少量 | M-01 |
 | | M-50 启用扫描脚本 Memory 段 | 台账 X11–X16 段 | — | 0 | M-43 |
 | | M-51 更新台账 + 现状文档 | X14 标「已弃用」（修复类）；**X19 在 Stage 0 的迁移 0048 内已落地** → 一并标「已清理」 | — | 0 | M-50 |
@@ -1186,7 +1186,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] M-26 向量统一走 embedding · M-27 异步补写 · M-28 `session_memory_buffer` · M-29 会话结束提炼（sweeper 触发）· M-30 提升规则
 - [ ] M-31 统计更新 · M-32 淘汰器 · M-33 `trend()` 真实统计 · M-34 接入 sweeper · M-35 **淘汰执行器**
 - [ ] M-36 B1 管理接口 · M-37 B2 管理服务 · M-38 B3 管理策略 · M-39 **C9 治理 provider** · M-40 乐观并发 409 · M-41 敏感闸门补齐 · M-42 管理端直写停用打点
-- [ ] M-43 **删 `_remember`** → **X11**（前置 = **Agent A-26**） · M-44 **删 `layered.py`** → **X12** · M-45 **删 `remember` 节点** → **X12** · M-46 **退役 `admin_memory_l1`** → **X13** · M-47 **退役 `admin_memory_l3`** → **X15** · M-48 清理 `memory_policy` 无效语义 · M-49 **删原 `MemoryService` 单类** → **X16**
+- [x] M-43 **删 `_remember`** → **X11**（✅ 2026-10-30 · 旧写入路径一起删 ✓）· M-44 **删 `layered.py`** → **X12**（⚠️ **归 Agent Stage 7** ✓）· M-45 **删 `remember` 节点** → **X12**（⚠️ **归 Agent Stage 7** ✓）· M-46 **退役 `admin_memory_l1`** → **X13**（⚠️ **写侧已退役 ✓，表未 DROP** ✓）· M-47 **退役 `admin_memory_l3`** → **X15**（⚠️ **数据要先迁 knowledge** ✓）· M-48 清理 `memory_policy` 无效语义（✅）· M-49 **删原 `MemoryService` 单类** → **X16**（✅ 已拆 ✓）
 - [ ] M-50 启用扫描脚本 Memory 段 · M-51 更新台账 + 现状文档（**X19 已在 M-03 落地**）
 
 ### Agent 层（§3.6）—— **删除 X5 / X1 + 关注点 #16 / #24–#29**

@@ -53,23 +53,6 @@ class MemoryServiceAdapter:
             for hit in hits
         ]
 
-    async def write(
-        self,
-        *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        owner_id: UUID,
-        content: str,
-        metadata: dict | None = None,
-    ) -> dict:
-        return await self._service.write(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            owner_id=owner_id,
-            content=content,
-            metadata=metadata,
-        )
-
     async def write_turn(
         self,
         *,

@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import hashlib
 import math
-from uuid import UUID
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
 
 import pytest
 from qzdap_observability.metrics import LEGACY_CALLS_TOTAL
@@ -261,21 +262,37 @@ def _svc() -> tuple[MemoryRuntimeService, InMemoryCatalog]:
 
 
 async def _seed(
-    svc: MemoryRuntimeService, owner_id: UUID, content: str, key: str
+    catalog: InMemoryCatalog, owner_id: UUID, content: str, key: str
 ) -> None:
-    await svc.write(
+    """往目录里放一条 L2 ✓（**归属 owner_id** ✓ —— 这正是本文件要验的 ✓）。
+
+    ⚠️ **直接放行** ✓ —— 旧写入路径已退役 ✓（写路径的测试另有 ✓）。
+    """
+    now = datetime.now(UTC)
+    fact = L2Fact(
+        id=uuid4(),
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
-        owner_id=owner_id,
-        content=content,
-        metadata={"key": key, "userName": "用户"},
+        user_name="用户",
+        user_id=owner_id,
+        key=key,
+        value=content,
+        category="fact",
+        source_session="test",
+        confidence=0.8,
+        status="confirmed",
+        promoted_to_l3=False,
+        updated_at=now,
+        created_at=now,
+        usage_history=["刚刚"],
     )
+    await catalog.add_l2(fact)
 
 
 @pytest.mark.asyncio
 async def test_write_persists_owner_id() -> None:
-    svc, catalog = _svc()
-    await _seed(svc, USER_A, "A 的私密内容", "A的偏好")
+    _, catalog = _svc()
+    await _seed(catalog, USER_A, "A 的私密内容", "A的偏好")
 
     stored = list(catalog.l2.values())
     assert len(stored) == 1
@@ -284,9 +301,9 @@ async def test_write_persists_owner_id() -> None:
 
 @pytest.mark.asyncio
 async def test_recall_does_not_leak_across_users() -> None:
-    svc, _ = _svc()
-    await _seed(svc, USER_A, "张三的报销额度是五千元", "报销额度")
-    await _seed(svc, USER_B, "李四的客户名单在另一个系统", "客户名单")
+    svc, catalog = _svc()
+    await _seed(catalog, USER_A, "张三的报销额度是五千元", "报销额度")
+    await _seed(catalog, USER_B, "李四的客户名单在另一个系统", "客户名单")
 
     hits_a = await svc.recall(
         tenant_id=TENANT,
@@ -316,7 +333,7 @@ async def test_recall_does_not_leak_across_users() -> None:
 async def test_unowned_memories_are_not_recalled() -> None:
     """决策 #11：存量自动沉淀的记忆归属不明 → 对任何用户都不可见。"""
     svc, catalog = _svc()
-    await _seed(svc, USER_A, "有归属的记忆", "有归属")
+    await _seed(catalog, USER_A, "有归属的记忆", "有归属")
     orphan = L2Fact(
         id=UUID("00000000-0000-0000-0000-0000000000ff"),
         tenant_id=TENANT,
@@ -352,15 +369,9 @@ async def test_the_split_retires_the_x16_metric() -> None:
     ⚠️ 台账 §3.2：打点是「旧实现**在场**」的唯一事实来源 ✓ —— 旧实现拆掉，
     打点就一起撤 ✓（否则指标会永远停在非零 ✗✗ —— 清理判据就失真了 ✗）。
     """
-    svc, _ = _svc()
+    svc, catalog = _svc()
     before = LEGACY_CALLS_TOTAL.labels(entry="X16")._value.get()
-    await svc.write(
-        tenant_id=TENANT,
-        workspace_id=WORKSPACE,
-        owner_id=USER_A,
-        content="打点验证",
-        metadata={"key": "打点"},
-    )
+    await _seed(catalog, USER_A, "打点验证", "打点")
     await svc.recall(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
@@ -375,9 +386,9 @@ async def test_the_split_retires_the_x16_metric() -> None:
 @pytest.mark.asyncio
 async def test_admin_scope_still_sees_every_user() -> None:
     """管理端是 admin 作用域（user_id 不给 = 不过滤），不应被这次的修复影响。"""
-    svc, _ = _svc()
-    await _seed(svc, USER_A, "A 的内容", "A")
-    await _seed(svc, USER_B, "B 的内容", "B")
+    svc, catalog = _svc()
+    await _seed(catalog, USER_A, "A 的内容", "A")
+    await _seed(catalog, USER_B, "B 的内容", "B")
 
     hits = await svc.recall(
         tenant_id=TENANT,

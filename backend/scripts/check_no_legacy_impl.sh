@@ -173,7 +173,7 @@ compact.py;modules/;X9;C;on
 _load_messages;modules/;X8;C;on
 build_system_prompt;modules/;X10;C;on
 layered.py;modules/;X12;M;off
-_remember;modules/;X11;M;off
+_remember;modules/;X11;M;on
 admin_memory_l1;modules/;X13;M;off
 admin_memory_l3;modules/;X15;M;off
 class MemoryService\b;modules/;X16;M;on

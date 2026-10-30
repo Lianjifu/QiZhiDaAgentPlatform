@@ -13,17 +13,14 @@ Stage 0 只做**平面分离** ✓（纯重构 ✓，行为不变 ✓）。
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from logging import getLogger
-from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from qzdap_agent_runtime.memory.extraction import RuleFactExtractor
 from qzdap_agent_runtime.memory.redaction import RuleRedactor
 from qzdap_agent_runtime.memory.retrieval import RetrievalPipeline
 from qzdap_agent_runtime.memory.writer import WriteOutcome, WriterPipeline
 from qzdap_agent_runtime.ports import RecallHit
-from qzdap_observability.metrics import record_legacy_call
 
 from qzdap.modules.memory.adapter.candidates import (
     LexicalCandidateAdapter,
@@ -35,12 +32,6 @@ from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
     MemoryCatalogRepository,
     VectorSearchPort,
-)
-from qzdap.modules.memory.domain.entities import (
-    L2_CATEGORIES,
-    L1Session,
-    L2Fact,
-    PromotionEvent,
 )
 
 _log = getLogger(__name__)
@@ -78,83 +69,6 @@ class MemoryRuntimeService:
                 catalog, embedding=embedding, vectors=vectors
             ),
         )
-
-    async def write(
-        self,
-        *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        owner_id: UUID,
-        content: str,
-        metadata: dict[str, Any] | None = None,
-        user_name: str = "",
-        agent_name: str = "",
-    ) -> dict[str, Any]:
-        meta = metadata or {}
-        now = datetime.now(UTC)
-        session = L1Session(
-            id=uuid4(),
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            user_name=user_name or str(meta.get("userName") or "用户"),
-            agent_name=agent_name or str(meta.get("agentName") or "助手"),
-            buffer_size=1,
-            tokens_used=max(1, len(content) // 4),
-            ttl_minutes=60,
-            ttl_remain_min=60,
-            status="active",
-            updated_at=now,
-            created_at=now,
-            buffer_text=content,
-        )
-        # ⚠️ **L1 缓冲表在用** ✓（台账 X13 —— 决策 #5：L1 退役 ✓）→ 打点 ✓
-        # （没有打点就没有清理判据 ✓ —— 台账 §3.2 ✓）。
-        record_legacy_call("X13")
-        await self._catalog.add_l1(session)
-        category = str(meta.get("category") or "fact")
-        if category not in L2_CATEGORIES:
-            category = "fact"
-        fact = L2Fact(
-            id=uuid4(),
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            user_name=session.user_name,
-            # ⚠️ 决策 #11：归属必须由写入侧持久化 —— 过去这里把 owner_id 直接
-            # 丢了（`_ = owner_id`），导致召回时无法按用户隔离。
-            user_id=owner_id,
-            key=str(meta.get("key") or "对话记忆"),
-            value=content.strip(),
-            category=category,  # type: ignore[arg-type]
-            source_session=str(session.id),
-            confidence=float(meta.get("confidence") or 0.8),
-            status="confirmed",
-            promoted_to_l3=False,
-            updated_at=now,
-            created_at=now,
-            usage_history=["刚刚"],
-        )
-        await self._catalog.add_l2(fact)
-        await self._catalog.add_promotion(
-            PromotionEvent(
-                id=uuid4(),
-                tenant_id=tenant_id,
-                workspace_id=workspace_id,
-                layer="l1→l2",
-                label=f"{fact.user_name} · {fact.key}: {fact.value[:24]}",
-                operator="系统自动提炼",
-                target_id=str(fact.id),
-                created_at=now,
-            )
-        )
-        await self._embed_item(
-            fact.id,
-            "l2",
-            fact.recall_text(),
-            tenant_id,
-            workspace_id,
-            user_id=owner_id,
-        )
-        return fact.to_admin_dict()
 
     async def write_turn(
         self,

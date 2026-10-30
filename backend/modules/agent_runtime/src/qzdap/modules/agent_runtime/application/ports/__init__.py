@@ -255,16 +255,6 @@ class MemoryPort(Protocol):
         user_id: UUID | None = None,
     ) -> list[dict]: ...
 
-    async def write(
-        self,
-        *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        owner_id: UUID,
-        content: str,
-        metadata: dict | None = None,
-    ) -> dict: ...
-
     async def write_turn(
         self,
         *,
