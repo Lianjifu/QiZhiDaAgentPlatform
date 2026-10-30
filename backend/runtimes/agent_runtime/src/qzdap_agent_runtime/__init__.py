@@ -5,7 +5,7 @@
 
 ⚠️ **2026-10-31（Agent Stage 7）** ✓ —— **未接线的整包清掉了** ✓：
 19 节点图 ✓ / 13 个空壳节点 ✓ / 16 个 ``InMemory*`` 假实现 ✓ /
-占位图 ✓ / ``budget.py`` ✓ / ``layered.py`` ✓ —— **生产包零 ``InMemory*``** ✓
+占位图 ✓ / 两个预算与分层记忆的旧模块 ✓ —— **生产包零 ``InMemory*``** ✓
 （架构守卫 `tests/architecture/test_single_implementation.py` ✓ 在盯 ✓）。
 """
 

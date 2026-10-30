@@ -1,6 +1,6 @@
 # 对话（Copilot）功能模块 — 架构梳理
 
-> 版本：1.3（2026-10-30 更新：Session Stage 4b–6d + **Agent A-26（上下文装配改接 `ContextBuilder`、记忆写入改接 `write_turn`）** + **Context Stage 4（压缩改接 `ContextCompressor`、manifest 落库、摘要写新列）**之后的事实）
+> 版本：1.4（2026-10-31 更新：**Agent Stage 5 + Stage 7**（循环本体迁到契约层 `agent_loop/` ✓ —— 旧手写循环与那批整包**已删** ✓）· **Router Stage 2/3**（规则链选 agent ✓ + 同会话 FIFO 排队 ✓）· **Memory Stage 4/5/6**（策略绑定接线 ✓ + 异步补向量 ✓ + 会话缓冲与提炼 ✓ + 使用统计与淘汰 ✓）· **Session 收口**（审批过期/幂等 ✓ + 旧续传状态列退役 ✓ + checkpoint saver 撤掉 ✓）之后的事实 —— 逐条见 **§12** ✓）
 > 适用项目：`QiZhiDaAgentPlatform`
 > 状态：**现状（as-is）梳理**，描述当前代码已实现的行为，不含改造计划
 > 读者：需要理解「一次对话从点击发送到渲染完成」全链路的人
@@ -113,10 +113,10 @@ graph TD
     end
 
     subgraph ENGINE["执行引擎"]
-        D1["runner.py<br/>SessionGraphRunner<br/>prompt 组装与 ReAct 循环"]
-        D2["loop.py<br/>路由判定与空转守卫"]
-        D3["chat_model.py<br/>LLM 流与 tool_call 累积"]
-        D4["compact.py<br/>上下文压缩与滚动摘要"]
+        D1["runner.py<br/>SessionGraphRunner<br/>装配 + 事件翻译"]
+        D2["agent_loop/<br/>契约层循环本体<br/>reason·observe·evaluate"]
+        D3["expert.py<br/>专家装配（模型 + 工具绑定）"]
+        D4["context/compressor.py<br/>压缩与滚动摘要"]
         D5["tools.py<br/>工具分发与审批判定"]
         D1 --> D2
         D1 --> D3
@@ -126,11 +126,13 @@ graph TD
 
     subgraph PORTS["端口与适配器"]
         E1["LLMPort<br/>LLM 供应商"]
-        E2["ToolPort<br/>内置工具(当前未接线)"]
+        E2["ToolPort<br/>内置工具"]
         E3["SkillPort<br/>skill_service_adapter"]
         E4["SandboxPort<br/>sandbox_adapter"]
         E5["MemoryPort<br/>memory_service_adapter"]
         E6["KnowledgePort<br/>knowledge_service_adapter"]
+        E7["Strategy<br/>router/strategy.py<br/>规则链选 agent"]
+        E8["TurnQueuePort<br/>同会话 FIFO 排队"]
     end
 
     subgraph STORE["持久化"]
@@ -144,6 +146,8 @@ graph TD
     B1 --> C1
     C1 --> C2
     C1 --> D1
+    B1 --> E7
+    C1 --> E8
     D3 --> E1
     D5 --> E2
     D5 --> E3
@@ -171,13 +175,17 @@ graph TD
 
 应用层      CopilotSessionService ──► AgentCatalogService
 
+接入层      session_router ──► sse
+            session_router ──► Strategy（规则链选 agent ✓）
+
 执行引擎    SessionGraphRunner
-              ├─ chat_model  ──► LLMPort       ──► LLM 供应商
+              ├─ agent_loop  ──► 契约层循环本体（reason/observe/evaluate ✓）
               ├─ tools       ──► SandboxPort   ──► 沙箱(gVisor)
               │                └► SkillPort    ──► 技能(沙箱内执行)
-              │                └► ToolPort     ──► 内置工具(当前未接线)
+              │                └► ToolPort     ──► 内置工具 ✓（已接线 ✓）
               ├─ memory      ──► MemoryPort    ──► 记忆服务
               └─ knowledge   ──► KnowledgePort ──► 知识检索
+            CopilotSessionService ──► TurnQueuePort（同会话 FIFO 排队 ✓）
 
 持久化      agent_sessions（会话）
             session_turns（轮次·唯一真相） / session_messages（消息） / session_events（事件流）
@@ -196,8 +204,10 @@ graph TD
 | 接入层 | `agent_runtime/adapter/http/session_router.py` | 路由、租户/工作区/用户头解析、附件上下文注入、审批恢复 | 不含业务规则 |
 | SSE 编码 | `agent_runtime/adapter/http/sse.py` | `TurnChunk` → `event: {kind}\ndata: {json}\n\n`，尾部补 `event: end` | — |
 | 应用服务 | `agent_runtime/application/copilot.py` | 会话生命周期、轮次创建、历史读取、消息落库、审批决策 | 不直接调 LLM |
-| 执行引擎 | `agent_runtime/adapter/graph/runner.py` | prompt 组装、上下文压缩、ReAct 循环、工具调用、记忆写入 | 不做 HTTP |
+| 执行引擎 | `agent_runtime/adapter/graph/runner.py` + 契约层 `qzdap_agent_runtime/agent_loop/` | **循环本体在契约层** ✓（`reason` / `observe` / `evaluate` / `runner` ✓ —— 2026-10-31，Agent Stage 5 ✓ —— 模块侧只做**装配 + 事件翻译** ✓）；上下文压缩、工具调用、记忆写入 | 不做 HTTP · **不实现循环** ✓ |
 | 端口 | `agent_runtime/application/ports/__init__.py` | `LLMPort / ToolPort / SkillPort / SandboxPort / MemoryPort / KnowledgePort` 六个抽象 + `SessionJournal`（轮次与事件的**唯一写入口** ✓）+ `TurnRepository`（轮次**只读** ✓） | — |
+| 路由 | 契约层 `qzdap_agent_runtime/router/` | **规则链选 agent** ✓（sticky > 显式 > 业务线 > 用户标签 > 兜底 ✓）；web 与**渠道入站走同一条链** ✓（2026-10-31，Router Stage 2 ✓） | 不查会话表 ✓（粘性由 Session 的只读端口给 ✓） |
+| 排队 | 契约层 `qzdap_agent_runtime/session/queue.py` | **同会话严格有序** ✓（序号分配 + 入队 + FIFO 放行 ✓ —— 放行权威是**轮次行状态 CAS** ✓）；**开关 `QZDAP_ROUTER_QUEUE_ENABLED`** ✓（默认关 ✓） | 不做执行 ✓ |
 | 持久化 | `agent_runtime/adapter/persistence/` | 新表 `session_turns` / `session_messages` / `session_events` 的 ORM 与仓储 ✓（旧表 ORM 已删 ✓） | — |
 
 ### 3.3 装配点
@@ -495,10 +505,10 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 |---|---|
 | `prompts.soul/prompt/agents/tools/user` | 拼成 system prompt（`runner.py:505-513`），按此顺序以空行连接 |
 | `model` | 传给 `stream_chat`；可被请求体 `model` 覆盖；str 形态经 `CatalogModelResolver` 解析成 `ModelId` |
-| `max_steps` | ReAct 循环上限，实际取 `min(agent.max_steps, HARD_MAX_STEPS=16)`（`runner.py:171-173`） |
-| `tools[]` | 工具白名单；白名单为空时退化为 `{sandbox_exec}`（`runner.py:601-640`） |
-| `knowledge_refs[]` | RAG 召回范围（`package_ids`） |
-| `memory_policy` | `enabled` / `autoSummarize` / `scope`；决定是否写 L1/L2（`runner.py:674-692`） |
+| `max_steps` | ReAct 循环上限，实际取 `min(agent.max_steps, HARD_MAX_STEPS=16)` ✓（`agent_loop/evaluate.py` ✓ —— **终止条件只有一处** ✓） |
+| `tools[]` | 工具白名单 ✓（**绑定集** ✓ —— 2026-10-31，Agent Stage 4/5 ✓：模型只能调用 agent 绑定的工具 ✓）；未绑定时提供**全部可执行技能** ✓（旧行为兼容 ✓） |
+| `knowledge_refs[]` | RAG 召回范围（`package_ids`）✓；**其中 `type ∈ {memory, l3}` 的条目在召回时额外纳入** ✓（2026-10-31，Memory Stage 4 ✓） |
+| `memory_policy` | `enabled` ✓（false → **一条不写** ✓）· `scope` ✓（`user` 跨会话 / `session` 只本会话 ✓ —— **不再是标签** ✓）· `policyLabel` ✓（解析成保留策略 ✓）· `l3EntryIds` ✓（一定被召回 ✓） |
 
 ### 6.2 工具与技能
 
@@ -506,7 +516,7 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 |---|---|---|---|
 | 沙箱执行 | `SandboxPort` | `SandboxRuntimeAdapter` → `HttpSandboxRuntimeClient` | 镜像 `qzdap/sandbox-python:latest`，`network="none"`，`memory_mb=256`，语言限 python / shell，默认超时 30s |
 | 技能 | `SkillPort` | `SkillServiceAdapter` → `SkillService.invoke_in_sandbox` | 技能在沙箱内执行；`SkillNeedsConfirm` 映射为 `SKILL_NEEDS_CONFIRM` |
-| 内置工具 | `ToolPort` | `ToolServiceAdapter` | **当前未接入 Copilot 路径**，见 §7 |
+| 内置工具 | `ToolPort` | `ToolServiceAdapter` | ✅ **已接入** ✓（2026-10-31，Agent Stage 5 ✓ —— 端口在 HTTP 层按请求绑定 ✓ —— 工具按 tenant/workspace 现取 ✓） |
 | 前端交互桩 | 通过 skill/tool 名 | `backend/modules/tool/.../builtin_extra_tools.py` | 5 个桩：`ask_user_question` / `notify_user` / `plan_submit` / `todo_write` / `delegate_to_agent`；完成后由 `interactive_action` chunk 通知前端渲染 |
 
 ### 6.3 多智能体协同
@@ -524,6 +534,10 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 - **记忆**：`MemoryPort.recall(top_k=8)` 在**每轮开始时**按用户输入召回，**按当前用户过滤**（`user_id` ✓），进「相关记忆」段。⚠️ **召回失败不再被静默吞掉** —— 置 `degraded_flags["recall_degraded"]` ✓（旧路径是 `except Exception: memories = []` ✗）。
 - **知识**：`KnowledgePort.search(top_k=6, package_ids=agent.knowledge_refs)` 召回 —— **只取 agent 绑定的且 enabled 的知识库** ✓，进「相关知识」段。✅ **现在会下发 `knowledge_search` chunk**（含 `hits` 与 `citations` ✓）—— 命中结果由 Builder **顺带带回** ✓（不必再召回一次 ✗✗）。**这是 2026-10-30 的变化** ✓：此前真实路径只把内容拼进 prompt，下发该 chunk 的只有 mock LLM 的 `synthetic_chunks` 旁路。
 - **轮末记忆写入**：走 `MemoryPort.write_turn(...)` ✓ → 契约层 `memory/writer.py` 的**五步流水线** ✓（抽取 → 敏感闸门 → 幂等去重 → 置信度 → 落库 L2 带 provenance ✓）。⚠️ **不再无条件写一条「用户：… 助手：…」** ✓（旧 `_remember` 每轮都写 ✗）—— 只写**抽出来的事实** ✓，手机号 / 密码类内容**整条拒绝** ✓（闸门 ✓）。
+- **策略绑定真的被消费** ✓（2026-10-31，Memory Stage 4 ✓）—— `enabled` / `scope` / `policyLabel` / `l3EntryIds` / `knowledge_refs` **五个字段运行时都读** ✓（此前只读两个 ✗✗）：**关掉记忆就一条不写** ✓；**会话级作用域只召回本会话的记忆** ✓（过滤下推到 SQL ✓）；**显式绑定的条目一定被召回** ✓（绕过阈值 ✓ —— 绑定不是搜出来的 ✓）。
+- **会话级作用域落在 `session_memory_buffer`** ✓（2026-10-31，Memory Stage 5 ✓）—— 会话结束后**由 sweeper 提炼成用户级 L2** ✓（还在跑的会话不动 ✓；过期丢弃 ✓）。
+- **向量异步补写** ✓（2026-10-31，Memory Stage 5 ✓）—— **写路径不等 embedding** ✓（排进应用级队列 ✓）；**兜底补写** ✓（worker 定期扫「最近更新过的」✓）；**淘汰时同步删向量** ✓。
+- **使用统计与淘汰有执行者了** ✓（2026-10-31，Memory Stage 6 ✓）—— **召回命中就更新** `used_count` / `last_used_at` / `usage_history` ✓（**真实时间戳** ✓）；`admin_memory_policies` 的 TTL / max_items / storage_mb **第一次有执行者** ✓（淘汰 = 置 `retired` ✓ —— 不物理删 ✓）。
 - 上下文的**优先级与降级**由 Builder 统一决定 ✓（system → agent → 租户 → 摘要 → 召回 → 最近 → 本轮输入 ✓）；当前输入与工具结果**永不降级** ✓。
 - **压缩**：走契约层的 `ContextCompressor` ✓（`context/compressor.py` ✓）—— **async** ✓；超预算（窗口 × 0.70 ✓）时**先摘要**（模型摘要 ✓，提示词按 role 分组 ✓），摘要失败 → **确定性窗口** ✓（每条 180 字 × 20 条 ✓），仍超限 → **抛 `CONTEXT_TOO_LARGE`** ✓（明确错误，不静默截断 ✓）。**每次模型调用前都会压一次** ✓（ReAct 里工具结果会不断进上下文 ✓）。⚠️ **这是 2026-10-30 的变化** ✓ —— 此前走旧的 `compact.py`（纯字符截断 ✓，且环内那处 `tokens_before` 恒为 0 ✗）。
 - **manifest**：**每次模型调用前**落一条到 `session_context_manifests` ✓（`turn_id` + `step` ✓）—— 记「这次喂了什么」✓（来源 / token / `ref_id` / `score` / `filtered_reason` ✓）。⚠️ **模型已回答 ⇒ manifest 一定存在** ✓（落库失败就让这一轮失败 ✓）。
@@ -562,10 +576,10 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 | # | 缺口 | 位置 | 影响 |
 |---|---|---|---|
 | 1 | `tool_port` 未注入 Copilot 装配 | `lifespan.py:297-307` | ✅ 已修：改为在 HTTP 层按请求绑定 `ToolServiceAdapter`（`session_router.py:88-123`），工具按 tenant/workspace 现取 |
-| 2 | `agent_sessions.graph_state` 承担运行时续传 | `persistence/models.py:57` | 会话状态与业务数据混在一张表的 JSONB 里，无 schema 约束。⚠️ **审批挂起的权威已搬到轮次表** ✓（`session_turns.pending_approval` ✓）—— 这一列的**停写**还没做（台账 **S-35**：≥95% 流量 + ≥7 天只读期 ✓） |
-| 3 | `compile_loop_graph` 是占位图 | `runner.py:92` | `llm_node` / `tools_node` 都是 `_passthrough_*`，实际循环是手写 `while True`，图定义未被执行 |
-| 4 | ⚠️ 仍未修 | `loop.py:55` | 审批挂起后若触发空转守卫，恢复时该工具被静默跳过 |
-| 5 | 计划批准 / 拒绝端点是 ack 空实现 | `session_router.py:498-549` | ✅ 已修：决定写进 `session.graph_state["plan_decisions"]`（`copilot.py:507`），恢复轮次时读取 |
+| 2 | ~~`agent_sessions.graph_state` 承担运行时续传~~ | — | ✅ **已修**（2026-10-31，Session S-35 ✓）：续传状态改归 `metadata["resume"]` ✓、待审批从轮次行读 ✓、**列已 DROP** ✓（迁移 0056 ✓） |
+| 3 | ~~`compile_loop_graph` 是占位图~~ | — | ✅ **已修**（2026-10-31，Agent Stage 5/7 ✓）：循环本体迁到契约层 `agent_loop/` ✓ —— **没有图了** ✓（旧图与那批整包**已删** ✓） |
+| 4 | ~~审批挂起后若触发空转守卫，恢复时该工具被静默跳过~~ | `loop.py:55` | ✅ **已修**（2026-10-30，Agent Stage 5 ✓）：空转守卫改为**追加一条系统消息** ✓（不是塞字典 ✓）—— 旧文件已删 ✓ |
+| 5 | 计划批准 / 拒绝端点是 ack 空实现 | `session_router.py:498-549` | ✅ 已修：决定写进 `session.metadata["plan_decisions"]` ✓（原 `graph_state` ✓ —— 该列已退役 ✓） |
 | 6 | ⚠️ 仍未修 | `session_router.py:550-566` | 从 `/tmp/qzdap-mock-artifacts` 读文件，非数据库存储 |
 | 7 | 审批人 / 请求人 ID 是常量 | `copilot.py:461`、`runner.py:658` | ✅ 已修：请求人与审批人都是真实用户 |
 | 8 | `UsageChunk.cost_usd` 恒 0 | `runner.py:264` / `runner.py:486` | ✅ 已修：按 `admin_models.price_in/price_out` 计价，成本落 **`session_turns.cost_usd`** ✓（旧表那一列随旧表退役 ✓）|
@@ -818,3 +832,47 @@ Copilot 路径**从不产出 `ErrorChunk`**——`ErrorChunk` 只在第二套 tu
 
 > 顺带一提：`modules/model` 里那条 `test_weighted_dict_list_picks_by_weight` 是**概率性用例**（50 次加权采样后断言大小关系，源码里用的是未播种的 `random.Random()`），约 30 次里有 1 次会失败。它在 `modules/model` 里，与本次对话模块的改动无关，但排查时容易被误判成回归——真正判断本次改动是否引入问题，要看**同一套命令连跑 3 次是否稳定**。
 
+
+---
+
+## 12. 会话架构重构落地后的现状（2026-10-31）
+
+> 本节记录 **2026-10-31 之前**落地的重构对**本文所述现状**的影响 ✓ —— 逐条对应
+> `docs/refactor/session-architecture/` 的方案集 ✓（Gateway / Router / Session /
+> Context / Memory / Agent 六层 ✓）。
+
+### 12.1 Agent 层：循环本体归契约层
+
+| 变化 | 现状 |
+|---|---|
+| **循环本体** | 在契约层 `qzdap_agent_runtime/agent_loop/` ✓（`reason` ✓ / `observe` ✓ / `evaluate` ✓ / `runner` ✓）—— **终止条件只有一处** ✓（§3.4 的六条 ✓）；模块侧只做**装配 + 事件翻译** ✓ |
+| **旧的实现** | **已删** ✓（手写 `while True` 循环 ✓ / 占位图 ✓ / 那批整包 ✓ —— Agent Stage 7 ✓，约 11k 行 ✓） |
+| **工具白名单** | 模型**只能调用 agent 绑定的工具** ✓（此前是「模型说什么就执行什么」✗✗ —— 那是个洞 ✓） |
+| **专家装配** | 模型与工具**只来自 agent 配置** ✓（契约层 `expert.py` ✓） |
+
+### 12.2 Router 层：规则链 + 同会话有序
+
+| 变化 | 现状 |
+|---|---|
+| **选 agent** | **规则链** ✓（sticky > 显式 > 业务线 > 用户标签 > 兜底 ✓）—— web 与**渠道入站走同一条链** ✓（此前 IM 直取渠道登记的 agent ✗✗） |
+| **会话 key** | **哈希版** ✓（长度前缀 + sha256 ✓ 6 维 ✓）—— 原文不再进库 ✓ |
+| **同会话有序** | **FIFO 排队** ✓（序号分配 ✓ + 入队 ✓ + 放行 ✓ —— 权威是**轮次行状态 CAS** ✓）；**开关 `QZDAP_ROUTER_QUEUE_ENABLED`** ✓（默认关 ✓ —— 关掉即旧语义 ✓） |
+| **排队可见性** | 排队期间前端能收到 `queued` chunk ✓（位置 / 已等时长 ✓） |
+
+### 12.3 Session 层：唯一 turn 实现 + 收口
+
+| 变化 | 现状 |
+|---|---|
+| **唯一 turn 实现** | 契约层 `session/turn_runner.py` ✓ —— 旧的第二套实现**已删** ✓ |
+| **审批** | **自动过期** ✓（判定在治理域 ✓）+ **幂等** ✓（同键复用同一 approval ✓） |
+| **续传状态** | 归 `metadata["resume"]` ✓ —— 旧的 `graph_state` **列已 DROP** ✓（迁移 0056 ✓） |
+| **checkpoint saver** | **不再起** ✓（唯一的消费者是那张已删的 LangGraph 图 ✓）—— 新的循环用会话 metadata + 轮次行续传 ✓ |
+
+### 12.4 Memory 层：策略绑定 + 异步向量 + 淘汰
+
+见 §6.4 ✓（策略绑定 ✓ / 会话缓冲与提炼 ✓ / 异步补向量 ✓ / 使用统计与淘汰 ✓）。
+
+### 12.5 现状文档的边界
+
+§9–§11 仍是 2026-10-28 ~ 10-30 的**历史记录** ✓ —— 数字与当时的文件行号**不再代表今天** ✓；
+**今天的现状看 §1–§8 + §12** ✓。

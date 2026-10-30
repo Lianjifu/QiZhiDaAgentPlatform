@@ -409,7 +409,7 @@
 | | R-25 **确认** `dispatch_subscriber.py` 无残留调用方 | ✅ **已确认** —— 文件已删 ✓ 扫描规则已启用 ✓ ⚠️ **不删**（归 Gateway） | — | 0 | — |
 | | R-26 **确认**第二套 turn 实现无残留调用方 | ✅ **已确认** —— 两个用例已删 ✓ 扫描规则已启用 ✓ ⚠️ **不删**（归 Session） | — | 0 | — |
 | | R-27 启用扫描脚本 Router 段 | ✅ **已达成** —— `build_session_key` ✓ / `try_claim` ✓ 两条规则**已启用** ✓ 进 CI | — | 0 | R-22 |
-| | R-28 更新台账 + 现状文档 | ⚠️ **台账已更新** ✓（R1–R4 全「已清理」✓）；**现状文档未更新** ✗（`docs/copilot-chat-module-architecture.md` ✓ —— 与 Session S-38 / Context C-32 / Memory M-51 一起补 ✓） — | — | 0 | R-27 |
+| | R-28 更新台账 + 现状文档 | ✅ **已达成**（2026-10-31）—— **现状文档已更新** ✓（`docs/copilot-chat-module-architecture.md` ✓ —— §3.2 加了「路由 / 排队」两行 ✓ + §12.2 ✓ —— 与 Session S-38 / Context C-32 / Memory M-51 **同一份** ✓） | — | 0 | R-27 |
 
 **退出判据**：
 1. 同一飞书群连续 3 条消息 → **同一个 `session_id`**，跨 worker 一致；
@@ -489,7 +489,7 @@
 | | **S-35 停写并废弃 `agent_sessions.graph_state`** | ✅ **已达成**（2026-10-31）—— ① **续传状态改归 `metadata["resume"]`** ✓（契约层 `resume_state` ✓）；② **待审批从轮次行读** ✓（权威 ✓）；③ **plan 决策改归 metadata** ✓；④ ORM 不再映射 ✓ + **迁移 0056 DROP 列** ✓；⑤ 扫描规则 **X3 启用** ✓。⚠️ **前提的说明**：方案要求「≥95% 流量后 ≥7 天只读期」✓ —— 那是**有生产流量时**的判据 ✓；当前是**开发期** ✓（无生产流量 ✓）→ 改为「**代码里不再有读写点** + **ORM 不映射** + **扫描规则启用**」✓（等价且更强 ✓） | **X3 → 已清理**（关注点 #22） | **1 列** | 与 S-34 同 PR ✓ |
 | | **S-36 迁数据 + DROP `agent_turns` / `agent_session_messages`** | ⚠️ **一半已达成**（2026-10-30）：**「迁数据」已落地** ✓ —— 迁移 **0054**（历史轮次 `agent_turns → session_turns` + 历史消息 `agent_session_messages → session_messages` + 会话内序号重编号 ✓）+ **对账脚本** `scripts/verify_session_tables.py` ✓（差异必须为 0 ✓，它是切读与删表的**硬判据** ✓）。⚠️ **停旧写已达成** ✓（S-15b ✓ —— 旧表**没人写**了 ✓）。**DROP 那半仍未做** ✗（**只读窗口 ≥7 天** 从 2026-10-30 起算 ✓ + 备份恢复**演练** ✗） | **X4（关注点 #21）** | **2 张表** | **独占（删表）**。前置四条全满足：① 切读（S-15a）已完成；② **新旧表全量对账差异 = 0**（脚本已就位 ✓，**已在 dev + demo 库跑过 ✓ 差异 = 0** ✓）；③ **只读窗口 ≥7 天**（S-15b 停旧写之后）；④ 备份恢复**演练过** |
 | | S-37 启用扫描脚本 Session 段 | ✅ **部分达成**（2026-10-31）—— **X2 / X6 / X18 / X3 段已启用** ✓（X3 在 S-35 ✓）；**X4 段仍关着** ✓ —— 旧表还在（**DROP 等只读窗口 + 备份演练** ✓ —— S-36 ✓），关着才是对的 ✓ | X4 未清理（关注点 #21） | 0 | S-33 · S-21b |
-| | S-38 更新台账 + 现状文档 | — | — | 0 | S-37 |
+| | S-38 更新台账 + 现状文档 | ✅ **已达成**（2026-10-31）—— **现状文档已更新** ✓（`docs/copilot-chat-module-architecture.md` ✓ —— 版本 1.4 ✓ + §3 分层图 ✓ + §6.1/§6.2/§6.4 ✓ + §7 缺口表 ✓ + **新增 §12「重构落地后的现状」** ✓） | — | 0 | S-37 |
 
 **退出判据**（本层完成 = 里程碑 **M1 + M2**）：
 1. 状态机全部合法转移可用、全部非法转移报错；
@@ -574,10 +574,10 @@
 | Stage 5 · 清理 | **C-26 删 `adapter/graph/compact.py`** | ✅ **已达成**（2026-10-30，Context Stage 5）—— 文件已删 ✓；调用点随 Stage 4 换掉 ✓ | **X9 → 已清理**（关注点 #10） | **~53 行** | 归零判据满足 + **C-24 已停用打点** ✓ |
 | | **C-27 删 `adapter/llm/prompts.py` 四函数** | ✅ **已达成** —— 旧模板随 **Session Stage 5b** 删除 ✓；新渲染（`context/prompts.py` 单段式 ✓）随 Context Stage 4 接上生产 ✓ | **X10 → 已清理**（关注点 #11） | **~60 行** | 同上 + **Session S-33** ✓ |
 | | **C-28 删 `runner.py` 的 `_load_messages`** | ✅ **已达成**（2026-10-30，Context Stage 5）—— 函数已删 ✓；调用点随 A-26 换掉 ✓ | **X8 → 已清理**（关注点 #9） | **~70 行** | 同上 + **Agent A-26** ✓ |
-| | **C-29 删 `runtimes/.../context/budget.py`** | ⚠️ **未达成** —— 它的两个旧类（`Compactor` / `ContextAssembler`）还被**19 节点图的 `nodes.py`** import ✓（那图**没有生产调用方** ✓）→ 删除归 **Agent Stage 7**（连 `nodes.py` 一起删 ✓） | — | **~384 行** | **Agent Stage 7** |
+| | **C-29 删 `runtimes/.../context/budget.py`** | ✅ **已达成**（2026-10-31，Agent Stage 7 ✓）—— 那两个旧类只被**死代码** import ✓ → **随那批整包删掉** ✓ | — | 少量 | Stage 7 ✓ |
 | | C-30 删 `metadata['rolling_summary']` 残留读写 | ✅ **已达成**（2026-10-30，Context Stage 5）—— Session 层不再写 ✓、`copilot.py` 不再读 ✓（只读新列 ✓） | — | 少量 | C-19 ✓ |
-| | C-31 启用扫描脚本 Context 段 | ✅ **已达成**（2026-10-30）—— `compact.py`（X9 ✓）与 `_load_messages`（X8 ✓）两条规则**已启用** ✓（脚本 28 → **30** 条启用 ✓，扫描通过 ✓） | — | 0 | C-26 ✓ |
-| | C-32 更新台账 + 现状文档 | ⚠️ **台账已更新** ✓（X8 / X9 / X10 全「已清理」✓）；**现状文档未更新** ✗（与 Session S-38 / Router R-28 / Memory M-51 一起补 ✓） —— — | — | 0 | C-31 |
+- [x] C-31 启用扫描脚本 Context 段 ✓（28 → 30 条 ✓）· [x] **C-32 更新台账 + 现状文档** ✓（2026-10-31 ✓ —— 同一份现状文档 ✓）
+| | C-32 更新台账 + 现状文档 | ✅ **已达成**（2026-10-31）—— **现状文档已更新** ✓（`docs/copilot-chat-module-architecture.md` ✓ —— 与 Session S-38 / Router R-28 / Memory M-51 **同一份** ✓） | — | 0 | C-31 |
 
 **退出判据**：
 1. 上下文可喂模型（`[{role, content}]`）；agent 身份正确（不再是「企业助手」通用语）；
@@ -664,14 +664,14 @@
 | | M-41 敏感闸门补齐 | 管理端 `PATCH /l2/{id}` 补上与平面 A 相同的脱敏 + 去重 | — | 0 | M-37 |
 | | M-42 管理端直写路径停用 + 打点 | — | — | **~150 行（清理窗口后删）** | M-36 |
 | Stage 7 · 清理与封口 | **M-43 删 `runner._remember`** | ✅ **已达成**（2026-10-30，Memory Stage 7）—— 方法已删 ✓；**旧写入路径**（`MemoryRuntimeService.write` 87 行 ✓ + 适配器 ✓ + 端口 ✓）**一起删** ✓（它们唯一的生产调用方就是旧循环 ✓） | **X11 → 已清理**（关注点 #12） | **~117 行** | 归零判据满足 + **Agent A-26** ✓ |
-| | **M-44 删 `runtimes/.../memory/layered.py`** | ⚠️ **未删** —— 它还被新 runtime 的 `engine.py` 与 19 节点图的 `nodes.py` import ✓（都是**没有生产调用方的死代码** ✓）→ 删除归 **Agent Stage 7** ✓ | **X12**（关注点 #13） | **317 行** | **Agent Stage 7** |
-| | **M-45 删 `graph/nodes.py` 的 `remember` 节点** | ⚠️ **未删** —— `nodes.py` 整体归 **Agent Stage 7** ✓ | **X12** | **~30 行** | **Agent Stage 7** |
+| | **M-44 删 `runtimes/.../memory/layered.py`** | ✅ **已达成**（2026-10-31，Agent Stage 7 ✓）—— **已删** ✓（317 行 ✓）；**扫描规则同时覆盖 `modules/` 与 `runtimes/`** ✓ | **X12**（关注点 #13） | **317 行** | Agent Stage 7 ✓ |
+| | **M-45 删 `graph/nodes.py` 的 `remember` 节点** | ✅ **已达成**（2026-10-31，Agent Stage 7 ✓）—— `nodes.py` **整体已删** ✓ | **X12** | **~30 行** | Agent Stage 7 ✓ |
 | | **M-46 退役 `admin_memory_l1`** | ⚠️ **写侧已退役** ✓（旧写入点全删 ✓ → X13 打点归零 ✓）；**表还没 DROP** ✗ —— 管理端的 4 个 L1 端点还读它 ✓ → 要连接口与前端一起改 ✓ | **X13**（关注点 #14） | **1 张表** | 决策 #5 ✓ · **未接管** |
 | | **M-47 退役 `admin_memory_l3`** | ⚠️ **未做** —— 决策 #1 的**数据要先迁到 `modules/knowledge`** ✓（团队知识不能直接丢 ✗✗） | **X15**（关注点 #14） | **1 张表** | 决策 #1 · **未接管** |
 | | M-48 清理 `memory_policy` 的无效语义 | ✅ **已达成**（2026-10-30）—— 旧 `autoSummarize` / `scope` 标签用法的**唯一消费者**（旧写入点）已删 ✓；**字段形状保留** ✓（前端表单按这四个字段读写 ✓）—— 「无效」指的是**运行时不再消费** ✓ | — | 少量 | Stage 4–5 ✓ |
 | | **M-49 删原 `MemoryService` 单类** | ⚠️ 平面 A / B 两个服务类**必须保留** | **X16**（关注点 #15） | 少量 | M-01 |
-| | M-50 启用扫描脚本 Memory 段 | ⚠️ **部分达成** —— **X11 / X16 两条已启用** ✓（`class MemoryService\b` ✓ / `_remember` ✓）；**X12 / X13 / X15 仍关着** ✓ —— 那几条的旧实现还在场 ✓（`layered.py` ✓ / L1 表 ✓ / L3 表 ✓）；**X19 的表已 DROP** ✓ → 规则收窄后启用 ✓（本轮 ✓） 台账 X11–X16 段 | — | 0 | M-43 |
-| | M-51 更新台账 + 现状文档 | ⚠️ **台账已更新** ✓（X11 已清理 ✓ / X16 已弃用 ✓ / X19 **本轮改为已清理** ✓）；**现状文档未更新** ✗（与 Session S-38 / Router R-28 / Context C-32 一起补 ✓） —— X14 标「已弃用」（修复类）；**X19 在 Stage 0 的迁移 0048 内已落地** → 一并标「已清理」 | — | 0 | M-50 |
+- [x] **M-50 启用扫描脚本 Memory 段** —— ⚠️ **部分** —— **X11 / X12 / X16 两条已启用** ✓（X12 于 2026-10-31 随 Agent Stage 7 的删除启用 ✓ —— `modules/` 与 `runtimes/` 两条规则 ✓）；**X13 / X15 仍关着** ✓（旧表还在 ✓ —— 表未 DROP ✓）· [x] **M-51 更新台账 + 现状文档** ✓（2026-10-31 ✓ —— 同一份现状文档 ✓）
+| | M-51 更新台账 + 现状文档 | ✅ **已达成**（2026-10-31）—— **现状文档已更新** ✓（`docs/copilot-chat-module-architecture.md` ✓ —— §6.4 记忆与知识 ✓ + §12.4 ✓ —— 与 Session S-38 / Router R-28 / Context C-32 **同一份** ✓） | — | 0 | M-50 |
 
 **退出判据**：
 1. **用户 A 的会话召回结果里不含用户 B 的记忆**（租户 / 工作区 / 用户三层隔离各有测试）—— **X14 已修复**；
@@ -1149,7 +1149,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] **R-19 渠道入站改走 Strategy** ✓ —— **IM 也走规则链** ✓（`channel_turn.py` 的 `_route()` ✓ —— 渠道登记的 agent 只是「显式指定」这一条规则的输入 ✓；粘性 ✓；**不命中 → 退回渠道 agent** ✓ —— 不丢消息 ✓）
 - [x] R-20 `dispatch_subscriber` 停用打点 ✓（文件已删 ✓）· R-21 第二套 turn 停用打点 ✓（两个用例已删 ✓）
 - [x] R-22 **删 `build_session_key`** → **R4 已清理** ✓（扫描规则的目录原本写错 ✓ 已改正并启用 ✓）· R-23 **确认 `try_claim` 的互斥已迁走** ✓（**不删** ✓ —— R3 归 Session ✓）· R-24 删 `catalog.py` 映射（⚠️ **待核对** ✓）
-- [x] R-25 / R-26 **确认**无残留调用方 ✓ · R-27 启用扫描脚本 Router 段 ✓ · R-28 更新台账 ✓ —— ⚠️ **现状文档未更新** ✗
+- [x] R-25 / R-26 **确认**无残留调用方 ✓ · R-27 启用扫描脚本 Router 段 ✓ · R-28 更新台账 + **现状文档** ✓（2026-10-31 ✓ —— `docs/copilot-chat-module-architecture.md` v1.4 ✓）
 
 ### Session 层（§3.3）—— **删除 X2 / X3 / X4 / X6 / X7 / X18**（**全局关键路径**）
 - [x] S-01 `session/` 骨架 + `state.py` ✓ · S-02 **迁移 0046** ✓ · S-03 `session_messages.session_id` 回填 ✓ · S-04 `APPROVER_MUST_DIFFER` ✓ · S-05 **`AsyncPostgresSaver`** ✓（**X20 已清理** ✓）· S-06 停写 `wait_status` → **X6** ✓ · S-07 打点 X2–X7 ✓
@@ -1175,8 +1175,8 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] C-18 manifest 落库 ✓（**Context Stage 4 已接上生产** ✓）· C-19 `rolling_summary` 迁移 ✓ · C-20 交付前落库 ✓
 - [x] C-21 Agent Loop 调 Context ✓（**旧循环那半** ✓ —— A-26 ✓；⚠️ **新 `AgentLoopRunner` 那半未做** ✗ → Agent Stage 5 ✓）· [ ] **C-22 召回失败的 degraded 标记** —— ⚠️ **未达成** —— Context 侧**已产出** `recall_degraded` ✓ 但 **`ResultEvent.flags` 契约还没实现** ✗ → **归 Gateway 层** ✓ · C-23 端到端回归 ✓（`test_context_wiring.py` ✓）
 - [x] C-24 停用打点 `_load_messages` / 四套模板 / `compact.py` → **X8 / X9 / X10** ✓（调用点已归零 ✓ —— 实测 legacy 计数 0 ✓）· C-25 自拼 messages 分支停用打点 ✓（旧循环那半 ✓ —— **删除归 Agent X17** ✓）
-- [x] C-26 **删 `compact.py`** → **X9** ✓ · C-27 **删四套模板** → **X10** ✓ · C-28 **删 `_load_messages`** → **X8** ✓ · [ ] **C-29 删 `budget.py`** —— ⚠️ **未做** —— 它的两个旧类还被**死代码** `nodes.py` import ✓ → **归 Agent Stage 7** ✓ · C-30 删 `metadata['rolling_summary']` 残留 ✓
-- [x] C-31 启用扫描脚本 Context 段 ✓（28 → 30 条 ✓）· [ ] **C-32 更新台账 + 现状文档** —— ⚠️ **台账已更新** ✓；**现状文档未更新** ✗
+- [x] C-26 **删 `compact.py`** → **X9** ✓ · C-27 **删四套模板** → **X10** ✓ · C-28 **删 `_load_messages`** → **X8** ✓ · [x] **C-29 删 `budget.py`** ✓ —— **已随 Agent Stage 7 删除** ✓（2026-10-31 ✓ —— 那两个旧类只被死代码 import ✓）· C-30 删 `metadata['rolling_summary']` 残留 ✓
+- [x] C-31 启用扫描脚本 Context 段 ✓（28 → 30 条 ✓）· [x] **C-32 更新台账 + 现状文档** ✓（2026-10-31 ✓ —— 同一份现状文档 ✓）
 
 ### Memory 层（§3.5）—— **删除 X11 / X12 / X13 / X15 / X16，修复 X14**
 - [x] M-01 **拆分 `MemoryService`** → **X16 拆分** ✓ · M-02 `memory/` 骨架 + 端口 ✓ · M-03 **迁移 0048** ✓（含 **DROP 死表 X19** ✓）· **M-03b 写入侧持久化 `owner_id`** ✓ · M-04 `RecallHit` 扩字段 ✓ · M-05 打点 X11–X16 ✓（随旧实现删除**已撤除** ✓）
@@ -1187,8 +1187,8 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] **M-26 向量统一走 embedding** ✓ · [x] **M-27 异步补写** ✓ · [x] **M-28 `session_memory_buffer`** ✓ · [x] **M-29 会话结束提炼（sweeper 触发）** ✓ · [x] **M-30 提升规则** ✓ —— ✅ **Stage 5 已达成**（2026-10-31 ✓）
 - [x] **M-31 统计更新** ✓ · [x] **M-32 淘汰器** ✓ · [x] **M-33 `trend()` 真实统计** ✓ · [x] **M-34 接入 sweeper** ✓ · [x] **M-35 淘汰执行器** ✓ —— ✅ **Stage 6 已达成**（2026-10-31 ✓ —— 策略**第一次有执行者** ✓ ✓）
 - [ ] **M-36 B1 管理接口** · [ ] **M-37 B2 管理服务** · [ ] **M-38 B3 管理策略** · [ ] **M-39 C9 治理 provider** · [ ] **M-40 乐观并发 409** · [ ] **M-41 敏感闸门补齐** · [ ] **M-42 管理端直写停用打点** —— ⬜ **Stage 6b 未做**（⚠️ **X16 的后半段**（管理端绕过脱敏与去重 ✓）**就归这里** ✗）
-- [x] M-43 **删 `_remember`** → **X11** ✓ · [ ] M-44 **删 `layered.py`** → **X12**（⚠️ **归 Agent Stage 7** ✓）· [ ] M-45 **删 `remember` 节点** → **X12**（⚠️ **归 Agent Stage 7** ✓）· [ ] M-46 **退役 `admin_memory_l1`** → **X13**（⚠️ **写侧已退役 ✓，表未 DROP** ✓ —— 管理端 4 个 L1 端点还读它 ✓）· [ ] M-47 **退役 `admin_memory_l3`** → **X15**（⚠️ **数据要先迁 knowledge** ✓）· M-48 清理 `memory_policy` 无效语义 ✓ · M-49 **删原 `MemoryService` 单类** → **X16** ✓（已拆 ✓ —— 两个服务类**必须保留** ✓）
-- [ ] **M-50 启用扫描脚本 Memory 段** —— ⚠️ **部分** —— **X11 / X16 两条已启用** ✓；**X12 / X13 / X15 仍关着** ✓（旧实现还在场 ✓）· [ ] **M-51 更新台账 + 现状文档** —— ⚠️ **台账已更新** ✓；**现状文档未更新** ✗
+- [x] M-43 **删 `_remember`** → **X11** ✓ · [x] M-44 **删 `layered.py`** → **X12** ✓（**已随 Agent Stage 7 删除** ✓ —— 扫描规则同时覆盖 `modules/` 与 `runtimes/` ✓）· [x] M-45 **删 `remember` 节点** → **X12** ✓（同批 ✓）· [ ] M-46 **退役 `admin_memory_l1`** → **X13**（⚠️ **写侧已退役 ✓，表未 DROP** ✓ —— 管理端 4 个 L1 端点还读它 ✓）· [ ] M-47 **退役 `admin_memory_l3`** → **X15**（⚠️ **数据要先迁 knowledge** ✓）· M-48 清理 `memory_policy` 无效语义 ✓ · M-49 **删原 `MemoryService` 单类** → **X16** ✓（已拆 ✓ —— 两个服务类**必须保留** ✓）
+- [x] **M-50 启用扫描脚本 Memory 段** —— ⚠️ **部分** —— **X11 / X12 / X16 两条已启用** ✓（X12 于 2026-10-31 随 Agent Stage 7 的删除启用 ✓ —— `modules/` 与 `runtimes/` 两条规则 ✓）；**X13 / X15 仍关着** ✓（旧表还在 ✓ —— 表未 DROP ✓）· [x] **M-51 更新台账 + 现状文档** ✓（2026-10-31 ✓ —— 同一份现状文档 ✓）
 
 ### Agent 层（§3.6）—— **删除 X5 / X1 + 关注点 #16 / #24–#29**
 - [x] A-01 补五个端口 ✓ · A-02 `QZDAPChatModel` 骨架 ✓ · A-03 归一 `TaskKind`/`TaskClassifier` ✓（`graph/routing.py` 迁到 `agent_router/classifier.py` ✓）· A-04 依赖核对 ✓ · A-05 打点 X5 旧入口 ✓

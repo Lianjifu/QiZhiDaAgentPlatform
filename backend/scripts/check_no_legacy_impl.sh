@@ -172,7 +172,8 @@ _publish_chunk;modules/;X18;X;on
 compact.py;modules/;X9;C;on
 _load_messages;modules/;X8;C;on
 build_system_prompt;modules/;X10;C;on
-layered.py;modules/;X12;M;off
+layered.py;modules/;X12;M;on
+layered.py;runtimes/;X12;M;on
 _remember;modules/;X11;M;on
 admin_memory_l1;modules/;X13;M;off
 admin_memory_l3;modules/;X15;M;off
