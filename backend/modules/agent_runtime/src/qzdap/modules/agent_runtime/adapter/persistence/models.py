@@ -16,9 +16,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
-    Float,
     ForeignKey,
-    Index,
     Integer,
     Numeric,
     String,
@@ -101,58 +99,11 @@ class SessionORM(TenantScopedMixin, Base):
     )
 
 
-class TurnORM(TenantScopedMixin, Base):
-    __tablename__ = "agent_turns"
-
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
-    session_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True),
-        ForeignKey("agent_sessions.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    user_input: Mapped[str] = mapped_column(Text, nullable=False)
-    started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
-    status: Mapped[str] = mapped_column(
-        String(16),
-        nullable=False,
-        default="running",
-        server_default=text("'running'"),
-    )
-    finished_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    final_response: Mapped[str | None] = mapped_column(Text, nullable=True)
-    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
-
-    __table_args__ = (
-        make_composite_index("session_id", "status"),
-        make_composite_index("workspace_id"),
-        Index(
-            "ix_agent_turns_tenant_id_session_id_created_at",
-            "tenant_id",
-            "session_id",
-            "created_at",
-        ),
-        CheckConstraint(
-            "status IN ('running','succeeded','failed','denied')",
-            name="status_enum",
-        ),
-    )
-
-
 class SessionTurnORM(TenantScopedMixin, Base):
-    """新架构的轮次表 —— ``session_turns``（迁移 0035 + 0046 + 0050）。
+    """新架构的轮次表 —— ``session_turns``（迁移 0035 + 0046 + 0050 + 0055）。
 
-    ⚠️ **与旧的 ``agent_turns``（:class:`TurnORM`）并存** —— 这是 Session 层
-    「双写期」的形态：旧表仍在写，新表同步写。旧表的删除在 Session Stage 6。
+    ✅ **它是轮次的唯一真相** —— 旧表 ``agent_turns`` 已停写（S-15b ✓）
+    （S-15b ✓），读端也一并切过来 ✓。
 
     这张表在 Gateway Stage 4b 里承担两件事：① ``session_events`` 的外键父行；
     ② 重放时判断「这一轮是否已到终态」。
@@ -173,6 +124,9 @@ class SessionTurnORM(TenantScopedMixin, Base):
     key_strength: Mapped[str] = mapped_column(
         String(8), nullable=False, default="strong", server_default=text("'strong'")
     )
+    # ⚠️ **这一轮用户说了什么** ✓ —— 停旧写（S-15b）之后，``agent_turns`` 不再
+    # 被写 ✓，任务卡片的描述只能从这里取 ✓（迁移 0055 ✓）。
+    user_input: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="running", server_default=text("'running'")
     )

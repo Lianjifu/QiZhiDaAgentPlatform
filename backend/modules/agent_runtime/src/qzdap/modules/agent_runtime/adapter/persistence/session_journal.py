@@ -8,9 +8,9 @@ Stage 4b（无感重放）、§4.5；``session-refactor-plan.md`` §7（事件�
 
 两件事：
 
-1. **轮次双写**（``session_turns``）—— 新表与旧的 ``agent_turns`` 并存写入
-   （Session 方案 §12 的双写期）。除了当权威轮次表，它还是
-   ``session_events`` 的**外键父行** —— 事件行必须挂在一个存在的轮次上。
+1. **轮次落库**（``session_turns``）—— 它是**权威轮次表** ✓（旧表
+   ``agent_turns`` 已停写 · S-15b ✓），同时是 ``session_events`` 的
+   **外键父行** —— 事件行必须挂在一个存在的轮次上 ✓。
 2. **事件落库**（``session_events``）—— **每个 chunk 一行**，``seq`` 在轮次内
    严格递增。落库**先于投递**（§7）：chunk 写进去再交给 SSE 编码器。
 
@@ -68,6 +68,7 @@ class PostgresSessionJournal:
         key_strength: str,
         agent_version: str,
         model_version: str,
+        user_input: str | None = None,
         trace_id: str | None = None,
         route_decision: dict[str, Any] | None = None,
     ) -> None:
@@ -92,6 +93,8 @@ class PostgresSessionJournal:
             status="running",
             agent_version=agent_version,
             model_version=model_version,
+            # 这一轮用户说了什么 ✓（停旧写之后，任务卡片只能从这里取 ✓）。
+            user_input=user_input,
             trace_id=(trace_id or None) and trace_id[:64],
             # 路由决策留痕 —— **产出者是 Router**（本层只代填）。
             route_decision=route_decision,

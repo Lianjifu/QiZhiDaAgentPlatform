@@ -98,6 +98,7 @@ CREATE TABLE "{schema}".session_turns (
     trace_id varchar(64),
     agent_version varchar(64) NOT NULL,
     model_version varchar(64) NOT NULL,
+    user_input text,
     cost_usd numeric(12,6),
     expected_revision integer NOT NULL DEFAULT 0,
     error_code varchar(64),
@@ -285,10 +286,10 @@ async def _session_row(factory, *, session_id: UUID, tenant_id: UUID) -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_turn_lands_in_every_table(turn_ctx) -> None:  # type: ignore[no-untyped-def]
+async def test_a_turn_lands_only_in_the_new_table(turn_ctx) -> None:  # type: ignore[no-untyped-def]
+    """轮次**只落新表** ✓ —— 旧表停写（S-15b ✓）→ 旧表必须是空的 ✓。"""
     from qzdap.modules.agent_runtime.adapter.persistence.repositories import (
         SqlSessionRepository,
-        SqlTurnRepository,
     )
     from qzdap.modules.agent_runtime.adapter.persistence.session_journal import (
         PostgresSessionJournal,
@@ -313,7 +314,6 @@ async def test_a_turn_lands_in_every_table(turn_ctx) -> None:  # type: ignore[no
         runner = TurnRunner(
             executor=_FakeExecutor(turn_id=turn_id),
             lifecycle=TurnLifecycle(
-                turns=SqlTurnRepository(db_session),
                 journal=PostgresSessionJournal(turn_ctx),
                 events=events,  # type: ignore[arg-type]
             ),
@@ -342,12 +342,12 @@ async def test_a_turn_lands_in_every_table(turn_ctx) -> None:  # type: ignore[no
         await db_session.commit()
 
     async with turn_ctx.session() as session:
-        old_turn = (
+        old_turn_rows = (
             await session.execute(
-                text("SELECT status, final_response FROM agent_turns WHERE id = :id"),
+                text("SELECT id FROM agent_turns WHERE id = :id"),
                 {"id": turn_id},
             )
-        ).one()
+        ).all()
         new_turn = (
             await session.execute(
                 text(
@@ -367,6 +367,9 @@ async def test_a_turn_lands_in_every_table(turn_ctx) -> None:  # type: ignore[no
                 text("SELECT role, content FROM agent_session_messages ORDER BY seq")
             )
         ).all()
+        old_msg_count = (
+            await session.execute(text("SELECT count(*) FROM agent_session_messages"))
+        ).scalar_one()
         new_msgs = (
             await session.execute(
                 text(
@@ -385,9 +388,9 @@ async def test_a_turn_lands_in_every_table(turn_ctx) -> None:  # type: ignore[no
             )
         ).one()
 
-    # 旧表轮次：成功 + 最终回复 ✓
-    assert old_turn[0] == "succeeded"
-    assert old_turn[1] == "你好，我是助手"
+    # ⚠️ **旧表不再写** ✓（停旧写 S-15b ✓）—— 这一轮一行都没有 ✓。
+    assert old_turn_rows == []
+    assert old_msg_count == 0
     # 新表轮次：成功 + **成本归属** ✓
     assert new_turn[0] == "succeeded"
     assert float(new_turn[1]) == pytest.approx(0.01)
@@ -395,11 +398,8 @@ async def test_a_turn_lands_in_every_table(turn_ctx) -> None:  # type: ignore[no
     # 事件：每个 chunk 一行，seq 从 1 连续 ✓
     assert [row[0] for row in events_rows] == [1, 2, 3]
     assert [row[1] for row in events_rows] == ["message", "usage", "done"]
-    # 消息：旧表 + 新表都有（双写期 ✓），新表的 session_seq 单调 ✓
-    assert [(r[0], r[1]) for r in old_msgs] == [
-        ("user", "你好"),
-        ("assistant", "你好，我是助手"),
-    ]
+    # 消息：新表有（session_seq 单调 ✓），旧表空 ✓
+    assert old_msgs == []
     assert [(r[0], r[1]) for r in new_msgs] == [
         ("user", "你好"),
         ("assistant", "你好，我是助手"),
@@ -413,9 +413,6 @@ async def test_a_turn_lands_in_every_table(turn_ctx) -> None:  # type: ignore[no
 @pytest.mark.asyncio
 async def test_a_failed_turn_lands_as_failed(turn_ctx) -> None:  # type: ignore[no-untyped-def]
     """一个 chunk 都没产出就失败 → 轮次落到 ``failed`` ✓（不是永远 running）。"""
-    from qzdap.modules.agent_runtime.adapter.persistence.repositories import (
-        SqlTurnRepository,
-    )
     from qzdap.modules.agent_runtime.adapter.persistence.session_journal import (
         PostgresSessionJournal,
     )
@@ -436,7 +433,6 @@ async def test_a_failed_turn_lands_as_failed(turn_ctx) -> None:  # type: ignore[
 
     async with turn_ctx.session() as db_session:
         lifecycle = TurnLifecycle(
-            turns=SqlTurnRepository(db_session),
             journal=PostgresSessionJournal(turn_ctx),
             events=_RecordingEvents(),  # type: ignore[arg-type]
         )
@@ -484,7 +480,6 @@ async def test_the_pending_approval_lands_on_the_turn_row(turn_ctx) -> None:  # 
     """
     from qzdap.modules.agent_runtime.adapter.persistence.repositories import (
         SqlSessionRepository,
-        SqlTurnRepository,
     )
     from qzdap.modules.agent_runtime.adapter.persistence.session_journal import (
         PostgresSessionJournal,
@@ -502,7 +497,6 @@ async def test_the_pending_approval_lands_on_the_turn_row(turn_ctx) -> None:  # 
         runner = TurnRunner(
             executor=_ApprovalExecutor(approval_id=approval_id),
             lifecycle=TurnLifecycle(
-                turns=SqlTurnRepository(db_session),
                 journal=PostgresSessionJournal(turn_ctx),
                 events=_RecordingEvents(),  # type: ignore[arg-type]
             ),
@@ -531,8 +525,7 @@ async def test_the_pending_approval_lands_on_the_turn_row(turn_ctx) -> None:  # 
         row = (
             await session.execute(
                 text(
-                    "SELECT status, pending_approval FROM session_turns "
-                    "WHERE id = :id"
+                    "SELECT status, pending_approval FROM session_turns WHERE id = :id"
                 ),
                 {"id": turn_id},
             )

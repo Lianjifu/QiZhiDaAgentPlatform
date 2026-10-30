@@ -88,7 +88,7 @@ class CopilotSessionService:
         self._events = events
         self._graph = graph
         self._idempotency = idempotency
-        # 新架构的轮次 + 事件日志（双写期）—— 重放的落点（Gateway §4.5）。
+        # 新架构的轮次 + 事件日志 —— 重放的落点（Gateway §4.5）。
         self._journal = journal
         # 会话执行权（互斥）—— **轮次表是唯一权威**（Session 方案 §4.4 / §6）。
         # 旧的 ``wait_status`` CAS 已迁走（台账 R3 已清理）✓。

@@ -24,7 +24,10 @@ from qzdap.modules.agent_runtime.adapter.http.attachments import (
     resolve_attachment_context,
 )
 from qzdap.modules.agent_runtime.adapter.persistence.attachment_models import CopilotAttachmentORM
-from qzdap.modules.agent_runtime.adapter.persistence.models import SessionORM, TurnORM
+from qzdap.modules.agent_runtime.adapter.persistence.models import (
+    SessionORM,
+    SessionTurnORM,
+)
 from qzdap.modules.identity.adapter.http.account_router import build_account_router
 from qzdap.modules.identity.adapter.persistence.control_models import (
     IdentityControlAuditORM,
@@ -48,7 +51,14 @@ async def database_console():
     try:
         async with engine.begin() as connection:
             await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
-            for model in (WorkspaceORM, UserORM, UserWorkspaceORM, SessionORM, TurnORM, TenantSettingORM):
+            for model in (
+                WorkspaceORM,
+                UserORM,
+                UserWorkspaceORM,
+                SessionORM,
+                SessionTurnORM,
+                TenantSettingORM,
+            ):
                 # Some shared model helpers generate generic index names such
                 # as ix_tenant_id_status. PostgreSQL index names are schema
                 # global, so qualify these names in this isolated schema.
@@ -183,10 +193,11 @@ async def test_insights_count_owner_workspace_real_turns_only(database_console):
         session.add(SessionORM(id=member_session, tenant_id=db.tenant, workspace_id=db.workspace, owner_id=db.member, agent_id=uuid4(), agent_version='v1'))
         await session.flush()
         session.add_all([
-            TurnORM(id=uuid4(), tenant_id=db.tenant, workspace_id=db.workspace, session_id=db.runtime_session, user_input='actual success', status='succeeded', started_at=now - timedelta(hours=2)),
-            TurnORM(id=uuid4(), tenant_id=db.tenant, workspace_id=db.workspace, session_id=db.runtime_session, user_input='actual failure', status='failed', started_at=now - timedelta(hours=1)),
-            TurnORM(id=uuid4(), tenant_id=db.tenant, workspace_id=db.workspace, session_id=member_session, user_input='another user', status='succeeded', started_at=now - timedelta(hours=1)),
-            TurnORM(id=uuid4(), tenant_id=db.tenant, workspace_id=db.workspace, session_id=db.runtime_session, user_input='old turn', status='succeeded', started_at=now - timedelta(days=40)),
+            # ⚠️ 读的是**新表** ``session_turns`` ✓（旧表已停写 ✓）。
+            SessionTurnORM(id=uuid4(), tenant_id=db.tenant, workspace_id=db.workspace, session_id=db.runtime_session, idempotency_key='k1', key_strength='strong', user_input='actual success', status='succeeded', agent_version='v1', model_version='m', started_at=now - timedelta(hours=2)),
+            SessionTurnORM(id=uuid4(), tenant_id=db.tenant, workspace_id=db.workspace, session_id=db.runtime_session, idempotency_key='k2', key_strength='strong', user_input='actual failure', status='failed', agent_version='v1', model_version='m', started_at=now - timedelta(hours=1)),
+            SessionTurnORM(id=uuid4(), tenant_id=db.tenant, workspace_id=db.workspace, session_id=member_session, idempotency_key='k3', key_strength='strong', user_input='another user', status='succeeded', agent_version='v1', model_version='m', started_at=now - timedelta(hours=1)),
+            SessionTurnORM(id=uuid4(), tenant_id=db.tenant, workspace_id=db.workspace, session_id=db.runtime_session, idempotency_key='k4', key_strength='strong', user_input='old turn', status='succeeded', agent_version='v1', model_version='m', started_at=now - timedelta(days=40)),
         ])
     response = await db.client.get('/api/home/insights', headers=db.headers(), params={'range': '近 7 天'})
     assert response.status_code == 200, response.text

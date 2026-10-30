@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_observability.metrics import record_legacy_call
 from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from qzdap.modules.agent_runtime.adapter.persistence.catalog_models import (
     CatalogAgentORM,
     CatalogAgentUserStateORM,
-    LegacySessionMessageORM,
 )
 from qzdap.modules.agent_runtime.application.catalog_ports import (
     CatalogAgentRepository,
@@ -178,45 +176,7 @@ class SqlCatalogAgentUserStateRepository(CatalogAgentUserStateRepository):
         row.favorited = on
 
 
-class SqlSessionMessageRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self._s = session
-
-    # ⚠️ **读已切到新表**（2026-10-30，S-15a ✓）—— 旧表的读取方法**删除** ✓
-    # （留着就是第二条读路径 ✗）。旧表现在**只写**（双写期 ✓），
-    # 到 Stage 6 的 S-15b（停旧写）之后连写也停 ✓。
-
-    async def append(
-        self,
-        *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        session_id: UUID,
-        turn_id: UUID | None,
-        seq: int,
-        role: str,
-        content: str,
-        tool_name: str = "",
-        extra: dict | None = None,
-    ) -> None:
-        record_legacy_call("X4")  # 旧表 agent_session_messages
-        self._s.add(
-            LegacySessionMessageORM(
-                tenant_id=tenant_id,
-                workspace_id=workspace_id,
-                session_id=session_id,
-                turn_id=turn_id,
-                seq=seq,
-                role=role,
-                content=content,
-                tool_name=tool_name,
-                extra=extra or {},
-            )
-        )
-
-
 __all__ = [
     "SqlCatalogAgentRepository",
     "SqlCatalogAgentUserStateRepository",
-    "SqlSessionMessageRepository",
 ]

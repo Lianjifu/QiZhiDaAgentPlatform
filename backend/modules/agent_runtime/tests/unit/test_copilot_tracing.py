@@ -19,6 +19,7 @@ import pytest
 from _ar_unit_in_memory import (
     InMemoryIdempotencyStore,
     InMemorySessionJournal,
+    InMemoryTurnRepository,
     make_dependencies,
     make_turn_runner,
 )
@@ -55,6 +56,7 @@ class _Messages:
 
     async def append(self, **kwargs):
         self.rows.append(kwargs)
+
     async def next_seq(self, *, session_id):  # type: ignore[no-untyped-def]
         """下一个轮次内序号 ✓（与真实实现同语义）。"""
         return (self.rows[-1]["seq"] + 1) if self.rows else 0
@@ -126,6 +128,7 @@ async def _make_service(agent: CatalogAgent, owner_id: UserId):
     runner = SessionGraphRunner(llm=_ToolLLM(), tool_port=_ToolPort())
     messages = _Messages()
     journal = InMemorySessionJournal()
+    deps["turns"] = InMemoryTurnRepository(journal)
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
@@ -138,7 +141,6 @@ async def _make_service(agent: CatalogAgent, owner_id: UserId):
         claim=deps["sessions"].claim,
         turn_runner=make_turn_runner(
             graph=runner,
-            turns=deps["turns"],
             journal=journal,
             events=deps["events"],
             messages=messages,

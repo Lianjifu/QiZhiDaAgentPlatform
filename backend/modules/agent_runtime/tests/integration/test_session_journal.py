@@ -56,6 +56,7 @@ CREATE TABLE "{schema}".session_turns (
     trace_id varchar(64),
     agent_version varchar(64) NOT NULL,
     model_version varchar(64) NOT NULL,
+    user_input text,
     cost_usd numeric(12,6),
     expected_revision integer NOT NULL DEFAULT 0,
     error_code varchar(64),
@@ -336,7 +337,7 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
     events = RecordingEventPublisher()
     svc = CopilotSessionService(
         sessions=sessions,
-        turns=InMemoryTurnRepository(),
+        turns=InMemoryTurnRepository(journal),
         messages=messages,  # type: ignore[arg-type]
         catalog=_Catalog(agent),  # type: ignore[arg-type]
         events=events,
@@ -346,7 +347,6 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
         claim=InMemoryTurnClaim(),
         turn_runner=make_turn_runner(
             graph=runner,
-            turns=InMemoryTurnRepository(),
             journal=journal,
             events=events,
             messages=messages,

@@ -9,7 +9,7 @@
 | 端口 | 职责 | 实现 |
 |---|---|---|
 | :class:`TurnExecutorPort` | 跑一轮并产出 chunk | 模块侧（现役的 graph runner） |
-| :class:`TurnLifecyclePort` | 轮次行（新旧双写）+ 事件落库 + 轮次终态 | 模块侧 |
+| :class:`TurnLifecyclePort` | 轮次行（新表）+ 事件落库 + 轮次终态 | 模块侧 |
 | :class:`SessionMessagePort` | 消息读写（会话内序号） | 模块侧 |
 | :class:`SessionStatePort` | 会话行的读改（标题 / 预览 / 摘要 / graph_state） | 模块侧 |
 | :class:`CancelProbePort` | 取消标记 | 模块侧 |

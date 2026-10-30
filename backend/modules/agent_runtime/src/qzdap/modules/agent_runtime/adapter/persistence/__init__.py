@@ -6,7 +6,6 @@ Concrete implementations of the application ports over SQLAlchemy.
 from qzdap.modules.agent_runtime.adapter.persistence.catalog_repositories import (
     SqlCatalogAgentRepository,
     SqlCatalogAgentUserStateRepository,
-    SqlSessionMessageRepository,
 )
 from qzdap.modules.agent_runtime.adapter.persistence.repositories import (
     SqlSessionRepository,
@@ -16,7 +15,6 @@ from qzdap.modules.agent_runtime.adapter.persistence.repositories import (
 __all__ = [
     "SqlCatalogAgentRepository",
     "SqlCatalogAgentUserStateRepository",
-    "SqlSessionMessageRepository",
     "SqlSessionRepository",
     "SqlTurnRepository",
 ]

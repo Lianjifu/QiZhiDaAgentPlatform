@@ -1,12 +1,12 @@
 """会话消息的读写端口（Session 方案 §5.2 / §7）。
 
-**为什么要有这一层**：消息**规范真相**是 ``session_messages``（新表），旧表
-``agent_session_messages`` 只在**双写期**里被一起写（Stage 2）—— 调用方
-（copilot）应该只认**一个**端口，切读 / 停旧写时只改**实现** ✓（不碰调用点）。
+**为什么要有这一层**：消息**规范真相**是 ``session_messages``（新表）——
+调用方（copilot）只认**一个**端口 ✓，切读 / 停旧写时只改**实现** ✓
+（不碰调用点）。
 
-**双写期的实现形态**（模块侧的 ``PostgresSessionMessageStore``）：
-① 写：新表 + 旧表**都写**（新表带会话内序号 ``session_seq``）；
-② 读：**仍读旧表** —— 切读（S-15a）要等对账窗口，不是本 Stage ✓。
+**现在的实现形态**（模块侧的 ``PostgresSessionMessageStore``）：
+① 写：**只写新表** ✓（旧表 ``agent_session_messages`` 已停写 · S-15b ✓）；
+② 读：**读新表** ✓（切读 S-15a ✓）。
 
 **这一层是契约层** —— 不引框架、不引模块；DB 访问走
 :class:`SessionMessagePort`（实现在模块侧 ✓）。

@@ -364,7 +364,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             turn_runner = TurnRunner(
                 executor=SessionGraphExecutor(graph),
                 lifecycle=TurnLifecycle(
-                    turns=SqlTurnRepository(session),
                     journal=container.session_journal(),
                     events=AgentRuntimeEventPublisher(container.bus()),
                 ),
@@ -375,7 +374,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             return CopilotSessionService(
                 sessions=sessions_repo,
                 turns=SqlTurnRepository(session),
-                # 消息存取归 Session 层（新表 + 旧表双写，Stage 2）——
+                # 消息存取归 Session 层（新表唯一落点，S-15b ✓）——
                 # 调用方不再直接依赖旧表 repo ✓（切读/停旧写只改实现）。
                 messages=messages_store,
                 catalog=catalog,
@@ -386,7 +385,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 idempotency=IdempotencyGuard(
                     PostgresIdempotencyStore(container.session_factory())
                 ),
-                # 新架构的轮次 + 事件日志（双写期）—— 重放的落点（Stage 4b）。
+                # 新架构的轮次 + 事件日志 —— 重放的落点（Stage 4b）。
                 journal=container.session_journal(),
                 # 会话执行权（互斥）—— 轮次表是唯一权威（Session 方案 §4.4）。
                 claim=PostgresTurnClaim(session),

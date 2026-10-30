@@ -1,12 +1,12 @@
-"""``SessionMessagePort`` 的 SQL 实现 —— **双写期**的消息存取。
+"""``SessionMessagePort`` 的 SQL 实现 —— 消息存取（**只写新表 / 读新表** ✓）。
 
 依据：Session 方案 §5.2 / §7（Stage 2 的 S-13 / S-15）。
 
-**双写期的形态**：
+**现在的形态**：
 
 | 动作 | 落点 | 为什么 |
 |---|---|---|
-| 写 | **新表** ``session_messages``（带会话内序号 ``session_seq``）**+ 旧表** ``agent_session_messages`` | 旧表要留到 Stage 6（对账 + 只读窗口）✓ |
+| 写 | **只写新表** ``session_messages``（带会话内序号 ``session_seq``）✓ | 旧表**已停写**（2026-10-30，S-15b ✓）—— 它现在只作为**只读兜底**留着 ✓，到 Stage 6 的 S-36 才 DROP ✓ |
 | 读 | **新表**（2026-10-30，S-15a 切读 ✓） | 旧表的历史已由**迁移 0054** 搬进新表 ✓；对账差异为 0 是切读的前置 ✓（脚本：``scripts/verify_session_tables.py`` ✓） |
 
 ⚠️ **切读顺带修掉一个真 bug**：旧表只能按**轮次内**的 ``seq`` 排序 ✗ ——
@@ -28,9 +28,6 @@ from qzdap_agent_runtime.session.sequence import SessionSequencePort
 from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import select
 
-from qzdap.modules.agent_runtime.adapter.persistence.catalog_repositories import (
-    SqlSessionMessageRepository,
-)
 from qzdap.modules.agent_runtime.adapter.persistence.models import (
     SessionMessageORM,
     SessionTurnORM,
@@ -43,7 +40,7 @@ _log = logging.getLogger(__name__)
 
 
 class PostgresSessionMessageStore(SessionMessagePort):
-    """会话消息的存取 —— **写双表、读新表**（切读 S-15a ✓）。"""
+    """会话消息的存取 —— **只写新表、读新表** ✓（旧表已停写 S-15b ✓）。"""
 
     def __init__(
         self,
@@ -53,7 +50,6 @@ class PostgresSessionMessageStore(SessionMessagePort):
     ) -> None:
         self._s = session
         self._sequence = sequence or PostgresSessionSequence(session)
-        self._legacy = SqlSessionMessageRepository(session)
 
     async def list_for_session(self, session_id: UUID) -> list[dict[str, Any]]:
         """会话的消息列表 —— **读新表** ✓（切读 S-15a，2026-10-30）。
@@ -112,7 +108,7 @@ class PostgresSessionMessageStore(SessionMessagePort):
         tool_name: str = "",
         extra: dict[str, Any] | None = None,
     ) -> None:
-        """追加一条消息 —— 新表 + 旧表**都写** ✓。
+        """追加一条消息 —— **只写新表** ✓（旧表已停写 ✓）。
 
         ⚠️ **``turn_id`` 不能为空**：新表的外键指向 ``session_turns.id``，
         没有轮次的消息在新表里**无处安放** ✗。这不是运行期能兜的场景 ——
@@ -140,18 +136,6 @@ class PostgresSessionMessageStore(SessionMessagePort):
                 session_id=session_id,
                 session_seq=session_seq,
             )
-        )
-        # 旧表 —— **双写**（台账 X4：旧表在 Stage 6 才 DROP）
-        await self._legacy.append(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            session_id=session_id,
-            turn_id=turn_id,
-            seq=seq,
-            role=role,
-            content=content,
-            tool_name=tool_name,
-            extra=extra,
         )
         _log.debug(
             "session_message_appended session_id=%s turn_id=%s seq=%s session_seq=%s",

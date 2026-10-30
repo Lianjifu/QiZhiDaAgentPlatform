@@ -11,6 +11,7 @@ from qzdap_agent_runtime.gateway.replay import StoredEvent
 from qzdap_agent_runtime.session.state import TurnStatus
 from qzdap_kernel.events import DomainEvent
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
+from qzdap_schema.ids import SessionId, TenantId, TurnId, WorkspaceId
 
 from qzdap.modules.agent_runtime.application.ports import (
     EventPublisher,
@@ -20,6 +21,7 @@ from qzdap.modules.agent_runtime.application.ports import (
     TurnRepository,
 )
 from qzdap.modules.agent_runtime.domain import Session, Turn
+from qzdap.modules.agent_runtime.domain import TurnStatus as DomainTurnStatus
 
 
 class InMemoryTurnClaim:
@@ -32,9 +34,7 @@ class InMemoryTurnClaim:
     def __init__(self) -> None:
         self._held: dict[UUID, UUID] = {}
 
-    async def claim(
-        self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID
-    ) -> bool:
+    async def claim(self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID) -> bool:
         if session_id in self._held:
             return False
         self._held[session_id] = turn_id
@@ -89,7 +89,9 @@ class InMemorySessionRepository(SessionRepository):
         # 「是否在飞」问执行权（不再看 wait_status —— 台账 R3 已清理）✓
         live = self._claim.is_held(session_id) if self._claim is not None else False
         await self.update(
-            session.with_runtime(metadata={**session.metadata, "cancel_requested": True})
+            session.with_runtime(
+                metadata={**session.metadata, "cancel_requested": True}
+            )
         )
         return live
 
@@ -139,20 +141,51 @@ class InMemorySessionRepository(SessionRepository):
 
 
 class InMemoryTurnRepository(TurnRepository):
-    def __init__(self) -> None:
-        self._by_id: dict[UUID, Turn] = {}
+    """轮次**读**端口的替身 —— 行存在 journal 写的那一份里 ✓。
 
-    async def add(self, turn: Turn) -> None:
-        self._by_id[turn.id] = turn
+    ⚠️ **不再自己存一份** ✓ —— 停旧写之后轮次只有一个落点 ✓（生产上：
+    journal 写 ``session_turns``，本仓库读同一张表 ✓）。
+    """
+
+    def __init__(self, journal: InMemorySessionJournal) -> None:
+        self._journal = journal
 
     async def get(self, turn_id: UUID) -> Turn | None:
-        return self._by_id.get(turn_id)
+        row = self._journal.turns.get(turn_id)
+        return _row_to_turn(turn_id, row) if row is not None else None
 
     async def latest_for_session(self, session_id: UUID) -> Turn | None:
-        turns = [t for t in self._by_id.values() if t.session_id == session_id]
-        if not turns:
+        rows = [
+            (turn_id, row)
+            for turn_id, row in self._journal.turns.items()
+            if row["session_id"] == session_id
+        ]
+        if not rows:
             return None
-        return max(turns, key=lambda t: t.started_at)
+        turn_id, row = max(rows, key=lambda item: item[1]["started_at"])
+        return _row_to_turn(turn_id, row)
+
+
+def _row_to_turn(turn_id: UUID, row: dict[str, Any]) -> Turn:
+    """journal 的行 → 领域 ``Turn`` ✓（状态映射与生产 mapper 一致 ✓）。"""
+    status = {"waiting": "running", "cancelled": "denied"}.get(
+        str(row.get("status")), str(row.get("status"))
+    )
+    return Turn(
+        id=TurnId(turn_id),
+        tenant_id=TenantId(row["tenant_id"]),
+        workspace_id=WorkspaceId(row["workspace_id"]),
+        session_id=SessionId(row["session_id"]),
+        user_input=str(row.get("user_input") or ""),
+        status=DomainTurnStatus(status),
+        started_at=row["started_at"],
+        finished_at=row.get("finished_at"),
+        final_response="",
+        input_tokens=None,
+        output_tokens=None,
+        cost_usd=row.get("cost_usd"),
+        error_code=row.get("error_code"),
+    )
 
 
 class FakeLLM(LLMPort):
@@ -189,9 +222,7 @@ class FakeLLM(LLMPort):
             ),
         )
 
-    async def synthetic_chunks(
-        self, user_input: str, *, turn_id: UUID
-    ) -> list[dict]:
+    async def synthetic_chunks(self, user_input: str, *, turn_id: UUID) -> list[dict]:
         """LLM 侧通道（plan / artifact / workflow 事件）—— 真 LLM 默认空。"""
         return []
 
@@ -235,6 +266,7 @@ class InMemorySessionJournal(SessionJournal):
         key_strength: str,
         agent_version: str,
         model_version: str,
+        user_input: str | None = None,
         trace_id: str | None = None,
         route_decision: dict[str, Any] | None = None,
     ) -> None:
@@ -246,7 +278,12 @@ class InMemorySessionJournal(SessionJournal):
             "key_strength": key_strength,
             "agent_version": agent_version,
             "model_version": model_version,
+            "user_input": user_input or "",
             "status": "running",
+            "started_at": datetime.now(UTC),
+            "finished_at": None,
+            "error_code": None,
+            "cost_usd": None,
             "route_decision": route_decision,
         }
 
@@ -262,6 +299,8 @@ class InMemorySessionJournal(SessionJournal):
         if row is not None:
             row["status"] = status
             row["error_code"] = error_code
+            row["finished_at"] = datetime.now(UTC)
+            row["cost_usd"] = cost_usd
 
     async def write_pending_approval(
         self, *, turn_id: UUID, pending: dict[str, Any]
@@ -332,9 +371,12 @@ def make_dependencies(
 ):  # type: ignore[no-untyped-def]
     # ⚠️ 执行权（互斥）与仓库**共用一个 claim 实例** —— 「谁在飞」只有一个
     # 真相 ✓（台账 R3：旧的 wait_status CAS 已迁走）。
+    journal = InMemorySessionJournal()
     return {
         "sessions": InMemorySessionRepository(InMemoryTurnClaim()),
-        "turns": InMemoryTurnRepository(),
+        # 轮次读仓库与 journal 读**同一份行** ✓（只有一个落点 ✓）。
+        "journal": journal,
+        "turns": InMemoryTurnRepository(journal),
         "llm": FakeLLM(
             content=llm_content,
             tool_calls=tool_calls,
@@ -388,8 +430,7 @@ def make_copilot(*, agent: Any, llm: Any = None, tool_port: Any = None) -> Any:
     deps = make_dependencies()
     messages = InMemoryMessages()
     runner = SessionGraphRunner(llm=llm or deps["llm"], tool_port=tool_port)
-    journal = InMemorySessionJournal()
-    deps["journal"] = journal
+    journal = deps["journal"]
     deps["messages"] = messages
     service = CopilotSessionService(
         sessions=deps["sessions"],
@@ -403,7 +444,6 @@ def make_copilot(*, agent: Any, llm: Any = None, tool_port: Any = None) -> Any:
         claim=deps["sessions"].claim,
         turn_runner=make_turn_runner(
             graph=runner,
-            turns=deps["turns"],
             journal=journal,
             events=deps["events"],
             messages=messages,
@@ -416,7 +456,6 @@ def make_copilot(*, agent: Any, llm: Any = None, tool_port: Any = None) -> Any:
 def make_turn_runner(
     *,
     graph: Any,
-    turns: TurnRepository,
     journal: SessionJournal,
     events: EventPublisher,
     messages: Any,
@@ -439,7 +478,7 @@ def make_turn_runner(
 
     return TurnRunner(
         executor=SessionGraphExecutor(graph),
-        lifecycle=TurnLifecycle(turns=turns, journal=journal, events=events),
+        lifecycle=TurnLifecycle(journal=journal, events=events),
         messages=messages,
         session_state=SqlSessionState(sessions),
         cancel=SqlCancelProbe(sessions),
@@ -551,7 +590,6 @@ class InMemoryIdempotencyStore:
                 del self._rows[k]
                 return
         self._weak_rows = [row for row in self._weak_rows if row["id"] != row_id]
-
 
 
 _ = Any  # keep typing import alive for Any in stub annotations

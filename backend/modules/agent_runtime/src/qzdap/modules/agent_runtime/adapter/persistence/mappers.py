@@ -13,7 +13,7 @@ from qzdap_schema.ids import (
 
 from qzdap.modules.agent_runtime.adapter.persistence.models import (
     SessionORM,
-    TurnORM,
+    SessionTurnORM,
 )
 from qzdap.modules.agent_runtime.domain import Session, SessionStatus, Turn, TurnStatus
 
@@ -34,18 +34,31 @@ def session_orm_to_domain(o: SessionORM) -> Session:
     )
 
 
-def turn_orm_to_domain(o: TurnORM) -> Turn:
+def session_turn_orm_to_domain(o: SessionTurnORM) -> Turn:
+    """新表 ``session_turns`` 的行 → ``Turn`` 领域实体 ✓。
+
+    ⚠️ **状态映射**：新表的枚举比领域的多两个 ✓ ——
+    ``waiting``（挂起等审批）→ ``running`` ✓（卡片另有「等你确认」分支 ✓）；
+    ``cancelled``（被取消）→ ``denied`` ✓（领域里最接近的「没跑成」✓）。
+
+    ⚠️ 新表**没有** ``final_response`` / token 数 ✗ —— 领域实体里留空 ✓
+    （读它们的地方已经没有了 ✓；回复在**事件流**里 ✓）。
+    """
+    status = {
+        "waiting": TurnStatus.RUNNING.value,
+        "cancelled": TurnStatus.DENIED.value,
+    }.get(o.status, o.status)
     return Turn(
         id=TurnId(o.id),
         tenant_id=TenantId(o.tenant_id),
         workspace_id=WorkspaceId(o.workspace_id),
         session_id=SessionId(o.session_id),
-        user_input=o.user_input,
-        status=TurnStatus(o.status),
+        user_input=o.user_input or "",
+        status=TurnStatus(status),
         started_at=o.started_at,
         finished_at=o.finished_at,
-        final_response=o.final_response,
-        input_tokens=o.input_tokens,
-        output_tokens=o.output_tokens,
+        final_response="",
+        input_tokens=None,
+        output_tokens=None,
         error_code=o.error_code,
     )

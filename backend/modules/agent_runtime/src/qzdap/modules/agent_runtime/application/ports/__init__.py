@@ -76,8 +76,13 @@ class SessionRepository(ABC):
 
 
 class TurnRepository(ABC):
-    @abstractmethod
-    async def add(self, turn: Turn) -> None: ...
+    """轮次的**读**端口 ✓。
+
+    ⚠️ **没有 ``add``** ✓ —— 轮次的写入归 ``SessionJournal`` ✓（新表
+    ``session_turns`` 是唯一真相 ✓）；旧表的写路径在 Stage 6b 停掉了 ✓
+    （S-15b ✓）—— 留着 ``add`` 就是第二条写路径 ✗✗。
+    """
+
     @abstractmethod
     async def get(self, turn_id: UUID) -> Turn | None: ...
     @abstractmethod
@@ -127,8 +132,8 @@ class EventPublisher(ABC):
 class SessionJournal(ABC):
     """新架构的**轮次 + 事件日志**（``session_turns`` / ``session_events``）。
 
-    **双写期**：旧表 ``agent_turns`` 仍在写，新表同步写 —— 旧表的删除在
-    Session Stage 6（§12）。本端口是「轮次 + 事件流」的唯一写入口。
+    ⚠️ **轮次的唯一写入口** ✓ —— 旧表 ``agent_turns`` 已停写（S-15b ✓），
+    新表 ``session_turns`` 是唯一真相 ✓（删表在 Session Stage 6 · S-36 ✓）。
 
     **事件先落库、再投递**（Session 方案 §7）—— 断线重连要能读到已发出的
     那一段，重放才有意义（Gateway 方案 §4.5 的硬依赖）。
@@ -146,10 +151,13 @@ class SessionJournal(ABC):
         key_strength: str,
         agent_version: str,
         model_version: str,
+        user_input: str | None = None,
         trace_id: str | None = None,
         route_decision: dict[str, Any] | None = None,
     ) -> None:
         """写一行轮次（状态 ``running``）—— 事件行的外键父行。
+
+        ``user_input`` 是这一轮用户说了什么 ✓（任务卡片要显示 ✓）。
 
         ``route_decision`` 是 **Router 产出的**路由决策留痕（§6.2 的
         ``session_turns.route_decision``）—— **产出者唯一是 Router**，

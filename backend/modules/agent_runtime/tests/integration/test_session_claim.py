@@ -64,6 +64,7 @@ CREATE TABLE "{schema}".session_turns (
     trace_id varchar(64),
     agent_version varchar(64) NOT NULL,
     model_version varchar(64) NOT NULL,
+    user_input text,
     cost_usd numeric(12,6),
     expected_revision integer NOT NULL DEFAULT 0,
     error_code varchar(64),

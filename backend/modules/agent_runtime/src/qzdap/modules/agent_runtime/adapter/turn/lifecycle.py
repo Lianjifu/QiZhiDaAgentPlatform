@@ -1,10 +1,9 @@
-"""``TurnLifecyclePort`` 的实现 —— 轮次行（新旧双写）+ 事件流 + 轮次终态。
+"""``TurnLifecyclePort`` 的实现 —— 轮次行 + 事件流 + 轮次终态。
 
 依据：Session 方案 §6 / §7（唯一 turn 实现的治理语义 ✓）。
 
-**双写期**（Stage 2 起）：
-- **旧表** ``agent_turns``（领域实体 ``Turn``）—— 读端还在用它 ✓；
-- **新表** ``session_turns``（``SessionJournal``）—— 事件流的外键父行 ✓。
+⚠️ **轮次只写新表** ``session_turns`` ✓（``SessionJournal``）—— 旧表
+``agent_turns`` 已停写（S-15b ✓），**事件流的外键父行**也是它 ✓。
 
 ⚠️ **落库先于投递**：事件必须挂在一个**已存在**的轮次上 ✓ ——
 ``start_turn`` 先落轮次行，``append_event`` 才写得到 ✓。
@@ -23,7 +22,6 @@ from qzdap_schema.ids import SessionId, TenantId, TurnId, WorkspaceId
 from qzdap.modules.agent_runtime.application.ports import (
     EventPublisher,
     SessionJournal,
-    TurnRepository,
 )
 from qzdap.modules.agent_runtime.domain import Turn
 
@@ -31,21 +29,24 @@ _log = logging.getLogger(__name__)
 
 
 class TurnLifecycle(TurnLifecyclePort):
-    """轮次生命周期 —— 旧表 + 新表一起写 ✓。"""
+    """轮次生命周期 —— **只写新表** ✓。"""
 
     def __init__(
         self,
         *,
-        turns: TurnRepository,
         journal: SessionJournal,
         events: EventPublisher,
     ) -> None:
-        self._turns = turns
+        # ⚠️ **不再持旧表仓库** ✓ —— 轮次的写入只有 journal 一条路 ✓。
         self._journal = journal
         self._events = events
 
     async def start_turn(self, *, request: TurnRequest) -> None:
-        """开始这一轮 —— 旧表 + 新表**都建一行** + 发「轮次开始」事件 ✓。"""
+        """开始这一轮 —— **新表建一行** + 发「轮次开始」事件 ✓。
+
+        ⚠️ **旧表不再写** ✓（停旧写 S-15b）—— 轮次只有一个落点 ✓。
+        """
+        # 领域实体**只在内存里**用来发事件 ✓（不再落库 ✓）。
         turn = Turn.create(
             id=TurnId(request.turn_id),
             tenant_id=TenantId(request.tenant_id),
@@ -53,7 +54,6 @@ class TurnLifecycle(TurnLifecyclePort):
             session_id=SessionId(request.session_id),
             user_input=request.user_input if not request.resume else "继续",
         )
-        await self._turns.add(turn)
         await self._journal.start_turn(
             turn_id=request.turn_id,
             tenant_id=request.tenant_id,
@@ -63,6 +63,8 @@ class TurnLifecycle(TurnLifecyclePort):
             key_strength=request.key_strength,
             agent_version=request.agent.agent_version,
             model_version=request.model or request.agent.model or "default",
+            # 这一轮用户说了什么 ✓（任务卡片要显示 ✓）。
+            user_input=request.user_input if not request.resume else "继续",
             trace_id=request.trace_id,
             # 路由决策随轮次留痕（``session_turns.route_decision``）——
             # **产出者是 Router**，这里只是把它带进轮次行。
@@ -97,23 +99,11 @@ class TurnLifecycle(TurnLifecyclePort):
         error_code: str | None = None,
         error_message: str = "",
     ) -> None:
-        """轮次落到终态 —— 旧表 + 新表**都落** ✓。"""
-        turn = await self._turns.get(turn_id)
-        if turn is not None:
-            finished = (
-                turn.succeed(
-                    final_response=final_response,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    cost_usd=cost_usd,
-                )
-                if status == "succeeded"
-                else turn.fail(
-                    error_code=error_code or status,
-                    error_message=error_message or None,
-                )
-            )
-            await self._turns.add(finished)
+        """轮次落到终态 —— **只落新表** ✓（停旧写 S-15b ✓）。
+
+        ⚠️ **token 数与最终回复不再入库** ✓ —— 新表没有这两列 ✓；回复在
+        **事件流**里 ✓（``done`` 事件 ✓），token 数在 ``usage`` 事件里 ✓。
+        """
         await self._journal.finish_turn(
             turn_id=turn_id,
             status=status,

@@ -401,7 +401,7 @@ def build_account_router():
     ):
         from qzdap.modules.agent_runtime.adapter.persistence.models import (
             SessionORM,
-            TurnORM,
+            SessionTurnORM,
         )
 
         user = await current_user(request, session)
@@ -422,18 +422,20 @@ def build_account_router():
             raise HTTPException(422, "unsupported insight range")
         rows = (
             await session.execute(
-                select(TurnORM, SessionORM)
-                .join(SessionORM, TurnORM.session_id == SessionORM.id)
+                # ⚠️ **读新表** ``session_turns`` ✓ —— 旧表 ``agent_turns``
+                # 已停写（Session Stage 6b，S-15b ✓）→ 读它会得到 0 ✗✗。
+                select(SessionTurnORM, SessionORM)
+                .join(SessionORM, SessionTurnORM.session_id == SessionORM.id)
                 .where(
-                    TurnORM.tenant_id == user.tenant_id,
+                    SessionTurnORM.tenant_id == user.tenant_id,
                     SessionORM.tenant_id == user.tenant_id,
-                    TurnORM.workspace_id == workspace_id,
+                    SessionTurnORM.workspace_id == workspace_id,
                     SessionORM.workspace_id == workspace_id,
                     SessionORM.owner_id == user.id,
-                    TurnORM.started_at >= start,
-                    TurnORM.started_at <= now,
+                    SessionTurnORM.started_at >= start,
+                    SessionTurnORM.started_at <= now,
                 )
-                .order_by(TurnORM.started_at)
+                .order_by(SessionTurnORM.started_at)
             )
         ).all()
         daily = {}

@@ -16,11 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from qzdap.modules.agent_runtime.adapter.persistence.mappers import (
     session_orm_to_domain,
-    turn_orm_to_domain,
+    session_turn_orm_to_domain,
 )
 from qzdap.modules.agent_runtime.adapter.persistence.models import (
     SessionORM,
-    TurnORM,
+    SessionTurnORM,
 )
 from qzdap.modules.agent_runtime.application.ports import (
     SessionRepository,
@@ -159,61 +159,30 @@ class SqlSessionRepository(SessionRepository):
 
 
 class SqlTurnRepository(TurnRepository):
+    """轮次读 —— **新表** ``session_turns`` ✓（停旧写 S-15b 之后它是唯一真相 ✓）。
+
+    ⚠️ **只读** ✓ —— 轮次的写入归 :class:`SessionJournal` ✓（幂等键 / 版本
+    冻结 / 审批挂起都在那边 ✓）；这里**不再有第二个写路径** ✗✗。
+    """
+
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
 
-    async def add(self, turn: Turn) -> None:
-        record_legacy_call("X4")  # 旧表 agent_turns
-        # `add` is called twice per turn: once when the turn starts (status=
-        # running) and again when it finishes (succeeded/failed). The second
-        # call must update the existing row in place — emitting a second
-        # INSERT with the same PK violates the primary key. The repository
-        # contract is "always insert-or-update by id"; we route through the
-        # session's identity-map and patch fields if the row is already
-        # tracked.
-        o = await self._s.get(TurnORM, turn.id)
-        if o is None:
-            self._s.add(
-                TurnORM(
-                    id=turn.id,
-                    tenant_id=turn.tenant_id,
-                    workspace_id=turn.workspace_id,
-                    session_id=turn.session_id,
-                    user_input=turn.user_input,
-                    status=turn.status.value,
-                    started_at=turn.started_at,
-                    finished_at=turn.finished_at,
-                    final_response=turn.final_response,
-                    input_tokens=turn.input_tokens,
-                    output_tokens=turn.output_tokens,
-                    cost_usd=turn.cost_usd,
-                    error_code=turn.error_code,
-                )
-            )
-            return
-        o.status = turn.status.value
-        o.finished_at = turn.finished_at
-        o.final_response = turn.final_response
-        o.input_tokens = turn.input_tokens
-        o.output_tokens = turn.output_tokens
-        o.cost_usd = turn.cost_usd
-        o.error_code = turn.error_code
-
     async def get(self, turn_id: UUID) -> Turn | None:
-        o = await self._s.get(TurnORM, turn_id)
+        o = await self._s.get(SessionTurnORM, turn_id)
         if o is None or _cross_tenant(o):
             return None
-        return turn_orm_to_domain(o)
+        return session_turn_orm_to_domain(o)
 
     async def latest_for_session(self, session_id: UUID) -> Turn | None:
         """/api/tasks 派生用 — 取最新一轮 turn 用于状态翻译."""
         q = (
-            select(TurnORM)
-            .where(TurnORM.session_id == session_id)
-            .order_by(TurnORM.started_at.desc())
+            select(SessionTurnORM)
+            .where(SessionTurnORM.session_id == session_id)
+            .order_by(SessionTurnORM.started_at.desc())
             .limit(1)
         )
         o = (await self._s.execute(q)).scalars().first()
         if o is None:
             return None
-        return turn_orm_to_domain(o)
+        return session_turn_orm_to_domain(o)

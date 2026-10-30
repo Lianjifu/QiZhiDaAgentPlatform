@@ -74,6 +74,7 @@ class _Messages:
 
     async def append(self, **kwargs):  # type: ignore[no-untyped-def]
         self.rows.append(kwargs)
+
     async def next_seq(self, *, session_id):  # type: ignore[no-untyped-def]
         """下一个轮次内序号 ✓（与真实实现同语义）。"""
         return (self.rows[-1]["seq"] + 1) if self.rows else 0
@@ -107,10 +108,11 @@ def _build_test_app(
 
     sessions = InMemorySessionRepository()
     claim = InMemoryTurnClaim()
-    turns = InMemoryTurnRepository()
     llm = FakeLLM(content=llm_content, raise_on_first_chunk=raise_on_first_chunk)
     events = RecordingEventPublisher()
     journal = InMemorySessionJournal()
+    # 轮次读仓库读**同一份行** ✓（停旧写后轮次只有一个落点 ✓）。
+    turns = InMemoryTurnRepository(journal)
     catalog = _Catalog(_agent())
     messages = _Messages()
     runner = SessionGraphRunner(llm=llm)
@@ -126,7 +128,6 @@ def _build_test_app(
         claim=claim,
         turn_runner=make_turn_runner(
             graph=runner,
-            turns=turns,
             journal=journal,
             events=events,
             messages=messages,
@@ -382,9 +383,9 @@ async def test_run_turn_stream_emits_sse_chunks() -> None:
     assert "event: end" in text
 
     # 轮次必须落库（running → succeeded）。
-    assert len(ctx["turns"]._by_id) == 1
-    persisted = next(iter(ctx["turns"]._by_id.values()))
-    assert persisted.status.value == "succeeded"
+    assert len(ctx["journal"].turns) == 1
+    persisted = next(iter(ctx["journal"].turns.values()))
+    assert persisted["status"] == "succeeded"
     # 事件流也必须落库（Gateway Stage 4b 的重放落点）。
     assert len(ctx["journal"].events) == 1
 

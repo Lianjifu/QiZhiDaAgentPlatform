@@ -25,15 +25,52 @@ from alembic.operations import Operations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from qzdap.modules.agent_runtime.adapter.persistence.catalog_models import (
-    LegacySessionMessageORM,
-)
 from qzdap.modules.agent_runtime.adapter.persistence.models import (
     SessionMessageORM,
     SessionORM,
     SessionTurnORM,
-    TurnORM,
 )
+
+#: 旧表的样子 —— ORM 已删（停旧写 ✓），但**表还在**（到 Stage 6 的 S-36 才
+#: DROP ✓）→ 测试里用裸 DDL 造出来 ✓（形状照抄真实表 ✓）。
+_LEGACY_DDL = [
+    """
+CREATE TABLE agent_turns (
+    id uuid PRIMARY KEY,
+    tenant_id uuid NOT NULL,
+    workspace_id uuid NOT NULL,
+    session_id uuid NOT NULL REFERENCES agent_sessions (id) ON DELETE CASCADE,
+    user_input text NOT NULL,
+    started_at timestamptz NOT NULL DEFAULT now(),
+    status varchar(16) NOT NULL DEFAULT 'running',
+    finished_at timestamptz,
+    final_response text,
+    error_code varchar(64),
+    input_tokens integer,
+    output_tokens integer,
+    cost_usd double precision,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT status_enum CHECK (status IN ('running','succeeded','failed','denied'))
+)
+""",
+    """
+CREATE TABLE agent_session_messages (
+    id uuid PRIMARY KEY,
+    tenant_id uuid NOT NULL,
+    workspace_id uuid NOT NULL,
+    session_id uuid NOT NULL,
+    turn_id uuid,
+    seq integer NOT NULL DEFAULT 0,
+    role varchar(32) NOT NULL,
+    content text NOT NULL DEFAULT '',
+    tool_name varchar(128) NOT NULL DEFAULT '',
+    extra jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+)
+""",
+]
 
 _MIGRATION = (
     Path(__file__).resolve().parents[4]
@@ -82,12 +119,12 @@ async def _prepare(engine) -> dict:
     async with engine.begin() as conn:
         for model in (
             SessionORM,
-            TurnORM,
-            LegacySessionMessageORM,
             SessionTurnORM,
             SessionMessageORM,
         ):
             await conn.run_sync(model.__table__.create)
+        for statement in _LEGACY_DDL:
+            await conn.execute(text(statement))
         await conn.execute(
             SessionORM.__table__.insert(),
             [
@@ -116,7 +153,13 @@ async def _prepare(engine) -> dict:
             ],
         )
         await conn.execute(
-            TurnORM.__table__.insert(),
+            text(
+                "INSERT INTO agent_turns (id, tenant_id, workspace_id, session_id, "
+                " user_input, status, started_at, finished_at, cost_usd) "
+                "VALUES (:id, :tenant_id, :workspace_id, :session_id, :user_input, "
+                " :status, now() - interval '2 hour', "
+                " now() - interval '2 hour' + interval '5 second', :cost_usd)"
+            ),
             [
                 {
                     "id": t1,
@@ -125,6 +168,7 @@ async def _prepare(engine) -> dict:
                     "session_id": s1,
                     "user_input": "你好",
                     "status": "succeeded",
+                    "cost_usd": 0.01,
                 },
                 {
                     "id": t2,
@@ -133,6 +177,7 @@ async def _prepare(engine) -> dict:
                     "session_id": s1,
                     "user_input": "再来",
                     "status": "failed",
+                    "cost_usd": 0.02,
                 },
                 {
                     "id": t3,
@@ -141,11 +186,17 @@ async def _prepare(engine) -> dict:
                     "session_id": s2,
                     "user_input": "新会话",
                     "status": "running",
+                    "cost_usd": None,
                 },
             ],
         )
         await conn.execute(
-            LegacySessionMessageORM.__table__.insert(),
+            text(
+                "INSERT INTO agent_session_messages (id, tenant_id, workspace_id, "
+                " session_id, turn_id, seq, role, content, tool_name, extra) "
+                "VALUES (:id, :tenant_id, :workspace_id, :session_id, :turn_id, "
+                " :seq, :role, :content, :tool_name, CAST(:extra AS jsonb))"
+            ),
             [
                 {
                     "id": uuid4(),
@@ -157,7 +208,7 @@ async def _prepare(engine) -> dict:
                     "role": "user",
                     "content": "你好",
                     "tool_name": "",
-                    "extra": {},
+                    "extra": "{}",
                 },
                 {
                     "id": uuid4(),
@@ -169,7 +220,7 @@ async def _prepare(engine) -> dict:
                     "role": "assistant",
                     "content": "你好，我是助手",
                     "tool_name": "",
-                    "extra": {},
+                    "extra": "{}",
                 },
                 {
                     "id": uuid4(),
@@ -181,7 +232,7 @@ async def _prepare(engine) -> dict:
                     "role": "user",
                     "content": "再来",
                     "tool_name": "",
-                    "extra": {},
+                    "extra": "{}",
                 },
                 {
                     "id": uuid4(),
@@ -193,7 +244,7 @@ async def _prepare(engine) -> dict:
                     "role": "user",
                     "content": "没有轮次的消息",
                     "tool_name": "",
-                    "extra": {},
+                    "extra": "{}",
                 },
             ],
         )
@@ -239,7 +290,9 @@ async def test_the_legacy_rows_land_in_the_new_tables(db_ctx) -> None:
         ).all()
         counters = (
             await conn.execute(
-                text("SELECT id::text, next_message_seq FROM agent_sessions ORDER BY id")
+                text(
+                    "SELECT id::text, next_message_seq FROM agent_sessions ORDER BY id"
+                )
             )
         ).all()
 

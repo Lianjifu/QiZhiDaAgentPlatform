@@ -17,6 +17,7 @@ import pytest
 from _ar_unit_in_memory import (
     InMemoryIdempotencyStore,
     InMemorySessionJournal,
+    InMemoryTurnRepository,
     make_dependencies,
     make_turn_runner,
 )
@@ -119,6 +120,7 @@ async def _make_service(agent: CatalogAgent, owner_id: UserId):  # type: ignore[
     messages = _Messages()
     runner = SessionGraphRunner(llm=_LLM())
     journal = InMemorySessionJournal()
+    deps["turns"] = InMemoryTurnRepository(journal)
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
@@ -131,7 +133,6 @@ async def _make_service(agent: CatalogAgent, owner_id: UserId):  # type: ignore[
         claim=deps["sessions"].claim,
         turn_runner=make_turn_runner(
             graph=runner,
-            turns=deps["turns"],
             journal=journal,
             events=deps["events"],
             messages=messages,
@@ -258,9 +259,7 @@ async def test_the_replayed_events_have_the_same_digest_as_the_original() -> Non
     replayed = _events(second.text)
     assert event_digest(replayed) == event_digest(original)
     # seq 连续 —— 1, 2, 3 …（客户端靠它续传）。
-    assert [event.seq for event in replayed] == list(
-        range(1, len(replayed) + 1)
-    )
+    assert [event.seq for event in replayed] == list(range(1, len(replayed) + 1))
 
 
 @pytest.mark.asyncio

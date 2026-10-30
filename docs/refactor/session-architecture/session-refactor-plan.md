@@ -812,7 +812,7 @@ DROP TABLE IF EXISTS checkpoints;
 | # | 事项 | 原因 | 归属 |
 |---|---|---|---|
 | **S-14** | checkpoint 的**图接线** | saver 已在 lifespan ✓、`thread_id` 契约已给 ✓ —— 但 **langgraph 的 19 节点图没有生产调用方**（生产走 `modules` 的 `SessionGraphRunner`）→ 那是 Agent Loop 层的 A-26 | **Agent 层**（A-26） |
-| **S-15a / S-15b** | 切读新表 / 停旧写 | 要等**对账窗口**（新旧全量对账差异 = 0 + 只读窗口 ≥7 天）—— 本轮**读仍走旧表**、旧表仍在写 | Stage 2 后续 · Stage 6 封口 |
+| ~~**S-15a / S-15b**~~ | 切读新表 / 停旧写 | ✅ **已达成**（2026-10-30：Stage 6c 切读 ✓ + Stage 6d 停旧写 ✓ —— 双写期**结束** ✓） | — |
 | **轮次序的消费方** | `ingress_seq` 的**分配器**归 Session ✓，但**调用方是 Router**（入站顺序 = FIFO 顺序） | Router Stage 3（FIFO 放行判定） | **Router Stage 3** |
 | **demo 种子数据** | `seeds.py` 的演示会话**只写旧表**（新表有指向 `session_turns` 的外键，种子不造轮次行） | 演示数据是 demo profile 的产物（独立库）；切读之前不影响 | 切读（S-15a）之前 |
 
@@ -1049,11 +1049,25 @@ IM 侧**未接管**（见下表）。
 2. **重种 demo 数据** ✗：已种下的演示消息 `turn_id` 为空 ✗ → **搬不动** ✗
    → 演示库里的那些会话要删掉重种 ✓（种子按标题幂等 ✓，删了才会重种 ✓）。
 
+#### 实施记录（2026-10-30 · Stage 6d：停旧写（S-15b）—— 双写期结束）
+
+| 项 | 结果 |
+|---|---|
+| 轮次写 | `TurnLifecycle` **不再持旧表仓库** ✓ —— 轮次只写 `session_turns` ✓（`TurnRepository` 端口的 `add` **删掉** ✓ —— 留着它就是第二条写路径 ✗✗） |
+| 消息写 | `PostgresSessionMessageStore.append` **只写新表** ✓（旧表 `agent_session_messages` 没人写 ✓） |
+| 旧代码 | `TurnORM` / `turn_orm_to_domain` / `LegacySessionMessageORM` / `SqlSessionMessageRepository` **全删** ✓ —— 「不能出现两套实现」✓（不留第二条读路径 ✗） |
+| 读旧表的人 | `identity` 模块的 `/api/home/insights` 改查 `SessionTurnORM` ✓（原来查旧表 ✗） |
+| **不补列就是静默降级** | 任务卡片要显示「用户这一轮说了什么」✓ —— 旧表有 `user_input`、新表没有 ✗ → 迁移 **0055** 补上 ✓（可空 ✓ —— 历史行读成空 ✓） |
+| 状态映射 | 新表枚举比领域多两个 ✓ —— `waiting → running` ✓、`cancelled → denied` ✓（读侧与写侧同口径 ✓） |
+| 真库对账 | dev 库 + demo 库各跑一遍 `scripts/verify_session_tables.py` ✓ —— **六类差异全为 0** ✓ |
+| 测试 | 旧表断言**反过来**了 ✓ —— 「旧表**一行都没有**」✓（原来断言「两表都有」✗）；单测的内存替身也改成**轮次只有一个落点** ✓（journal 写、仓库读同一份 ✓） |
+
+⚠️ **旧表还在**（只是没人写 ✗）—— **DROP 归 S-36** ✓（门禁：只读窗口 ≥7 天从今天起算 ✓ + 备份恢复演练 ✗）。
+
 **仍未接管**（都要等门禁 ✓，不能提前做 ✗）：
 
 | # | 事项 | 门禁 | 归属 |
 |---|---|---|---|
-| **S-15b** | **停旧写**（旧表只写不读 → 只读） | ① 全量对账差异 = 0 ✓（脚本就位 ✓，待真库跑 ✓）；② 新读路径**观察过** ✓（切读是今天落的 ✗ → 至少观察几天 ✗） | Stage 6（下一轮） |
 | **S-35** | 停写并废弃 `agent_sessions.graph_state` | ≥95% 流量 + ≥7 天只读期 ✓ | Stage 6（后续） |
 | **S-36** | DROP `agent_turns` / `agent_session_messages` | ① 切读 ✓；② 对账差异 = 0 ✓；③ **只读窗口 ≥7 天**（S-15b 之后 ✗）；④ 备份恢复**演练过** ✗ | Stage 6（后续） |
 | **S-21b** | 删 copilot 的薄壳（幂等 + claim + 转发） | 清理窗口 ≥7 天 + 新路径 ≥95% ✓ | Stage 3b（后续） |

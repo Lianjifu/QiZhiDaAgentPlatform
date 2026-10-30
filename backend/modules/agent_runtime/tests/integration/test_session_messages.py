@@ -65,6 +65,7 @@ CREATE TABLE "{schema}".session_turns (
     trace_id varchar(64),
     agent_version varchar(64) NOT NULL,
     model_version varchar(64) NOT NULL,
+    user_input text,
     cost_usd numeric(12,6),
     expected_revision integer NOT NULL DEFAULT 0,
     error_code varchar(64),
@@ -190,15 +191,18 @@ async def test_the_two_sequences_are_monotonic_and_start_at_one(seq_ctx) -> None
 
     async with seq_ctx.session() as session:
         sequence = PostgresSessionSequence(session)
-        assert await sequence.next_ingress_seq(
-            tenant_id=tenant, session_id=session_id
-        ) == 1
-        assert await sequence.next_ingress_seq(
-            tenant_id=tenant, session_id=session_id
-        ) == 2
-        assert await sequence.next_message_seq(
-            tenant_id=tenant, session_id=session_id
-        ) == 1
+        assert (
+            await sequence.next_ingress_seq(tenant_id=tenant, session_id=session_id)
+            == 1
+        )
+        assert (
+            await sequence.next_ingress_seq(tenant_id=tenant, session_id=session_id)
+            == 2
+        )
+        assert (
+            await sequence.next_message_seq(tenant_id=tenant, session_id=session_id)
+            == 1
+        )
         await session.commit()
 
 
@@ -213,14 +217,12 @@ async def test_a_sequence_cannot_be_allocated_across_tenants(seq_ctx) -> None:  
     async with seq_ctx.session() as session:
         sequence = PostgresSessionSequence(session)
         with pytest.raises(SessionNotFound):
-            await sequence.next_ingress_seq(
-                tenant_id=uuid4(), session_id=session_id
-            )
+            await sequence.next_ingress_seq(tenant_id=uuid4(), session_id=session_id)
 
 
 @pytest.mark.asyncio
-async def test_messages_are_written_to_both_tables(seq_ctx) -> None:  # type: ignore[no-untyped-def]
-    """**双写**：新表 + 旧表都有行 ✓；新表的 ``session_seq`` 会话内单调 ✓。"""
+async def test_messages_are_written_only_to_the_new_table(seq_ctx) -> None:  # type: ignore[no-untyped-def]
+    """**只写新表** ✓（旧表停写 S-15b ✓）；``session_seq`` 会话内单调 ✓。"""
     tenant = uuid4()
     session_id, turn_id = await _session(seq_ctx, tenant_id=tenant)
 
@@ -250,8 +252,7 @@ async def test_messages_are_written_to_both_tables(seq_ctx) -> None:  # type: ig
         old_rows = (
             await session.execute(
                 text(
-                    "SELECT seq, role, content FROM agent_session_messages "
-                    "ORDER BY seq"
+                    "SELECT seq, role, content FROM agent_session_messages ORDER BY seq"
                 )
             )
         ).all()
@@ -261,10 +262,8 @@ async def test_messages_are_written_to_both_tables(seq_ctx) -> None:  # type: ig
         (1, "assistant", "hi"),
     ]
     assert [r.session_seq for r in new_rows] == [1, 2]
-    assert [(r.seq, r.role, r.content) for r in old_rows] == [
-        (0, "user", "hello"),
-        (1, "assistant", "hi"),
-    ]
+    # ⚠️ **旧表不再写** ✓ —— 一行都没有 ✓。
+    assert old_rows == []
 
 
 @pytest.mark.asyncio

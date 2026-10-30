@@ -24,6 +24,7 @@ import pytest
 from _ar_unit_in_memory import (
     InMemoryIdempotencyStore,
     InMemorySessionJournal,
+    InMemoryTurnRepository,
     make_dependencies,
     make_turn_runner,
 )
@@ -68,6 +69,7 @@ class _Messages:
 
     async def append(self, **kwargs):
         self.rows.append(kwargs)
+
     async def next_seq(self, *, session_id):  # type: ignore[no-untyped-def]
         """下一个轮次内序号 ✓（与真实实现同语义）。"""
         return (self.rows[-1]["seq"] + 1) if self.rows else 0
@@ -240,6 +242,8 @@ async def _make_service(
     journal = InMemorySessionJournal()
     # 把 journal 也放进 deps —— 断言「审批挂起落库」要用 ✓
     deps["journal"] = journal
+    # 轮次读仓库读**同一份行** ✓（停旧写后轮次只有一个落点 ✓）。
+    deps["turns"] = InMemoryTurnRepository(journal)
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
@@ -252,7 +256,6 @@ async def _make_service(
         claim=deps["sessions"].claim,
         turn_runner=make_turn_runner(
             graph=runner,
-            turns=deps["turns"],
             journal=journal,
             events=deps["events"],
             messages=messages,
@@ -367,6 +370,8 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
     journal = InMemorySessionJournal()
     # 把 journal 也放进 deps —— 断言「审批挂起落库」要用 ✓
     deps["journal"] = journal
+    # 轮次读仓库读**同一份行** ✓（停旧写后轮次只有一个落点 ✓）。
+    deps["turns"] = InMemoryTurnRepository(journal)
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
@@ -379,7 +384,6 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
         claim=deps["sessions"].claim,
         turn_runner=make_turn_runner(
             graph=runner,
-            turns=deps["turns"],
             journal=journal,
             events=deps["events"],
             messages=messages,
@@ -448,7 +452,9 @@ async def test_cancelled_stream_does_not_leave_a_running_turn() -> None:
 
     turn = await deps["turns"].latest_for_session(UUID(sid))
     assert turn is not None
-    assert turn.status.value == "failed"
+    # 「被取消」在权威表 ``session_turns`` 里是 ``cancelled`` ✓ ——
+    # 映射到领域枚举是 ``denied`` ✓（领域里最接近的「没跑成」✓）。
+    assert turn.status.value == "denied"
     assert turn.error_code == "TURN_CANCELLED"
 
 
@@ -604,7 +610,9 @@ async def test_cancel_request_stops_the_running_turn(monkeypatch) -> None:
     assert chunks[-1].code == "TURN_CANCELLED"
     turn = await deps["turns"].latest_for_session(UUID(sid))
     assert turn is not None
-    assert turn.status.value == "failed"
+    # 「被取消」在权威表 ``session_turns`` 里是 ``cancelled`` ✓ ——
+    # 映射到领域枚举是 ``denied`` ✓（领域里最接近的「没跑成」✓）。
+    assert turn.status.value == "denied"
     assert turn.error_code == "TURN_CANCELLED"
 
 
@@ -731,6 +739,8 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
     journal = InMemorySessionJournal()
     # 把 journal 也放进 deps —— 断言「审批挂起落库」要用 ✓
     deps["journal"] = journal
+    # 轮次读仓库读**同一份行** ✓（停旧写后轮次只有一个落点 ✓）。
+    deps["turns"] = InMemoryTurnRepository(journal)
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
@@ -743,7 +753,6 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
         claim=deps["sessions"].claim,
         turn_runner=make_turn_runner(
             graph=runner,
-            turns=deps["turns"],
             journal=journal,
             events=deps["events"],
             messages=messages,
