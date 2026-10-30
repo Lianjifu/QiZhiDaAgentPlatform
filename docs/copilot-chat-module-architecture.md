@@ -1,11 +1,13 @@
 # 对话（Copilot）功能模块 — 架构梳理
 
-> 版本：1.0
+> 版本：1.1（2026-10-30 更新：Session Stage 4b–6d 之后的事实）
 > 适用项目：`QiZhiDaAgentPlatform`
 > 状态：**现状（as-is）梳理**，描述当前代码已实现的行为，不含改造计划
 > 读者：需要理解「一次对话从点击发送到渲染完成」全链路的人
 
-本文只做现状记录。模块的重构方向另见 [§8 相关文档](#8-相关文档) 中的 `session-module-refactor-plan.md`，本文与该方案的关系是：本文描述**当前代码**，那份方案描述**目标代码**，两者不应混读。
+本文只做现状记录。重构方案在 `docs/refactor/session-architecture/`（方案集：生命周期基线 + 清理台账 + 逐层方案）—— 那份讲**目标代码**，本文讲**当前代码**，两者不应混读。
+
+⚠️ **§9–§11 是历史记录**（2026-10-28 ~ 10-30 的补齐过程与当时的回归数字）—— 它们记录「当时补了什么」，不代表今天的现状；**今天的现状看 §1–§8** ✓。
 
 ---
 
@@ -47,7 +49,7 @@
 | 7 | `adapter/graph/chat_model.py` | LLM 流怎么变成 assistant 消息；tool_call 分片怎么合并 |
 | 8 | `adapter/graph/loop.py` + `adapter/graph/compact.py` | 循环什么时候停（`next_route`）、空转守卫、上下文压缩与滚动摘要 |
 | 9 | `adapter/graph/tools.py` | 工具按什么顺序分发；什么工具需要审批 |
-| 10 | `adapter/llm/prompts.py` + `application/catalog.py` | system prompt 从哪拼出来；agent 配置怎么读 |
+| 10 | `application/catalog.py` | agent 配置怎么读；system prompt 的素材从哪来（⚠️ 旧的 `adapter/llm/prompts.py` **已删** —— 四套模板随第二套 turn 实现一起删了，台账 **X10** ✓；上下文渲染归 Context 层，尚未接线）|
 | 11 | `application/use_cases/delegate_subagent.py` | 多智能体委派怎么建子会话、深度怎么限制 |
 
 ### 2.3 第三遍：数据与契约
@@ -55,7 +57,7 @@
 | 步 | 文件 | 作用 |
 |---|---|---|
 | 12 | `backend/libs/schema/src/qzdap_schema/dtos/turn.py` | 16 种 chunk 的字段定义——**前后端契约的单一真相** |
-| 13 | `adapter/persistence/models.py` + `adapter/persistence/catalog_models.py` | 三张表的列 |
+| 13 | `adapter/persistence/models.py` | 轮次 / 消息 / 事件三张**新表**的列（`session_turns` / `session_messages` / `session_events` ✓ —— 旧的 `agent_turns` / `agent_session_messages` **已停写**，见 §5.4 ✓） |
 | 14 | `adapter/http/sse.py` | 编码规则，很薄，不用花时间 |
 
 ### 2.4 第四遍：装配与外围
@@ -69,7 +71,7 @@
 ### 2.5 先知道的五个坑（能省一小时）
 
 1. `runner.py:92` 的 `compile_loop_graph` 是**占位图**（`llm_node`/`tools_node` 都是 `_passthrough_*`），真正的循环是手写 `while True`。改图节点不会改变行为。
-2. `agent_sessions.graph_state` 存的是**运行时续传状态**（`pending_approval` / `messages` / `step`），不是业务数据，但和业务数据混在同一张表里。
+2. `agent_sessions.graph_state` 存的是**运行时续传状态**（`pending_approval` / `messages` / `step`），不是业务数据，但和业务数据混在同一张表里。⚠️ **审批挂起的权威已经搬到轮次表** ✓（`session_turns.pending_approval` + `status='waiting'` ✓，Session Stage 3a/5a）—— `graph_state` 这一列的**停写**还没做（台账 **S-35**，要 ≥95% 流量 + ≥7 天只读期 ✓）。
 3. `/api/*`（Copilot 页面用）与 `/v1/*`（通用会话 API）是**两套并行路由**，语义不完全一致。
 4. `tool_port` 没有接线（`lifespan.py:297-307`），`backend/modules/tool` 的内置工具在对话中不可达。 ✅ 已修：HTTP 层按请求绑定 `ToolServiceAdapter`（`session_router.py:88-123`）。
 5. `knowledge_search` chunk 只有 mock LLM 会下发，真实召回路径只把内容拼进 system prompt。
@@ -132,9 +134,10 @@ graph TD
     end
 
     subgraph STORE["持久化"]
-        G1["agent_sessions"]
-        G2["agent_turns"]
-        G3["agent_session_messages"]
+        G1["agent_sessions<br/>(会话主体)"]
+        G2["session_turns<br/>(轮次 · 唯一真相)"]
+        G3["session_messages<br/>(消息 · 规范真相)"]
+        G4["session_events<br/>(事件流 · 重放落点)"]
     end
 
     A2 -- POST 与 SSE --> B1
@@ -150,6 +153,7 @@ graph TD
     C1 --> G1
     C1 --> G2
     C1 --> G3
+    C1 --> G4
 ```
 
 图中把「端口」与「适配器」合并为一个子图：两者是一一对应的实现关系，展开后的完整清单见 §3.2 表格。
@@ -175,7 +179,8 @@ graph TD
               ├─ memory      ──► MemoryPort    ──► 记忆服务
               └─ knowledge   ──► KnowledgePort ──► 知识检索
 
-持久化      agent_sessions / agent_turns / agent_session_messages
+持久化      agent_sessions（会话）
+            session_turns（轮次·唯一真相） / session_messages（消息） / session_events（事件流）
 ```
 
 </details>
@@ -192,8 +197,8 @@ graph TD
 | SSE 编码 | `agent_runtime/adapter/http/sse.py` | `TurnChunk` → `event: {kind}\ndata: {json}\n\n`，尾部补 `event: end` | — |
 | 应用服务 | `agent_runtime/application/copilot.py` | 会话生命周期、轮次创建、历史读取、消息落库、审批决策 | 不直接调 LLM |
 | 执行引擎 | `agent_runtime/adapter/graph/runner.py` | prompt 组装、上下文压缩、ReAct 循环、工具调用、记忆写入 | 不做 HTTP |
-| 端口 | `agent_runtime/application/ports/__init__.py` | `LLMPort / ToolPort / SkillPort / SandboxPort / MemoryPort / KnowledgePort` 六个抽象 | — |
-| 持久化 | `agent_runtime/adapter/persistence/` | 三张表的 ORM 与仓储 | — |
+| 端口 | `agent_runtime/application/ports/__init__.py` | `LLMPort / ToolPort / SkillPort / SandboxPort / MemoryPort / KnowledgePort` 六个抽象 + `SessionJournal`（轮次与事件的**唯一写入口** ✓）+ `TurnRepository`（轮次**只读** ✓） | — |
+| 持久化 | `agent_runtime/adapter/persistence/` | 新表 `session_turns` / `session_messages` / `session_events` 的 ORM 与仓储 ✓（旧表 ORM 已删 ✓） | — |
 
 ### 3.3 装配点
 
@@ -211,11 +216,36 @@ SessionGraphRunner(
     approval_factory=container.approval_service(),
     catalog_model_resolver=catalog_model_resolver,
 )
+→ TurnRunner(                         # ← **唯一 turn 实现**（契约层 ✓）
+    executor=SessionGraphExecutor(graph),
+    lifecycle=TurnLifecycle(          # 轮次只写 session_turns ✓
+        journal=container.session_journal(),
+        events=AgentRuntimeEventPublisher(container.bus()),
+    ),
+    messages=PostgresSessionMessageStore(session),
+    session_state=SqlSessionState(sessions_repo),
+    cancel=SqlCancelProbe(sessions_repo),
+)
 → CopilotSessionService(
-    sessions=SqlSessionRepository, turns=SqlTurnRepository,
-    messages=SqlSessionMessageRepository,
-    catalog=AgentCatalogService, events=AgentRuntimeEventPublisher, graph=graph)
+    sessions=SqlSessionRepository, turns=SqlTurnRepository,   # turns **只读** ✓
+    messages=PostgresSessionMessageStore,                     # 新表唯一落点 ✓
+    journal=container.session_journal(),                      # 轮次 + 事件的唯一写入口 ✓
+    claim=PostgresTurnClaim(session),
+    catalog=AgentCatalogService, events=AgentRuntimeEventPublisher, graph=graph,
+    turn_runner=TurnRunner(...))
 ```
+
+**非 Web 入口（渠道消息）另有一套装配**（Session Stage 4b/5b ✓）：
+
+```
+ChannelTurnService            # 会话按 channel_session_key 粘住 ✓
+  → 渠道侧 dispatcher（adapter/dispatch/channel_turn_dispatcher.py）
+    → 出站走 outbox：事件先落 session_events（event_type='im_reply'）✓
+      → OutboxWorker（契约层）定时取件 → ChannelOutboxDispatcher 投递 ✓
+        → 失败重试 / 死信（outbox_dead_letters）✓
+```
+
+⚠️ **出站是「先落库再投递」** ✓ —— 断线或投递失败都不会丢消息 ✓（重试与死信归 outbox worker ✓）。
 
 HTTP 层每个请求再通过 `session_router.py` 的 `copilot_dependency` 按请求绑定的 tenant/workspace 重新绑定 skill 与 sandbox 适配器——即**作用域在请求级确定，不在单例上**。
 
@@ -244,8 +274,8 @@ sequenceDiagram
     API->>API: 解析附件上下文 (如有 attachmentIds)
     API->>SVC: stream_turn(...)
     SVC->>DB: 校验 session (tenant/workspace/owner/status)
-    SVC->>DB: INSERT agent_turns (status=running)
-    SVC->>DB: INSERT agent_session_messages (role=user)
+    SVC->>DB: INSERT session_turns (status=running, user_input=...)
+    SVC->>DB: INSERT session_messages (role=user, session_seq=..)
     SVC->>G: run_turn(...) 生成器
     G->>G: 载入历史 + 拼 system prompt(agent prompts + 记忆 + 知识)
     G->>G: compact_messages 压缩
@@ -253,6 +283,7 @@ sequenceDiagram
         G->>L: stream_chat(messages, tools_schema)
         L-->>G: 文本增量 / tool_call
         G-->>SVC: MessageChunk (流式透传)
+        SVC->>DB: INSERT session_events (seq=.., 落库先于投递 ✓)
         alt 有 tool_calls
             G-->>SVC: ToolCallChunk
             G->>T: execute_tool
@@ -265,9 +296,9 @@ sequenceDiagram
     G->>G: 写记忆 → MemoryWriteChunk
     G-->>SVC: UsageChunk
     G-->>SVC: DoneChunk(final_message)
-    SVC->>DB: INSERT agent_session_messages (role=assistant)
-    SVC->>DB: UPDATE agent_sessions (preview / rolling_summary / wait_status)
-    SVC->>DB: UPDATE agent_turns (status=succeeded)
+    SVC->>DB: INSERT session_messages (role=assistant, session_seq=..)
+    SVC->>DB: UPDATE agent_sessions (preview / rolling_summary)
+    SVC->>DB: UPDATE session_turns (status=succeeded)
     SVC-->>API: chunk 流
     API-->>FE: SSE (event: message / ... / done / end)
     FE-->>U: 增量渲染
@@ -298,7 +329,7 @@ sequenceDiagram
 LLM 请求高风险工具
   → needs_confirm() 命中（sandbox_exec 恒命中 / needConfirm / risk != low）
   → 创建 approval 记录 → 下发 approval_required 事件
-  → 把 pending_approval 写入 agent_sessions.graph_state
+  → 把 pending_approval 写入 **session_turns.pending_approval**，轮次状态 → 'waiting' ✓
   → 挂起该轮（SSE 以 approval_required 结束，不发 done）
   ↓ 用户在前端点「批准 / 拒绝」
 POST /api/sessions/{id}/approvals/{aid}/approve|deny
@@ -306,6 +337,8 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
   → approved  → _finish_pending() 执行那个被挂起的工具，续跑循环
   → denied    → 注入 role=tool / content="SKILL_DENIED"，续跑循环
 ```
+
+⚠️ **「等你确认」的权威是轮次表** ✓（`session_turns.status='waiting'` + `pending_approval` ✓）—— 会话那一列 `wait_status` **已退役并 DROP** ✓（台账 X6 ✓，迁移 0053 ✓）；任务列表的「等你确认」由**一次查询**推导 ✓（`list_waiting_approval_sessions` ✓，不逐会话查 ✗）。
 
 ### 4.3 异常与边界分支
 
@@ -319,7 +352,7 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 | LLM 流未产出 assistant | `runner.py:320` | 抛 `RuntimeError` | 补齐后：首 chunk 之前抛异常（HTTP 状态码），之后产出 `error` 事件 |
 | 工具不存在 | `tools.py:62` | 返回 `TOOL_NOT_FOUND` | `tool_result` 事件，`is_error=false`（错误信息在 output 文本里） |
 | 工具执行异常 | `adapter/graph/tools.py` | 补齐后：转成失败的工具结果回灌模型 | 轮次继续，工具显示为失败 |
-| 高风险工具待确认 | `runner.py:370-393` | 中断本轮，存 `graph_state` | `approval_required` 事件 |
+| 高风险工具待确认 | `runner.py:370-393` | 中断本轮，挂起信息存 `session_turns.pending_approval` ✓（轮次转 `waiting` ✓） | `approval_required` 事件 |
 | 相同工具连续空转 ≥2 次 | `loop.py:28` `apply_stall_guard` | 注入 system 提示「请直接给最终回答」，并清空 `pending_approval` | 无感，模型被引导收尾 |
 | 达到 max_steps | `loop.py:17` | 退出循环，用最后一次 `final` 作为答案 | 正常 `done`，答案可能不完整 |
 | 上下文超窗 | `compact.py` | 折叠旧消息为滚动摘要 | `context_compacted` 事件 + 前端提示 |
@@ -430,15 +463,25 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 
 ### 5.4 持久化模型
 
+**新表（当前真相 ✓）**：
+
 | 表 | ORM | 关键列 | 用途 |
 |---|---|---|---|
-| `agent_sessions` | `persistence/models.py:31` | `workspace_id, owner_id, agent_id, agent_version, status, metadata(JSONB), graph_state(JSONB), wait_status, current_revision, current_turn_id, channel_session_key` | 会话主体。`metadata` 存 `title/preview/agentName/model/rolling_summary/archived`；`graph_state` 存 `pending_approval/messages/step`（**运行时续传状态**） |
-| `agent_turns` | `persistence/models.py:94` | `session_id, user_input, status, final_response, error_code, input_tokens, output_tokens, started_at, finished_at` | 轮次。状态枚举 `running/succeeded/failed/denied` |
-| `agent_session_messages` | `persistence/catalog_models.py:155` | `session_id, turn_id, seq, role, content, tool_name, extra(JSONB)` | 消息。索引 `(session_id, seq)` |
+| `agent_sessions` | `persistence/models.py:31` | `workspace_id, owner_id, agent_id, agent_version, status, metadata(JSONB), graph_state(JSONB), current_revision, current_turn_id, channel_session_key, next_message_seq` | 会话主体。`metadata` 存 `title/preview/agentName/model/rolling_summary/archived`；`graph_state` 存 `pending_approval/messages/step`（**运行时续传状态**）。⚠️ **`wait_status` 已退役并 DROP** ✓（台账 X6 ✓） |
+| `session_turns` | `persistence/models.py:102` | `session_id, idempotency_key, key_strength, user_input, status, started_at, finished_at, agent_version, model_version, cost_usd, error_code, pending_approval, cancel_requested, ingress_seq, route_decision, agent_decision` | **轮次的唯一真相** ✓（旧表已停写 ✓）。状态枚举 `queued/running/waiting/succeeded/failed/cancelled` ✓（比领域多 `queued`/`waiting`/`cancelled` ✓） |
+| `session_messages` | `persistence/models.py:163` | `turn_id, seq, role, content, message_id, metadata_(JSONB), session_id, session_seq` | **消息的规范真相** ✓。两个序号：`seq` = **轮次内**（PK 的一部分 ✓）；`session_seq` = **会话内**（唯一索引 ✓ —— 上下文重建靠它单表有序扫描 ✓）。⚠️ **没有 `tenant_id` 列** ✓ —— 租户归属由它的**轮次**决定 ✓ |
+| `session_events` | `persistence/models.py:203` | `turn_id, seq, event_type, payload(JSONB), delivery_status, delivered_at` | **事件流** —— 每个 chunk 一行 ✓（落库先于投递 ✓）。它是 Gateway 重放的落点 ✓（`Last-Event-ID` 续传 ✓）。⚠️ **没有 `tenant_id` 列** ✓ —— 读它必须 **JOIN 轮次表按租户过滤** ✓ |
 
-三张表都继承 `TenantScopedMixin`，由 `install_tenant_loader` 的 `do_orm_execute` 监听器**自动按当前租户过滤**所有查询。
+**旧表（已停写 ✓，待 DROP ✓）**：
 
-`agent_sessions.metadata` 与 `graph_state` 都是 JSONB，**无 schema 约束**——读取侧靠 Python 侧的 `.get()` 兜底（`copilot.py:57/101/288`）。
+| 表 | 状态 |
+|---|---|
+| `agent_turns` | **停写** ✓（Session Stage 6d · S-15b ✓）—— ORM 与写方法已删 ✓；**物理 DROP 还没做** ✗（台账 **S-36** —— 要「只读窗口 ≥7 天」（从 2026-10-30 起算 ✓）+ 备份恢复**演练过** ✗） |
+| `agent_session_messages` | 同上 ✓ |
+
+⚠️ **历史数据已经搬过去了** ✓（迁移 **0054** ✓）—— 旧表里的轮次与消息都进了新表 ✓；真库**对账差异 = 0** ✓（脚本 `backend/scripts/verify_session_tables.py` ✓ —— 它是删表前的硬判据 ✓）。
+
+`agent_sessions.metadata` 与 `graph_state` 都是 JSONB，**无 schema 约束**——读取侧靠 Python 侧的 `.get()` 兜底（`copilot.py:57/101/288`）。`agent_sessions` 继承 `TenantScopedMixin`，由 `install_tenant_loader` 的 `do_orm_execute` 监听器**自动按当前租户过滤**所有查询 ✓；新表三张**不继承**（`session_messages` / `session_events` 没有 `tenant_id` 列 ✓ —— 继承会凭空多出列 ✗）。
 
 ---
 
@@ -495,7 +538,7 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 
 | 关注点 | 现状 |
 |---|---|
-| 额度 / 计费 | `agent_turns` 记录 `input_tokens/output_tokens`；额度扣减在 `ModelService.stream` 里（走已保存模型时生效）；`UsageChunk.cost_usd` 恒为 0 ✅ 已修：见 §11.6 |
+| 额度 / 计费 | 额度扣减在 `ModelService.stream` 里（走已保存模型时生效 ✓）；**成本落 `session_turns.cost_usd`** ✓（新表有这一列 ✓）；⚠️ **token 数不再入库** ✗ —— 新表没有 `input_tokens/output_tokens` 列 ✓，它们在 **`usage` 事件**里 ✓（`session_events` ✓） |
 | 可观测 | `libs/observability` 提供 OTel / Prometheus 基建；对话路径未见显式 span 埋点，仅有 `current_trace_id()`（`copilot.py:296`）随事件发布 ✅ 已修：见 §11.6 / §11.8 |
 | 审批服务 | `container.approval_service()`，创建时 `requester_id` 是会话 owner（`runner.py:658`）；`decide_approval` 的 `approver_id` 也是真实用户（`copilot.py:461`）✅ |
 | 事件总线 | `AgentRuntimeEventPublisher(container.bus())` 发布 `session.opened` / `turn.started` / `session.closed` |
@@ -513,16 +556,18 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 | # | 缺口 | 位置 | 影响 |
 |---|---|---|---|
 | 1 | `tool_port` 未注入 Copilot 装配 | `lifespan.py:297-307` | ✅ 已修：改为在 HTTP 层按请求绑定 `ToolServiceAdapter`（`session_router.py:88-123`），工具按 tenant/workspace 现取 |
-| 2 | `agent_sessions.graph_state` 承担运行时续传 | `persistence/models.py:57` | 会话状态与业务数据混在一张表的 JSONB 里，无 schema 约束 |
+| 2 | `agent_sessions.graph_state` 承担运行时续传 | `persistence/models.py:57` | 会话状态与业务数据混在一张表的 JSONB 里，无 schema 约束。⚠️ **审批挂起的权威已搬到轮次表** ✓（`session_turns.pending_approval` ✓）—— 这一列的**停写**还没做（台账 **S-35**：≥95% 流量 + ≥7 天只读期 ✓） |
 | 3 | `compile_loop_graph` 是占位图 | `runner.py:92` | `llm_node` / `tools_node` 都是 `_passthrough_*`，实际循环是手写 `while True`，图定义未被执行 |
 | 4 | ⚠️ 仍未修 | `loop.py:55` | 审批挂起后若触发空转守卫，恢复时该工具被静默跳过 |
 | 5 | 计划批准 / 拒绝端点是 ack 空实现 | `session_router.py:498-549` | ✅ 已修：决定写进 `session.graph_state["plan_decisions"]`（`copilot.py:507`），恢复轮次时读取 |
 | 6 | ⚠️ 仍未修 | `session_router.py:550-566` | 从 `/tmp/qzdap-mock-artifacts` 读文件，非数据库存储 |
 | 7 | 审批人 / 请求人 ID 是常量 | `copilot.py:461`、`runner.py:658` | ✅ 已修：请求人与审批人都是真实用户 |
-| 8 | `UsageChunk.cost_usd` 恒 0 | `runner.py:264` / `runner.py:486` | ✅ 已修：按 `admin_models.price_in/price_out` 计价，成本落 `agent_turns.cost_usd` |
+| 8 | `UsageChunk.cost_usd` 恒 0 | `runner.py:264` / `runner.py:486` | ✅ 已修：按 `admin_models.price_in/price_out` 计价，成本落 **`session_turns.cost_usd`** ✓（旧表那一列随旧表退役 ✓）|
 | 9 | ✅ 已修（2026-10-29，Gateway Stage 5） | `adapter/http/router.py`（**已删**） | `/api/*` 与 `/v1/*` 两套并行路由 —— **旧的 `/v1/sessions*` 整段删除**（台账 **G7 / G8**；API owner 确认无仓外调用方）；会话 API 只剩 `/api/sessions*` 一套契约。README 提到的同步 `POST /v1/sessions/{id}/turns` 在代码中**从来不存在**，已一并删掉那条说明 |
 | 10 | README 声称「8 种 SSE 事件」 | `README.md:79` | 实际 `ChunkKind` 有 16 种；前端原处理 14 种（含 `error`），`skill_invocation` 与 `usage` 无消费方 ✅ 已修：两者现在都有 UI |
 | 11 | 真实召回路径不下发 `knowledge_search` chunk | `runner.py:900` | ✅ 已修：真实召回路径现在也下发 `knowledge_search` chunk（`runner.py:188`） |
+| 12 | 旧表 `agent_turns` / `agent_session_messages` 还在 | 迁移 0054/0055 ✓ | ⚠️ **已停写** ✓（S-15b ✓ —— 没人再写它们 ✓），但**物理 DROP 还没做** ✗（台账 **S-36** —— 要「只读窗口 ≥7 天」✓ + 备份恢复**演练过** ✗） |
+| 13 | `wait_status` 列 | 迁移 0053 ✓ | ✅ **已退役并 DROP** ✓（台账 X6 ✓）—— 「等你确认」由轮次表推导 ✓ |
 
 ---
 
