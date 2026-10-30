@@ -299,12 +299,16 @@ class TurnRunner:
                         content=final,
                     )
                     metadata["preview"] = final[:80]
+                    # ⚠️ **摘要不再写 `metadata`** ✓（Context 方案 §5.1 ✓）——
+                    # 它的**唯一落点**是 `agent_sessions.rolling_summary` ✓
+                    # （写者 = Context 层 ✓ —— 旧副本的写入点到此归零 ✓，
+                    # 清理归 Context Stage 5 ✓）。
+                    # ⚠️ **旧的 `metadata` 副本只作过渡回退** ✓（切换前写的行 ✓）。
                     summary = str(
                         (request.graph_state or {}).get("rolling_summary")
                         or metadata.get("rolling_summary")
                         or ""
                     )
-                    metadata["rolling_summary"] = summary
                     await self._session_state.patch_session(
                         session_id=request.session_id,
                         metadata=metadata,

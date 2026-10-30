@@ -60,6 +60,14 @@ class SessionORM(TenantScopedMixin, Base):
         default=dict,
         server_default=text("'{}'::jsonb"),
     )
+    # ⚠️ **摘要是独立的一列** ✓（Context 方案 §5.1 ✓，迁移 0047 ✓）——
+    # 旧的 ``metadata['rolling_summary']`` 是**旧副本** ✓（它的写入点已
+    # 归零 ✓ —— 清理归 Context Stage 5 ✓）。
+    # ⚠️ **只读不写** ✓ —— 这一列的**唯一写者**是 Context 层的落库口 ✓
+    # （会话行的其它字段由 Session 仓储写 ✓ —— 两个写者写同一行会打架 ✗✗）。
+    rolling_summary: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=text("''")
+    )
     # ⚠️ **``wait_status`` 已退役**（台账 X6 ✅）—— 互斥归 ``current_turn_id``
     # （R3），审批挂起归 ``session_turns.pending_approval``（方案 §8）。
     # 迁移 0053 DROP 掉这一列；ORM 也不再映射它 ✓。

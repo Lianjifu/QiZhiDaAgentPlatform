@@ -18,6 +18,13 @@
 ⚠️ **降级序固定**（§4.4 ✓）：旧消息摘要 → 低分召回淘汰 → 附件摘要 →
 **明确错误（CONTEXT_TOO_LARGE）** ✓ —— 每一步淘汰都要记进 manifest 的
 ``filtered_reason`` ✓。
+
+⚠️ **2026-10-30（Context Stage 4 接线时）修掉的两处** ✓：
+
+| # | 症状 | 修法 |
+|---|---|---|
+| A | **摘要模型失败 → 拿空摘要去折消息** ✗✗ → 折掉的那段对话**直接消失** ✗ | 摘要失败**直接走二级** ✓（§4.2 ✓）—— 确定性摘要兜住内容 ✓ |
+| B | **摘要的 token 被算两遍** ✗（``_fold`` 已经把它放进消息里了 ✓）→ 预算虚报 ✗ → 该压的没压、不该压的报超限 ✗ | ``tokens_after`` 只算**留下的那批消息** ✓ |
 """
 
 from __future__ import annotations
@@ -28,7 +35,7 @@ from typing import Any, Protocol, runtime_checkable
 from qzdap_kernel.errors import AppError
 from qzdap_schema.dtos.errors import ErrorCode
 
-from .tokens import estimate_message_tokens, estimate_tokens
+from .tokens import estimate_message_tokens
 
 _log = logging.getLogger(__name__)
 
@@ -154,26 +161,30 @@ class ContextCompressor:
 
         # ── 一级：结构化摘要 ✓ ─────────────────────────────────────────
         summary, degraded = await self._summarize(cleaned, existing_summary)
-        kept, removed_ids = self._fold(cleaned, summary)
-        tokens_after = estimate_message_tokens(kept) + estimate_tokens(summary)
-        if tokens_after <= target:
-            return CompactionOutcome(
-                messages=kept,
-                summary=summary,
-                removed_ids=removed_ids,
-                tokens_before=tokens_before,
-                tokens_after=tokens_after,
-                degraded=degraded,
-            )
+        # ⚠️ **摘要失败 → 直接走二级** ✓（§4.2 ✓）—— 拿一个**空摘要**去折
+        # 消息等于**把折掉的内容直接丢了** ✗✗（那一段对话就消失了 ✗）。
+        if not degraded:
+            kept, removed_ids = self._fold(cleaned, summary)
+            # ⚠️ **摘要已经在那批消息里了** ✓（`_fold` 把它作为一条 system
+            # 消息放进去 ✓）—— 再加一次就是**算两遍** ✗✗（预算被虚报 ✗
+            # → 该压的没压、不该压的报超限 ✗）。
+            tokens_after = estimate_message_tokens(kept)
+            if tokens_after <= target:
+                return CompactionOutcome(
+                    messages=kept,
+                    summary=summary,
+                    removed_ids=removed_ids,
+                    tokens_before=tokens_before,
+                    tokens_after=tokens_after,
+                    degraded=degraded,
+                )
 
         # ── 二级：确定性窗口 ✓（§4.2 ✓）───────────────────────────────
         window_summary, window_removed = self._deterministic_summary(
             cleaned, existing_summary
         )
         window_kept, window_ids = self._fold(cleaned, window_summary)
-        tokens_after = estimate_message_tokens(window_kept) + estimate_tokens(
-            window_summary
-        )
+        tokens_after = estimate_message_tokens(window_kept)
         if tokens_after <= target:
             return CompactionOutcome(
                 messages=window_kept,

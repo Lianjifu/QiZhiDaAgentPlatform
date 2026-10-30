@@ -448,7 +448,12 @@ class CopilotSessionService:
             model=model_used,
             resume=resume,
             route_id=route_id,
-            rolling_summary=str(session.metadata.get("rolling_summary") or ""),
+            # ⚠️ **摘要读新列** ✓（Context 方案 §5.1 ✓）—— 旧副本
+            # （``metadata`` 里的 ✓）**只作过渡回退** ✓（切换前写的行 ✓；
+            # 残留清理归 Context Stage 5 ✓）。
+            rolling_summary=str(
+                session.rolling_summary or session.metadata.get("rolling_summary") or ""
+            ),
             session_metadata=dict(session.metadata),
             graph_state=graph_state,
             # 路由决策随轮次留痕（``session_turns.route_decision``）——

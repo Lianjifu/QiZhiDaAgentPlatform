@@ -96,9 +96,21 @@ class TestDegradationOrder:
     async def test_summary_failure_falls_back_to_the_window(self) -> None:
         """摘要失败 → **二级** ✓（不是继续喂超限上下文 ✗✗）。"""
         compressor = ContextCompressor(summary_model=_Summary(fail=True))
-        result = await compressor.compact(messages=_messages(40), target_tokens=500)
+        result = await compressor.compact(messages=_messages(40), target_tokens=1500)
         assert result.degraded is True
-        assert result.tokens_after <= 500
+        assert result.tokens_after <= 1500
+
+    @pytest.mark.asyncio
+    async def test_a_failed_summary_does_not_lose_the_folded_content(self) -> None:
+        """摘要模型挂了 → **折掉的内容进确定性摘要** ✓（不是直接丢掉 ✗✗）。
+
+        ⚠️ **拿空摘要去折消息 = 那一段对话直接消失** ✗✗ —— 摘要失败必须走
+        二级（§4.2 ✓）。
+        """
+        compressor = ContextCompressor(summary_model=_Summary(fail=True))
+        result = await compressor.compact(messages=_messages(40), target_tokens=1500)
+        assert result.summary, "折掉的内容必须有地方可去"
+        assert "字" in result.summary
 
     @pytest.mark.asyncio
     async def test_still_too_large_raises_instead_of_truncating(self) -> None:
@@ -115,7 +127,7 @@ class TestDegradationOrder:
         """降级时**追加**而不是覆盖 ✓ —— 覆盖等于丢掉此前所有轮次的结论 ✗✗。"""
         compressor = ContextCompressor(summary_model=_Summary(fail=True))
         result = await compressor.compact(
-            messages=_messages(40), existing_summary="此前的结论", target_tokens=500
+            messages=_messages(40), existing_summary="此前的结论", target_tokens=1500
         )
         assert "此前的结论" in result.summary
 

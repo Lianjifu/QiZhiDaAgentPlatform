@@ -37,6 +37,8 @@ CREATE TABLE "{schema}".agent_sessions (
     status varchar(16) NOT NULL DEFAULT 'open',
     metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
     graph_state jsonb NOT NULL DEFAULT '{}'::jsonb,
+    -- ⚠️ **摘要是独立的一列** ✓（Context 方案 §5.1 ✓）—— ORM 现在映射它 ✓
+    rolling_summary text NOT NULL DEFAULT '',
     wait_status varchar(32) NOT NULL DEFAULT 'idle',
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()

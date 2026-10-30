@@ -54,6 +54,8 @@ CREATE TABLE "{schema}".agent_sessions (
     closed_at timestamptz,
     metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
     graph_state jsonb NOT NULL DEFAULT '{}'::jsonb,
+    -- ⚠️ **摘要是独立的一列** ✓（Context 方案 §5.1 ✓）—— ORM 现在映射它 ✓
+    rolling_summary text NOT NULL DEFAULT '',
     wait_status varchar(32) NOT NULL DEFAULT 'idle',
     current_revision integer NOT NULL DEFAULT 0,
     current_turn_id uuid,

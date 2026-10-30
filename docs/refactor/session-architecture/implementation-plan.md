@@ -560,14 +560,14 @@
 | | C-15 真正的降级序 | ✅ **已达成** —— 一级摘要 → 二级确定性窗口 → **明确错误** ✓；⚠️ 降级时**追加**而不是覆盖旧摘要 ✓；工具结果清洗（截 1500 字 ✓）复刻旧路径 ✓ |
 | | C-16 `context_compacted` 事件 | ✅ **已达成** —— `ContextCompactedChunk` 补 `degraded: bool = False` ✓（决策 #7 ✓ 可选字段 ✓）；旧路径的 **`tokens_before=0` 修掉** ✓（改成压缩前的真实 token 数 ✓） |
 | | C-17 **只新建，不动调用点** | ✅ **已达成**（2026-10-30）—— 旧路径 `compact.py` **仍在服役** ✓；Compressor 因此**暂时没有生产调用方** ✓ → 接线归 Stage 4 ✓（前置 = Agent A-26 ✗，归「未接管」表 ✓） |
-| Stage 3 · Persistence | C-18 manifest 落库 | ✅ **已达成**（2026-10-30，Context Stage 3）—— `ContextManifestStore` 端口（契约层 ✓ 不引框架 ✓）+ `PostgresContextManifestStore`（模块侧 ✓）；按 `(turn_id, step)` ✓（一次模型调用一条 ✓）；**同 step 冲突即抛错** ✓（落库后立刻 flush ✓）；**不进 outbox** ✓ |
-| | C-19 `rolling_summary` 读写迁移 | ✅ **新写入已改到新列** ✓（`save_rolling_summary` ✓）—— ⚠️ 旧写入点（`copilot.py:379-380` 与 `runner.py`）**仍写 `metadata`** ✓ → 归零要等 Stage 4 停用旧循环 ✓ |
-| | C-20 交付前落库 | ⚠️ **端口已就位** ✓（写入时机的约束写进了端口的契约 ✓）—— **真正的「交付前落库」是接线阶段的责任** ✓ → 随 Stage 4 一起做 ✓（前置 = Agent A-26 ✅ **已满足** ✓） |
+| Stage 3 · Persistence | C-18 manifest 落库 | ✅ **已达成**（2026-10-30，Context Stage 3）—— `ContextManifestStore` 端口（契约层 ✓ 不引框架 ✓）+ `PostgresContextManifestStore`（模块侧 ✓）；按 `(turn_id, step)` ✓（一次模型调用一条 ✓）；**同 step 冲突即抛错** ✓（落库后立刻 flush ✓）；**不进 outbox** ✓ —— ⚠️ **2026-10-30（Context Stage 4）接上生产调用方** ✓（`runner` 每次模型调用前落一条 ✓，演示栈实测有行 ✓） |
+| | C-19 `rolling_summary` 读写迁移 | ✅ **已达成**（2026-10-30，Context Stage 4）—— **新写入只走 `agent_sessions.rolling_summary`** ✓（`save_rolling_summary` ✓）；旧写入点（Session 层的 `metadata['rolling_summary']`）**不再写** ✓；读侧改读新列 ✓（旧副本**只作过渡回退** ✓ → 清理归 Stage 5 ✓） |
+| | C-20 交付前落库 | ✅ **已达成**（2026-10-30，Context Stage 4）—— manifest **在模型调用之前**落库 ✓（实测：manifest 行先于模型响应存在 ✓）；⚠️ **落库失败就让这一轮失败** ✓ —— 「模型已回答却查不到上下文」比「这一轮失败」更糟 ✗✗ |
 | Stage 4 · 接线与端到端 | C-21 Agent Loop 调 Context | 替换「自己拼 messages」 | — | 0 | **Agent Stage 5** |
-| | C-22 召回失败的 degraded 标记 | `recall_degraded` 传到前端（键已在 Gateway §9.0 登记）；⚠️ **前端目前零消费 `flags`** → 需一个前端工作项（Stage 4） | — | 0 | C-08 |
+| | C-22 召回失败的 degraded 标记 | ⚠️ **未达成** —— Context 侧**已经产出** `recall_degraded` ✓（落进 manifest 的 `degraded` 列 ✓），但 **`ResultEvent.flags` 契约还没实现** ✗（Gateway 层 §9.0 只在方案里 ✓）→ **没有可投递的通道** ✗ → 归 **Gateway 层** ✓ | — | 0 | C-08 · **Gateway 的 flags 契约** |
 | | C-23 端到端回归 | 长会话、混合中英文、召回为空、摘要模型故障 | — | 0 | C-21 |
 | | **C-24 停用 + 打点 `_load_messages` / 四套模板 / `compact.py`** | ⚠️ **前置（硬）已满足**（Agent A-26 ✅ 2026-10-30）—— 旧循环 `_run_turn_inner` 已改接 `context/builder.py` + `memory/writer.py` ✓；**X8 的调用点已归零** ✓（演示栈实测 ✓）—— 剩下的「停用 + 打点 + 删除」归 **Context Stage 4 / Stage 5** ✓ | **X8 / X9 / X10 → 已弃用**（关注点 #9、#10、#11） | — | C-21 · **Agent A-26 ✓** |
-| | C-25 Agent Loop 内自拼 messages 分支停用 + 打点 | ⚠️ **删除归 Agent Stage 7（X17）**，本层只停用 + 确认无残留调用方 | — | — | C-21 |
+| | C-25 Agent Loop 内自拼 messages 分支停用 + 打点 | ✅ **旧循环那一半已停用** ✓（2026-10-30：随 A-26 改调 Builder ✓）—— ⚠️ `nodes.py` 的 `agent` 节点那半是**死代码** ✓（19 节点图没有生产调用方 ✓）→ 删除归 Agent Stage 7（X17）✓ | — | — | C-21 ✓ |
 | Stage 5 · 清理 | **C-26 删 `adapter/graph/compact.py`** | — | **X9**（关注点 #10） | **~53 行** | 归零判据满足 + **C-24 已停用打点** |
 | | **C-27 删 `adapter/llm/prompts.py` 四函数** | ⚠️ 前置：**Session Stage 5b 已删 `use_cases/run_turn.py`**（它 import 这四个函数） | **X10**（关注点 #11） | **~60 行** | 同上 + **Session S-33** |
 | | **C-28 删 `runner.py` 的 `_load_messages`** | — | **X8**（关注点 #9） | **~70 行** | 同上 + **Agent A-26** |
@@ -1169,9 +1169,9 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] C-10 **只新建，不动调用点** · C-11…C-17（Stage 2）· **C-24 停用打点 `_load_messages` / 四套模板 / `compact.py`** → **X8 / X9 / X10**（前置 = Agent A-26）
 - [ ] C-11 async 压缩器 · C-12 结构化摘要 · C-13 复验预算 · C-14 `removed_ids` 差集 · C-15 真正的降级序 · C-16 `context_compacted` 事件
 - [ ] C-17 停用打点 `compact.py` → **X9**
-- [ ] C-18 manifest 落库 · C-19 `rolling_summary` 迁移 · C-20 交付前落库
-- [ ] C-21 Agent Loop 调 Context · C-22 degraded 标记 · C-23 端到端回归
-- [ ] **C-24 停用打点 `_load_messages` / 四套模板 / `compact.py`**（前置 = **Agent A-26**）→ **X8 / X9 / X10** · C-25 自拼 messages 分支停用打点（**删除归 Agent X17**）
+- [x] C-18 manifest 落库（**Context Stage 4 已接上生产** ✓）· C-19 `rolling_summary` 迁移（**已达成** ✓）· C-20 交付前落库（**已达成** ✓）
+- [x] C-21 Agent Loop 调 Context（**已达成** ✓ · A-26 + Stage 4）· C-22 degraded 标记（⚠️ **归 Gateway 层** ✓ —— `ResultEvent.flags` 契约还没实现 ✗）· C-23 端到端回归（**已达成** ✓ —— `test_context_wiring.py` ✓）
+- [x] **C-24 停用打点 `_load_messages` / 四套模板 / `compact.py`**（前置 = **Agent A-26** ✓）→ **X8 / X9 / X10**（**调用点已归零** ✓ —— 实测 legacy 计数 0 ✓；台账行到 Stage 5 才标「已清理」✓）· C-25 自拼 messages 分支停用打点（**旧循环那半已达成** ✓ —— **删除归 Agent X17** ✓）
 - [ ] C-26 **删 `compact.py`** → **X9** · C-27 **删四套模板** → **X10**（前置 = Session S-33）· C-28 **删 `_load_messages`** → **X8** · C-29 **删 `budget.py`**
 - [ ] C-30 删 `metadata['rolling_summary']` 残留 · C-31 启用扫描脚本 Context 段 · C-32 更新台账 + 现状文档
 

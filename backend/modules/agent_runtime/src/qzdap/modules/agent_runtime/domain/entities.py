@@ -62,6 +62,9 @@ class Session:
     closed_at: datetime | None = None
     metadata: dict = field(default_factory=dict)
     graph_state: dict = field(default_factory=dict)
+    # ⚠️ **摘要** ✓（Context 方案 §5.1 ✓）—— **只读** ✓：这一列的**唯一
+    # 写者**是 Context 层的落库口 ✓（会话仓储不写它 ✓ —— 两个写者会打架 ✗✗）。
+    rolling_summary: str = ""
 
     @classmethod
     def create(
@@ -113,6 +116,7 @@ class Session:
             closed_at=datetime.now(UTC),
             metadata=dict(self.metadata),
             graph_state=dict(self.graph_state),
+            rolling_summary=self.rolling_summary,
         )
 
     def with_runtime(
@@ -133,6 +137,7 @@ class Session:
             closed_at=self.closed_at,
             metadata=dict(metadata if metadata is not None else self.metadata),
             graph_state=dict(graph_state if graph_state is not None else self.graph_state),
+            rolling_summary=self.rolling_summary,
         )
 
     def raise_opened_event(self) -> SessionOpened:

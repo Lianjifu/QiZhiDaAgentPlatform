@@ -300,6 +300,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 KnowledgeServiceAdapter,
             )
             from qzdap.modules.agent_runtime.adapter.memory import MemoryServiceAdapter
+            from qzdap.modules.agent_runtime.adapter.persistence.context_manifest_store import (
+                PostgresContextManifestStore,
+            )
             from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
                 PostgresIdempotencyStore,
             )
@@ -357,6 +360,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 # Phase 1.5: 让 graph 走 model 解析 (前端 chat 不带 body.model 时,
                 # agent_row.model='deepseek-flash' 这种 str 也能查 admin_models).
                 catalog_model_resolver=catalog_model_resolver,
+                # ⚠️ **manifest 的落库口** ✓（Context Stage 4 ✓）—— 每次模型
+                # 调用一条 ✓（Context 方案 §5.1.1 ✓）—— 与轮次**同事务** ✓
+                # （同一个 session ✓）。
+                context_manifest_store=PostgresContextManifestStore(session),
             )
             _ = (TenantId, UserId, WorkspaceId)
             sessions_repo = SqlSessionRepository(session)

@@ -11,7 +11,15 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from opentelemetry import trace as _trace
-from qzdap_observability.metrics import record_legacy_call
+from qzdap_agent_runtime.context.compressor import (
+    DEFAULT_WINDOW,
+    CompactionOutcome,
+    ContextCompressor,
+)
+from qzdap_agent_runtime.context.persistence import ContextManifestStore
+from qzdap_agent_runtime.context.tokens import estimate_tokens as estimate_text_tokens
+from qzdap_agent_runtime.context.types import AssembledContext, ManifestEntry
+from qzdap_observability.metrics import record_legacy_call, record_new_call
 from qzdap_observability.tracing import get_tracer
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
@@ -34,11 +42,10 @@ from qzdap_schema.dtos.turn import (
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
-from qzdap.modules.agent_runtime.adapter.graph.chat_model import stream_chat
-from qzdap.modules.agent_runtime.adapter.graph.compact import (
-    DEFAULT_WINDOW,
-    compact_messages,
+from qzdap.modules.agent_runtime.adapter.context.summary_adapter import (
+    LLMSummaryAdapter,
 )
+from qzdap.modules.agent_runtime.adapter.graph.chat_model import stream_chat
 from qzdap.modules.agent_runtime.adapter.graph.loop import (
     HARD_MAX_STEPS,
     apply_stall_guard,
@@ -78,6 +85,9 @@ class SessionGraphRunner:
         memory_port: MemoryPort | None = None,
         knowledge_port: KnowledgePort | None = None,
         approval_factory: Any | None = None,
+        # ⚠️ **manifest 的落库口** ✓（Context Stage 4 ✓）—— 每次模型调用
+        # 一条 ✓（§5.1.1 ✓）。⚠️ **没有它就不落库** ✓（测试里没有库 ✓）。
+        context_manifest_store: ContextManifestStore | None = None,
         # Phase 1.5: agent.model (str) → ModelId (UUID) 解析器.
         # 让前端 chat (无 body.model) 也能在 graph 里查 admin_models.
         catalog_model_resolver: CatalogModelResolver | None = None,
@@ -90,6 +100,7 @@ class SessionGraphRunner:
         self._knowledge_port = knowledge_port
         self._approval_factory = approval_factory
         self._catalog_model_resolver = catalog_model_resolver
+        self._context_manifest_store = context_manifest_store
         record_legacy_call("X5")  # 占位图 compile_loop_graph
         self._graph = compile_loop_graph(llm_node=_passthrough_llm, tools_node=_passthrough_tools)
         self.last_loop_state: dict[str, Any] = {}
@@ -177,11 +188,19 @@ class SessionGraphRunner:
             if agent.model and not model:
                 model = agent.model
 
+        # ⚠️ **actor 只建一次** ✓ —— 摘要调用与主对话调用**同一个身份** ✓
+        # （摘要也是一次模型调用 ✗ —— 用别人的身份调模型不行 ✗✗）。
+        actor = ActorContext(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            principal_id=owner_id,
+        )
+
         whitelist = await self._whitelist(agent)
         tools_schema = _openai_tools(whitelist)
         # ⚠️ **走新的 ContextBuilder** ✓（A-26 ✓）—— 旧的 `_load_messages`
         # 从此没有调用方 ✓（删它归 Context Stage 5 ✓）。
-        messages, knowledge_hits = await self._assemble_context(
+        assembled, knowledge_hits = await self._assemble_context(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             owner_id=owner_id,
@@ -211,20 +230,31 @@ class SessionGraphRunner:
                 ],
                 degraded=False,
             )
-        record_legacy_call("X9")  # 旧上下文压缩 compact_messages
-        # ⚠️ **压缩前的真实 token 数** ✓ —— 之前写死 0 ✗✗（事件里的
-        # 「压缩了多少」永远是 0 ✓ → 排查时看不到效果 ✓）。
-        tokens_before_compact = estimate_tokens(messages)
-        messages, rolling_summary, did_compact = compact_messages(
-            messages, rolling_summary=rolling_summary, context_window=context_window
+        # ⚠️ **走新的 Compressor** ✓（Context Stage 4 ✓）—— 旧的
+        # `compact_messages` 从此没有调用方 ✓（删它归 Context Stage 5 ✓，
+        # 台账 X9 ✓）。
+        outcome = await self._compact(
+            messages=list(assembled.messages),
+            rolling_summary=rolling_summary,
+            context_window=context_window,
+            model=model,
+            actor=actor,
         )
+        messages = list(outcome.messages)
+        rolling_summary = outcome.summary
+        did_compact = _did_compact(outcome)
         if did_compact:
             seq += 1
             yield ContextCompactedChunk(
                 turn_id=turn_id,
                 seq=seq,
-                tokens_before=tokens_before_compact,
-                tokens_after=estimate_tokens(messages),
+                # ⚠️ **压缩前的真实 token 数** ✓ —— 之前写死 0 ✗✗（事件里的
+                # 「压缩了多少」永远是 0 ✓ → 排查时看不到效果 ✓）。
+                tokens_before=outcome.tokens_before,
+                tokens_after=outcome.tokens_after,
+                # ⚠️ **降级可见** ✓（Context 方案 §4.5 ✓）—— 摘要模型挂了
+                # 走确定性窗口时前端能看见 ✓。
+                degraded=outcome.degraded,
             )
 
         state: LoopState = {
@@ -273,21 +303,43 @@ class SessionGraphRunner:
         output_tokens = 0
         cost_usd = 0.0
         while True:
-            messages, rolling_summary, did_compact = compact_messages(
-                list(state.get("messages") or []),
+            # ⚠️ **每次模型调用前压缩** ✓ —— ReAct 里工具结果会不断进上下文
+            # ✓（不压就会撞窗口 ✗）。⚠️ **同一个 Compressor** ✓（不是第二套
+            # 实现 ✗✗）。
+            outcome = await self._compact(
+                messages=list(state.get("messages") or []),
                 rolling_summary=rolling_summary,
                 context_window=context_window,
+                model=model,
+                actor=actor,
             )
+            messages = list(outcome.messages)
+            rolling_summary = outcome.summary
             state["messages"] = messages
-            if did_compact:
+            if _did_compact(outcome):
                 seq += 1
                 yield ContextCompactedChunk(
                     turn_id=turn_id,
                     seq=seq,
-                    tokens_before=0,
-                    tokens_after=estimate_tokens(messages),
+                    # ⚠️ **不再恒为 0** ✓（环外那一处早就修了 ✗ —— 环内这处
+                    # 漏了 ✗✗ → 事件里「压缩了多少」永远是 0 ✓）。
+                    tokens_before=outcome.tokens_before,
+                    tokens_after=outcome.tokens_after,
+                    degraded=outcome.degraded,
                 )
 
+            # ⚠️ **manifest 先于模型落库** ✓（Context 方案 §5.2 ✓）——
+            # 模型已经回答了却查不到那次的组成 ✗✗（审计与评测失去依据 ✗）。
+            await self._save_manifest(
+                assembled=assembled,
+                messages=messages,
+                turn_id=turn_id,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                session_id=session_id,
+                step=int(state.get("step") or 0),
+                compaction_degraded=outcome.degraded,
+            )
             chat_stream = stream_chat(
                 self._llm,
                 model=model or "default",
@@ -296,11 +348,7 @@ class SessionGraphRunner:
                 model_id=ModelId(UUID(model)) if _looks_uuid(model) else None,
                 # Phase 12: 策略路由. 当 route_id 提供时, 优先用它走 Phase 7.
                 route_id=route_id,
-                actor=ActorContext(
-                    tenant_id=tenant_id,
-                    workspace_id=workspace_id,
-                    principal_id=owner_id,
-                ),
+                actor=actor,
                 # Phase 1.5: 走 graph 路径时, 让 stream_chat 在 model 是 str 时也 resolve.
                 resolve_model_id=(
                     self._catalog_model_resolver.resolve
@@ -474,6 +522,14 @@ class SessionGraphRunner:
 
         self.last_loop_state = {**dict(state), "pending_approval": None, "rolling_summary": rolling_summary}
         final = str(state.get("final") or "")
+        # ⚠️ **摘要写新列** ✓（Context 方案 §5.1 ✓）—— 旧的
+        # `metadata['rolling_summary']` 是**旧副本** ✓（它的写入点归零 ✓
+        # —— 清理归 Context Stage 5 ✓）。
+        await self._save_rolling_summary(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            summary=rolling_summary,
+        )
         # ⚠️ **走新的 Writer** ✓（A-26 ✓）—— 旧的 `_remember` 从此没有
         # 调用方 ✓（删它归 Memory Stage 7 ✓）。
         writes = await self._write_memories(
@@ -515,15 +571,15 @@ class SessionGraphRunner:
         user_input: str,
         history: list[dict[str, Any]],
         agent: CatalogAgent | None,
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    ) -> tuple[AssembledContext, list[dict[str, Any]]]:
         """**用新的 ContextBuilder 装配上下文** ✓（Agent Stage 5 · A-26 ✓）。
 
         ⚠️ **旧的 `_load_messages` 至此没有调用方了** ✓ —— 它归 Context
         Stage 5 删除 ✓（台账 X8 ✓）—— 但**这一步之前不能删** ✗（旧实现还在
         服役的路径上 ✗）。
 
-        返回 ``(消息, 知识召回原始结果)`` ✓ —— 后者给 ``knowledge_search``
-        事件用 ✓（不必再召回一次 ✗✗）。
+        返回 ``(装配结果, 知识召回原始结果)`` ✓ —— 后者给 `knowledge_search`
+        事件用 ✓（不必再召回一次 ✗✗）；前者带着 **manifest** ✓（落库用 ✓）。
         """
         from qzdap_agent_runtime.context.builder import ContextBuilder
 
@@ -551,13 +607,155 @@ class SessionGraphRunner:
         )
         knowledge = list(assembled.recalled.get("knowledge") or [])
         memories = list(assembled.recalled.get("memory") or [])
+        record_new_call("X8")  # 新的上下文组装已接管
         if memories:
             # ⚠️ **X15 的打点跟着搬家** ✓ —— L3 内容进「相关记忆」、knowledge
             # 另进「相关知识」→ **运行时双份注入** ✗（决策 #1 归 Memory
             # Stage 7 ✓）。⚠️ **旧路径是「有记忆就记」** ✓ —— 口径保持一致
             # ✓（否则指标中途变义 ✗✗）。
             record_legacy_call("X15")
-        return list(assembled.messages), knowledge
+        return assembled, knowledge
+
+    async def _save_rolling_summary(
+        self,
+        *,
+        tenant_id: UUID,
+        session_id: UUID | None,
+        summary: str,
+    ) -> None:
+        """**摘要写进 `agent_sessions.rolling_summary`** ✓（§5.1 ✓）。
+
+        ⚠️ **新写入只走这一列** ✓ —— 旧副本（``metadata`` 里的那个 ✓）**不再
+        写** ✓（Context Stage 5 删残留 ✓）。
+        """
+        store = self._context_manifest_store
+        if store is None or session_id is None:
+            return
+        await store.save_rolling_summary(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            summary=summary,
+        )
+
+    async def _save_manifest(
+        self,
+        *,
+        assembled: AssembledContext,
+        messages: list[dict[str, Any]],
+        turn_id: UUID,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        session_id: UUID | None,
+        step: int,
+        compaction_degraded: bool,
+    ) -> None:
+        """**每次模型调用落一条 manifest** ✓（Context 方案 §5.1.1 ✓）。
+
+        ⚠️ **没有落库口就不落** ✓（测试与纯内存场景 ✓）。
+        ⚠️ **落库失败就让这一轮失败** ✓ —— 「模型已回答但查不到上下文」
+        比「这一轮失败」更糟 ✗✗（审计就失去依据了 ✗）。
+        """
+        store = self._context_manifest_store
+        if store is None or session_id is None:
+            return
+        payload = self._manifest_payload(
+            assembled=assembled, messages=messages
+        )
+        degraded = {
+            "recall_degraded": bool(
+                assembled.degraded_flags.get("recall_degraded")
+            ),
+            "compaction_degraded": bool(compaction_degraded),
+        }
+        await store.save_manifest(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            session_id=session_id,
+            turn_id=turn_id,
+            step=step,
+            manifest=payload,
+            tokens_total=int(payload.get("total_tokens") or 0),
+            degraded=degraded,
+        )
+
+    @staticmethod
+    def _manifest_payload(
+        *,
+        assembled: AssembledContext,
+        messages: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """这一轮**真正喂给模型**的上下文清单 ✓。
+
+        ⚠️ **按「消息对象身份」对齐** ✓ —— 压缩后留下的消息**还是那些对象**
+        ✓（Compressor 复用原对象 ✓）→ 能对上 Builder 的条目 ✓（来源 /
+        ``ref_id`` / ``score`` 都在 ✓）；对不上的是**后来加的消息**（工具
+        结果 / 助手回复 ✓）→ 现算一条 ✓（来源标 ``tool_result`` ✓）。
+        """
+        base: dict[int, ManifestEntry] = {}
+        for message, entry in zip(assembled.messages, assembled.manifest.entries):
+            base[id(message)] = entry
+        entries: list[dict[str, Any]] = []
+        for message in messages:
+            entry = base.get(id(message))
+            if entry is not None:
+                entries.append(_entry_to_dict(entry))
+                continue
+            content = str(message.get("content") or "")
+            role = str(message.get("role") or "")
+            if role == "system" and content.startswith("更早轮次摘要："):
+                source = "summary"
+            elif role == "tool":
+                source = "tool_result"
+            else:
+                source = "recent"
+            entries.append(
+                {
+                    "source": source,
+                    "tokens": estimate_text_tokens(content),
+                    "filtered_reason": None,
+                    "version": None,
+                    "ref_id": None,
+                    "score": None,
+                    "degraded": False,
+                }
+            )
+        return {
+            "total_tokens": sum(int(item["tokens"]) for item in entries),
+            "entries": entries,
+        }
+
+    async def _compact(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        rolling_summary: str,
+        context_window: int,
+        model: str,
+        actor: ActorContext,
+    ) -> CompactionOutcome:
+        """**用新的 Compressor 压缩上下文** ✓（Context Stage 4 ✓）。
+
+        ⚠️ **旧的 `compact_messages` 从此没有调用方** ✓ —— 它归 Context
+        Stage 5 删除 ✓（台账 X9 ✓）。
+
+        ⚠️ **摘要模型失败就降级** ✓（契约层的 Compressor 负责 ✓）—— 这里
+        **不吞异常** ✗（吞了就没人知道降级了 ✗✗）。
+        """
+        compressor = ContextCompressor(
+            summary_model=LLMSummaryAdapter(
+                self._llm,
+                model=model,
+                actor=actor,
+                model_id=ModelId(UUID(model)) if _looks_uuid(model) else None,
+            ),
+            context_window=context_window,
+        )
+        outcome = await compressor.compact(
+            messages=messages,
+            existing_summary=rolling_summary,
+        )
+        record_new_call("X9")  # 新的上下文压缩已接管
+        return outcome
 
     async def _load_messages(
         self,
@@ -946,6 +1144,28 @@ def _as_uuid(raw: Any) -> UUID:
         return UUID(str(raw))
     except (ValueError, TypeError):
         return uuid4()
+
+
+def _entry_to_dict(entry: ManifestEntry) -> dict[str, Any]:
+    """manifest 条目 → 落库用的 dict ✓（字段与契约层一致 ✓）。"""
+    return {
+        "source": entry.source,
+        "tokens": entry.tokens,
+        "filtered_reason": entry.filtered_reason,
+        "version": entry.version,
+        "ref_id": entry.ref_id,
+        "score": entry.score,
+        "degraded": entry.degraded,
+    }
+
+
+def _did_compact(outcome: CompactionOutcome) -> bool:
+    """这一轮**真的压缩过**吗 ✓。
+
+    ⚠️ **判据是「有消息被折走」** ✓（``removed_ids`` ✓）—— 「token 变少了」
+    只是结果 ✓（摘要本身也可能让 token 变多 ✗）。
+    """
+    return bool(outcome.removed_ids) or outcome.tokens_after < outcome.tokens_before
 
 
 def _knowledge_package_ids(agent: CatalogAgent | None) -> tuple[UUID, ...]:

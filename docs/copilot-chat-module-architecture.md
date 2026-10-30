@@ -1,6 +1,6 @@
 # 对话（Copilot）功能模块 — 架构梳理
 
-> 版本：1.2（2026-10-30 更新：Session Stage 4b–6d + **Agent A-26（上下文装配改接 `ContextBuilder`、记忆写入改接 `write_turn`）**之后的事实）
+> 版本：1.3（2026-10-30 更新：Session Stage 4b–6d + **Agent A-26（上下文装配改接 `ContextBuilder`、记忆写入改接 `write_turn`）** + **Context Stage 4（压缩改接 `ContextCompressor`、manifest 落库、摘要写新列）**之后的事实）
 > 适用项目：`QiZhiDaAgentPlatform`
 > 状态：**现状（as-is）梳理**，描述当前代码已实现的行为，不含改造计划
 > 读者：需要理解「一次对话从点击发送到渲染完成」全链路的人
@@ -525,6 +525,9 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 - **知识**：`KnowledgePort.search(top_k=6, package_ids=agent.knowledge_refs)` 召回 —— **只取 agent 绑定的且 enabled 的知识库** ✓，进「相关知识」段。✅ **现在会下发 `knowledge_search` chunk**（含 `hits` 与 `citations` ✓）—— 命中结果由 Builder **顺带带回** ✓（不必再召回一次 ✗✗）。**这是 2026-10-30 的变化** ✓：此前真实路径只把内容拼进 prompt，下发该 chunk 的只有 mock LLM 的 `synthetic_chunks` 旁路。
 - **轮末记忆写入**：走 `MemoryPort.write_turn(...)` ✓ → 契约层 `memory/writer.py` 的**五步流水线** ✓（抽取 → 敏感闸门 → 幂等去重 → 置信度 → 落库 L2 带 provenance ✓）。⚠️ **不再无条件写一条「用户：… 助手：…」** ✓（旧 `_remember` 每轮都写 ✗）—— 只写**抽出来的事实** ✓，手机号 / 密码类内容**整条拒绝** ✓（闸门 ✓）。
 - 上下文的**优先级与降级**由 Builder 统一决定 ✓（system → agent → 租户 → 摘要 → 召回 → 最近 → 本轮输入 ✓）；当前输入与工具结果**永不降级** ✓。
+- **压缩**：走契约层的 `ContextCompressor` ✓（`context/compressor.py` ✓）—— **async** ✓；超预算（窗口 × 0.70 ✓）时**先摘要**（模型摘要 ✓，提示词按 role 分组 ✓），摘要失败 → **确定性窗口** ✓（每条 180 字 × 20 条 ✓），仍超限 → **抛 `CONTEXT_TOO_LARGE`** ✓（明确错误，不静默截断 ✓）。**每次模型调用前都会压一次** ✓（ReAct 里工具结果会不断进上下文 ✓）。⚠️ **这是 2026-10-30 的变化** ✓ —— 此前走旧的 `compact.py`（纯字符截断 ✓，且环内那处 `tokens_before` 恒为 0 ✗）。
+- **manifest**：**每次模型调用前**落一条到 `session_context_manifests` ✓（`turn_id` + `step` ✓）—— 记「这次喂了什么」✓（来源 / token / `ref_id` / `score` / `filtered_reason` ✓）。⚠️ **模型已回答 ⇒ manifest 一定存在** ✓（落库失败就让这一轮失败 ✓）。
+- **摘要的落点**：`agent_sessions.rolling_summary` ✓（**唯一落点** ✓）—— 旧的 `metadata['rolling_summary']` **不再写** ✓（读侧暂作过渡回退 ✓）。
 
 ### 6.5 审计
 
