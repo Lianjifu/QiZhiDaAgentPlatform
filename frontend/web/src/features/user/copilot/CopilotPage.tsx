@@ -145,6 +145,16 @@ const CopilotTypingIndicator = () => {
  * pushNotice: 加一条提示, 同样的内容在最近 N 条里已存在则跳过 (避免
  * onEvent('error') 和 streamCopilotTurn.throw 两次 add 到 notices).
  */
+/**
+ * ⚠️ **降级标记 → 人话** ✓（后端信封上的 `flags` ✓）。
+ * ⚠️ **名字对不上就原样显示** ✓（不吞 ✓ —— 未知标记也让人看见 ✓）。
+ */
+const DEGRADED_FLAG_TEXT: Record<string, string> = {
+  recall_degraded: '知识召回降级',
+  compaction_degraded: '上下文压缩降级',
+  interactive_degraded: '交互降级',
+};
+
 const DEDUPE_WINDOW = 6;
 const pushNotice = (current: string[], next: string): string[] => {
   const trimmed = next.trim();
@@ -324,7 +334,16 @@ function CopilotInner() {
       const attachments: AttachmentReady[] = [];
       const workflowRuns: { id: string; workflow_name: string; status: 'started' | 'succeeded' | 'failed' | 'cancelled' }[] = [];
       const knowledgeHits: { query: string; hits: { id: string; title: string; snippet: string; score: number }[]; degraded?: boolean } = { query: '', hits: [] };
+      // ⚠️ **降级标记** ✓（后端每一块都带 ✓）—— 用户要看得见 ✓
+      // （召回 / 压缩降级时回答是不完整的 ✓ —— 不说就是骗 ✓）。
+      const degradedFlags = new Set<string>();
       await streamCopilotTurn(sid, content, (event, data) => {
+        // ⚠️ **每一块都盖章** ✓（信封上的 `flags` ✓ —— 读哪块都一样 ✓）。
+        if (Array.isArray(data.flags)) {
+          for (const flag of data.flags as string[]) {
+            if (flag) degradedFlags.add(flag);
+          }
+        }
         if (event === 'message') {
           const chunk = String(data.content || '');
           if (chunk) {
@@ -489,6 +508,11 @@ function CopilotInner() {
         if (event === 'context_compacted') setNotices((n) => pushNotice(n, '上下文已压缩'));
         if (event === 'memory_write') setNotices((n) => pushNotice(n, '已写入记忆'));
         if (event === 'done') {
+          // ⚠️ **这一轮降级过就说清楚** ✓（一条提示 ✓ —— 说清楚缺了什么 ✓）。
+          if (degradedFlags.size > 0) {
+            const parts = [...degradedFlags].map((flag) => DEGRADED_FLAG_TEXT[flag] ?? flag);
+            setNotices((n) => pushNotice(n, `本轮降级：${parts.join('、')} —— 回答可能不完整`));
+          }
           const final = String(data.final_message || '');
           if (final) {
             flushSync(() => {
