@@ -72,10 +72,15 @@ CLOSED_CONCERNS: tuple[tuple[str, str, str, str], ...] = (
 #: （数据源 = 实施方案 §1.5；2026-10-29 核对：self_evolution 的
 #: ``InMemoryDraftStore`` 是白名单定稿之后新增的，已补进基线。）
 INMEMORY_BASELINE = {
-    # ⚠️ **只剩两个** ✓（2026-10-31：Agent Stage 7 把 runtime 里那 16 个
-    # 全删了 ✓ —— 生产包零 ``InMemory*`` ✓ 归 Agent 层 ✓）。
+    # ⚠️ **只剩三个** ✓（2026-10-31：Agent Stage 7 把 runtime 里那 16 个
+    # 全删了 ✓；当天 Memory C5 的**向量补写队列**是**生产在用**的 ✓ ——
+    # 登记进基线 ✓ —— 归属 Memory 层 ✓）。
     "InMemoryOutboxRepository",   # runtime 的 outbox ✓（Session Stage 4b 取用 ✓）
     "InMemoryDraftStore",         # self_evolution 的草稿存储 ✓（归 self_evolution ✓）
+    # ⚠️ **Memory 的向量补写队列** ✓（C5 ✓）—— 它是**生产在用**的进程内
+    # 有界队列 ✓（组合根起停 ✓ —— **应用级** ✓ 不是每请求一个 ✓）——
+    # 队列满了就丢 ✓（不阻塞对话 ✓）+ **兜底补写**捡回来 ✓（丢的不丢向量 ✓）。
+    "InMemoryVectorWriteQueue",
 }
 
 #: 生产包的受检根（相对 backend/）。

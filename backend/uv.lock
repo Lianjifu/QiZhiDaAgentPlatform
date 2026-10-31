@@ -2503,19 +2503,23 @@ version = "0.1.0"
 source = { editable = "modules/agent_factory" }
 dependencies = [
     { name = "pydantic" },
+    { name = "qzdap-auth" },
     { name = "qzdap-kernel" },
     { name = "qzdap-messaging" },
     { name = "qzdap-persistence" },
     { name = "qzdap-schema" },
+    { name = "qzdap-vault" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "pydantic", specifier = ">=2.9" },
+    { name = "qzdap-auth", editable = "libs/auth" },
     { name = "qzdap-kernel", editable = "libs/kernel" },
     { name = "qzdap-messaging", editable = "libs/messaging" },
     { name = "qzdap-persistence", editable = "libs/persistence" },
     { name = "qzdap-schema", editable = "libs/schema" },
+    { name = "qzdap-vault", editable = "libs/vault" },
 ]
 
 [[package]]
@@ -2674,6 +2678,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "pyjwt" },
     { name = "qzdap-kernel" },
+    { name = "qzdap-persistence" },
     { name = "qzdap-schema" },
 ]
 
@@ -2683,6 +2688,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "pyjwt", specifier = ">=2.10.0" },
     { name = "qzdap-kernel", editable = "libs/kernel" },
+    { name = "qzdap-persistence", editable = "libs/persistence" },
     { name = "qzdap-schema", editable = "libs/schema" },
 ]
 
@@ -2748,19 +2754,23 @@ version = "0.1.0"
 source = { editable = "modules/evaluation" }
 dependencies = [
     { name = "pydantic" },
+    { name = "qzdap-auth" },
     { name = "qzdap-kernel" },
     { name = "qzdap-messaging" },
     { name = "qzdap-persistence" },
     { name = "qzdap-schema" },
+    { name = "qzdap-vault" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "pydantic", specifier = ">=2.9" },
+    { name = "qzdap-auth", editable = "libs/auth" },
     { name = "qzdap-kernel", editable = "libs/kernel" },
     { name = "qzdap-messaging", editable = "libs/messaging" },
     { name = "qzdap-persistence", editable = "libs/persistence" },
     { name = "qzdap-schema", editable = "libs/schema" },
+    { name = "qzdap-vault", editable = "libs/vault" },
 ]
 
 [[package]]
@@ -2776,6 +2786,7 @@ dependencies = [
     { name = "qzdap-messaging" },
     { name = "qzdap-persistence" },
     { name = "qzdap-schema" },
+    { name = "qzdap-vault" },
 ]
 
 [package.metadata]
@@ -2788,6 +2799,7 @@ requires-dist = [
     { name = "qzdap-messaging", editable = "libs/messaging" },
     { name = "qzdap-persistence", editable = "libs/persistence" },
     { name = "qzdap-schema", editable = "libs/schema" },
+    { name = "qzdap-vault", editable = "libs/vault" },
 ]
 
 [[package]]
@@ -2988,6 +3000,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "prometheus-client" },
     { name = "qzdap-kernel" },
+    { name = "qzdap-persistence" },
     { name = "structlog" },
 ]
 
@@ -2998,6 +3011,7 @@ requires-dist = [
     { name = "opentelemetry-sdk", specifier = ">=1.27.0" },
     { name = "prometheus-client", specifier = ">=0.21.0" },
     { name = "qzdap-kernel", editable = "libs/kernel" },
+    { name = "qzdap-persistence", editable = "libs/persistence" },
     { name = "structlog", specifier = ">=24.4.0" },
 ]
 
@@ -3150,6 +3164,7 @@ dependencies = [
     { name = "qzdap-kernel" },
     { name = "qzdap-persistence" },
     { name = "qzdap-schema" },
+    { name = "qzdap-vault" },
 ]
 
 [package.metadata]
@@ -3159,6 +3174,7 @@ requires-dist = [
     { name = "qzdap-kernel", editable = "libs/kernel" },
     { name = "qzdap-persistence", editable = "libs/persistence" },
     { name = "qzdap-schema", editable = "libs/schema" },
+    { name = "qzdap-vault", editable = "libs/vault" },
 ]
 
 [[package]]
@@ -3200,6 +3216,7 @@ dependencies = [
     { name = "qzdap-messaging" },
     { name = "qzdap-persistence" },
     { name = "qzdap-schema" },
+    { name = "qzdap-vault" },
 ]
 
 [package.metadata]
@@ -3213,6 +3230,7 @@ requires-dist = [
     { name = "qzdap-messaging", editable = "libs/messaging" },
     { name = "qzdap-persistence", editable = "libs/persistence" },
     { name = "qzdap-schema", editable = "libs/schema" },
+    { name = "qzdap-vault", editable = "libs/vault" },
 ]
 
 [[package]]

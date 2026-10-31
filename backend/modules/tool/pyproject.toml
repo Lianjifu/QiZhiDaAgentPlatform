@@ -10,6 +10,7 @@ dependencies = [
     "qzdap-auth",
     "qzdap-messaging",
     "qzdap-http",
+    "qzdap-vault",
     "fastapi>=0.115.0",
     "pydantic>=2.9",
     "httpx>=0.28.0",

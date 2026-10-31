@@ -247,7 +247,7 @@
 > **验收**：只装 `qzdap-agent-runtime` 的声明依赖后，`import qzdap.modules.agent_runtime.application.ports` 不报错。
 
 > **状态**：✅ **已修（2026-10-31）** —— `modules/agent_runtime/pyproject.toml` 已加 `qzdap-vault` ✓ + `uv.lock` 离线重锁 ✓（**无版本变动** ✓）。
-> ⚠️ **仍未验证**：本仓库**没有 isolated install 的 CI 检查** ✓（**P-12 / C10 未做** ✗ —— 守门人缺席 ✗✗ → 同类问题**还会再犯** ✗）。
+> ✅ **守门人也已到位** ✓（**P-12 / C10 已做** ✓ —— `backend/scripts/check_isolated_deps.py` ✓ + CI 的 `isolated-install` job ✓ —— 它当场又抓到 7 个包漏声明 ✗✗ → 已补 ✓）→ 同类问题**不会再犯** ✓。
 
 ### 2.3 前置 C：把收敛基础设施建起来（**不做则后面全部删不掉**）
 
@@ -1105,7 +1105,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 > **2026-10-31 核对**（依据 = 代码 + 台账 + git 历史 ✓）。
 
 - [x] P-01 拍板「表选择」决策 —— **gate**（前置 A）—— ✅ **2026-10-29 用户拍板** ✓（53 条决策全部定稿 ✓ —— §2.1 ✓）
-- [x] **P-02 修 `qzdap-vault` 缺失声明**（前置 B）—— ✅ **2026-10-31 已修** —— `modules/agent_runtime` 有 **5 个文件** import `qzdap_vault` ✓（`adapter/llm/__init__.py` ✓ / `adapter/context/summary_adapter.py` ✓ / `adapter/graph/runner.py` ✓ / `adapter/graph/chat_model.py` ✓ / `application/ports/__init__.py` ✓）而 pyproject **没声明它** ✗ → **isolated install 环境直接 `ModuleNotFoundError`** ✗✗ —— 已加 `qzdap-vault` 到 `modules/agent_runtime/pyproject.toml` ✓ + `uv.lock` 离线重锁 ✓（**无版本变动** ✓）。⚠️ **仍未验证**：本仓库**没有 isolated install 的 CI 检查** ✓（= P-12 ✗ —— 那条没做，这类问题**还会再犯** ✗✗）
+- [x] **P-02 修 `qzdap-vault` 缺失声明**（前置 B）—— ✅ **2026-10-31 已修** —— `modules/agent_runtime` 有 **5 个文件** import `qzdap_vault` ✓（`adapter/llm/__init__.py` ✓ / `adapter/context/summary_adapter.py` ✓ / `adapter/graph/runner.py` ✓ / `adapter/graph/chat_model.py` ✓ / `application/ports/__init__.py` ✓）而 pyproject **没声明它** ✗ → **isolated install 环境直接 `ModuleNotFoundError`** ✗✗ —— 已加 `qzdap-vault` 到 `modules/agent_runtime/pyproject.toml` ✓ + `uv.lock` 离线重锁 ✓（**无版本变动** ✓）。✅ **同类问题已有守门人** ✓（= **P-12** ✓ —— `backend/scripts/check_isolated_deps.py` ✓ + CI 的 `isolated-install` job ✓ —— 它还当场抓到另外 7 个包漏声明 ✗✗ → 已补 ✓）
 - [x] P-03 建 `qzdap_legacy_calls_total` + `record_legacy_call`（C1）—— ✅ `libs/observability/.../metrics.py` ✓（`NEW_CALLS_TOTAL` ✓ + `record_new_call` ✓ 同一套 `entry` 标签 ✓）
 - [x] P-04 给台账条目的旧入口打点（C2，**逐条核对，不许漏**）—— ✅ **36 条中 16 条在旧实现的入口处打点** ✓（其余 20 条走替代判据 ✓ —— grep 扫描 / 数据迁移 / 回归测试 ✓） —— ⚠️ **打点随旧实现删除逐条撤除** ✓（旧实现不在场时打点必须撤 ✓ 否则指标永远非零 ✗✗）
 - [x] P-05 建 CI 扫描脚本骨架（C3）—— ✅ `backend/scripts/check_no_legacy_impl.sh` ✓（**31 条启用** ✓ / 13 条待启用 ✓）+ CI 的 `legacy-scan` job ✓
@@ -1115,7 +1115,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [ ] P-09 建验收环境与脱敏样本（H1 / C7）—— ⬜ **未做**（演示栈有 ✓ —— 但**脱敏样本**没有 ✗）
 - [ ] P-10 建告警规则（H2 / C8）—— ⬜ **未做**
 - [x] P-11 **确认 `/v1/sessions*` 是否有仓外消费者**（H5 / C9，需 API owner 拍板）—— ✅ **已确认无仓外调用方** ✓（Gateway G-27 的删除依据 ✓ —— 兼容保留期因此归零 ✓）
-- [ ] P-12 CI 加 isolated install 检查（H6 / C10）—— ❌ **未做** —— CI 有 lint ✓ / import-linter ✓ / legacy-scan ✓ / mypy ✓ / secret ✓ / audit ✓ / test ✓ / smoke ✓ —— **没有 isolated install** ✗（那正是 **P-02 那类问题**的守门人 ✗✗）
+- [x] **P-12 CI 加 isolated install 检查**（H6 / C10）—— ✅ **2026-10-31 已做** —— `backend/scripts/check_isolated_deps.py` ✓（**逐包**解析各自的 `pyproject.toml` ✓ → AST 扫 import ✓ → import 到的 **lib** 必须被**声明** ✓ —— 判据只有 pyproject 一个来源 ✓）+ CI 的 `isolated-install` job ✓。⚠️ **它当场抓到 7 个包漏声明** ✗✗ → 已补 ✓（`libs/auth` ✓ `libs/observability` ✓ `modules/agent_factory` ✓ `modules/evaluation` ✓ `modules/governance` ✓ `modules/self_evolution` ✓ `modules/tool` ✓ —— 各补 `qzdap-persistence` / `qzdap-auth` / `qzdap-vault` ✓）+ `uv.lock` 离线重锁 ✓（**无版本变动** ✓）。⚠️ **顺带修了 CI 的同步命令** ✗✗（`uv sync --all-extras` **只装根的依赖** ✓ → workspace 成员被**卸载** ✓ → smoke job import 不到 `qzdap.composition` ✗✗）→ 全部改成 `uv sync --all-extras --all-packages` ✓（与 Makefile 一致 ✓）
 
 ### Gateway 层（§3.1）—— **删除 G1–G12**
 > **台账 G1–G12 全部「已清理」** ✓ —— 本层**收口** ✓。剩余的只有「现状文档同步」（与 Session S-38 / Router R-28 / Context C-32 / Memory M-51 一起补 ✓）。

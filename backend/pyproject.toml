@@ -39,6 +39,9 @@ members = [
     "runtimes/*",
     "composition/*",
 ]
+# ⚠️ **根是虚拟项目**（上面的 ``package = false`` ✓）→ 裸 ``uv sync`` **只装
+# 根的依赖** ✗ → workspace 成员会被**卸载** ✗✗ → 装成员要用
+# ``uv sync --all-packages`` ✓（CI 与 Makefile 都这么写 ✓）。
 
 [tool.uv.sources]
 qzdap-kernel = { workspace = true }

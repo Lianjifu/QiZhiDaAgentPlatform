@@ -3,7 +3,9 @@
 Thumbs.db
 
 # GitHub
-.github/
+# ⚠️ **workflow 要入库** ✓（CI 是闸门 ✓ —— `.github/` 整目录忽略会让
+# **新增的 job 加不进 git** ✗✗）—— 只有本地临时文件才忽略 ✓。
+.github/**/*.local.yml
 
 # Python
 __pycache__/

@@ -28,7 +28,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           version: '0.11.7'
-      - run: uv sync --all-extras
+      - run: uv sync --all-extras --all-packages
       - run: make lint
 
   import-lint:
@@ -45,7 +45,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           version: '0.11.7'
-      - run: uv sync --all-extras
+      - run: uv sync --all-extras --all-packages
       - run: make import-lint
 
   legacy-scan:
@@ -64,6 +64,24 @@ jobs:
       - name: Self-test the scanner
         run: bash scripts/check_no_legacy_impl.sh --self-test
 
+  isolated-install:
+    name: Isolated install (dependency declarations)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: '0.11.7'
+      - run: uv sync --all-extras --all-packages
+      - name: Check every package declares the workspace libs it imports
+        run: uv run python scripts/check_isolated_deps.py
+
   type-check:
     name: Type-check (mypy strict)
     runs-on: ubuntu-latest
@@ -78,7 +96,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           version: '0.11.7'
-      - run: uv sync --all-extras
+      - run: uv sync --all-extras --all-packages
       - run: make type-check
 
   secret-scan:
@@ -106,7 +124,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           version: '0.11.7'
-      - run: uv sync --all-extras
+      - run: uv sync --all-extras --all-packages
       - run: uv run pip-audit --strict
 
   test:
@@ -150,7 +168,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           version: '0.11.7'
-      - run: uv sync --all-extras
+      - run: uv sync --all-extras --all-packages
       - name: Wait for services
         run: |
           until pg_isready -h localhost -p 5432; do sleep 1; done
@@ -210,7 +228,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           version: '0.11.7'
-      - run: uv sync --all-extras
+      - run: uv sync --all-extras --all-packages
       - name: Wait for services
         run: |
           until pg_isready -h localhost -p 5432; do sleep 1; done

@@ -8,6 +8,8 @@ dependencies = [
     "qzdap-schema",
     "qzdap-persistence",
     "qzdap-messaging",
+    "qzdap-auth",
+    "qzdap-vault",
     "pydantic>=2.9",
 ]
 
