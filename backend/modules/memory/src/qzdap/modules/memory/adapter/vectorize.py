@@ -72,6 +72,16 @@ class MemoryVectorBackfill:
         *,
         window_minutes: int = 60,
     ) -> None:
+        # ⚠️ **接线期就报错** ✓（2026-11-01 ✓）—— 传进来的必须是**可调用的**
+        # 会话工厂 ✓（例如 ``async_sessionmaker`` ✓）—— ``SessionFactory``
+        # **本身不可调用** ✓（它有 ``.session()`` ✓ / ``.maker`` ✓）→ 传错
+        # 的话兜底补写**每轮都失败** ✗✗（后台 worker 静默重试 ✓ → 只在日志里
+        # 留一条 warning ✓ → 兜底补写**形同虚设** ✓ 而没人知道 ✗✗）。
+        if not callable(session_factory):
+            raise TypeError(
+                "session_factory must be callable (e.g. SessionFactory.maker) — "
+                f"got {type(session_factory).__name__}"
+            )
         self._session_factory = session_factory
         self._window = timedelta(minutes=max(1, window_minutes))
 

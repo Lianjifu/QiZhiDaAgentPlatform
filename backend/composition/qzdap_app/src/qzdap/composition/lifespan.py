@@ -1015,7 +1015,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     memory_vector_worker = VectorizeWorker(
         queue=memory_vector_queue,
         store=MemoryVectorizeAdapter(embedding=memory_embedding, vectors=memory_vectors),
-        backfill=MemoryVectorBackfill(container.session_factory()),
+        # ⚠️ **要传「可调用的会话工厂」** ✓ —— ``SessionFactory`` 本身
+        # **不可调用** ✓（它有 ``.session()`` ✓ / ``.maker`` ✓）——
+        # 传错的话兜底补写**每轮都失败** ✗✗（后台 worker 静默重试 ✓
+        # → 日志里一条 warning ✗ —— 兜底补写形同虚设 ✗）。
+        backfill=MemoryVectorBackfill(container.session_factory().maker),
     )
     app.state.memory_vector_queue = memory_vector_queue
     app.state.memory_vector_worker = memory_vector_worker
