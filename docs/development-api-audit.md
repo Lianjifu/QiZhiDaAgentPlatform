@@ -29,17 +29,35 @@
 
 ## 后端尚未完成的能力
 
+> **2026-10-31 复核：这份清单已全部关闭** ✓ —— 下面每一条当初的缺口现在都有
+> 真实端点 ✓（路由表见各模块的 `adapter/http/router.py` ✓）。原文保留在这里做
+> 对照，不再作为「待办」读。
+
 本次修复数据来源与失败行为，没有将所有缺失的后台能力实现为可用功能。根据当前路由代码，以下请求仍可能返回 404/405/422；显式未实现的智能体能力返回 501。它们不再修改本地列表或报告成功：
 
-- 评测、回归、反馈的部分更新、删除、批量、运行与导入接口。
-- 审计处置与详情日志、运行会话上下文和日志、预算历史、反馈历史和回复。
-- 指标看板更新、批量操作、阈值规则更新，以及供应商健康检查。
-- 模型、配额和渠道批量文件导入。
-- 工作空间成员及邀请、个人设置、个人洞察、平台设置审计。
-- 记忆策略／L3 条目关联智能体查询，智能体审计和版本回滚。
-- MCP 能力发现与 Copilot 附件上传。
+- 评测、回归、反馈的部分更新、删除、批量、运行与导入接口。✅ 已补（平台域的文档集合读写：`ops_mutation_router.py`）。
+- 审计处置与详情日志、运行会话上下文和日志、预算历史、反馈历史和回复。✅ 已补（`audit/entries/{id}/{logs,response,resolve}`、`operations/sessions/{id}/{context,logs}`、`quotas/budgets/{id}/history`、`feedback/{id}/{history,reply}`）。
+- 指标看板更新、批量操作、阈值规则更新，以及供应商健康检查。✅ 已补（`metrics/dashboards/{id}`、`metrics/dashboards/batch-*`、`metrics/thresholds/{id}`、`models/providers/{id}/health-check`）。
+- 模型、配额和渠道批量文件导入。✅ 已补（`models/import`、`quotas/budgets/import`、`notifications/channels/import`）。
+- 工作空间成员及邀请、个人设置、个人洞察、平台设置审计。✅ 已补（`workspaces/current/members{,/invite}`、`account/settings`、`home/insights`、`admin/settings/audit`）。
+- 记忆策略／L3 条目关联智能体查询，智能体审计和版本回滚。✅ 已补（`memory/policies/{label}/agents`、`admin/agents/{id}/audit`、`admin/agents/{id}/rollback`）。⚠️ **L3 已退役**（团队知识统一归 knowledge，`M-47`），不再有「L3 条目」这一类。
+- MCP 能力发现与 Copilot 附件上传。✅ 已补（`admin/skills/mcp/probe`、`sessions/{id}/attachments`）。
 
-智能体评测、版本比较及导出明确返回未实现错误。自动化“运行”当前后台仅保存使用记录，界面相应标明“使用记录已保存”，不宣称执行了工作流。
+### 怎么保证不再漂回去（2026-10-31 起）
+
+上面的清单是**手工核对**出来的 —— 靠人读代码，早晚还会漏。现在改成机器守：
+
+- `backend/composition/qzdap_app/tests/unit/test_frontend_api_surface_contract.py` ——
+  **扫前端 `web/src` 里真实发起的每一个 API 调用**（字面量 / 拼接 / 模板三种写法 ✓），
+  拿后端 **OpenAPI 的真实路由表**逐条对 —— **前端调了、后端没有的直接失败** ✓。
+- 与 `test_frontend_pathmap_contract.py` 分工：那份守「翻译表指向的后端端点存在」✓，
+  这份守「没走翻译表的原样透传路径存在」✓ —— 两边合起来覆盖全部前端调用 ✓。
+- 这一轮它当场抓出两个真缺口并已补齐 ✓：
+  **知识源同步**（`POST /api/admin/knowledge/sources/{id}/sync` ✓）与
+  **用户侧知识收藏**（`POST /api/catalog/knowledge/{id}/favorite` ✓，
+  配套迁移 `0061` 建 `admin_knowledge_doc_user_state` ✓）。
+
+智能体的评测、版本比较与回滚**按条件**返回 501（`AGENT_CAPABILITY_UNAVAILABLE` ✓）—— 没有评测执行器或用例、没有版本快照时才报「尚未配置」✓；条件齐备时是真跑 ✓。自动化“运行”当前后台仅保存使用记录，界面相应标明“使用记录已保存”，不宣称执行了工作流。
 
 真实模型和嵌入供应商需要配置后才能调用。已有数据库中历史测试数据不在本次自动清理范围内；本次不会删除或重新灌入数据库数据。
 

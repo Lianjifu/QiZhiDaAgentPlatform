@@ -14,6 +14,8 @@ export interface KnowledgeResource {
   updated: string;
   tags: string[];
   excerpt: string;
+  /** 后端返回的收藏状态（按用户）—— 刷新后据此恢复「已收藏」标记 */
+  favorited?: boolean;
 }
 
 export interface KnowledgeQuestion {

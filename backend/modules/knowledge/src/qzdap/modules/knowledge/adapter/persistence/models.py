@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from sqlalchemy import (
+    Boolean,
     Float,
     Index,
     Integer,
@@ -170,6 +171,31 @@ class KnowledgeSourceORM(TenantScopedMixin, Base):
         UniqueConstraint(
             "tenant_id", "workspace_id", "name", name="uq_admin_knowledge_sources_tenant_ws_name"
         ),
+    )
+
+
+class KnowledgeDocUserStateORM(TenantScopedMixin, Base):
+    """**用户对知识文档的收藏状态** ✓。
+
+    ⚠️ **按模块分表** ✓ —— 与技能 / 工作流 / 智能体一致 ✓（``admin_skill_user_state``
+    ✓ / ``admin_workflow_user_state`` ✓ / ``admin_agent_user_state`` ✓）——
+    知识域不读别人的表 ✓。
+    """
+
+    __tablename__ = "admin_knowledge_doc_user_state"
+
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
+    user_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
+    doc_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
+    favorited: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "user_id", "doc_id", name="uq_admin_knowledge_doc_user_state"
+        ),
+        Index("ix_admin_knowledge_doc_user_state_user_doc", "tenant_id", "user_id", "doc_id"),
     )
 
 

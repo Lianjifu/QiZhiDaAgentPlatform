@@ -1102,6 +1102,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ── per-request knowledge factory ───────────────────────────────────
     from qzdap.modules.knowledge.adapter.persistence.repositories import (
         SqlKnowledgeCatalogRepository,
+        SqlKnowledgeDocUserStateRepository,
     )
     from qzdap.modules.knowledge.adapter.persistence.vector_adapter import (
         PgKnowledgeVectorAdapter,
@@ -1124,6 +1125,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 SqlKnowledgeCatalogRepository(session),
                 embedding=knowledge_embedding,
                 vectors=knowledge_vectors,
+                user_state=SqlKnowledgeDocUserStateRepository(session),
                 chunk_size=container.settings.knowledge_default_chunk_size,
                 chunk_overlap=container.settings.knowledge_default_chunk_overlap,
             )

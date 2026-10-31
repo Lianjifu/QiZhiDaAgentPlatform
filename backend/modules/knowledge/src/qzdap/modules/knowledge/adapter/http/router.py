@@ -6,9 +6,11 @@ POST      /api/admin/knowledge/kbs/{id}/toggle-status
 POST      /api/admin/knowledge/kbs/__batch__
 GET/POST  /api/admin/knowledge/docs
 GET/POST  /api/admin/knowledge/sources
+POST      /api/admin/knowledge/sources/{id}/sync
 GET       /api/admin/knowledge/tasks
 GET       /api/admin/knowledge/eval
 GET       /api/catalog/knowledge
+POST      /api/catalog/knowledge/{id}/favorite
 POST      /api/catalog/knowledge/__noop__/ask
 """
 
@@ -18,9 +20,10 @@ from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from qzdap.modules.knowledge.application.services import KnowledgeService
+from qzdap.modules.knowledge.domain.errors import KnowledgeNotFound
 from qzdap_auth.workspace_guard_dep import _require_active_workspace
 
 
@@ -30,6 +33,15 @@ def _owner_label(request: Request) -> str:
     if name:
         return str(name)
     return "管理员"
+
+
+def _owner_id(request: Request, fallback: UUID) -> UUID:
+    """当前用户 —— 收藏是 per-user 的 ✓（身份来自 token ✓，头只是兜底 ✓）。"""
+    principal = getattr(request.state, "principal", None)
+    pid = getattr(principal, "id", None)
+    if pid is None:
+        return fallback
+    return UUID(str(pid))
 
 
 async def knowledge_dependency(request: Request) -> AsyncIterator[KnowledgeService]:
@@ -167,6 +179,20 @@ def build_router() -> APIRouter:
             tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
         )
 
+    @router.post(
+        "/api/admin/knowledge/sources/{source_id}/sync",
+        dependencies=[Depends(_require_active_workspace)],
+    )
+    async def sync_source(
+        source_id: UUID,
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
+    ) -> dict[str, Any]:
+        try:
+            return await svc.sync_source(source_id=source_id, workspace_id=x_workspace_id)
+        except KnowledgeNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @router.get("/api/admin/knowledge/tasks")
     async def list_tasks(
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
@@ -183,10 +209,32 @@ def build_router() -> APIRouter:
 
     @router.get("/api/catalog/knowledge")
     async def list_catalog(
+        request: Request,
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        only_favorites: bool = Query(default=False, alias="onlyFavorites"),
         svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> list[dict[str, Any]]:
-        return await svc.list_catalog(workspace_id=x_workspace_id)
+        user_id = _owner_id(request, x_user_id)
+        return await svc.list_catalog(
+            workspace_id=x_workspace_id,
+            user_id=user_id,
+            only_favorites=only_favorites,
+        )
+
+    @router.post("/api/catalog/knowledge/{doc_id}/favorite")
+    async def favorite_catalog_doc(
+        doc_id: UUID,
+        body: dict[str, Any],
+        request: Request,
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
+    ) -> dict[str, Any]:
+        user_id = _owner_id(request, x_user_id)
+        try:
+            return await svc.set_favorite(doc_id=doc_id, user_id=user_id, on=bool(body.get("on")))
+        except KnowledgeNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @router.post("/api/catalog/knowledge/ask", dependencies=[Depends(_require_active_workspace)])
     @router.post("/api/catalog/knowledge/__noop__/ask", include_in_schema=False)

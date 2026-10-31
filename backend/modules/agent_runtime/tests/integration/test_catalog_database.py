@@ -15,11 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from qzdap.modules.agent_runtime.adapter.http.catalog_router import build_catalog_router
 from qzdap.modules.agent_runtime.adapter.persistence.catalog_models import CatalogAgentORM
-from qzdap.modules.identity.adapter.persistence.models import TenantORM, WorkspaceORM
 from qzdap.modules.agent_runtime.adapter.persistence.catalog_repositories import (
     SqlCatalogAgentRepository,
 )
 from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
+from qzdap.modules.identity.adapter.persistence.models import TenantORM, WorkspaceORM
 from qzdap.modules.memory.adapter.http.router import build_router as memory_router
 from qzdap.modules.memory.adapter.persistence.models import MemoryPolicyORM
 from qzdap.modules.memory.adapter.persistence.repositories import SqlMemoryCatalogRepository

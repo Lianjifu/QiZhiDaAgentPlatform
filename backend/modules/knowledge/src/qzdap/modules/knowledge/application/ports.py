@@ -57,6 +57,24 @@ class VectorSearchPort(Protocol):
     ) -> list[VectorHit]: ...
 
 
+class KnowledgeDocUserStateRepository(ABC):
+    """**用户对文档的收藏状态** ✓（收藏是 per-user 的 ✓）。"""
+
+    @abstractmethod
+    async def set_favorite(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID,
+        doc_id: UUID,
+        on: bool,
+    ) -> None: ...
+
+    @abstractmethod
+    async def list_favorited(self, *, workspace_id: UUID, user_id: UUID) -> set[UUID]: ...
+
+
 class KnowledgeCatalogRepository(ABC):
     @abstractmethod
     async def add_kb(self, kb: KnowledgeBase) -> None: ...
@@ -86,6 +104,12 @@ class KnowledgeCatalogRepository(ABC):
     async def add_source(self, source: KnowledgeSource) -> None: ...
 
     @abstractmethod
+    async def get_source(self, source_id: UUID) -> KnowledgeSource | None: ...
+
+    @abstractmethod
+    async def update_source(self, source: KnowledgeSource) -> None: ...
+
+    @abstractmethod
     async def list_sources(self, workspace_id: UUID) -> list[KnowledgeSource]: ...
 
     @abstractmethod
@@ -109,6 +133,7 @@ class KnowledgeCatalogRepository(ABC):
 __all__ = [
     "EmbeddingPort",
     "KnowledgeCatalogRepository",
+    "KnowledgeDocUserStateRepository",
     "VectorHit",
     "VectorSearchPort",
 ]

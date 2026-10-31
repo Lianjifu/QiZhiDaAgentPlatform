@@ -9,11 +9,15 @@ from qzdap.modules.knowledge.adapter.persistence.models import (
     KnowledgeBaseORM,
     KnowledgeChunkORM,
     KnowledgeDocORM,
+    KnowledgeDocUserStateORM,
     KnowledgeEvalCaseORM,
     KnowledgeSourceORM,
     KnowledgeTaskORM,
 )
-from qzdap.modules.knowledge.application.ports import KnowledgeCatalogRepository
+from qzdap.modules.knowledge.application.ports import (
+    KnowledgeCatalogRepository,
+    KnowledgeDocUserStateRepository,
+)
 from qzdap.modules.knowledge.domain.entities import (
     DocChunk,
     IndexedChunk,
@@ -148,6 +152,56 @@ def _eval_to_domain(row: KnowledgeEvalCaseORM) -> KnowledgeEvalCase:
     )
 
 
+class SqlKnowledgeDocUserStateRepository(KnowledgeDocUserStateRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self._s = session
+
+    async def _row(self, *, user_id: UUID, doc_id: UUID) -> KnowledgeDocUserStateORM | None:
+        result = await self._s.execute(
+            select(KnowledgeDocUserStateORM).where(
+                KnowledgeDocUserStateORM.user_id == user_id,
+                KnowledgeDocUserStateORM.doc_id == doc_id,
+            )
+        )
+        row = result.scalars().first()
+        if row is None or _cross_tenant(row):
+            return None
+        return row
+
+    async def set_favorite(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID,
+        doc_id: UUID,
+        on: bool,
+    ) -> None:
+        row = await self._row(user_id=user_id, doc_id=doc_id)
+        if row is None:
+            self._s.add(
+                KnowledgeDocUserStateORM(
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    user_id=user_id,
+                    doc_id=doc_id,
+                    favorited=on,
+                )
+            )
+            return
+        row.favorited = on
+
+    async def list_favorited(self, *, workspace_id: UUID, user_id: UUID) -> set[UUID]:
+        result = await self._s.execute(
+            select(KnowledgeDocUserStateORM.doc_id).where(
+                KnowledgeDocUserStateORM.workspace_id == workspace_id,
+                KnowledgeDocUserStateORM.user_id == user_id,
+                KnowledgeDocUserStateORM.favorited.is_(True),
+            )
+        )
+        return set(result.scalars().all())
+
+
 class SqlKnowledgeCatalogRepository(KnowledgeCatalogRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
@@ -251,6 +305,24 @@ class SqlKnowledgeCatalogRepository(KnowledgeCatalogRepository):
                 updated_at=source.updated_at,
             )
         )
+
+    async def get_source(self, source_id: UUID) -> KnowledgeSource | None:
+        row = await self._s.get(KnowledgeSourceORM, source_id)
+        if row is None or _cross_tenant(row):
+            return None
+        return _source_to_domain(row)
+
+    async def update_source(self, source: KnowledgeSource) -> None:
+        row = await self._s.get(KnowledgeSourceORM, source.id)
+        if row is None or _cross_tenant(row):
+            return
+        row.name = source.name
+        row.type = source.type
+        row.status = source.status
+        row.schedule = source.schedule
+        row.item_count = source.item_count
+        row.last_error = source.last_error
+        row.updated_at = source.updated_at
 
     async def list_sources(self, workspace_id: UUID) -> list[KnowledgeSource]:
         result = await self._s.execute(

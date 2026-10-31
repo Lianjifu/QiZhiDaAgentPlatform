@@ -10,6 +10,7 @@ import pytest
 
 from qzdap.modules.knowledge.application.ports import (
     KnowledgeCatalogRepository,
+    KnowledgeDocUserStateRepository,
     VectorHit,
     VectorSearchPort,
 )
@@ -152,6 +153,12 @@ class InMemoryCatalog(KnowledgeCatalogRepository):
         return [item for item in self.docs.values() if item.workspace_id == workspace_id]
 
     async def add_source(self, source: KnowledgeSource) -> None:
+        self.sources[source.id] = source
+
+    async def get_source(self, source_id: UUID) -> KnowledgeSource | None:
+        return self.sources.get(source_id)
+
+    async def update_source(self, source: KnowledgeSource) -> None:
         self.sources[source.id] = source
 
     async def list_sources(self, workspace_id: UUID) -> list[KnowledgeSource]:
@@ -492,3 +499,122 @@ async def test_update_doc_keeps_the_body_when_only_the_state_changes() -> None:
     updated = await svc.update_doc(UUID(doc["id"]), {"publishState": "draft"})
     assert updated["chunks"] >= 1
     assert "退款场景" in (updated.get("chunksPreview") or [{"snippet": ""}])[0]["snippet"]
+
+
+class InMemoryUserState(KnowledgeDocUserStateRepository):
+    """收藏状态的内存替身 —— 与 SQL 实现同一套语义 ✓。"""
+
+    def __init__(self) -> None:
+        self.rows: dict[tuple[UUID, UUID], bool] = {}
+
+    async def set_favorite(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        user_id: UUID,
+        doc_id: UUID,
+        on: bool,
+    ) -> None:
+        self.rows[(user_id, doc_id)] = on
+
+    async def list_favorited(self, *, workspace_id: UUID, user_id: UUID) -> set[UUID]:
+        return {doc_id for (uid, doc_id), on in self.rows.items() if uid == user_id and on}
+
+
+@pytest.mark.asyncio
+async def test_sync_source_reindexes_the_source_documents() -> None:
+    """**同步数据源 = 重新处理它名下的文档** ✓（源状态跟着更新 ✓）。"""
+    svc, _catalog, _vectors = _svc()
+    kb = await svc.create_kb(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"name": "同步库", "description": "同步测试", "scope": "公开"},
+        owner="运营",
+    )
+    source = await svc.create_source(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"name": "Notion 空间", "type": "notion"},
+    )
+    source_id = UUID(source["id"])
+    await svc.ingest_doc(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={
+            "kbId": kb["id"],
+            "name": "制度.md",
+            "content": "同步会重新处理这篇文档",
+            "sourceId": source_id,
+        },
+    )
+    synced = await svc.sync_source(source_id=source_id, workspace_id=WORKSPACE)
+    assert synced["synced"] == 1
+    assert synced["failed"] == 0
+    assert synced["mode"] == "reindex"
+    assert synced["itemCount"] == 1
+    assert synced["status"] == "online"
+
+
+@pytest.mark.asyncio
+async def test_sync_source_of_unknown_source_raises() -> None:
+    svc, _catalog, _vectors = _svc()
+    with pytest.raises(KnowledgeNotFound):
+        await svc.sync_source(
+            source_id=UUID("00000000-0000-0000-0000-0000000000aa"), workspace_id=WORKSPACE
+        )
+
+
+@pytest.mark.asyncio
+async def test_favorite_is_per_user_and_filters_the_catalog() -> None:
+    """**收藏是 per-user 的** ✓ —— 收藏后目录带上标记 ✓，能按收藏过滤 ✓。"""
+    catalog = InMemoryCatalog()
+    user_state = InMemoryUserState()
+    svc = KnowledgeService(
+        catalog,
+        embedding=HashEmbedding(),
+        vectors=InMemoryVectors(),
+        user_state=user_state,
+        chunk_size=40,
+        chunk_overlap=8,
+    )
+    kb = await svc.create_kb(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"name": "收藏库", "description": "收藏测试", "scope": "公开"},
+        owner="运营",
+    )
+    doc = await svc.ingest_doc(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"kbId": kb["id"], "name": "制度.md", "content": "可以收藏的一篇文档"},
+    )
+    doc_id = UUID(doc["id"])
+    user = UUID("00000000-0000-0000-0000-0000000000b1")
+    other = UUID("00000000-0000-0000-0000-0000000000b2")
+
+    listed = await svc.list_catalog(workspace_id=WORKSPACE, user_id=user)
+    assert listed[0]["favorited"] is False
+
+    favorited = await svc.set_favorite(doc_id=doc_id, user_id=user, on=True)
+    assert favorited["favorited"] is True
+    assert favorited["title"] == "制度.md"
+
+    mine = await svc.list_catalog(workspace_id=WORKSPACE, user_id=user, only_favorites=True)
+    assert [row["id"] for row in mine] == [str(doc_id)]
+    theirs = await svc.list_catalog(workspace_id=WORKSPACE, user_id=other, only_favorites=True)
+    assert theirs == []
+
+    await svc.set_favorite(doc_id=doc_id, user_id=user, on=False)
+    assert await svc.list_catalog(workspace_id=WORKSPACE, user_id=user, only_favorites=True) == []
+
+
+@pytest.mark.asyncio
+async def test_favorite_unknown_doc_raises() -> None:
+    svc = KnowledgeService(InMemoryCatalog(), user_state=InMemoryUserState())
+    with pytest.raises(KnowledgeNotFound):
+        await svc.set_favorite(
+            doc_id=UUID("00000000-0000-0000-0000-0000000000bb"),
+            user_id=UUID("00000000-0000-0000-0000-0000000000b1"),
+            on=True,
+        )

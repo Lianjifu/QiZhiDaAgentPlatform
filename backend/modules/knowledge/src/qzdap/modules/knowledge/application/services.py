@@ -11,6 +11,7 @@ from qzdap.modules.knowledge.application.chunker import split_text
 from qzdap.modules.knowledge.application.ports import (
     EmbeddingPort,
     KnowledgeCatalogRepository,
+    KnowledgeDocUserStateRepository,
     VectorHit,
     VectorSearchPort,
 )
@@ -39,12 +40,14 @@ class KnowledgeService:
         *,
         embedding: EmbeddingPort | None = None,
         vectors: VectorSearchPort | None = None,
+        user_state: KnowledgeDocUserStateRepository | None = None,
         chunk_size: int = 800,
         chunk_overlap: int = 80,
     ) -> None:
         self._catalog = catalog
         self._embedding = embedding
         self._vectors = vectors
+        self._user_state = user_state
         self._chunk_size = chunk_size
         self._chunk_overlap = chunk_overlap
 
@@ -221,6 +224,56 @@ class KnowledgeService:
         items.sort(key=lambda item: item.updated_at, reverse=True)
         return [item.to_admin_dict() for item in items]
 
+    async def sync_source(self, *, source_id: UUID, workspace_id: UUID) -> dict[str, Any]:
+        """**同步一个数据源** —— 重新处理它名下的文档 ✓。
+
+        ⚠️ **平台没有「从上游拉取」的连接器** ✓ —— 数据源没有上游地址字段 ✓ →
+        这里的「同步」是**重新处理已入库的文档**（重新切块 + 重新向量化 ✓），
+        **不是**去远端抓新内容 ✗。响应里带 ``mode="reindex"`` ✓ —— 调用方看得懂 ✓。
+
+        ⚠️ **一个文档失败不拖垮整次同步** ✓ —— 逐篇计数 ✓（``synced`` / ``failed`` ✓），
+        失败原因落在数据源的 ``lastError`` 上 ✓。
+        """
+        source = await self._catalog.get_source(source_id)
+        if source is None or source.workspace_id != workspace_id:
+            raise KnowledgeNotFound(f"knowledge source {source_id} not found")
+        docs = [
+            doc
+            for doc in await self._catalog.list_docs(workspace_id)
+            if doc.source_id == str(source_id)
+        ]
+        kbs = {kb.id: kb for kb in await self._catalog.list_kbs(workspace_id)}
+        synced = 0
+        failed = 0
+        last_error = ""
+        for doc in docs:
+            kb = kbs.get(doc.kb_id)
+            if kb is None:
+                failed += 1
+                last_error = f"knowledge base {doc.kb_id} not found"
+                continue
+            try:
+                await self._embed_and_store(kb, doc, _pieces_of(doc))
+            except Exception as exc:  # 一篇失败不该中断整次同步
+                failed += 1
+                last_error = str(exc)
+                continue
+            synced += 1
+        updated = replace(
+            source,
+            item_count=len(docs),
+            last_error=last_error,
+            updated_at=datetime.now(UTC),
+            status="error" if failed else "online",
+        )
+        await self._catalog.update_source(updated)
+        return {
+            **updated.to_admin_dict(),
+            "synced": synced,
+            "failed": failed,
+            "mode": "reindex",
+        }
+
     async def create_source(
         self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
     ) -> dict[str, Any]:
@@ -248,9 +301,16 @@ class KnowledgeService:
         items.sort(key=lambda item: item.updated_at, reverse=True)
         return [item.to_admin_dict() for item in items]
 
-    async def list_catalog(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
+    async def list_catalog(
+        self,
+        *,
+        workspace_id: UUID,
+        user_id: UUID | None = None,
+        only_favorites: bool = False,
+    ) -> list[dict[str, Any]]:
         kbs = {kb.id: kb for kb in await self._catalog.list_kbs(workspace_id)}
         docs = await self._catalog.list_docs(workspace_id)
+        favorited = await self._favorited_docs(workspace_id=workspace_id, user_id=user_id)
         out: list[dict[str, Any]] = []
         for doc in docs:
             kb = kbs.get(doc.kb_id)
@@ -260,8 +320,35 @@ class KnowledgeService:
                 continue
             if doc.status != "parsed":
                 continue
-            out.append(doc.to_catalog_dict(kb))
+            if only_favorites and doc.id not in favorited:
+                continue
+            out.append({**doc.to_catalog_dict(kb), "favorited": doc.id in favorited})
         return out
+
+    async def set_favorite(self, *, doc_id: UUID, user_id: UUID, on: bool) -> dict[str, Any]:
+        """**收藏 / 取消收藏** ✓（按用户存 ✓）。
+
+        ⚠️ **收藏是 per-user 的** ✓ —— 收藏状态落在 ``admin_knowledge_doc_user_state``
+        ✓（与技能 / 工作流 / 智能体各一张表一致 ✓）。
+        """
+        doc = await self._catalog.get_doc(doc_id)
+        if doc is None:
+            raise KnowledgeNotFound(f"knowledge doc {doc_id} not found")
+        if self._user_state is not None:
+            await self._user_state.set_favorite(
+                tenant_id=doc.tenant_id,
+                workspace_id=doc.workspace_id,
+                user_id=user_id,
+                doc_id=doc_id,
+                on=on,
+            )
+        kb = await self._require_kb(doc.kb_id)
+        return {**doc.to_catalog_dict(kb), "favorited": on}
+
+    async def _favorited_docs(self, *, workspace_id: UUID, user_id: UUID | None) -> set[UUID]:
+        if self._user_state is None or user_id is None:
+            return set()
+        return await self._user_state.list_favorited(workspace_id=workspace_id, user_id=user_id)
 
     async def ask(
         self, *, workspace_id: UUID, question: str, tenant_id: UUID | None = None
@@ -421,14 +508,7 @@ class KnowledgeService:
     async def _reindex_kb(self, kb: KnowledgeBase) -> None:
         docs = [doc for doc in await self._catalog.list_docs(kb.workspace_id) if doc.kb_id == kb.id]
         for doc in docs:
-            pieces = [
-                f"{item.heading} {item.snippet}".strip()
-                for item in doc.chunks_preview
-                if (item.heading or item.snippet).strip()
-            ]
-            if not pieces:
-                pieces = [doc.name]
-            await self._embed_and_store(kb, doc, pieces)
+            await self._embed_and_store(kb, doc, _pieces_of(doc))
         vector_count = await self._catalog.count_chunks(kb.id)
         await self._catalog.update_kb(replace(kb, status="indexed", vector_count=vector_count))
 
@@ -468,6 +548,19 @@ class KnowledgeService:
         if kb is None:
             raise KnowledgeNotFound(f"knowledge base {kb_id} not found")
         return kb
+
+
+def _pieces_of(doc: KnowledgeDoc) -> list[str]:
+    """文档的正文块 —— 有预览就用预览，没有就拿标题顶上 ✓。
+
+    ⚠️ **只存了预览片段，没存全文** ✓ —— 所以重建索引只能基于片段 ✓。
+    """
+    pieces = [
+        f"{item.heading} {item.snippet}".strip()
+        for item in doc.chunks_preview
+        if (item.heading or item.snippet).strip()
+    ]
+    return pieces or [doc.name]
 
 
 def _keyword_score(needle: str, hay: str) -> float:

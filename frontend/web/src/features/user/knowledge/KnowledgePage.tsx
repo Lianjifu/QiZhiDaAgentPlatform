@@ -61,6 +61,17 @@ export default function KnowledgePage() {
     });
   }, [resources]);
 
+  // 收藏状态由后端按用户存 ✓ —— 刷新后用服务端返回的标记恢复 ✓
+  // （否则收藏只活在浏览器内存里 ✗ —— 换个设备就没了 ✗）。
+  useEffect(() => {
+    const serverFavorites = resources.filter((item) => item.favorited).map((item) => item.id);
+    if (serverFavorites.length === 0) return;
+    setFavorites((current) => {
+      const next = Array.from(new Set([...current, ...serverFavorites]));
+      return next.length === current.length ? current : next;
+    });
+  }, [resources]);
+
   const chosenList = useMemo(
     () => resources.filter((item) => chosenIds.includes(item.id)),
     [resources, chosenIds],
