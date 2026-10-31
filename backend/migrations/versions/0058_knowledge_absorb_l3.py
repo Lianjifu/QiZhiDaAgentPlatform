@@ -163,6 +163,23 @@ def upgrade() -> None:
         """
     )
 
+    # ⚠️ **库上的计数要跟上** ✓ —— 否则知识库详情页显示「0 篇文档」 ✗✗
+    # （计数是**冗余的汇总** ✓ —— 搬完就得重算 ✓）。
+    op.execute(
+        """
+        UPDATE admin_knowledge_kbs AS kb
+        SET doc_count = (
+                SELECT count(*) FROM admin_knowledge_docs AS d WHERE d.kb_id = kb.id
+            ),
+            vector_count = (
+                SELECT count(*) FROM admin_knowledge_chunks AS c WHERE c.kb_id = kb.id
+            )
+        WHERE kb.id IN (
+            SELECT DISTINCT kb_id FROM admin_knowledge_docs WHERE origin = 'memory_l3'
+        )
+        """
+    )
+
 
 def downgrade() -> None:
     # ⚠️ **L3 表这时还在** ✓ —— 删表是 **0059** ✓（所以这里**不建表** ✓
@@ -215,6 +232,21 @@ def downgrade() -> None:
         """
     )
     op.execute("DELETE FROM admin_knowledge_docs WHERE origin = 'memory_l3'")
+
+    # ⚠️ **计数跟着回退** ✓（文档搬走了 ✓ → 库里的篇数也要少 ✓）。
+    # ⚠️ **按还原回来的团队名找库** ✓ —— 文档已经删了 ✓（按 origin 找不到了 ✗✗）。
+    op.execute(
+        """
+        UPDATE admin_knowledge_kbs AS kb
+        SET doc_count = (
+                SELECT count(*) FROM admin_knowledge_docs AS d WHERE d.kb_id = kb.id
+            ),
+            vector_count = (
+                SELECT count(*) FROM admin_knowledge_chunks AS c WHERE c.kb_id = kb.id
+            )
+        WHERE kb.name IN (SELECT DISTINCT team FROM admin_memory_l3)
+        """
+    )
 
     # ⚠️ **迁出来的知识库留着** ✓ —— 它现在是**一个真的知识库** ✓
     # （再 upgrade 时 ``ON CONFLICT DO NOTHING`` 会复用它 ✓ —— 不冲突 ✓）。

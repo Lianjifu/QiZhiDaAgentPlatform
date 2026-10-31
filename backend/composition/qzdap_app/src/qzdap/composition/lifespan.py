@@ -1479,7 +1479,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     #    （Session 方案 §7；台账 S-24 / S-26）
     app.state.outbox_worker_stop = await _start_outbox_worker(container)
     # ④ 向量补写 worker —— **落库后异步补向量** ✓（C5 ✓ —— Memory §5.4 ✓）
-    app.state.memory_vector_stop = _start_memory_vector_worker(app.state)
+    app.state.memory_vector_stop = _start_memory_vector_worker(app)
 
     # ⚠️ **checkpoint saver 已退役** ✓（Session S-14 ✓）—— 它唯一的消费者是
     # 那张 19 节点的 LangGraph 图 ✓（**已随 Agent Stage 7 删除** ✓）——
