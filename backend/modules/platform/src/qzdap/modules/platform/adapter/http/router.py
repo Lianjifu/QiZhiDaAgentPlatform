@@ -19,6 +19,7 @@ that need a specific status mapping raise ``HTTPException`` directly.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -47,16 +48,30 @@ from qzdap_kernel.errors import BusinessRuleError
 
 async def platform_service_dependency(
     request: Request,
-) -> PlatformService:
+) -> AsyncIterator[PlatformService]:
+    """**每个请求一个会话** ✓ —— 成功提交 ✓ / 失败回滚 ✓。
+
+    ⚠️ **以前这个依赖只开会话、不提交也不回滚** ✓ —— 于是**平台域的写全部
+    丢** ✓（`PUT /subscriptions/me` 返回 200 ✓ 但库里没有那一行 ✓ —— P-13
+    修掉 `AttributeError` 之后才暴露出来 ✓ —— 那个端点此前**根本写不进去** ✓）。
+    """
     factory: PlatformServiceFactory | None = getattr(
         request.app.state, "platform_service_factory", None
     )
-    if factory is None:
+    container = getattr(request.app.state, "container", None)
+    if factory is None or container is None:
         raise HTTPException(
             status_code=503,
             detail="platform service factory not wired",
         )
-    return factory.for_session()
+    sf = container.session_factory()
+    async with sf.session() as session:
+        try:
+            yield factory.for_session(session)
+        except Exception:
+            await session.rollback()
+            raise
+        await session.commit()
 
 
 def build_router() -> APIRouter:

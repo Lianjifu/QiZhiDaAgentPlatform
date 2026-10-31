@@ -1423,16 +1423,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from qzdap.modules.platform.application.services import PlatformService
 
     class _PlatformFactory:
-        def for_session(self) -> PlatformService:
-            sf = container.session_factory().maker()
+        def for_session(self, session) -> PlatformService:  # type: ignore[no-untyped-def]
             return PlatformService.from_parts(
-                plan_repo=PlatformSqlPlanRepository(sf),
-                subscription_repo=SqlSubscriptionRepository(sf),
-                setting_repo=SqlTenantSettingRepository(sf),
+                plan_repo=PlatformSqlPlanRepository(session),
+                subscription_repo=SqlSubscriptionRepository(session),
+                setting_repo=SqlTenantSettingRepository(session),
                 publisher=None,
                 # Bridge into observability's SqlCostRecordRepository
                 # so ``aggregate_costs`` actually reads tenant spend.
-                cost_repo=ObservabilityCostRepositoryBridge(sf),
+                cost_repo=ObservabilityCostRepositoryBridge(session),
             )
 
     app.state.platform_service_factory = _PlatformFactory()
