@@ -174,11 +174,14 @@ def test_weighted_dict_list_picks_by_weight() -> None:
         {"id": str(c), "weight": 0.5},
     ]
     seen_first: list[UUID] = []
-    for _ in range(50):
+    # ⚠️ **采样 200 次** ✓（不是 50 ✓）—— 权重 1:2:0.5 时 50 次采样的
+    # 「a 多于 c」有 ~1.5% 概率不成立 ✓（随机挂 ✗✗ —— CI 会随机红 ✗✗）→
+    # 200 次把那个概率压到 ~0.0001% ✓。
+    for _ in range(200):
         result = svc._apply_weighted(chain=chain, primary_id=primary, fallback_model_ids=fb_ids)
         assert UUID(str(result[0])) == primary
         seen_first.append(UUID(str(result[1])))
-    # 50 次采样, b (weight=2) 出现最多, c (weight=0.5) 最少
+    # 200 次采样, b (weight=2) 出现最多, c (weight=0.5) 最少
     from collections import Counter
 
     counts = Counter(seen_first)
