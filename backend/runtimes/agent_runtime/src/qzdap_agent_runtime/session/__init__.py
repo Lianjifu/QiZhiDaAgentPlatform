@@ -27,7 +27,6 @@ from qzdap_agent_runtime.session.manager import (
 from qzdap_agent_runtime.session.message import SessionMessagePort
 from qzdap_agent_runtime.session.sequence import (
     SessionSequencePort,
-    checkpoint_thread_id,
 )
 from qzdap_agent_runtime.session.state import (
     SESSION_TRANSITIONS,
@@ -62,7 +61,6 @@ __all__ = [
     "assert_session_transition",
     "assert_turn_transition",
     "can_transition_session",
-    "checkpoint_thread_id",
     "is_terminal_session",
     "is_terminal_turn",
 ]

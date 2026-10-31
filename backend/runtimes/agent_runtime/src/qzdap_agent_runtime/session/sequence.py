@@ -46,13 +46,4 @@ class SessionSequencePort(Protocol):
         ...
 
 
-def checkpoint_thread_id(session_id: UUID) -> str:
-    """**thread ≡ session**（Session 方案 §5.1）✓。
-
-    含义：**一个会话就是一条消息线程**，多轮对话是这条线程上的连续 turn；
-    不同会话 → 不同 thread → checkpoint 互不干扰 ✓。
-    """
-    return str(session_id)
-
-
-__all__ = ["SessionSequencePort", "checkpoint_thread_id"]
+__all__ = ["SessionSequencePort"]

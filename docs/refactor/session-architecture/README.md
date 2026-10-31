@@ -173,7 +173,7 @@ Agent  Stage 5(循环)  ←  Session Stage 3(唯一 turn 实现)
 |---|---|---|
 | 0044 | Gateway | `session_inbox` 加列改约束 |
 | 0045 | Router | `agent_sessions` 加 `next_ingress_seq` / `last_completed_seq` |
-| 0046 | Session | `agent_sessions` 唯一索引；`session_turns` / `session_messages` 加列与状态枚举；checkpoint 四表（`checkpoints` / `checkpoint_blobs` / `checkpoint_writes` / `checkpoint_migrations`） |
+| 0046 | Session | `agent_sessions` 唯一索引；`session_turns` / `session_messages` 加列与状态枚举；checkpoint 四表（`checkpoints` / `checkpoint_blobs` / `checkpoint_writes` / `checkpoint_migrations`）—— ⚠️ **已由迁移 0063 删除** ✓（2026-10-31 ✓ —— saver 退役后全仓零引用 ✓）|
 | 0047 | Context | `agent_sessions.rolling_summary` 列 + `session_context_manifests` 表（**依赖 0046 的物理顺序**；回填按 `graph_state` 优先 → `metadata` 兜底 → 清 `metadata`） |
 | 0048 | Memory | `admin_memory_l2` 补列 + `session_memory_buffer` 表 + **DROP 死表 `memory_l2_embeddings`**（X19）+ 放开 `admin_memory_policies` 唯一约束 |
 | **（无）** | **Agent / Execution** | **不需要新迁移** —— `tool_executions` 的列与唯一约束已在 0035 建齐、`cost_usd` 在 0043、`route_decision` 在 0046、checkpoint 表在 0046 |
@@ -402,7 +402,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 | 7 | ~~**`qzdap_legacy_calls_total` 指标**~~ | ~~`libs/observability`~~ | — | ✅ **已落地（2026-10-29）**：`LEGACY_CALLS_TOTAL` + `record_legacy_call(entry)` + `NEW_CALLS_TOTAL` + `record_new_call(entry)`（有单测）；**16/36 条台账条目已在旧入口打点**，其余 7 条走替代判据（从未接线 / 数据类）。**这一条不再是外部前置依赖** |
 | 8b | **`ErrorCode` 码收敛** | `libs/schema` + `modules/channel` + `modules/agent_runtime` | **Gateway Stage 0** | 7 个码（`CHANNEL_NOT_FOUND` / `CHANNEL_DISABLED` / `INBOUND_ADAPTER_MISSING` / `WEBHOOK_SIGNATURE_INVALID` / `WEBHOOK_TIMESTAMP_SKEW` / `DUPLICATE_REQUEST` / `TENANT_DENIED`）散落在模块内异常的 `code=` 字符串里，**`ErrorCode` 枚举不含它们**。Gateway 的 `ERROR_PROJECTION` 投影表按码查文案 → 必须先收敛 |
 | 8c | **`modules/channel` 依赖 `qzdap-agent-runtime`** | `modules/channel` + `uv.lock` | **Gateway Stage 2** | webhook 端点要调 `Gateway.accept`。**不改正 `uv.lock` 就装不上** |
-| 8 | **LangGraph checkpoint 表** | `backend/migrations`（Session 迁移 0046） | **Session Stage 0**（Agent Stage 0 **不受阻** —— Agent 只用 saver，不建表） | checkpoint 系列表**不在任何迁移里**；且现有 `builder.from_url` 用的是**同步** `PostgresSaver`，必须换 `AsyncPostgresSaver`。⚠️ **表名按已安装的 `langgraph-checkpoint-postgres` 3.1.3**：无 `langgraph_` 前缀、无 `_v2` 变体 |
+| 8 | ~~**LangGraph checkpoint 表**~~ | ~~`backend/migrations`（Session 迁移 0046）~~ | — | ✅ **已消解**（2026-10-31）—— ⚠️ **原文写「checkpoint 系列表不在任何迁移里」是错的** ✓ —— 0046 恰恰建了它们 ✓；但 **saver 已退役** ✓（S-14 ✓ —— 唯一消费者那张 19 节点图已随 Agent Stage 7 删除 ✓）→ **全仓零引用** ✓ → **迁移 0063 把四张表删了** ✓（`checkpoint_thread_id` 死函数一起删 ✓）|
 
 ---
 
