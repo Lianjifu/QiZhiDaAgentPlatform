@@ -11,8 +11,9 @@ query — a forgotten `.where(Model.tenant_id == ...)` cannot leak rows.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
-from typing import ClassVar
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, Index, MetaData
@@ -46,7 +47,7 @@ class Base(DeclarativeBase):
     #:
     #: ⚠️ **PostgreSQL 走 RETURNING** ✓ —— **不多一次往返** ✓（ORM 直接把
     #: 服务端算的值带回来 ✓）→ INSERT 也不受影响 ✓。
-    __mapper_args__: ClassVar[dict[str, bool]] = {"eager_defaults": True}
+    __mapper_args__: Mapping[str, Any] = {"eager_defaults": True}
 
 
 class TenantScopedMixin(TenantScopedLoader):
