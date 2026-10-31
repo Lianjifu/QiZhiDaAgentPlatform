@@ -86,3 +86,11 @@ export function useCreateGroup() {
     'POST',
   );
 }
+
+export function useDeleteChannel() {
+  return useApiMutation<void, { id: string }>(
+    (vars) => `${PATH}/channels/${vars.id}`,
+    { invalidateKeys: [qk.admin.notifications.root] },
+    'DELETE',
+  );
+}

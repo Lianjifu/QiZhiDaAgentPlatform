@@ -1,14 +1,22 @@
 /**
  * AdminNotifications — 渠道配置：飞书 / 企业微信 / 钉钉 / Web。
  */
-import { describe, expect, it, afterEach, vi } from 'vitest';
-import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { describe, expect, it, afterEach, beforeAll, vi } from 'vitest';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { ApiClient, setApiClient } from '@qzdap/web-api';
 import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import NotificationsPage from './NotificationsPage';
 import { mockChannels, mockGroups, mockWebhooks, mockEvents } from './fixtures';
+import { adminNotificationsMockHandler } from './mock-handler';
 import { qk } from '@/api/shared/query-keys';
 
 const navigateMock = vi.fn();
+
+// ⚠️ **真的走一遍 API 客户端** ✓ —— 删除要走 mock handler ✓（不然测不到
+// 「请求发出去了没有」✓）。
+beforeAll(() => {
+  setApiClient(new ApiClient('', () => null, adminNotificationsMockHandler));
+});
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
@@ -85,5 +93,19 @@ describe('AdminNotifications', () => {
     fireEvent.change(screen.getByRole('combobox', { name: '类型' }), { target: { value: 'web' } });
     expect(screen.getByText('Web 工作台')).toBeTruthy();
     expect(screen.queryByText('飞书 · 客服助手')).toBeNull();
+  });
+
+  it('删除渠道要二次确认,确认后真的删掉', async () => {
+    renderPage();
+    fireEvent.click(screen.getAllByRole('button', { name: /删除/ })[0]);
+    const dialog = await screen.findByRole('dialog', { name: '删除通知渠道' });
+    expect(dialog).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认删除' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '删除通知渠道' })).toBeNull();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('飞书 · 客服助手')).toBeNull();
+    });
   });
 });

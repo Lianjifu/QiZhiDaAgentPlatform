@@ -120,6 +120,12 @@ export async function adminNotificationsMockHandler(
       if (!next) throw new Error('E_NOT_FOUND: 渠道不存在');
       return withDelay({ ...next });
     }
+    if (method === 'DELETE') {
+      const next = state.channels.find((c) => c.id === id);
+      if (!next) throw new Error('E_NOT_FOUND: 渠道不存在');
+      state.channels = state.channels.filter((c) => c.id !== id);
+      return withDelay(null);
+    }
   }
 
   return undefined;

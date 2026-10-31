@@ -17,6 +17,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import Response
 
 from qzdap.modules.platform.application.ops_service import AdminOpsService
 
@@ -276,6 +277,28 @@ def build_ops_router() -> APIRouter:
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="channel not found") from exc
+
+    @router.delete("/api/admin/notifications/channels/{doc_id}", status_code=204)
+    async def delete_channel(
+        doc_id: str,
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: AdminOpsService = Depends(ops_dependency),
+    ) -> Response:
+        """**删掉渠道** ✓。
+
+        ⚠️ **之前只有「改 / 停 / 导出」** ✓ —— 前端只能写「暂不支持删除」✓
+        （那一行是实话 ✓ —— 后端确实没有这个端点 ✓）。
+        """
+        deleted = await svc.delete(
+            tenant_id=x_tenant_id,
+            workspace_id=x_workspace_id,
+            collection="notifications.channels",
+            doc_key=doc_id,
+        )
+        if not deleted:
+            raise HTTPException(status_code=404, detail="channel not found")
+        return Response(status_code=204)
 
     @router.get("/api/admin/notifications/webhooks")
     async def list_webhooks(

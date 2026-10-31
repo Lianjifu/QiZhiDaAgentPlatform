@@ -132,3 +132,20 @@ async def test_run_requires_real_cases_and_executor(client):
     assert response.status_code == 422, response.text
     row = (await client.get("/api/admin/evaluations/suites")).json()[0]
     assert row["lastRunAt"] == "未运行"
+
+
+async def test_notification_channel_can_be_deleted(client):
+    """⚠️ **渠道要能删** ✓ —— 之前只有「改 / 停 / 导出」✓（前端写着「暂不支持删除」✓）。"""
+    created = (
+        await client.post(
+            "/api/admin/notifications/channels",
+            json={"name": "飞书客服", "kind": "feishu", "target": "bot-1"},
+        )
+    ).json()
+    assert created["id"]
+    deleted = await client.delete(f"/api/admin/notifications/channels/{created['id']}")
+    assert deleted.status_code == 204, deleted.text
+    assert (await client.get("/api/admin/notifications/channels")).json() == []
+    # ⚠️ **删过就没有了** ✓ —— 再删一次是 404 ✓（不是静默成功 ✗✗）。
+    again = await client.delete(f"/api/admin/notifications/channels/{created['id']}")
+    assert again.status_code == 404, again.text

@@ -10,13 +10,14 @@ import { AdminListPagination, paginateItems } from '@/components/feedback/AdminL
 import { AdminListHeader, AdminListHeaderMetrics } from '@/components/feedback/AdminListRow';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import {
-  useBatchChannelStatus, useCreateGroup,
+  useBatchChannelStatus, useCreateGroup, useDeleteChannel,
   useNotificationChannels, useNotificationGroups, useNotificationWebhooks, useUpdateChannel,
 } from './useNotifications';
 import type { NotificationChannel, NotificationGroup } from './schema';
 import { BatchToolbar } from './components/BatchToolbar';
 import { ChannelCard } from './components/ChannelCard';
 import { CreateGroupModal } from './components/CreateGroupModal';
+import { DeleteChannelModal } from './components/DeleteChannelModal';
 import { ExportChannelModal } from './components/ExportChannelModal';
 import { GroupCard } from './components/GroupCard';
 import { ImportChannelModal } from './components/ImportChannelModal';
@@ -47,6 +48,7 @@ export default function NotificationsPage() {
   const updateChannel = useUpdateChannel();
   const batchStatus = useBatchChannelStatus();
   const createGroup = useCreateGroup();
+  const deleteChannel = useDeleteChannel();
 
   const [view, setView] = useState<ViewId>('channel');
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
@@ -55,6 +57,7 @@ export default function NotificationsPage() {
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<NotificationChannel | null>(null);
   const [notice, setNotice] = useState('');
   const server = useServerAction(setNotice);
   const [page, setPage] = useState(1);
@@ -93,7 +96,21 @@ export default function NotificationsPage() {
   };
 
   const handleRequestDelete = (c: NotificationChannel) => {
-    setNotice(`渠道「${c.name}」暂不支持删除，可先暂停或导出备份。`);
+    setDeleteTarget(c);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return;
+    deleteChannel.mutate(
+      { id: deleteTarget.id },
+      {
+        onSuccess: () => {
+          setNotice(`已删除渠道「${deleteTarget.name}」。`);
+          setDeleteTarget(null);
+        },
+        onError: () => setNotice('删除失败,请重试。'),
+      },
+    );
   };
 
   const handleBatchEnable = () => {
@@ -303,6 +320,13 @@ export default function NotificationsPage() {
         onExport={handleExport}
         total={channels.length}
         selectedCount={selectedIds.length}
+      />
+      <DeleteChannelModal
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+        channel={deleteTarget}
+        pending={deleteChannel.isPending}
       />
     </div>
   );
