@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from qzdap.modules.agent_runtime.adapter.http.catalog_router import build_catalog_router
 from qzdap.modules.agent_runtime.adapter.persistence.catalog_models import CatalogAgentORM
+from qzdap.modules.identity.adapter.persistence.models import TenantORM, WorkspaceORM
 from qzdap.modules.agent_runtime.adapter.persistence.catalog_repositories import (
     SqlCatalogAgentRepository,
 )
@@ -37,7 +38,15 @@ async def catalog_db():
         transaction = await connection.begin()
         await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         await connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
-        for table in [CatalogAgentORM.__table__, MemoryPolicyORM.__table__]:
+        # ⚠️ **身份表的租户 / 工作区** ✓ —— 请求链路会**校验工作区存在且 active**
+        # ✓（workspace guard ✓）→ 一次性 schema 里没有这两张表就报
+        # 「relation workspaces does not exist」✓。
+        for table in [
+            TenantORM.__table__,
+            WorkspaceORM.__table__,
+            CatalogAgentORM.__table__,
+            MemoryPolicyORM.__table__,
+        ]:
             await connection.run_sync(lambda conn, table=table: table.create(conn))
 
         @asynccontextmanager
@@ -48,6 +57,28 @@ async def catalog_db():
                 yield db
 
         tenant, workspace = uuid4(), uuid4()
+        # ⚠️ **租户与工作区得先在** ✓（workspace guard ✓ —— 没有这两行就是
+        # `WORKSPACE_NOT_FOUND` ✓）。
+        async with session() as db:
+            db.add(
+                TenantORM(
+                    id=tenant,
+                    tenant_id=tenant,
+                    slug=f"t-{tenant.hex[:8]}",
+                    display_name="测试租户",
+                    status="active",
+                )
+            )
+            db.add(
+                WorkspaceORM(
+                    id=workspace,
+                    tenant_id=tenant,
+                    slug=f"w-{workspace.hex[:8]}",
+                    display_name="测试工作区",
+                    status="active",
+                )
+            )
+            await db.commit()
         app = FastAPI()
         app.state.container = SimpleNamespace(
             session_factory=lambda: SimpleNamespace(session=session)

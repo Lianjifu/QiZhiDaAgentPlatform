@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from qzdap.modules.identity.adapter.persistence.models import TenantORM, WorkspaceORM
 from qzdap.modules.model.adapter.http.router import build_router
 from qzdap.modules.model.adapter.persistence.models import (
     CatalogModelORM,
@@ -59,7 +60,13 @@ async def test_model_import_and_health_route_persist_scoped_data():
         schema = "model_contract_" + uuid4().hex
         await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         await connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
+        # ⚠️ **身份表的租户 / 工作区** ✓ —— 请求链路会**校验工作区存在** ✓
+        # （`qzdap_auth` 的 workspace guard ✓ → `SELECT ... FROM workspaces`
+        # ✓）→ 一次性 schema 里**没有这张表**就会报「relation workspaces does
+        # not exist」✓。
         for table in [
+            TenantORM.__table__,
+            WorkspaceORM.__table__,
             ProviderORM.__table__,
             CatalogModelORM.__table__,
             RouteORM.__table__,
@@ -76,6 +83,26 @@ async def test_model_import_and_health_route_persist_scoped_data():
 
         tenant, workspace, provider_id, actor_id = uuid4(), uuid4(), uuid4(), uuid4()
         async with sessions() as session:
+            # ⚠️ **租户与工作区得先在** ✓ —— 请求链路会**校验工作区存在且 active**
+            # ✓（workspace guard ✓）→ 没有这两行就是 `WORKSPACE_NOT_FOUND` ✓。
+            session.add(
+                TenantORM(
+                    id=tenant,
+                    tenant_id=tenant,
+                    slug=f"t-{tenant.hex[:8]}",
+                    display_name="测试租户",
+                    status="active",
+                )
+            )
+            session.add(
+                WorkspaceORM(
+                    id=workspace,
+                    tenant_id=tenant,
+                    slug=f"w-{workspace.hex[:8]}",
+                    display_name="测试工作区",
+                    status="active",
+                )
+            )
             await SqlProviderRepository(session).add(
                 Provider.create(
                     id=provider_id,

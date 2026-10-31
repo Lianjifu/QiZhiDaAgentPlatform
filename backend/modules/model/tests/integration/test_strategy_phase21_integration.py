@@ -309,7 +309,11 @@ async def test_select_chain_weighted_with_dict_fallback(setup_db: Any) -> None:
     svc = _make_svc(setup_db)
     actor = ActorContext(tenant_id=setup["tenant"], workspace_id=setup["workspace"])
     chosen_counter: dict[UUID, int] = dict.fromkeys(model_ids, 0)
-    for _ in range(80):
+    # ⚠️ **采样是随机的** ✓（`random.Random()` ✓ —— 没播种 ✓）→ 这条断言是
+    # **统计性的** ✓ → **样本量不够就会偶发失败** ✓（80 次时 m1(1.0) 与
+    # m3(0.5) 的差距太小 ✗ —— 大约 1/8 的概率翻车 ✗✗）。
+    # 300 次时：期望 m2≈200 / m1≈67 / m3≈33 ✓ → 「m1 > m3」翻车概率 ≈ 1e-7 ✓。
+    for _ in range(300):
         chain = await svc.select_chain_for_strategy(
             actor=actor, route_id=ModelId(setup["route_id"])
         )

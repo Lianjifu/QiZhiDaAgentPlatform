@@ -101,3 +101,24 @@ async def test_assigning_a_subscription_actually_persists(client):
     assert rows.status_code == 200, rows.text
     assert rows.json() is not None
     assert rows.json()["plan_code"] == "free"
+
+
+async def test_updating_an_existing_subscription_does_not_blow_up(client):
+    """**第二次写（更新）也必须是 200** ✓ —— 以前是 500 ✓。
+
+    ⚠️ **老坑** ✓ —— ``updated_at`` 是**服务端算的** ✓（``onupdate=func.now()``
+    ✓）→ UPDATE 之后 ORM **不知道它的值** ✓ → 属性**过期** ✓ → 域映射读它
+    就触发**惰性加载** ✓ → 惰性加载在异步上下文外 → **``MissingGreenlet``**
+    ✓✗ → **接口 500** ✓✗。
+    → 现在由 mapper 的 ``eager_defaults`` ✓（PostgreSQL 走 RETURNING ✓ ——
+    **不多一次往返** ✓）一次性兜住 ✓。
+    """
+    first = await client.put("/v1/platform/subscriptions/me", json={"plan_code": "free"})
+    assert first.status_code == 200, first.text
+
+    second = await client.put("/v1/platform/subscriptions/me", json={"plan_code": "free"})
+    assert second.status_code == 200, second.text
+
+    rows = await client.get("/v1/platform/subscriptions/me")
+    assert rows.status_code == 200, rows.text
+    assert rows.json()["plan_code"] == "free"

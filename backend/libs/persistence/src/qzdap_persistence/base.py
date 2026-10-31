@@ -12,6 +12,7 @@ query — a forgotten `.where(Model.tenant_id == ...)` cannot leak rows.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import ClassVar
 from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, Index, MetaData
@@ -34,6 +35,18 @@ class Base(DeclarativeBase):
     """Project-wide declarative base. All ORM models must subclass this."""
 
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+    #: **服务端算出来的值，UPDATE 之后立刻取回** ✓（``eager_defaults`` ✓）。
+    #:
+    #: ⚠️ **为什么必须开** ✓ —— ``updated_at`` 是**服务端算的**
+    #: （``onupdate=func.now()`` ✓）→ UPDATE 之后 ORM **不知道它的值** ✓ →
+    #: **属性被标成过期** ✓ → 域映射读它就触发**惰性加载** ✓ → 而惰性加载
+    #: 在异步上下文外 → **`MissingGreenlet`** ✓✗（`sqlalchemy.exc` ✓）→
+    #: **接口 500** ✓✗。
+    #:
+    #: ⚠️ **PostgreSQL 走 RETURNING** ✓ —— **不多一次往返** ✓（ORM 直接把
+    #: 服务端算的值带回来 ✓）→ INSERT 也不受影响 ✓。
+    __mapper_args__: ClassVar[dict[str, bool]] = {"eager_defaults": True}
 
 
 class TenantScopedMixin(TenantScopedLoader):
