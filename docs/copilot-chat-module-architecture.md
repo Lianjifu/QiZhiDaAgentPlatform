@@ -536,6 +536,7 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 - **轮末记忆写入**：走 `MemoryPort.write_turn(...)` ✓ → 契约层 `memory/writer.py` 的**五步流水线** ✓（抽取 → 敏感闸门 → 幂等去重 → 置信度 → 落库 L2 带 provenance ✓）。⚠️ **不再无条件写一条「用户：… 助手：…」** ✓（旧 `_remember` 每轮都写 ✗）—— 只写**抽出来的事实** ✓，手机号 / 密码类内容**整条拒绝** ✓（闸门 ✓）。
 - **策略绑定真的被消费** ✓（2026-10-31，Memory Stage 4 ✓）—— `enabled` / `scope` / `policyLabel` / `l3EntryIds` / `knowledge_refs` **五个字段运行时都读** ✓（此前只读两个 ✗✗）：**关掉记忆就一条不写** ✓；**会话级作用域只召回本会话的记忆** ✓（过滤下推到 SQL ✓）；**显式绑定的条目一定被召回** ✓（绕过阈值 ✓ —— 绑定不是搜出来的 ✓）。
 - **会话级作用域落在 `session_memory_buffer`** ✓（2026-10-31，Memory Stage 5 ✓）—— 会话结束后**由 sweeper 提炼成用户级 L2** ✓（还在跑的会话不动 ✓；过期丢弃 ✓）。
+- **L1 缓冲表退役了** ✓（2026-10-31，**M-46** ✓ —— 决策 #5 ✓）—— `admin_memory_l1` **已 DROP** ✓（迁移 **0057** ✓ —— dev / demo / 测试库都跑过 upgrade ✓ —— downgrade 也能建回来 ✓）；管理端那 4 个 L1 端点**改读会话缓冲** ✓（`session_memory_buffer` ✓）—— **契约没变** ✓（前端那套 `L1Session` 形状照旧 ✓ —— `bufferSize` / `ttlRemainMin` / `status` 都还在 ✓）；「谁 ↔ 哪个 agent」由**窄端口** `SessionInfoPort` 补 ✓（Memory 不查会话表 ✓ —— 边界 ✓）。
 - **向量异步补写** ✓（2026-10-31，Memory Stage 5 ✓）—— **写路径不等 embedding** ✓（排进应用级队列 ✓）；**兜底补写** ✓（worker 定期扫「最近更新过的」✓）；**淘汰时同步删向量** ✓。
 - **使用统计与淘汰有执行者了** ✓（2026-10-31，Memory Stage 6 ✓）—— **召回命中就更新** `used_count` / `last_used_at` / `usage_history` ✓（**真实时间戳** ✓）；`admin_memory_policies` 的 TTL / max_items / storage_mb **第一次有执行者** ✓（淘汰 = 置 `retired` ✓ —— 不物理删 ✓）。
 - 上下文的**优先级与降级**由 Builder 统一决定 ✓（system → agent → 租户 → 摘要 → 召回 → 最近 → 本轮输入 ✓）；当前输入与工具结果**永不降级** ✓。

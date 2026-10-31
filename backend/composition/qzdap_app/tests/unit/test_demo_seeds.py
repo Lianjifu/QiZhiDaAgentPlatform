@@ -146,8 +146,12 @@ def test_demo_memory_is_skipped_for_the_dev_profile(settings: Settings) -> None:
 
 
 def test_demo_memory_specs_cover_three_layers() -> None:
-    """三层都要有内容 —— 记忆管理页三个 tab 都不能是空的."""
-    assert len(DEMO_MEMORY_SPECS["l1"]) >= 2
+    """**L2 / L3 都要有内容** ✓ —— 记忆管理页的 tab 不能是空的 ✓。
+
+    ⚠️ **不再有 L1** ✓（表退役了 ✓ —— 决策 #5 ✓ —— M-46 ✓）——
+    管理端看的「L1」现在是**会话缓冲** ✓（演示环境不配模型 ✓ → 本来就空 ✓）。
+    """
+    assert "l1" not in DEMO_MEMORY_SPECS
     assert len(DEMO_MEMORY_SPECS["l2"]) >= 3
     assert len(DEMO_MEMORY_SPECS["l3"]) >= 2
     for spec in DEMO_MEMORY_SPECS["l2"]:

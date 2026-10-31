@@ -10,14 +10,12 @@ from uuid import UUID, uuid4
 EMBEDDING_DIM = 1536
 
 MemoryLayer = Literal["l1", "l2", "l3"]
-L1Status = Literal["active", "paused", "expired"]
 L2Status = Literal["pending", "confirmed", "retired"]
 L3Status = Literal["draft", "published", "retired"]
 L2Category = Literal["preference", "fact", "style", "context"]
 EvictionStrategy = Literal["lru", "fifo", "confidence"]
 PromotionLayer = Literal["l1→l2", "l2→l3"]
 
-L1_STATUSES = frozenset({"active", "paused", "expired"})
 L2_STATUSES = frozenset({"pending", "confirmed", "retired"})
 L3_STATUSES = frozenset({"draft", "published", "retired"})
 L2_CATEGORIES = frozenset({"preference", "fact", "style", "context"})
@@ -43,37 +41,6 @@ def format_last_update(moment: datetime) -> str:
     if seconds < 86400 * 7:
         return f"{int(seconds // 86400)} 天前"
     return moment.astimezone(UTC).strftime("%Y-%m-%d %H:%M")
-
-
-@dataclass(slots=True)
-class L1Session:
-    id: UUID
-    tenant_id: UUID
-    workspace_id: UUID
-    user_name: str
-    agent_name: str
-    buffer_size: int
-    tokens_used: int
-    ttl_minutes: int
-    ttl_remain_min: int
-    status: L1Status
-    updated_at: datetime
-    created_at: datetime
-    buffer_text: str = ""
-
-    def to_admin_dict(self) -> dict[str, Any]:
-        return {
-            "id": str(self.id),
-            "userName": self.user_name,
-            "agentName": self.agent_name,
-            "bufferSize": self.buffer_size,
-            "tokensUsed": self.tokens_used,
-            "ttlMinutes": self.ttl_minutes,
-            "ttlRemainMin": self.ttl_remain_min,
-            "status": self.status,
-            "lastFlush": format_last_update(self.updated_at),
-            "startedAt": format_last_update(self.created_at),
-        }
 
 
 @dataclass(slots=True)
@@ -298,7 +265,6 @@ class RetentionPolicy:
 
 __all__ = [
     "EMBEDDING_DIM",
-    "L1Session",
     "L2Fact",
     "L3Entry",
     "PromotionEvent",

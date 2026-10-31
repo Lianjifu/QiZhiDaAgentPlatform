@@ -17,13 +17,14 @@ from qzdap.modules.memory.application.ports import (
 )
 from qzdap.modules.memory.application.services import MemoryRuntimeService
 from qzdap.modules.memory.domain.entities import (
-    L1Session,
     L2Fact,
     L3Entry,
     PromotionEvent,
     RetentionPolicy,
 )
 from qzdap.modules.memory.domain.errors import MemoryNotFound
+from qzdap_agent_runtime.memory.refine import BufferRow, SessionBufferView
+from qzdap_agent_runtime.memory.writer import content_hash
 from qzdap_kernel.errors import ValidationError
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
@@ -118,23 +119,10 @@ class InMemoryVectors(VectorSearchPort):
 
 class InMemoryCatalog(MemoryCatalogRepository):
     def __init__(self) -> None:
-        self.l1: dict[UUID, L1Session] = {}
         self.l2: dict[UUID, L2Fact] = {}
         self.l3: dict[UUID, L3Entry] = {}
         self.promotions: dict[UUID, PromotionEvent] = {}
         self.policies: dict[UUID, RetentionPolicy] = {}
-
-    async def add_l1(self, item: L1Session) -> None:
-        self.l1[item.id] = item
-
-    async def get_l1(self, item_id: UUID) -> L1Session | None:
-        return self.l1.get(item_id)
-
-    async def list_l1(self, workspace_id: UUID) -> list[L1Session]:
-        return [item for item in self.l1.values() if item.workspace_id == workspace_id]
-
-    async def update_l1(self, item: L1Session) -> None:
-        self.l1[item.id] = item
 
     async def add_l2(self, item: L2Fact) -> None:
         self.l2[item.id] = item
@@ -289,13 +277,58 @@ class _FakeKnowledge:
         return candidate
 
 
-def _svc() -> tuple[MemoryRuntimeService, MemoryAdminService, InMemoryCatalog]:
+class InMemoryBuffer:
+    """**内存版**的会话缓冲 ✓（L1 表退役后的唯一来源 ✓ —— M-46 ✓）。"""
+
+    def __init__(self) -> None:
+        self.rows: dict[UUID, BufferRow] = {}
+
+    async def add(self, row: BufferRow) -> None:
+        self.rows[row.id] = row
+
+    async def list_pending(self, *, before: datetime, limit: int = 100) -> list[BufferRow]:
+        _ = before
+        return list(self.rows.values())[:limit]
+
+    async def delete(self, row_ids: tuple[UUID, ...]) -> None:
+        for row_id in row_ids:
+            self.rows.pop(row_id, None)
+
+    async def list_workspace_views(self, *, workspace_id: UUID) -> list[SessionBufferView]:
+        grouped: dict[UUID, list[BufferRow]] = {}
+        for row in self.rows.values():
+            if row.workspace_id == workspace_id:
+                grouped.setdefault(row.session_id, []).append(row)
+        return [
+            SessionBufferView(
+                session_id=session_id,
+                workspace_id=rows[0].workspace_id,
+                user_id=rows[0].user_id,
+                items=len(rows),
+                total_chars=sum(len(row.content) for row in rows),
+                created_at=min(row.created_at for row in rows),
+                last_write_at=max(row.created_at for row in rows),
+            )
+            for session_id, rows in grouped.items()
+        ]
+
+    async def list_session_rows(self, *, session_id: UUID) -> list[BufferRow]:
+        return [row for row in self.rows.values() if row.session_id == session_id]
+
+    async def delete_session(self, *, session_id: UUID) -> int:
+        victims = [row.id for row in self.rows.values() if row.session_id == session_id]
+        await self.delete(tuple(victims))
+        return len(victims)
+
+
+def _svc() -> tuple[MemoryRuntimeService, MemoryAdminService, InMemoryCatalog, InMemoryBuffer]:
     """两个平面各一个服务，**共用同一份目录** ✓（模拟生产的两条路 ✓）。
 
     ⚠️ **第三个返回值是目录** ✓ —— 测试要往库里放行时**直接放** ✓
     （「库里有这一行」✓ —— 不是「某个写入路径能写」✓ —— 写入路径另有测试 ✓）。
     """
     catalog = InMemoryCatalog()
+    buffer = InMemoryBuffer()
     return (
         MemoryRuntimeService(catalog, embedding=HashEmbedding(), vectors=InMemoryVectors()),
         MemoryAdminService(
@@ -303,8 +336,10 @@ def _svc() -> tuple[MemoryRuntimeService, MemoryAdminService, InMemoryCatalog]:
             embedding=HashEmbedding(),
             vectors=InMemoryVectors(),
             knowledge=_FakeKnowledge(),
+            buffer=buffer,
         ),
         catalog,
+        buffer,
     )
 
 
@@ -340,50 +375,45 @@ async def _seed_l2(
     return fact
 
 
-async def _seed_l1(
-    catalog: InMemoryCatalog,
+async def _seed_buffer(
+    buffer: InMemoryBuffer,
     *,
     content: str,
     workspace_id: UUID = WORKSPACE,
     tenant_id: UUID = TENANT,
-    status: str = "active",
-) -> L1Session:
-    """往目录里放一条 L1 会话缓冲 ✓（L1 已退役写侧 ✓ —— 只剩读侧 ✓）。"""
+    session_id: UUID | None = None,
+) -> BufferRow:
+    """往**会话缓冲**里放一条待提炼的记忆 ✓（M-46 ✓ —— L1 表退役后的落点 ✓）。"""
     now = datetime.now(UTC)
-    session = L1Session(
+    row = BufferRow(
         id=uuid4(),
         tenant_id=tenant_id,
         workspace_id=workspace_id,
-        user_name="张文佳",
-        agent_name="助手",
-        buffer_size=1,
-        tokens_used=max(1, len(content) // 4),
-        ttl_minutes=60,
-        ttl_remain_min=60,
-        status=status,
-        updated_at=now,
+        session_id=session_id or uuid4(),
+        user_id=uuid4(),
+        turn_id=uuid4(),
+        content=content,
+        content_hash=content_hash(content),
         created_at=now,
-        buffer_text=content,
     )
-    await catalog.add_l1(session)
-    return session
+    await buffer.add(row)
+    return row
 
 
 @pytest.mark.asyncio
 async def test_the_lists_and_policies_are_readable() -> None:
-    """管理面**读得到** L1 / L2 / 提升事件 / 策略 ✓。
+    """管理面**读得到** 会话缓冲 / L2 / 提升事件 / 策略 ✓。
 
-    ⚠️ **L1 的写侧已退役** ✓（决策 #5 ✓ —— 旧写入点随 `_remember` 一起删了
-    ✓）→ 这里**只放行不写** ✓（「库里有这一行」✓）。
+    ⚠️ **「L1」现在是会话缓冲** ✓（L1 表退役了 ✓ —— 决策 #5 ✓ —— M-46 ✓）。
     """
-    _, admin, catalog = _svc()
+    _, admin, catalog, buffer = _svc()
     await _seed_l2(
         catalog,
         content="喜欢精简答复,3 行内给结论",
         key="答复风格",
         workspace_id=WORKSPACE,
     )
-    await _seed_l1(catalog, content="会议纪要要点", workspace_id=WORKSPACE)
+    await _seed_buffer(buffer, content="会议纪要要点", workspace_id=WORKSPACE)
     l1 = await admin.list_l1(workspace_id=WORKSPACE)
     l2 = await admin.list_l2(workspace_id=WORKSPACE)
     assert len(l1) == 1
@@ -410,7 +440,7 @@ async def test_the_retiring_tables_are_measured() -> None:
     """
     from qzdap_observability.metrics import LEGACY_CALLS_TOTAL
 
-    _, admin, _catalog = _svc()
+    _, admin, _catalog, _buffer = _svc()
     l3_before = LEGACY_CALLS_TOTAL.labels(entry="X15")._value.get()
 
     await admin.create_l3(
@@ -426,7 +456,7 @@ async def test_the_retiring_tables_are_measured() -> None:
 
 @pytest.mark.asyncio
 async def test_recall_ranks_matching_fact() -> None:
-    runtime, _, catalog = _svc()
+    runtime, _, catalog, _buffer = _svc()
     await _seed_l2(
         catalog,
         content="订单退款需要 7 天内申请",
@@ -448,29 +478,28 @@ async def test_recall_ranks_matching_fact() -> None:
 
 @pytest.mark.asyncio
 async def test_missing_l3_raises() -> None:
-    _, admin, _catalog = _svc()
+    _, admin, _catalog, _buffer = _svc()
     with pytest.raises(MemoryNotFound):
         await admin.get_l3(UUID("00000000-0000-0000-0000-000000000099"))
 
 
 @pytest.mark.asyncio
-async def test_flush_l1_expires_session() -> None:
-    _, admin, catalog = _svc()
-    await _seed_l1(catalog, content="会议纪要要点", workspace_id=WORKSPACE)
+async def test_flush_l1_drops_the_buffer() -> None:
+    """**冲掉一个会话的缓冲** ✓（M-46 ✓ —— 内容丢弃 ✓）。"""
+    _, admin, _catalog, buffer = _svc()
+    await _seed_buffer(buffer, content="会议纪要要点", workspace_id=WORKSPACE)
     sessions = await admin.list_l1(workspace_id=WORKSPACE)
     assert len(sessions) == 1
     flushed = await admin.flush_l1(UUID(sessions[0]["id"]), workspace_id=WORKSPACE)
-    assert flushed["status"] == "expired"
-    assert flushed["bufferSize"] == 0
-    again = await admin.list_l1(workspace_id=WORKSPACE)
-    assert again[0]["status"] == "expired"
+    assert flushed["flushed"] == 1
+    assert await admin.list_l1(workspace_id=WORKSPACE) == []
 
 
 @pytest.mark.asyncio
-async def test_flush_all_l1_only_counts_active() -> None:
-    _, admin, catalog = _svc()
-    await _seed_l1(catalog, content="第一条", workspace_id=WORKSPACE)
-    await _seed_l1(catalog, content="第二条", workspace_id=WORKSPACE)
+async def test_flush_all_l1_only_counts_what_is_there() -> None:
+    _, admin, _catalog, buffer = _svc()
+    await _seed_buffer(buffer, content="第一条", workspace_id=WORKSPACE)
+    await _seed_buffer(buffer, content="第二条", workspace_id=WORKSPACE)
     first = await admin.flush_all_l1(workspace_id=WORKSPACE)
     assert first["flushed"] == 2
     second = await admin.flush_all_l1(workspace_id=WORKSPACE)
@@ -479,8 +508,8 @@ async def test_flush_all_l1_only_counts_active() -> None:
 
 @pytest.mark.asyncio
 async def test_flush_rejects_other_workspace() -> None:
-    _, admin, catalog = _svc()
-    await _seed_l1(catalog, content="内容", workspace_id=WORKSPACE)
+    _, admin, _catalog, buffer = _svc()
+    await _seed_buffer(buffer, content="内容", workspace_id=WORKSPACE)
     sessions = await admin.list_l1(workspace_id=WORKSPACE)
     with pytest.raises(MemoryNotFound):
         await admin.flush_l1(
@@ -491,7 +520,7 @@ async def test_flush_rejects_other_workspace() -> None:
 
 @pytest.mark.asyncio
 async def test_update_l2_confirms_and_validates_status() -> None:
-    _, admin, catalog = _svc()
+    _, admin, catalog, _buffer = _svc()
     await _seed_l2(
         catalog,
         content="偏好中文回复",
@@ -509,7 +538,7 @@ async def test_update_l2_confirms_and_validates_status() -> None:
 @pytest.mark.asyncio
 async def test_promote_l2_creates_a_knowledge_candidate_and_marks_facts() -> None:
     """**提升 → 团队知识候选** ✓（决策 #1 ✓ —— **不再写 L3 表** ✓）。"""
-    _, admin, catalog = _svc()
+    _, admin, catalog, _buffer = _svc()
     await _seed_l2(
         catalog,
         content="退款 7 天内申请",
@@ -541,7 +570,7 @@ async def test_promote_l2_creates_a_knowledge_candidate_and_marks_facts() -> Non
 
 @pytest.mark.asyncio
 async def test_promote_l2_rejects_empty_selection() -> None:
-    _, admin, _catalog = _svc()
+    _, admin, _catalog, _buffer = _svc()
     with pytest.raises(ValidationError):
         await admin.promote_l2(
             tenant_id=TENANT,
@@ -555,7 +584,7 @@ async def test_promote_l2_rejects_empty_selection() -> None:
 
 @pytest.mark.asyncio
 async def test_create_l3_publishes_entry() -> None:
-    _, admin, _catalog = _svc()
+    _, admin, _catalog, _buffer = _svc()
     entry = await admin.create_l3(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
@@ -572,7 +601,7 @@ async def test_create_l3_publishes_entry() -> None:
 
 @pytest.mark.asyncio
 async def test_create_l3_rejects_unknown_status() -> None:
-    _, admin, _catalog = _svc()
+    _, admin, _catalog, _buffer = _svc()
     with pytest.raises(ValidationError):
         await admin.create_l3(
             tenant_id=TENANT,
@@ -586,7 +615,7 @@ async def test_create_l3_rejects_unknown_status() -> None:
 
 @pytest.mark.asyncio
 async def test_update_l3_publishes_and_retires() -> None:
-    _, admin, _catalog = _svc()
+    _, admin, _catalog, _buffer = _svc()
     entry = await admin.create_l3(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,

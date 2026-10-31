@@ -5,7 +5,6 @@ from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from qzdap.modules.memory.domain.entities import (
-    L1Session,
     L2Fact,
     L3Entry,
     PromotionEvent,
@@ -54,18 +53,6 @@ class VectorSearchPort(Protocol):
 
 
 class MemoryCatalogRepository(ABC):
-    @abstractmethod
-    async def add_l1(self, item: L1Session) -> None: ...
-
-    @abstractmethod
-    async def get_l1(self, item_id: UUID) -> L1Session | None: ...
-
-    @abstractmethod
-    async def list_l1(self, workspace_id: UUID) -> list[L1Session]: ...
-
-    @abstractmethod
-    async def update_l1(self, item: L1Session) -> None: ...
-
     @abstractmethod
     async def add_l2(self, item: L2Fact) -> None: ...
 

@@ -25,7 +25,6 @@ from qzdap.modules.memory.application.ports import (
 )
 from qzdap.modules.memory.application.services import MemoryRuntimeService
 from qzdap.modules.memory.domain.entities import (
-    L1Session,
     L2Fact,
     L3Entry,
     PromotionEvent,
@@ -127,23 +126,10 @@ class InMemoryVectors(VectorSearchPort):
 
 class InMemoryCatalog(MemoryCatalogRepository):
     def __init__(self) -> None:
-        self.l1: dict[UUID, L1Session] = {}
         self.l2: dict[UUID, L2Fact] = {}
         self.l3: dict[UUID, L3Entry] = {}
         self.promotions: dict[UUID, PromotionEvent] = {}
         self.policies: dict[UUID, RetentionPolicy] = {}
-
-    async def add_l1(self, item: L1Session) -> None:
-        self.l1[item.id] = item
-
-    async def get_l1(self, item_id: UUID) -> L1Session | None:
-        return self.l1.get(item_id)
-
-    async def list_l1(self, workspace_id: UUID) -> list[L1Session]:
-        return [item for item in self.l1.values() if item.workspace_id == workspace_id]
-
-    async def update_l1(self, item: L1Session) -> None:
-        self.l1[item.id] = item
 
     async def add_l2(self, item: L2Fact) -> None:
         self.l2[item.id] = item

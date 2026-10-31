@@ -1027,8 +1027,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from qzdap.modules.agent_runtime.adapter.memory.policy_publisher import (
                 AgentMemoryPolicyPublisher,
             )
+            from qzdap.modules.agent_runtime.adapter.memory.session_info import (
+                PostgresSessionInfo,
+            )
             from qzdap.modules.knowledge.adapter.promotion import (
                 KnowledgeCandidateAdapter,
+            )
+            from qzdap.modules.memory.adapter.persistence.buffer_repository import (
+                SqlMemoryBufferRepository,
             )
 
             return MemoryAdminService(
@@ -1043,6 +1049,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 # ⚠️ **策略发布的落点** ✓（B2 的「配置发布与生效」✓ —— M-37 ✓）——
                 # 发布写进 agent 行 ✓ → 运行时**下一次就读到** ✓。
                 publisher=AgentMemoryPolicyPublisher(SqlCatalogAgentRepository(session)),
+                # ⚠️ **会话缓冲** ✓（**L1 表退役后的唯一来源** ✓ —— M-46 ✓）
+                # —— 管理端看的「L1」现在就是它 ✓（决策 #5 ✓）。
+                buffer=SqlMemoryBufferRepository(session),
+                # ⚠️ **会话的展示信息** ✓（「谁 ↔ 哪个 agent」✓）—— 窄端口 ✓
+                # （Memory 不查会话表 ✓）。
+                session_info=PostgresSessionInfo(session),
             )
 
         def __call__(self, session):  # type: ignore[no-untyped-def]

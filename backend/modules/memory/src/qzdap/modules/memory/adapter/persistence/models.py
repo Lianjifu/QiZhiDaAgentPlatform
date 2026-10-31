@@ -22,36 +22,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from qzdap_persistence.base import Base, TenantScopedMixin
 
 
-class MemoryL1ORM(TenantScopedMixin, Base):
-    __tablename__ = "admin_memory_l1"
-
-    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
-    user_name: Mapped[str] = mapped_column(
-        String(128), nullable=False, default="", server_default=text("''")
-    )
-    agent_name: Mapped[str] = mapped_column(
-        String(128), nullable=False, default="", server_default=text("''")
-    )
-    buffer_size: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default=text("0")
-    )
-    tokens_used: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default=text("0")
-    )
-    ttl_minutes: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=60, server_default=text("60")
-    )
-    ttl_remain_min: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default=text("0")
-    )
-    status: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="active", server_default=text("'active'")
-    )
-    buffer_text: Mapped[str] = mapped_column(
-        Text, nullable=False, default="", server_default=text("''")
-    )
-
-
 class MemoryL2ORM(TenantScopedMixin, Base):
     __tablename__ = "admin_memory_l2"
 

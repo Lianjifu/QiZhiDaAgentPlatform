@@ -7,7 +7,6 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from qzdap.modules.memory.adapter.persistence.models import (
-    MemoryL1ORM,
     MemoryL2ORM,
     MemoryL3ORM,
     MemoryPolicyORM,
@@ -15,7 +14,6 @@ from qzdap.modules.memory.adapter.persistence.models import (
 )
 from qzdap.modules.memory.application.ports import MemoryCatalogRepository
 from qzdap.modules.memory.domain.entities import (
-    L1Session,
     L2Fact,
     L3Entry,
     PromotionEvent,
@@ -29,24 +27,6 @@ def _cross_tenant(row: object) -> bool:
     if bound is None:
         return False
     return getattr(row, "tenant_id", None) != bound
-
-
-def _l1(row: MemoryL1ORM) -> L1Session:
-    return L1Session(
-        id=row.id,
-        tenant_id=row.tenant_id,
-        workspace_id=row.workspace_id,
-        user_name=row.user_name,
-        agent_name=row.agent_name,
-        buffer_size=row.buffer_size,
-        tokens_used=row.tokens_used,
-        ttl_minutes=row.ttl_minutes,
-        ttl_remain_min=row.ttl_remain_min,
-        status=row.status,  # type: ignore[arg-type]
-        updated_at=row.updated_at,
-        created_at=row.created_at,
-        buffer_text=row.buffer_text,
-    )
 
 
 #: 词法检索最多拆多少个词 ✓（避免超长查询拖慢 SQL ✓）。
@@ -112,48 +92,6 @@ def _l3(row: MemoryL3ORM) -> L3Entry:
 class SqlMemoryCatalogRepository(MemoryCatalogRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
-
-    async def add_l1(self, item: L1Session) -> None:
-        self._s.add(
-            MemoryL1ORM(
-                id=item.id,
-                tenant_id=item.tenant_id,
-                workspace_id=item.workspace_id,
-                user_name=item.user_name,
-                agent_name=item.agent_name,
-                buffer_size=item.buffer_size,
-                tokens_used=item.tokens_used,
-                ttl_minutes=item.ttl_minutes,
-                ttl_remain_min=item.ttl_remain_min,
-                status=item.status,
-                buffer_text=item.buffer_text,
-                created_at=item.created_at,
-                updated_at=item.updated_at,
-            )
-        )
-
-    async def get_l1(self, item_id: UUID) -> L1Session | None:
-        row = await self._s.get(MemoryL1ORM, item_id)
-        if row is None or _cross_tenant(row):
-            return None
-        return _l1(row)
-
-    async def list_l1(self, workspace_id: UUID) -> list[L1Session]:
-        result = await self._s.execute(
-            select(MemoryL1ORM).where(MemoryL1ORM.workspace_id == workspace_id)
-        )
-        return [_l1(row) for row in result.scalars().all() if not _cross_tenant(row)]
-
-    async def update_l1(self, item: L1Session) -> None:
-        row = await self._s.get(MemoryL1ORM, item.id)
-        if row is None or _cross_tenant(row):
-            return
-        row.buffer_size = item.buffer_size
-        row.tokens_used = item.tokens_used
-        row.ttl_remain_min = item.ttl_remain_min
-        row.status = item.status
-        row.buffer_text = item.buffer_text
-        row.updated_at = item.updated_at
 
     async def add_l2(self, item: L2Fact) -> None:
         self._s.add(

@@ -69,6 +69,40 @@ class BufferPort(Protocol):
         """**删掉已处理的行** ✓（提炼完 / 丢弃后 ✓）。"""
         ...
 
+    # ── 管理面要看的（**L1 表退役后的唯一来源** ✓ —— M-46 ✓）────────
+    async def list_workspace_views(self, *, workspace_id: UUID) -> list[SessionBufferView]:
+        """**工作区下每个会话的缓冲概览** ✓（管理端列的就是它 ✓）。"""
+        ...
+
+    async def list_session_rows(self, *, session_id: UUID) -> list[BufferRow]:
+        """**某个会话的缓冲条目** ✓（详情页 ✓）。"""
+        ...
+
+    async def delete_session(self, *, session_id: UUID) -> int:
+        """**冲掉一个会话的缓冲** ✓（返回**冲掉几条** ✓ —— 「冲了但其实没东西」要看得见 ✓）。"""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class SessionBufferView:
+    """**一个会话的缓冲概览** ✓（管理端看的就是它 ✓ —— 不再有 L1 表 ✓）。
+
+    ⚠️ **它不是「L1 会话」** ✓ —— 那是旧模型 ✓（一个会话一条 ✓）——
+    现在是**按会话聚合** ✓（会话里可能有多条待提炼的记忆 ✓）。
+    """
+
+    session_id: UUID
+    workspace_id: UUID
+    user_id: UUID
+    #: **缓冲里的条目数** ✓。
+    items: int
+    #: **内容的总长度** ✓（字符数 ✓ —— 够前端显示「占了多大」✓）。
+    total_chars: int
+    #: **最早写入** ✓（≈ 会话开始时间 ✓）。
+    created_at: datetime
+    #: **最近一次写入** ✓。
+    last_write_at: datetime
+
 
 @runtime_checkable
 class SessionActivityPort(Protocol):
@@ -155,4 +189,5 @@ __all__ = [
     "BufferRow",
     "RefineReport",
     "SessionActivityPort",
+    "SessionBufferView",
 ]

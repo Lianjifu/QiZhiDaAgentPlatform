@@ -31,13 +31,17 @@ from qzdap.modules.memory.domain.entities import (
     L3Entry,
     PromotionEvent,
     RetentionPolicy,
+    format_last_update,
 )
 from qzdap.modules.memory.domain.errors import MemoryNotFound
+from qzdap_agent_runtime.context.tokens import estimate_tokens
 from qzdap_agent_runtime.memory.policy import (
     MemoryPolicyConfig,
     MemoryPolicyPublisherPort,
 )
 from qzdap_agent_runtime.memory.promotion import KnowledgePromotionPort
+from qzdap_agent_runtime.memory.refine import BufferPort, SessionBufferView
+from qzdap_agent_runtime.memory.session_info import SessionInfoPort
 from qzdap_kernel.errors import ConflictError, ValidationError
 from qzdap_observability.metrics import record_legacy_call
 
@@ -56,6 +60,8 @@ class MemoryAdminService:
         knowledge: KnowledgePromotionPort | None = None,
         publisher: MemoryPolicyPublisherPort | None = None,
         rules: AdminEditRules | None = None,
+        buffer: BufferPort | None = None,
+        session_info: SessionInfoPort | None = None,
     ) -> None:
         self._catalog = catalog
         self._embedding = embedding
@@ -69,17 +75,87 @@ class MemoryAdminService:
         #: ⚠️ **人工编辑的规则** ✓（B3 ✓ —— M-38 ✓）—— 默认用平面 A 的
         #: **同一个闸门实现** ✓（规则 4 ✓）。
         self._rules = rules or AdminEditRules()
+        #: ⚠️ **会话缓冲** ✓（**L1 表退役后的唯一来源** ✓ —— M-46 ✓）——
+        #: 管理端看的「L1」现在就是**会话缓冲** ✓（决策 #5 ✓）。
+        self._buffer = buffer
+        #: ⚠️ **会话的展示信息** ✓（「谁 ↔ 哪个 agent」✓）—— 走窄端口 ✓
+        #: （Memory 不查会话表 ✓）。
+        self._session_info = session_info
 
     async def list_l1(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
-        items = await self._catalog.list_l1(workspace_id)
-        items.sort(key=lambda item: item.updated_at, reverse=True)
-        return [item.to_admin_dict() for item in items]
+        """**会话缓冲的概览** ✓（M-46 ✓ —— **L1 表退役后的唯一来源** ✓）。
+
+        ⚠️ **形状不变** ✓（前端那套 `L1Session` ✓ —— 契约没变 ✓）。
+        """
+        if self._buffer is None:
+            return []
+        views = await self._buffer.list_workspace_views(workspace_id=workspace_id)
+        items = [self._l1_view(view) for view in views]
+        await self._fill_l1_names(items)
+        return items
 
     async def get_l1(self, item_id: UUID) -> dict[str, Any]:
-        item = await self._catalog.get_l1(item_id)
-        if item is None:
-            raise MemoryNotFound(f"l1 session {item_id} not found")
-        return item.to_admin_dict()
+        """**一个会话的缓冲** ✓（详情页 ✓）。"""
+        if self._buffer is None:
+            raise MemoryNotFound(f"session buffer {item_id} not found")
+        rows = await self._buffer.list_session_rows(session_id=item_id)
+        if not rows:
+            raise MemoryNotFound(f"session buffer {item_id} not found")
+        item = self._l1_view(self._l1_view_of(item_id, rows))
+        await self._fill_l1_names([item])
+        return item
+
+    @staticmethod
+    def _l1_view_of(session_id: UUID, rows: list[Any]) -> SessionBufferView:
+        """**缓冲行 → 概览** ✓（详情页没有聚合查询 ✓ —— 直接算 ✓）。"""
+        first = rows[0]
+        return SessionBufferView(
+            session_id=session_id,
+            workspace_id=first.workspace_id,
+            user_id=first.user_id,
+            items=len(rows),
+            total_chars=sum(len(str(row.content)) for row in rows),
+            created_at=min(row.created_at for row in rows),
+            last_write_at=max(row.created_at for row in rows),
+        )
+
+    async def _fill_l1_names(self, items: list[dict[str, Any]]) -> None:
+        """**补上「谁 ↔ 哪个 agent」** ✓（窄端口 ✓ —— Memory 不查会话表 ✓）。
+
+        ⚠️ **查不到就留空** ✓（不猜 ✓ —— 名字只是展示 ✓）。
+        """
+        if self._session_info is None or not items:
+            return
+        session_ids = tuple(UUID(str(item["id"])) for item in items)
+        described = await self._session_info.describe(session_ids)
+        for item in items:
+            info = described.get(UUID(str(item["id"])))
+            if info is None:
+                continue
+            item["agentName"] = info.agent_name
+            if info.owner_id is not None:
+                item["userName"] = str(info.owner_id)
+
+    @staticmethod
+    def _l1_view(view: SessionBufferView) -> dict[str, Any]:
+        """**概览 → 管理端那一行** ✓（形状与旧的 L1 一样 ✓）。"""
+        content_chars = view.total_chars
+        return {
+            "id": str(view.session_id),
+            # ⚠️ **名字由路由补** ✓（Memory 不查 identity / agent 表 ✓ ——
+            # 那是别人的表 ✗✗）。
+            "userName": str(view.user_id),
+            "agentName": "",
+            "bufferSize": content_chars,
+            "tokensUsed": estimate_tokens("x" * content_chars),
+            # ⚠️ **缓冲没有 TTL 列** ✓（提炼器按创建时间判过期 ✓）→ 0 ✓
+            # （前端会显示「TTL 剩 0/0m」✓ —— 不骗人 ✓）。
+            "ttlMinutes": 0,
+            "ttlRemainMin": 0,
+            "status": "active",
+            "lastFlush": format_last_update(view.last_write_at),
+            "startedAt": format_last_update(view.created_at),
+        }
 
     async def list_l2(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
         items = await self._catalog.list_l2(workspace_id)
@@ -104,33 +180,25 @@ class MemoryAdminService:
         return item.to_admin_dict()
 
     async def flush_l1(self, item_id: UUID, *, workspace_id: UUID) -> dict[str, Any]:
-        """冲掉一条 L1 会话缓冲 —— 内容落盘后丢弃上下文窗口。"""
-        item = await self._catalog.get_l1(item_id)
-        if item is None or item.workspace_id != workspace_id:
-            raise MemoryNotFound(f"l1 session {item_id} not found")
-        now = datetime.now(UTC)
-        item.status = "expired"
-        item.buffer_text = ""
-        item.buffer_size = 0
-        item.ttl_remain_min = 0
-        item.updated_at = now
-        await self._catalog.update_l1(item)
-        return item.to_admin_dict()
+        """**冲掉一个会话的缓冲** ✓（M-46 ✓）—— 内容丢弃 ✓（不再占上下文窗口 ✓）。
+
+        ⚠️ **工作区要对得上** ✓（别人的会话冲不掉 ✓）。
+        """
+        if self._buffer is None:
+            raise MemoryNotFound(f"session buffer {item_id} not found")
+        rows = await self._buffer.list_session_rows(session_id=item_id)
+        if not rows or rows[0].workspace_id != workspace_id:
+            raise MemoryNotFound(f"session buffer {item_id} not found")
+        flushed = await self._buffer.delete_session(session_id=item_id)
+        return {"id": str(item_id), "flushed": flushed}
 
     async def flush_all_l1(self, *, workspace_id: UUID) -> dict[str, int]:
-        """冲掉工作区下所有未过期的 L1 会话。"""
-        now = datetime.now(UTC)
+        """**冲掉工作区下所有会话的缓冲** ✓（M-46 ✓）。"""
+        if self._buffer is None:
+            return {"flushed": 0}
         flushed = 0
-        for item in await self._catalog.list_l1(workspace_id):
-            if item.status == "expired":
-                continue
-            item.status = "expired"
-            item.buffer_text = ""
-            item.buffer_size = 0
-            item.ttl_remain_min = 0
-            item.updated_at = now
-            await self._catalog.update_l1(item)
-            flushed += 1
+        for view in await self._buffer.list_workspace_views(workspace_id=workspace_id):
+            flushed += await self._buffer.delete_session(session_id=view.session_id)
         return {"flushed": flushed}
 
     async def update_l2(

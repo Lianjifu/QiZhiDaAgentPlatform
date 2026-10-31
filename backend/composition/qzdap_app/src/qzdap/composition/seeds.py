@@ -1026,32 +1026,6 @@ async def seed_demo_conversations(
 #: 真实记忆是聊天时提炼出来的; 演示环境不配模型就没有这些行, 记忆管理页
 #: 会是一片空白. 这里直接按领域模型造一批, 让演示能点得到.
 DEMO_MEMORY_SPECS: dict[str, tuple[dict[str, Any], ...]] = {
-    "l1": (
-        {
-            "user": "Demo User",
-            "agent": "客服应答助手",
-            "buffer": "客户问的是退款进度, 订单号 SO-20240517, 已查过物流.",
-            "tokens": 4820,
-            "ttl_remain": 38,
-            "status": "active",
-        },
-        {
-            "user": "Demo User",
-            "agent": "销售线索洞察助手",
-            "buffer": "客户是华东区的连锁零售, 关注续约周期和门店数.",
-            "tokens": 3140,
-            "ttl_remain": 12,
-            "status": "active",
-        },
-        {
-            "user": "Demo Admin",
-            "agent": "经营数据分析",
-            "buffer": "本周要看的指标: 渠道毛利额、订单数、退款率.",
-            "tokens": 2180,
-            "ttl_remain": 45,
-            "status": "active",
-        },
-    ),
     "l2": (
         {
             "user": "Demo User",
@@ -1145,39 +1119,22 @@ async def seed_demo_memory(
         SqlMemoryCatalogRepository,
     )
     from qzdap.modules.memory.domain.entities import (
-        L1Session,
         L2Fact,
         L3Entry,
         PromotionEvent,
     )
 
     catalog = SqlMemoryCatalogRepository(session)
-    if await catalog.list_l1(workspace_id) or await catalog.list_l2(workspace_id):
+    if await catalog.list_l2(workspace_id):
         return {}
 
     now = datetime.now(UTC)
-    counts = {"l1": 0, "l2": 0, "l3": 0, "promotions": 0}
+    counts = {"l2": 0, "l3": 0, "promotions": 0}
 
-    l1_ids: list[str] = []
-    for spec in DEMO_MEMORY_SPECS["l1"]:
-        session_row = L1Session(
-            id=uuid4(),
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            user_name=spec["user"],
-            agent_name=spec["agent"],
-            buffer_size=len(spec["buffer"]) // 4,
-            tokens_used=spec["tokens"],
-            ttl_minutes=60,
-            ttl_remain_min=spec["ttl_remain"],
-            status=spec["status"],
-            updated_at=now,
-            created_at=now,
-            buffer_text=spec["buffer"],
-        )
-        await catalog.add_l1(session_row)
-        l1_ids.append(str(session_row.id))
-        counts["l1"] += 1
+    # ⚠️ **L1 表退役** ✓（决策 #5 ✓ —— M-46 ✓）—— 演示数据**不再种 L1** ✓
+    # （管理端看的「L1」现在是**会话缓冲** ✓ —— 演示环境不配模型 ✓ →
+    # 缓冲里本来就是空的 ✓ —— 空着才是真的 ✓）。
+    l1_ids: list[str] = [str(uuid4()) for _ in range(3)]
 
     l2_ids: list[str] = []
     for index, spec in enumerate(DEMO_MEMORY_SPECS["l2"]):
