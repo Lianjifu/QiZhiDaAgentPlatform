@@ -14,6 +14,7 @@ POST      /api/catalog/knowledge/__noop__/ask
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
@@ -31,7 +32,7 @@ def _owner_label(request: Request) -> str:
     return "管理员"
 
 
-async def knowledge_dependency(request: Request) -> KnowledgeService:
+async def knowledge_dependency(request: Request) -> AsyncIterator[KnowledgeService]:
     factory = getattr(request.app.state, "knowledge_service_factory", None)
     container = getattr(request.app.state, "container", None)
     if factory is None or container is None:

@@ -20,6 +20,7 @@ from qzdap.modules.tool.application.tool_schema import (
     tool_parameters,
     tool_risk,
 )
+from qzdap_kernel.ids import TenantId, ToolCallId, TurnId, UserId, WorkspaceId
 
 
 class ToolServiceAdapter(ToolPort):
@@ -32,9 +33,11 @@ class ToolServiceAdapter(ToolPort):
         owner_id: UUID,
     ) -> None:
         self._svc = tool_service
-        self._tenant_id = tenant_id
-        self._workspace_id = workspace_id
-        self._owner_id = owner_id
+        # ⚠️ **这里是「裸 UUID → 品牌 ID」的边界** ✓（这层对着 HTTP ✓）——
+        # **进到工具应用层之前**转好 ✓（下游一律品牌 ID ✓）。
+        self._tenant_id = TenantId(tenant_id)
+        self._workspace_id = WorkspaceId(workspace_id)
+        self._owner_id = UserId(owner_id)
 
     async def invoke(
         self,
@@ -51,8 +54,8 @@ class ToolServiceAdapter(ToolPort):
             owner_id=self._owner_id,
             tool_name=tool_name,
             arguments=arguments,
-            call_id=call_id,
-            turn_id=turn_id,
+            call_id=ToolCallId(call_id),
+            turn_id=TurnId(turn_id) if turn_id is not None else None,
             idempotency_key=idempotency_key,
         )
         # The invoke_tool use case mutates the ToolCall id from the passed

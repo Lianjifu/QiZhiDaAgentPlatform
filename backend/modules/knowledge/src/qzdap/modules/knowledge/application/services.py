@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from qzdap.modules.knowledge.application.chunker import split_text
@@ -21,9 +21,12 @@ from qzdap.modules.knowledge.domain.entities import (
     SOURCE_TYPES,
     DocChunk,
     IndexedChunk,
+    KbScope,
     KnowledgeBase,
     KnowledgeDoc,
     KnowledgeSource,
+    RetrievalMode,
+    SourceType,
     is_workspace_visible,
 )
 from qzdap.modules.knowledge.domain.errors import KnowledgeNotFound, KnowledgeValidationError
@@ -57,8 +60,15 @@ class KnowledgeService:
     async def create_kb(
         self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any], owner: str
     ) -> dict[str, Any]:
-        scope = body.get("scope") if body.get("scope") in KB_SCOPES else "部门"
-        retrieval = body.get("retrieval") if body.get("retrieval") in RETRIEVAL_MODES else "hybrid"
+        # ⚠️ **字面量收窄** ✓ —— 运行时用 `in` 校验 ✓；类型上显式收窄 ✓
+        # （`body` 是 `dict[str, Any]` ✓ → mypy 看不出「只能是这三个值」✗）。
+        scope = cast(
+            "KbScope", body.get("scope") if body.get("scope") in KB_SCOPES else "部门"
+        )
+        retrieval = cast(
+            "RetrievalMode",
+            body.get("retrieval") if body.get("retrieval") in RETRIEVAL_MODES else "hybrid",
+        )
         kb = KnowledgeBase.create(
             id=_parse_id(body.get("id")),
             tenant_id=tenant_id,
@@ -120,7 +130,7 @@ class KnowledgeService:
             raise KnowledgeNotFound(f"knowledge doc {doc_id} not found")
         content = str(body.get("content") or "").strip()
         if content:
-            doc = await self.ingest_doc(
+            ingested = await self.ingest_doc(
                 tenant_id=doc.tenant_id,
                 workspace_id=doc.workspace_id,
                 body={
@@ -135,7 +145,7 @@ class KnowledgeService:
                     "sourceId": doc.source_id or "",
                 },
             )
-            return doc
+            return ingested
         if body.get("name"):
             doc.name = str(body["name"]).strip() or doc.name
         if body.get("category") is not None:
@@ -216,7 +226,9 @@ class KnowledgeService:
     async def create_source(
         self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
     ) -> dict[str, Any]:
-        source_type = body.get("type") if body.get("type") in SOURCE_TYPES else "api"
+        source_type = cast(
+            "SourceType", body.get("type") if body.get("type") in SOURCE_TYPES else "api"
+        )
         source = KnowledgeSource.create(
             id=_parse_id(body.get("id")),
             tenant_id=tenant_id,
@@ -295,9 +307,11 @@ class KnowledgeService:
             workspace_id=workspace_id, kbs=kbs, query=query, top_k=limit * 4
         )
         vector_hits: list[VectorHit] = []
-        if use_vector and query.strip():
-            [query_vec] = await self._embedding.embed([query.strip()])
-            vector_hits = await self._vectors.search(
+        embedding = self._embedding
+        vectors = self._vectors
+        if use_vector and query.strip() and embedding is not None and vectors is not None:
+            [query_vec] = await embedding.embed([query.strip()])
+            vector_hits = await vectors.search(
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 query_embedding=query_vec,
@@ -387,18 +401,18 @@ class KnowledgeService:
                 snippets = list(doc.chunks_preview) or [
                     DocChunk(index=0, snippet=f"{doc.name} {kb.description}")
                 ]
-                for chunk in snippets:
-                    hay = f"{doc.name} {chunk.heading} {chunk.snippet}".lower()
+                for preview in snippets:
+                    hay = f"{doc.name} {preview.heading} {preview.snippet}".lower()
                     score = _keyword_score(needle, hay)
                     scored.append(
                         (
                             score,
                             _hit_dict(
-                                chunk_id=f"{doc.id}:{chunk.index}",
+                                chunk_id=f"{doc.id}:{preview.index}",
                                 doc=doc,
                                 kb=kb,
-                                content=chunk.snippet or chunk.heading or doc.name,
-                                ordinal=chunk.index,
+                                content=preview.snippet or preview.heading or doc.name,
+                                ordinal=preview.index,
                                 score=score,
                             ),
                         )
@@ -520,14 +534,14 @@ def _merge_hits(
             "ordinal": hit.ordinal,
         }
     for score, payload in keyword_hits:
-        kb = kbs.get(UUID(payload["package_id"]))
-        if kb is None:
+        hit_kb = kbs.get(UUID(payload["package_id"]))
+        if hit_kb is None:
             continue
-        if kb.retrieval == "semantic":
+        if hit_kb.retrieval == "semantic":
             if payload["id"] not in merged and not vector_hits:
                 merged[payload["id"]] = payload
             continue
-        if kb.retrieval == "keyword":
+        if hit_kb.retrieval == "keyword":
             merged[payload["id"]] = {**payload, "score": score}
             continue
         if payload["id"] not in merged:

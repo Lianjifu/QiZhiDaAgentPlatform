@@ -95,7 +95,8 @@ class AgentCatalogService:
 
     async def update(self, *, agent_id: UUID, body: dict[str, Any]) -> dict[str, Any]:
         agent = await self._require(agent_id)
-        patch = body.get("patch") if isinstance(body.get("patch"), dict) else body
+        raw_patch = body.get("patch")
+        patch: dict[str, Any] = raw_patch if isinstance(raw_patch, dict) else body
         updated = agent.apply_patch(patch).add_audit("更新智能体")
         await self._agents.update(updated)
         return updated.to_admin_dict()

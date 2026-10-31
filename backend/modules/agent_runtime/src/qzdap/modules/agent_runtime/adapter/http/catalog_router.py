@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import Response
 
 from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
 from qzdap.modules.agent_runtime.domain.catalog_errors import (
@@ -22,7 +24,7 @@ def _owner_id(request: Request, fallback: UUID) -> UUID:
     return UUID(str(pid))
 
 
-async def catalog_dependency(request: Request) -> AgentCatalogService:
+async def catalog_dependency(request: Request) -> AsyncIterator[AgentCatalogService]:
     factory = getattr(request.app.state, "agent_catalog_factory", None)
     container = getattr(request.app.state, "container", None)
     if factory is None or container is None:
@@ -172,13 +174,11 @@ def build_catalog_router() -> APIRouter:
         body: dict[str, Any],
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         svc: AgentCatalogService = Depends(catalog_dependency),
-    ) -> dict[str, Any]:
+    ) -> Response:
         if body.get("format", "json") != "json":
             raise HTTPException(status_code=422, detail="agent export supports JSON")
         rows = await svc.export(workspace_id=x_workspace_id, ids=body.get("ids"))
         import json
-
-        from fastapi.responses import Response
 
         return Response(
             json.dumps(rows["agents"], ensure_ascii=False, indent=2),

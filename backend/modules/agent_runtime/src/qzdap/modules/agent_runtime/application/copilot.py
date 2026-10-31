@@ -189,7 +189,7 @@ class CopilotSessionService:
         await self._sessions.update(closed)
         await self._events.publish(
             closed.raise_closed_event(),
-            tenant_id=tenant_id,
+            tenant_id=TenantId(tenant_id),
             workspace_id=session.workspace_id,
         )
 
@@ -208,7 +208,7 @@ class CopilotSessionService:
         await self._sessions.update(closed)
         await self._events.publish(
             closed.raise_closed_event(),
-            tenant_id=tenant_id,
+            tenant_id=TenantId(tenant_id),
             workspace_id=closed.workspace_id,
         )
 

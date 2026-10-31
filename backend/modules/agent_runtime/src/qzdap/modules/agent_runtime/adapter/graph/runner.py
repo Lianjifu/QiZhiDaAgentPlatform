@@ -7,7 +7,7 @@ import logging
 import sys as _sys
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from opentelemetry import context as _otel_context
@@ -315,7 +315,10 @@ class SessionGraphRunner:
             "tokens_est": estimate_tokens(messages),
         }
         if resume:
-            state = {**state, **resume}
+            # ⚠️ **resume 是一份「部分状态」** ✓（不是 TypedDict ✓）→ 合并后
+            # 重新认回 `LoopState` ✓（mypy 不允许把 `dict[str, Any]` 直接
+            # 展开进 TypedDict ✗ → 这里显式收窄 ✓）。
+            state = cast("LoopState", {**state, **resume})
             pending = state.get("pending_approval")
             if pending and pending.get("decision") == "approved":
                 extra, state = await self._finish_pending(

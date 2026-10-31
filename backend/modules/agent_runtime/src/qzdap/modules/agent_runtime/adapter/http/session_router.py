@@ -81,7 +81,7 @@ async def _write_audit(
         )
 
 
-async def copilot_dependency(request: Request) -> CopilotSessionService:
+async def copilot_dependency(request: Request) -> AsyncIterator[CopilotSessionService]:
     factory = getattr(request.app.state, "copilot_factory", None)
     container = getattr(request.app.state, "container", None)
     if factory is None or container is None:

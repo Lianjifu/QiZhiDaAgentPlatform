@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from contextlib import aclosing
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -51,7 +50,7 @@ class LLMPortAdapter(LLMPort):
                     ),
                     principal_id=UUID(actor.principal_id),
                 )
-            if actor.principal_id.int == 0:
+            if actor.principal_id is None or actor.principal_id.int == 0:
                 raise RuntimeError("saved model streaming requires a real caller identity")
             # Phase 7: 策略路由 (route_id) 优先于 model_id/fallback_model_ids
             if route_id is not None:
@@ -72,9 +71,15 @@ class LLMPortAdapter(LLMPort):
                     model_id=model_id,
                     req=req,  # type: ignore[arg-type]
                 )
-        async with aclosing(stream):
+        try:
             async for chunk in stream:
                 yield chunk
+        finally:
+            # ⚠️ **调用方提前退出时把上游流关掉** ✓ —— 否则连接泄漏 ✗
+            # （流是异步生成器 ✓ —— 有 `aclose` ✓ —— 但类型上只保证 `AsyncIterator` ✗）。
+            aclose = getattr(stream, "aclose", None)
+            if aclose is not None:
+                await aclose()
 
     async def synthetic_chunks(self, user_input: str, *, turn_id=None) -> list[dict]:
         """Side-channel: 让 mock LLM 在主 chat stream 之外注入 plan /
