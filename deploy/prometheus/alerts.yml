@@ -1,0 +1,160 @@
+# ⚠️ **告警规则** ✓ —— 会话架构重构期间的值班闸门 ✓
+#
+# 怎么用 ✓：把本文件挂到 Prometheus 的 `rule_files` ✓（或
+# `promtool check rules deploy/prometheus/alerts.yml` 先验一遍 ✓）。
+#
+# ⚠️ **每条规则都有 runbook 链接** ✓ —— 「告警了怎么办」写在
+# `docs/refactor/session-architecture/oncall-runbook.md` ✓（**值班人不用猜**
+# ✓ —— H2 的验收 ✓）。
+#
+# ⚠️ **阈值为什么这么定** ✓ —— 每个指标**一个起步值** ✓（不是「拍脑袋」✓
+# —— 依据写在注释里 ✓）；**上线后按真实基线调整** ✓（调整要留痕 ✓）。
+
+groups:
+  - name: qzdap-session-architecture
+    interval: 30s
+    rules:
+      # ── 收敛闸门：旧路径不许被调用 ─────────────────────────────
+      - alert: LegacyCallResurrected
+        expr: increase(qzdap_legacy_calls_total[15m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          layer: convergence
+        annotations:
+          summary: "旧实现又被调用了（entry={{ $labels.entry }}）"
+          description: >-
+            台账条目 {{ $labels.entry }} 对应的旧实现 15 分钟内被调用过。
+            清理窗口内该指标必须归零 —— 上涨说明有代码路径绕过了新实现。
+          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#legacycallresurrected"
+
+      - alert: LegacyCallNotZero
+        expr: qzdap_legacy_calls_total > 0
+        for: 30m
+        labels:
+          severity: warning
+          layer: convergence
+        annotations:
+          summary: "旧实现的调用计数还没归零（entry={{ $labels.entry }}）"
+          description: >-
+            该 entry 的清理窗口已到，但计数仍非零 —— **不许删旧实现** ✓
+            （删了就是删了还在用的路径 ✗✗）。
+          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#legacycallnotzero"
+
+      # ── Router ────────────────────────────────────────────────
+      - alert: RouterSeqSnapshotDrift
+        expr: increase(qzdap_router_seq_snapshot_drift_total[15m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          layer: router
+        annotations:
+          summary: "排队兜底放行了（快照漂移）"
+          description: >-
+            轮次终态与会话快照的更新不在同一个事务里 —— 兜底放行被触发。
+            正常应恒为 0。
+          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#routerseqsnapshotdrift"
+
+      - alert: RouterFallbackRateHigh
+        expr: >-
+          sum(rate(qzdap_router_route_total{outcome="fallback"}[15m]))
+            / clamp_min(sum(rate(qzdap_router_route_total[15m])), 0.001) > 0.2
+        for: 15m
+        labels:
+          severity: warning
+          layer: router
+        annotations:
+          summary: "路由兜底命中率超过 20%"
+          description: >-
+            兜底占比长期偏高 = 规则覆盖不足（粘住 / 显式 / 业务线 / 标签都没命中）。
+          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#routerfallbackratehigh"
+
+      - alert: RouterConcurrencyRejected
+        expr: increase(qzdap_router_concurrency_rejected_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          layer: router
+        annotations:
+          summary: "有轮次被并发上限拒了（reason={{ $labels.reason }}）"
+          description: >-
+            队列满（queue_full）或等超时（queue_timeout）—— 同一会话的请求
+            来得比处理得快。
+          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#routerconcurrencyrejected"
+
+      # ── Memory ────────────────────────────────────────────────
+      - alert: MemoryVectorDropped
+        expr: increase(qzdap_memory_vector_enqueued_total{outcome="dropped"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          layer: memory
+        annotations:
+          summary: "向量补写队列满了，有任务被丢"
+          description: >-
+            丢掉的向量由**兜底补写**捡回来 ✓（不会永久缺失 ✓）—— 但持续丢说明
+            embedding 服务跟不上或队列太小。
+          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#memoryvectordropped"
+
+      - alert: MemoryEvictionSpike
+        expr: increase(qzdap_memory_eviction_total[1h]) > 50
+        for: 0m
+        labels:
+          severity: info
+          layer: memory
+        annotations:
+          summary: "一小时内淘汰的条目偏多（reason={{ $labels.reason }}）"
+          description: >-
+            淘汰是**保留策略在执行** ✓（不是错误 ✓）—— 突然变多要么是保留天数
+            被改短了，要么是写入量上涨。
+          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#memoryevictionspike"
+
+      # ── 通用 ──────────────────────────────────────────────────
+      - alert: HttpServerErrorRateHigh
+        expr: >-
+          sum(rate(qzdap_http_requests_total{status=~"5.."}[10m]))
+            / clamp_min(sum(rate(qzdap_http_requests_total[10m])), 0.001) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+          layer: platform
+        annotations:
+          summary: "5xx 比例超过 5%"
+          description: "服务整体在报错 —— 先看是不是刚发的版本。"
+          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#httpservererrorratehigh"
+
+      - alert: SseFirstChunkSlow
+        expr: >-
+          histogram_quantile(0.95, sum(rate(qzdap_sse_first_chunk_seconds_bucket[10m])) by (le)) > 5
+        for: 10m
+        labels:
+          severity: warning
+          layer: agent
+        annotations:
+          summary: "SSE 首块 P95 超过 5 秒"
+          description: "用户要等很久才看到第一个字 —— 通常是模型慢或上下文太大。"
+          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#ssefirstchunkslow"
+
+      - alert: ActiveTurnsStuck
+        expr: qzdap_active_turns > 20
+        for: 15m
+        labels:
+          severity: warning
+          layer: session
+        annotations:
+          summary: "在途轮次长时间不降（>20）"
+          description: >-
+            轮次卡住 —— 先看是不是审批挂起（那是有意停在 waiting 的 ✓ —— 但
+            挂着不动就要有人处理 ✓）。
+          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#activeturnsstuck"
+
+      - alert: LlmCostSpike
+        expr: increase(qzdap_llm_cost_usd_total[1h]) > 50
+        for: 0m
+        labels:
+          severity: info
+          layer: platform
+        annotations:
+          summary: "一小时 LLM 成本超过 50 美元"
+          description: "起步阈值 —— 按真实基线调整（**调整要留痕** ✓）。"
+          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#llmcostspike"

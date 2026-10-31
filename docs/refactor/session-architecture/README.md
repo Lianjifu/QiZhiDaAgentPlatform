@@ -22,7 +22,8 @@
 | 6 | [`context-refactor-plan.md`](context-refactor-plan.md) | Context 泳道：Builder（拼装）+ Compressor（压缩）+ Persistence（manifest 落库） | **已定稿（v1.2）** |
 | 7 | [`memory-refactor-plan.md`](memory-refactor-plan.md) | Memory 泳道：Retrieval（检索）+ Writer（沉淀）+ STM/LTM 分层 | **已定稿（v1.4）** |
 | 8 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | ⑦ Agent Loop（大脑）· ⑧ Agent Router（**只选专家**：模型 / 工具 / 知识都来自 agent 配置，**不做 Model Router**）· ⑨ Execution Runtime（Agent / Model Runtime / Tool Runtime）。技术栈：LangGraph 1.x + LangChain + Deep Agents | **已定稿（v1.2）** |
-| 9 | [`implementation-plan.md`](implementation-plan.md) | **实施方案**（**按层组织**）：六层各自的 Stage 表、工作项、删除项、退出判据、回退点 + 跨层编排（依赖 / 并行 / 排期 / 里程碑）+ 守卫规则 + 风险预案 | **已定稿（v3.6）** |
+| 9 | [`oncall-runbook.md`](oncall-runbook.md) | **值班手册**：告警响了怎么办（阈值 / 排查 / **回退步骤** ✓）—— 规则在 [`deploy/prometheus/alerts.yml`](../../../deploy/prometheus/alerts.yml) ✓ | **生效中** |
+| 10 | [`implementation-plan.md`](implementation-plan.md) | **实施方案**（**按层组织**）：六层各自的 Stage 表、工作项、删除项、退出判据、回退点 + 跨层编排（依赖 / 并行 / 排期 / 里程碑）+ 守卫规则 + 风险预案 | **已定稿（v3.6）** |
 
 **为什么是这个顺序**：基线定契约 → 台账定收敛规则 → 从最外层（Gateway）往里推进。Gateway 是最外层、边界最清晰、最容易独立验收的一层；Router 次之；Session 层同时是 Gateway 的上游依赖（`session_events` 落库是「无感重放」的前提），是所有层的枢纽，因此**建议在 Gateway 与 Router 定稿后立刻写 Session 层**。
 
