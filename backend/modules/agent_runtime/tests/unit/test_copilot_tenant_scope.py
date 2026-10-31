@@ -10,7 +10,6 @@ from uuid import UUID, uuid4
 
 import pytest
 from _ar_unit_in_memory import (
-    InMemoryIdempotencyStore,
     InMemorySessionJournal,
     InMemorySessionRepository,
     make_dependencies,
@@ -18,7 +17,6 @@ from _ar_unit_in_memory import (
 
 from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
 from qzdap.modules.agent_runtime.domain import Session, SessionStatus
-from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_kernel.ids import AgentId, TenantId, UserId, WorkspaceId
 
 
@@ -52,10 +50,8 @@ async def test_listing_sessions_only_returns_the_requested_tenant() -> None:
         catalog=None,  # type: ignore[arg-type]
         events=deps["events"],
         graph=None,  # type: ignore[arg-type]
-        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=InMemorySessionJournal(),
-        claim=deps["sessions"].claim,
-        turn_runner=None,  # type: ignore[arg-type]
+        turn_entry=None,  # type: ignore[arg-type]
     )
 
     listed_a = await svc.list_sessions(tenant_id=tenant_a, owner_id=owner_id)
@@ -85,10 +81,8 @@ async def test_listing_sessions_skips_closed_ones() -> None:
         catalog=None,  # type: ignore[arg-type]
         events=deps["events"],
         graph=None,  # type: ignore[arg-type]
-        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=InMemorySessionJournal(),
-        claim=deps["sessions"].claim,
-        turn_runner=None,  # type: ignore[arg-type]
+        turn_entry=None,  # type: ignore[arg-type]
     )
 
     listed = await svc.list_sessions(tenant_id=tenant_id, owner_id=owner_id)

@@ -170,13 +170,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         sessions = SqlSessionRepository(db_session)
         create_session = CreateSessionUseCase(sessions, AgentRuntimeEventPublisher(container.bus()))
+        copilot = _CopilotFactory().for_session(db_session)
         return DelegateRuntime(
             sessions=sessions,
             catalog=_AgentCatalogFactory().for_session(db_session),
             create_session=create_session,
             one_shot=OneShotTurnService(
                 create_session=create_session,
-                copilot=_CopilotFactory().for_session(db_session),
+                copilot=copilot,
+                # ⚠️ **跑一轮**走模块侧入口 ✓（S-21b ✓）。
+                turn_entry=copilot.turn_entry,
             ),
         )
 
@@ -208,6 +211,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from qzdap.modules.agent_runtime.adapter.turn.session_state import SqlSessionState
     from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
     from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+    from qzdap.modules.agent_runtime.application.turn_entry import TurnEntryService
     from qzdap_agent_runtime.session.turn_runner import TurnRunner
 
     async def _evaluate_catalog_agent(*, agent, prompt):
@@ -389,6 +393,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 session_state=SqlSessionState(sessions_repo),
                 cancel=SqlCancelProbe(sessions_repo),
                 queue=queue,
+                # ⚠️ **入站序号分配器** ✓（排队时用 ✓ —— Router 方案 §4.2 ✓）。
+                sequence=sequence,
+                # ⚠️ **准入归编排** ✓（S-21b ✓）—— 幂等 + 会话占用 ✓
+                # （幂等守卫自持事务 ✓ —— claim 必须在轮次开始前落库, 否则并发
+                # 的第二个请求看不到它, 两轮都会起 ✓）。
+                idempotency=IdempotencyGuard(PostgresIdempotencyStore(container.session_factory())),
+                claim=PostgresTurnClaim(session),
+            )
+            # ⚠️ **跑一轮的模块侧入口** ✓（S-21b ✓）—— 读 + 组装 ✓，
+            # 幂等 / claim / 转发在契约层 ✓。
+            turn_entry = TurnEntryService(
+                sessions=sessions_repo,
+                messages=messages_store,
+                catalog=catalog,
+                turn_runner=turn_runner,
             )
             return CopilotSessionService(
                 sessions=sessions_repo,
@@ -399,17 +418,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 catalog=catalog,
                 events=AgentRuntimeEventPublisher(container.bus()),
                 graph=graph,
-                # 幂等守卫自持事务 —— claim 必须在轮次开始前落库, 否则并发
-                # 的第二个请求看不到它, 两轮都会起.
-                idempotency=IdempotencyGuard(PostgresIdempotencyStore(container.session_factory())),
-                # ⚠️ **排队** ✓（Router Stage 3 ✓）—— 序号分配 ✓ + 放行判定 ✓。
-                sequence=sequence,
-                queue=queue,
                 # 新架构的轮次 + 事件日志 —— 重放的落点（Stage 4b）。
                 journal=container.session_journal(),
-                # 会话执行权（互斥）—— 轮次表是唯一权威（Session 方案 §4.4）。
-                claim=PostgresTurnClaim(session),
-                turn_runner=turn_runner,
+                turn_entry=turn_entry,
             )
 
     async def catalog_evaluation_runner(
@@ -555,10 +566,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 ChannelTurnService,
             )
 
+            copilot = _CopilotFactory().for_session(db_session)
             return ChannelTurnService(
                 # 会话粘性归 Session Manager（唯一 owner ✓）。
                 sessions=app.state.session_manager_factory.for_session(db_session),
-                copilot=_CopilotFactory().for_session(db_session),
+                copilot=copilot,
+                # ⚠️ **跑一轮**走模块侧入口 ✓（S-21b ✓）—— 与 web 侧同一条 ✓。
+                turn_entry=copilot.turn_entry,
                 ports=lambda request: _channel_turn_ports(request, db_session),
                 # ⚠️ **Router 的规则链** ✓（台账 R19 ✓）—— 渠道入站**也走规则
                 # 链** ✓（与 web 侧**同一条链** ✓ —— 渠道登记的 agent 只是
@@ -1285,12 +1299,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
             sf = self._container.session_factory().maker()
             # ⚠️ **唯一 turn 实现**（Session Stage 5b）—— 与 web / IM 同一条链路 ✓
+            copilot = _CopilotFactory().for_session(sf)
             one_shot = OneShotTurnService(
                 create_session=CreateSessionUseCase(
                     SqlSessionRepository(sf),
                     AgentRuntimeEventPublisher(self._container.bus()),
                 ),
-                copilot=_CopilotFactory().for_session(sf),
+                copilot=copilot,
+                # ⚠️ **跑一轮**走模块侧入口 ✓（S-21b ✓）。
+                turn_entry=copilot.turn_entry,
             )
             adapter = RealSubAgentPort(
                 one_shot=one_shot,

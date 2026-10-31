@@ -290,7 +290,7 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
         InMemoryTurnClaim,
         InMemoryTurnRepository,
         RecordingEventPublisher,
-        make_turn_runner,
+        make_turn_entry,
     )
 
     from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
@@ -343,16 +343,16 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
         messages=messages,  # type: ignore[arg-type]
         catalog=_Catalog(agent),  # type: ignore[arg-type]
         events=events,
-        graph=runner,
-        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
-        claim=InMemoryTurnClaim(),
-        turn_runner=make_turn_runner(
+        turn_entry=make_turn_entry(
+            sessions=sessions,
+            messages=messages,
+            catalog=_Catalog(agent),
             graph=runner,
             journal=journal,
             events=events,
-            messages=messages,
-            sessions=sessions,
+            idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+            claim=InMemoryTurnClaim(),
         ),
     )
     detail = await svc.create_session(
@@ -381,7 +381,7 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
 
     chunks = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=TenantId(tenant),
             workspace_id=agent.workspace_id,
             owner_id=owner,

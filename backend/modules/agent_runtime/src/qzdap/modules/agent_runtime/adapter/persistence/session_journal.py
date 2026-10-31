@@ -8,8 +8,8 @@ Stage 4b（无感重放）、§4.5；``session-refactor-plan.md`` §7（事件�
 
 两件事：
 
-1. **轮次落库**（``session_turns``）—— 它是**权威轮次表** ✓（旧表
-   ``agent_turns`` 已停写 · S-15b ✓），同时是 ``session_events`` 的
+1. **轮次落库**（``session_turns``）—— 它是**权威轮次表** ✓（旧轮次表已退役 ·
+   S-15b 停写 ✓ → 迁移 0062 删表 ✓），同时是 ``session_events`` 的
    **外键父行** —— 事件行必须挂在一个存在的轮次上 ✓。
 2. **事件落库**（``session_events``）—— **每个 chunk 一行**，``seq`` 在轮次内
    严格递增。落库**先于投递**（§7）：chunk 写进去再交给 SSE 编码器。

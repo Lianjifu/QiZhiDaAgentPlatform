@@ -132,8 +132,8 @@ class EventPublisher(ABC):
 class SessionJournal(ABC):
     """新架构的**轮次 + 事件日志**（``session_turns`` / ``session_events``）。
 
-    ⚠️ **轮次的唯一写入口** ✓ —— 旧表 ``agent_turns`` 已停写（S-15b ✓），
-    新表 ``session_turns`` 是唯一真相 ✓（删表在 Session Stage 6 · S-36 ✓）。
+    ⚠️ **轮次的唯一写入口** ✓ —— 旧轮次表已退役（S-15b 停写 ✓ → 迁移 0062 删表 ✓），
+    新表 ``session_turns`` 是唯一真相 ✓。
 
     **事件先落库、再投递**（Session 方案 §7）—— 断线重连要能读到已发出的
     那一段，重放才有意义（Gateway 方案 §4.5 的硬依赖）。

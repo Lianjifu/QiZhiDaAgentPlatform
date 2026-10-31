@@ -120,6 +120,24 @@ async def _run(url: str) -> int:
     problems = 0
     try:
         async with engine.connect() as conn:
+            # ⚠️ **旧表退役后，这个脚本没有对账对象了** ✓（迁移 0062 之后 ✓）——
+            # 直接说清楚，**不要报错** ✓（它曾经是切读/删表的硬判据 ✓ ——
+            # 判据已经用完 ✓ —— 旧表没了，差异不可能再变 ✓）。
+            legacy = (
+                await conn.execute(
+                    text(
+                        "select count(*) from information_schema.tables "
+                        "where table_schema = current_schema() "
+                        "and table_name in ('agent_turns', 'agent_session_messages')"
+                    )
+                )
+            ).scalar_one()
+            if not legacy:
+                print(
+                    "✓ 旧表已退役（迁移 0062）—— 没有对账对象了 ✓"
+                    "（历史数据早已搬进新表 ✓ —— 差异判据已用完 ✓）"
+                )
+                return 0
             for title, sql in _queries():
                 rows = (await conn.execute(text(sql))).all()
                 # 「新表有、旧表没有」在双写期是**正常**的（新表先写 ✓）——

@@ -27,7 +27,7 @@ from _ar_unit_in_memory import (
     InMemorySessionJournal,
     InMemoryTurnRepository,
     make_dependencies,
-    make_turn_runner,
+    make_turn_entry,
 )
 
 from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
@@ -261,15 +261,17 @@ async def _make_service(
         catalog=_Catalog(agent),
         events=deps["events"],
         graph=runner,
-        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
-        claim=deps["sessions"].claim,
-        turn_runner=make_turn_runner(
+        # ⚠️ **跑一轮**归模块侧入口 ✓（S-21b ✓）。
+        turn_entry=make_turn_entry(
+            sessions=deps["sessions"],
+            messages=messages,
+            catalog=_Catalog(agent),
             graph=runner,
             journal=journal,
             events=deps["events"],
-            messages=messages,
-            sessions=deps["sessions"],
+            idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+            claim=deps["sessions"].claim,
         ),
     )
     tid = TenantId(agent.tenant_id)
@@ -305,7 +307,7 @@ async def test_tool_failure_does_not_kill_the_turn() -> None:
 
     chunks = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,
@@ -341,7 +343,7 @@ async def test_mid_stream_failure_emits_error_chunk_and_fails_the_turn() -> None
 
     chunks = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,
@@ -387,15 +389,17 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
         catalog=_Catalog(agent),
         events=deps["events"],
         graph=runner,
-        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
-        claim=deps["sessions"].claim,
-        turn_runner=make_turn_runner(
+        # ⚠️ **跑一轮**归模块侧入口 ✓（S-21b ✓）。
+        turn_entry=make_turn_entry(
+            sessions=deps["sessions"],
+            messages=messages,
+            catalog=_Catalog(agent),
             graph=runner,
             journal=journal,
             events=deps["events"],
-            messages=messages,
-            sessions=deps["sessions"],
+            idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+            claim=deps["sessions"].claim,
         ),
     )
     detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
@@ -413,10 +417,10 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
     # ⚠️ 执行器在 turn_runner 里（**唯一 turn 实现** ✓）—— 换 graph 要连
     # executor 一起换，否则跑的还是旧 graph ✗。
     svc._graph = SessionGraphRunner(llm=_FailFast())
-    svc._turn_runner._executor = SessionGraphExecutor(svc._graph)
+    svc.turn_entry._turn_runner._executor = SessionGraphExecutor(svc._graph)
 
     with pytest.raises(RuntimeError):
-        async for _ in svc.stream_turn(
+        async for _ in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,
@@ -444,7 +448,7 @@ async def test_cancelled_stream_does_not_leave_a_running_turn() -> None:
     )
     svc, deps, sid, *_ = await _make_service(llm=_ExplodingLLM(), agent=agent, owner_id=uid)
 
-    stream = svc.stream_turn(
+    stream = svc.turn_entry.stream(
         tenant_id=tid,
         workspace_id=wid,
         owner_id=uid,
@@ -497,7 +501,7 @@ async def test_catalog_tool_reaches_the_model_with_its_argument_schema() -> None
 
     _ = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,
@@ -531,7 +535,7 @@ async def test_unknown_session_still_raises_not_found() -> None:
     )
     svc, _deps, *_ = await _make_service(llm=_RecordingLLM(), agent=agent, owner_id=uid)
     with pytest.raises(SessionNotFound):
-        async for _ in svc.stream_turn(
+        async for _ in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,
@@ -556,7 +560,7 @@ async def test_second_concurrent_turn_is_rejected() -> None:
     )
     svc, _deps, sid, *_ = await _make_service(llm=_SlowLLM(), agent=agent, owner_id=uid)
 
-    first = svc.stream_turn(
+    first = svc.turn_entry.stream(
         tenant_id=tid,
         workspace_id=wid,
         owner_id=uid,
@@ -566,7 +570,7 @@ async def test_second_concurrent_turn_is_rejected() -> None:
     await anext(first)
 
     with pytest.raises(SessionBusyError):
-        async for _ in svc.stream_turn(
+        async for _ in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,
@@ -596,7 +600,7 @@ async def test_cancel_request_stops_the_running_turn(monkeypatch) -> None:
     )
     svc, deps, sid, *_ = await _make_service(llm=_SlowLLM(), agent=agent, owner_id=uid)
 
-    stream = svc.stream_turn(
+    stream = svc.turn_entry.stream(
         tenant_id=tid,
         workspace_id=wid,
         owner_id=uid,
@@ -639,7 +643,7 @@ async def test_a_new_turn_is_not_cancelled_by_a_stale_flag(monkeypatch) -> None:
 
     chunks = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,
@@ -668,7 +672,7 @@ async def test_a_replayed_client_request_id_does_not_start_a_second_turn() -> No
     async def send(request_id: str) -> None:
         _ = [
             chunk
-            async for chunk in svc.stream_turn(
+            async for chunk in svc.turn_entry.stream(
                 tenant_id=tid,
                 workspace_id=wid,
                 owner_id=uid,
@@ -701,7 +705,7 @@ async def test_the_first_user_message_becomes_the_session_title() -> None:
 
     _ = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,
@@ -742,21 +746,23 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
         catalog=_Catalog(agent),
         events=deps["events"],
         graph=runner,
-        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
-        claim=deps["sessions"].claim,
-        turn_runner=make_turn_runner(
+        # ⚠️ **跑一轮**归模块侧入口 ✓（S-21b ✓）。
+        turn_entry=make_turn_entry(
+            sessions=deps["sessions"],
+            messages=messages,
+            catalog=_Catalog(agent),
             graph=runner,
             journal=journal,
             events=deps["events"],
-            messages=messages,
-            sessions=deps["sessions"],
+            idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+            claim=deps["sessions"].claim,
         ),
     )
     detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
     chunks = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,
@@ -824,7 +830,7 @@ async def test_double_clicking_approve_executes_the_tool_only_once() -> None:
 
     chunks = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,
@@ -913,7 +919,7 @@ async def test_the_pending_approval_is_persisted_on_the_turn() -> None:
 
     chunks = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,
@@ -990,7 +996,7 @@ async def test_changed_tool_arguments_block_the_approval() -> None:
 
     chunks = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,
@@ -1056,7 +1062,7 @@ async def test_two_identical_messages_without_a_client_request_id_both_run() -> 
     async def send() -> list:
         return [
             chunk
-            async for chunk in svc.stream_turn(
+            async for chunk in svc.turn_entry.stream(
                 tenant_id=tid,
                 workspace_id=wid,
                 owner_id=uid,
@@ -1096,7 +1102,7 @@ async def test_a_known_error_code_is_projected_into_the_web_copy() -> None:
 
     chunks = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=uid,

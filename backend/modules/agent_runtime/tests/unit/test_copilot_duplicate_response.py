@@ -19,7 +19,7 @@ from _ar_unit_in_memory import (
     InMemorySessionJournal,
     InMemoryTurnRepository,
     make_dependencies,
-    make_turn_runner,
+    make_turn_entry,
 )
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -128,15 +128,16 @@ async def _make_service(agent: CatalogAgent, owner_id: UserId):  # type: ignore[
         catalog=_Catalog(agent),
         events=deps["events"],
         graph=runner,
-        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
-        claim=deps["sessions"].claim,
-        turn_runner=make_turn_runner(
+        turn_entry=make_turn_entry(
+            sessions=deps["sessions"],
+            messages=messages,
+            catalog=_Catalog(agent),
             graph=runner,
             journal=journal,
             events=deps["events"],
-            messages=messages,
-            sessions=deps["sessions"],
+            idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+            claim=deps["sessions"].claim,
         ),
     )
     tid = TenantId(agent.tenant_id)

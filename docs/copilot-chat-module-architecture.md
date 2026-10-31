@@ -37,7 +37,7 @@
 | 2 | `frontend/web/src/features/user/copilot/copilotApi.ts` | 对外契约：5 个 REST + 1 个 SSE 流 |
 | 3 | `frontend/packages/api/src/index.ts` → `streamEvents` | 手写 SSE 解析；**全前端只有这一处** SSE 实现 |
 | 4 | `backend/.../agent_runtime/adapter/http/session_router.py` → `turns/stream` | 与前端对称：入参、三个租户头、附件解析、首 chunk 预取 |
-| 5 | `backend/.../agent_runtime/application/copilot.py` → `stream_turn` | 会话/轮次/消息三者的编排与落库时机 |
+| 5 | `backend/.../agent_runtime/application/turn_entry.py` → `TurnEntryService.stream` | **读 + 组装这一轮**（会话 / 历史 / agent → `TurnRequest` ✓）—— 编排（幂等 / claim / 转发）在契约层 `session/turn_runner.py` ✓ |
 | 6 | `backend/.../agent_runtime/adapter/graph/runner.py` → `run_turn` | **真正干活的地方**：prompt 组装 → 压缩 → ReAct 循环 → 工具执行 → 记忆写入 |
 
 读到第 6 步结束时，应该能回答：「一次提问从浏览器到 LLM 再回到气泡，中间经过了哪几个文件」。
@@ -108,7 +108,7 @@ graph TD
     end
 
     subgraph APP["应用层"]
-        C1["copilot.py<br/>CopilotSessionService<br/>会话与轮次编排、落库"]
+        C1["turn_entry.py<br/>TurnEntryService<br/>读 + 组装这一轮"]
         C2["catalog.py<br/>AgentCatalogService<br/>智能体目录"]
     end
 
@@ -203,7 +203,7 @@ graph TD
 | 交互状态 | `features/user/copilot/interactiveStore.tsx` + `InteractionHost.tsx` | 承接 5 类 `interactive_action`，维护 question / plan / toast / todo 队列 | 不发网络请求（由页面注入回调） |
 | 接入层 | `agent_runtime/adapter/http/session_router.py` | 路由、租户/工作区/用户头解析、附件上下文注入、审批恢复 | 不含业务规则 |
 | SSE 编码 | `agent_runtime/adapter/http/sse.py` | `TurnChunk` → `event: {kind}\ndata: {json}\n\n`，尾部补 `event: end` | — |
-| 应用服务 | `agent_runtime/application/copilot.py` | 会话生命周期、轮次创建、历史读取、消息落库、审批决策 | 不直接调 LLM |
+| 应用服务 | `agent_runtime/application/turn_entry.py`（**跑一轮的入口** ✓）+ `agent_runtime/application/copilot.py`（**会话生命周期 + 审批 + 取消** ✓） | `TurnEntryService` 读会话 / 历史 / agent 并组装 `TurnRequest` ✓；编排（幂等 / claim / 转发）在契约层 `session/turn_runner.py` ✓ | 不直接调 LLM |
 | 执行引擎 | `agent_runtime/adapter/graph/runner.py` + 契约层 `qzdap_agent_runtime/agent_loop/` | **循环本体在契约层** ✓（`reason` / `observe` / `evaluate` / `runner` ✓ —— 2026-10-31，Agent Stage 5 ✓ —— 模块侧只做**装配 + 事件翻译** ✓）；上下文压缩、工具调用、记忆写入 | 不做 HTTP · **不实现循环** ✓ |
 | 端口 | `agent_runtime/application/ports/__init__.py` | `LLMPort / ToolPort / SkillPort / SandboxPort / MemoryPort / KnowledgePort` 六个抽象 + `SessionJournal`（轮次与事件的**唯一写入口** ✓）+ `TurnRepository`（轮次**只读** ✓） | — |
 | 路由 | 契约层 `qzdap_agent_runtime/router/` | **规则链选 agent** ✓（sticky > 显式 > 业务线 > 用户标签 > 兜底 ✓）；web 与**渠道入站走同一条链** ✓（2026-10-31，Router Stage 2 ✓） | 不查会话表 ✓（粘性由 Session 的只读端口给 ✓） |
@@ -282,7 +282,7 @@ sequenceDiagram
     FE->>FE: push 空 assistant 气泡, isSending=true
     FE->>API: POST /api/sessions/{id}/turns/stream {content}
     API->>API: 解析附件上下文 (如有 attachmentIds)
-    API->>SVC: stream_turn(...)
+    API->>SVC: turn_entry.stream(...)
     SVC->>DB: 校验 session (tenant/workspace/owner/status)
     SVC->>DB: INSERT session_turns (status=running, user_input=...)
     SVC->>DB: INSERT session_messages (role=user, session_seq=..)
@@ -354,10 +354,12 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 
 | 场景 | 触发点 | 行为 | 用户可见结果 |
 |---|---|---|---|
-| session 不存在 / 跨租户 | `copilot.py:270` `_require_session` | 抛 `SessionNotFound` | HTTP 错误（首 chunk 预取生效） |
-| session 已关闭 | `copilot.py:274` | 抛 `SessionClosedError`（code `SESSION_CLOSED`） | HTTP 错误 |
-| 非 owner / 跨工作区 | `copilot.py:271` | 抛 `SessionNotFound`（不泄露存在性） | HTTP 错误 |
-| agent 未发布 | `copilot.py:277` `catalog.get_published` | 抛错 | HTTP 错误 |
+| session 不存在 / 跨租户 | `turn_entry.py` `_require_session` | 抛 `SessionNotFound` | HTTP 错误（首 chunk 预取生效） |
+| session 已关闭 | `turn_entry.py` `build` | 抛 `SessionClosedError`（code `SESSION_CLOSED`） | HTTP 错误 |
+| 非 owner / 跨工作区 | `turn_entry.py` `build` | 抛 `SessionNotFound`（不泄露存在性） | HTTP 错误 |
+| agent 未发布 | `turn_entry.py` `catalog.get_published` | 抛错 | HTTP 错误 |
+| 同键重复到达 | 契约层 `TurnRunner.run_turn` 幂等 accept | 抛 `DuplicateTurnRequest` → 模块侧翻成 `DuplicateRequestError`（带 `turn_id` ✓） | 重放上一轮事件流（web ✓） |
+| 会话已有轮次在飞 | 契约层 `TurnRunner.run_turn` claim | 抛 `TurnBusy` → 模块侧翻成 `SessionBusyError` | HTTP 409 `SESSION_BUSY` ✓ |
 | 附件解析失败 | `session_router.py:243-262` | 内容里 `[附件:xxx]` 替换失败时保留原文本 | 正常进入对话，附件上下文缺失 |
 | LLM 流未产出 assistant | `runner.py:320` | 抛 `RuntimeError` | 补齐后：首 chunk 之前抛异常（HTTP 状态码），之后产出 `error` 事件 |
 | 工具不存在 | `tools.py:62` | 返回 `TOOL_NOT_FOUND` | `tool_result` 事件，`is_error=false`（错误信息在 output 文本里） |
@@ -429,7 +431,7 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 }
 ```
 
-`/api/tasks` 的 `TaskCard` 是从 session + 最新 turn **派生**出来的（`copilot.py:573` `_task_card`），不建独立表。状态映射：
+`/api/tasks` 的 `TaskCard` 是从 session + 最新 turn **派生**出来的（`copilot.py` `_task_card` ✓），不建独立表。状态映射：
 
 | session / turn 状态 | 展示状态 |
 |---|---|
@@ -469,7 +471,7 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 
 **心跳帧**：空闲超过 15s 时后端会插一帧 `: keepalive`（SSE 注释帧）。它没有 `data:` 行，前端解析器会直接跳过；作用是让网关的 `proxy_read_timeout` 不把长轮次掐断。
 
-**首 chunk 语义**：`stream_turn` 路由在返回响应前预取第一块，因此**第一个 chunk 到达即代表鉴权与 session 校验已通过**。
+**首 chunk 语义**：SSE 路由在返回响应前预取第一块，因此**第一个 chunk 到达即代表鉴权与 session 校验已通过**。
 
 ### 5.4 持久化模型
 
@@ -482,16 +484,16 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 | `session_messages` | `persistence/models.py:163` | `turn_id, seq, role, content, message_id, metadata_(JSONB), session_id, session_seq` | **消息的规范真相** ✓。两个序号：`seq` = **轮次内**（PK 的一部分 ✓）；`session_seq` = **会话内**（唯一索引 ✓ —— 上下文重建靠它单表有序扫描 ✓）。⚠️ **没有 `tenant_id` 列** ✓ —— 租户归属由它的**轮次**决定 ✓ |
 | `session_events` | `persistence/models.py:203` | `turn_id, seq, event_type, payload(JSONB), delivery_status, delivered_at` | **事件流** —— 每个 chunk 一行 ✓（落库先于投递 ✓）。它是 Gateway 重放的落点 ✓（`Last-Event-ID` 续传 ✓）。⚠️ **没有 `tenant_id` 列** ✓ —— 读它必须 **JOIN 轮次表按租户过滤** ✓ |
 
-**旧表（已停写 ✓，待 DROP ✓）**：
+**旧表（已退役 ✓ —— 物理 DROP 已做 ✓）**：
 
 | 表 | 状态 |
 |---|---|
-| `agent_turns` | **停写** ✓（Session Stage 6d · S-15b ✓）—— ORM 与写方法已删 ✓；**物理 DROP 还没做** ✗（台账 **S-36** —— 要「只读窗口 ≥7 天」（从 2026-10-30 起算 ✓）+ 备份恢复**演练过** ✗） |
+| `agent_turns` | **已 DROP** ✓（2026-10-31 · 迁移 **0062** ✓ —— 台账 **X4 → 已清理** ✓）；ORM 与写方法早已删 ✓（Session Stage 6d · S-15b ✓） |
 | `agent_session_messages` | 同上 ✓ |
 
-⚠️ **历史数据已经搬过去了** ✓（迁移 **0054** ✓）—— 旧表里的轮次与消息都进了新表 ✓；真库**对账差异 = 0** ✓（脚本 `backend/scripts/verify_session_tables.py` ✓ —— 它是删表前的硬判据 ✓）。
+⚠️ **历史数据已经搬过去了** ✓（迁移 **0054** ✓）—— 旧表里的轮次与消息都进了新表 ✓；真库**对账差异 = 0** ✓（脚本 `backend/scripts/verify_session_tables.py` ✓ —— DROP 前的硬判据 ✓ —— **DROP 后它报「旧表已退役，没有对账对象了」** ✓）。
 
-`agent_sessions.metadata` 与 `graph_state` 都是 JSONB，**无 schema 约束**——读取侧靠 Python 侧的 `.get()` 兜底（`copilot.py:57/101/288`）。`agent_sessions` 继承 `TenantScopedMixin`，由 `install_tenant_loader` 的 `do_orm_execute` 监听器**自动按当前租户过滤**所有查询 ✓；新表三张**不继承**（`session_messages` / `session_events` 没有 `tenant_id` 列 ✓ —— 继承会凭空多出列 ✗）。
+`agent_sessions.metadata` 是 JSONB，**无 schema 约束**——读取侧靠 Python 侧的 `.get()` 兜底 ✓。⚠️ **`graph_state` 列已退役并 DROP** ✓（迁移 0056 ✓ —— 台账 **X3** ✓）—— 续传状态改归 `metadata["resume"]` ✓。`agent_sessions` 继承 `TenantScopedMixin`，由 `install_tenant_loader` 的 `do_orm_execute` 监听器**自动按当前租户过滤**所有查询 ✓；新表三张**不继承**（`session_messages` / `session_events` 没有 `tenant_id` 列 ✓ —— 继承会凭空多出列 ✗）。
 
 ---
 
@@ -499,7 +501,7 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 
 ### 6.1 智能体配置如何进入对话
 
-对话行为由**已发布的 CatalogAgent** 决定（`copilot.py:277` 取 `catalog.get_published`）：
+对话行为由**已发布的 CatalogAgent** 决定（`turn_entry.py` 取 `catalog.get_published` ✓）：
 
 | 配置项 | 影响点 |
 |---|---|
@@ -562,8 +564,8 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 | 关注点 | 现状 |
 |---|---|
 | 额度 / 计费 | 额度扣减在 `ModelService.stream` 里（走已保存模型时生效 ✓）；**成本落 `session_turns.cost_usd`** ✓（新表有这一列 ✓）；⚠️ **token 数不再入库** ✗ —— 新表没有 `input_tokens/output_tokens` 列 ✓，它们在 **`usage` 事件**里 ✓（`session_events` ✓） |
-| 可观测 | `libs/observability` 提供 OTel / Prometheus 基建；对话路径未见显式 span 埋点，仅有 `current_trace_id()`（`copilot.py:296`）随事件发布 ✅ 已修：见 §11.6 / §11.8 |
-| 审批服务 | `container.approval_service()`，创建时 `requester_id` 是会话 owner（`runner.py:658`）；`decide_approval` 的 `approver_id` 也是真实用户（`copilot.py:461`）✅ |
+| 可观测 | `libs/observability` 提供 OTel / Prometheus 基建；对话路径有显式 span 埋点 ✓（`http.chat.stream` ✓ → `agent.turn` ✓ → `agent.llm` / `agent.tool` ✓ —— 四层 ✓ —— 见 §11.8 ✓） |
+| 审批服务 | `container.approval_service()`，创建时 `requester_id` 是会话 owner（`runner.py:658`）；`decide_approval` 的 `approver_id` 也是真实用户（`copilot.py` ✓）✅ |
 | 事件总线 | `AgentRuntimeEventPublisher(container.bus())` 发布 `session.opened` / `turn.started` / `session.closed` |
 | 多租户隔离 | 表级 `TenantScopedMixin` 自动过滤 + 应用层 `tenant/workspace/owner` 三重校验 |
 | 错误语义 | 统一 `ErrorChunk{code, message, retriable}`；但实际多数错误直接抛异常变成 HTTP 500，`error` chunk 在 Copilot 路径上基本不出现 |
@@ -788,9 +790,9 @@ Copilot 路径**从不产出 `ErrorChunk`**——`ErrorChunk` 只在第二套 tu
 |---|---|---|
 | **可观测埋点** | `agent.turn` / `agent.llm` / `agent.tool` 三层 span，父 span 带 tenant/workspace/session/turn/model，子 span 带 token 用量、工具名、耗时、成功与否 | `adapter/graph/runner.py` |
 | **成本核算** | `admin_models.price_in` / `price_out`（每 1K token）第一次被真正用上：`UsageChunk.cost_usd` 不再恒为 0；新增 `agent_turns.cost_usd` 列（迁移 `0043`），轮次成本落库；前端显示本轮成本 | `chat_model.py`（暴露解析后的 model id）、`runner.py`、`catalog_model_resolver.py`（新增 `price_of`）、`domain/entities.py`、`persistence/models.py`、迁移 `0043_turn_cost_usd.py` |
-| **发送幂等** | 前端每次发送带 `clientRequestId`；后端把最近 8 个 id 记在会话上，重复到达直接 409 `DUPLICATE_REQUEST`，不再跑第二轮（双击 / 网络重试安全） | `copilotApi.ts`、`CopilotPage.tsx`、`application/copilot.py`、`persistence/repositories.py` |
+| **发送幂等** | 前端每次发送带 `clientRequestId`；后端按幂等键判重，重复到达**不跑第二轮**（双击 / 网络重试安全 ✓）—— web 侧**重放上一轮事件流** ✓（200 ✓，不是 202 降级 ✓） | `copilotApi.ts`、`CopilotPage.tsx`、契约层 `session/turn_runner.py`（幂等 accept ✓）、模块侧 `application/turn_entry.py`（翻成 `DuplicateRequestError` ✓） |
 | **反馈闭环** | 助手消息下方加 👍/👎；`POST /api/sessions/{id}/feedback` 校验会话归属后写进平台已有的 `feedback.list` 集合（管理员在「管理 → 反馈池」直接可见），同时写一行 `chat.feedback` 审计 | `session_router.py`、`copilotApi.ts`、`CopilotPage.tsx` |
-| **会话标题** | 会话标题不再恒为「与 XX 对话」——用户说的第一句话会成为标题 | `application/copilot.py` `_auto_title` |
+| **会话标题** | 会话标题不再恒为「与 XX 对话」——用户说的第一句话会成为标题 | 契约层 `session/turn_runner.py` `_auto_title` ✓（2026-10-31 S-21b：随薄壳删除一起迁走 ✓） |
 
 **顺带修掉的一个真 bug**：页面在每轮结束后会重新拉一次会话并**用服务端消息整体替换本地状态**，于是刚渲染出来的工具卡片、产物、用量行会在回答结束的瞬间消失。根因是那个 effect 依赖了 `isSending`。现在每个会话只同步一次（`syncedSessionRef`），本地新建的会话直接标记为已同步。
 
@@ -867,6 +869,8 @@ Copilot 路径**从不产出 `ErrorChunk`**——`ErrorChunk` 只在第二套 tu
 | 变化 | 现状 |
 |---|---|
 | **唯一 turn 实现** | 契约层 `session/turn_runner.py` ✓ —— 旧的第二套实现**已删** ✓ |
+| **copilot 薄壳** | **已删** ✓（2026-10-31 · S-21b ✓）—— 幂等 + claim + 转发归**契约层** `TurnRunner.run_turn` ✓；**读 + 组装**归模块侧 `application/turn_entry.py` ✓（`TurnEntryService` ✓）→ `copilot.py` 现在只剩**会话生命周期 + 审批 + 取消** ✓ |
+| **旧轮次表** | **已 DROP** ✓（2026-10-31 · 迁移 **0062** ✓ —— `agent_turns` / `agent_session_messages` 没了 ✓ —— **对账脚本已改成「无旧表即无事可对」** ✓） |
 | **审批** | **自动过期** ✓（判定在治理域 ✓）+ **幂等** ✓（同键复用同一 approval ✓） |
 | **续传状态** | 归 `metadata["resume"]` ✓ —— 旧的 `graph_state` **列已 DROP** ✓（迁移 0056 ✓） |
 | **checkpoint saver** | **不再起** ✓（唯一的消费者是那张已删的 LangGraph 图 ✓）—— 新的循环用会话 metadata + 轮次行续传 ✓ |

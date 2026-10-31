@@ -2,8 +2,8 @@
 
 依据：Session 方案 §6 / §7（唯一 turn 实现的治理语义 ✓）。
 
-⚠️ **轮次只写新表** ``session_turns`` ✓（``SessionJournal``）—— 旧表
-``agent_turns`` 已停写（S-15b ✓），**事件流的外键父行**也是它 ✓。
+⚠️ **轮次只写新表** ``session_turns`` ✓（``SessionJournal``）—— 旧轮次表
+已退役（停写 S-15b ✓ → 删表迁移 0062 ✓），**事件流的外键父行**也是它 ✓。
 
 ⚠️ **落库先于投递**：事件必须挂在一个**已存在**的轮次上 ✓ ——
 ``start_turn`` 先落轮次行，``append_event`` 才写得到 ✓。

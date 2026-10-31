@@ -15,6 +15,7 @@ from typing import Any
 from uuid import UUID
 
 from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+from qzdap.modules.agent_runtime.application.turn_entry import TurnEntryService
 from qzdap.modules.agent_runtime.application.use_cases.create_session import (
     CreateSessionUseCase,
 )
@@ -40,9 +41,11 @@ class OneShotTurnService:
         *,
         create_session: CreateSessionUseCase,
         copilot: CopilotSessionService,
+        turn_entry: TurnEntryService,
     ) -> None:
         self._create_session = create_session
         self._copilot = copilot
+        self._turn_entry = turn_entry
 
     async def run(
         self,
@@ -95,7 +98,7 @@ class OneShotTurnService:
             user_id=str(owner_id),
             text=user_input,
         )
-        chunks = self._copilot.stream_turn(
+        chunks = self._turn_entry.stream(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             owner_id=owner_id,

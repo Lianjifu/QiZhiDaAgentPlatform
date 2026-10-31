@@ -91,8 +91,8 @@ class SessionORM(TenantScopedMixin, Base):
 class SessionTurnORM(TenantScopedMixin, Base):
     """新架构的轮次表 —— ``session_turns``（迁移 0035 + 0046 + 0050 + 0055）。
 
-    ✅ **它是轮次的唯一真相** —— 旧表 ``agent_turns`` 已停写（S-15b ✓）
-    （S-15b ✓），读端也一并切过来 ✓。
+    ✅ **它是轮次的唯一真相** —— 旧轮次表已退役（S-15b 停写 ✓ → 迁移 0062 删表 ✓），
+    读端也一并切过来 ✓。
 
     这张表在 Gateway Stage 4b 里承担两件事：① ``session_events`` 的外键父行；
     ② 重放时判断「这一轮是否已到终态」。
@@ -111,8 +111,8 @@ class SessionTurnORM(TenantScopedMixin, Base):
     key_strength: Mapped[str] = mapped_column(
         String(8), nullable=False, default="strong", server_default=text("'strong'")
     )
-    # ⚠️ **这一轮用户说了什么** ✓ —— 停旧写（S-15b）之后，``agent_turns`` 不再
-    # 被写 ✓，任务卡片的描述只能从这里取 ✓（迁移 0055 ✓）。
+    # ⚠️ **这一轮用户说了什么** ✓ —— 旧轮次表退役之后（S-15b 停写 ✓ →
+    # 迁移 0062 删表 ✓），任务卡片的描述只能从这里取 ✓（迁移 0055 ✓）。
     user_input: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="running", server_default=text("'running'")

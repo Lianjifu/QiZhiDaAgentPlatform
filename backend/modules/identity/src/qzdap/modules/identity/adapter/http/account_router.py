@@ -416,8 +416,8 @@ def build_account_router():
             raise HTTPException(422, "unsupported insight range")
         rows = (
             await session.execute(
-                # ⚠️ **读新表** ``session_turns`` ✓ —— 旧表 ``agent_turns``
-                # 已停写（Session Stage 6b，S-15b ✓）→ 读它会得到 0 ✗✗。
+                # ⚠️ **读新表** ``session_turns`` ✓ —— 旧轮次表已退役
+                # （S-15b 停写 ✓ → 迁移 0062 删表 ✓）→ 读它会得到 0 ✗✗。
                 select(SessionTurnORM, SessionORM)
                 .join(SessionORM, SessionTurnORM.session_id == SessionORM.id)
                 .where(

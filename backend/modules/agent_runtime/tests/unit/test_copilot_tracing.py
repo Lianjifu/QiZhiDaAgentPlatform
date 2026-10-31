@@ -21,7 +21,7 @@ from _ar_unit_in_memory import (
     InMemorySessionJournal,
     InMemoryTurnRepository,
     make_dependencies,
-    make_turn_runner,
+    make_turn_entry,
 )
 from opentelemetry import trace as otel_trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -136,15 +136,16 @@ async def _make_service(agent: CatalogAgent, owner_id: UserId):
         catalog=_Catalog(agent),
         events=deps["events"],
         graph=runner,
-        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
-        claim=deps["sessions"].claim,
-        turn_runner=make_turn_runner(
+        turn_entry=make_turn_entry(
+            sessions=deps["sessions"],
+            messages=messages,
+            catalog=_Catalog(agent),
             graph=runner,
             journal=journal,
             events=deps["events"],
-            messages=messages,
-            sessions=deps["sessions"],
+            idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+            claim=deps["sessions"].claim,
         ),
     )
     tid = TenantId(agent.tenant_id)
@@ -176,7 +177,7 @@ async def test_the_llm_and_tool_spans_are_children_of_the_turn_span(spans) -> No
 
     _ = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=UserId(UUID(int=3)),
@@ -212,7 +213,7 @@ async def test_the_turn_span_hangs_under_the_http_span(spans) -> None:
 
     _ = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=owner_id,
@@ -235,7 +236,7 @@ async def test_the_turn_span_records_the_turn_identity(spans) -> None:
 
     _ = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=owner_id,

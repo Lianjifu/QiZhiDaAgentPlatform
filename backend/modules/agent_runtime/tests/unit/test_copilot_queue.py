@@ -18,7 +18,7 @@ from _ar_unit_in_memory import (
     InMemorySessionJournal,
     InMemoryTurnRepository,
     make_dependencies,
-    make_turn_runner,
+    make_turn_entry,
 )
 
 from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
@@ -122,20 +122,21 @@ async def _make_service(*, queue: Any, agent: CatalogAgent, owner_id: UserId):
         catalog=_Catalog(agent),
         events=deps["events"],
         graph=runner,
-        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
-        claim=deps["sessions"].claim,
-        turn_runner=make_turn_runner(
+        # ⚠️ **跑一轮**归模块侧入口 ✓（S-21b ✓）—— 排队端口也在这儿 ✓。
+        turn_entry=make_turn_entry(
+            sessions=deps["sessions"],
+            messages=messages,
+            catalog=_Catalog(agent),
             graph=runner,
             journal=journal,
             events=deps["events"],
-            messages=messages,
-            sessions=deps["sessions"],
+            idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+            claim=deps["sessions"].claim,
             queue=queue,
+            # ⚠️ **入站序号分配器** ✓（排队时用 ✓ —— Router 方案 §4.2 ✓）。
+            sequence=_FakeSequence(),
         ),
-        # ⚠️ **排队** ✓（Router Stage 3 ✓）。
-        sequence=_FakeSequence(),
-        queue=queue,
     )
     tid = TenantId(agent.tenant_id)
     wid = WorkspaceId(agent.workspace_id)
@@ -154,7 +155,7 @@ async def test_a_queued_turn_is_released_and_then_runs() -> None:
     svc, journal, sid, tid, wid = await _make_service(queue=queue, agent=agent, owner_id=owner_id)
     chunks = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=owner_id,
@@ -178,7 +179,7 @@ async def test_a_full_queue_is_refused_with_a_clear_error() -> None:
     queue = _FakeQueue(depth=5)
     svc, _journal, sid, tid, wid = await _make_service(queue=queue, agent=agent, owner_id=owner_id)
     with pytest.raises(Exception) as excinfo:
-        async for _chunk in svc.stream_turn(
+        async for _chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=owner_id,
@@ -197,7 +198,7 @@ async def test_without_the_queue_the_old_semantics_stay() -> None:
     svc, _journal, sid, tid, wid = await _make_service(queue=None, agent=agent, owner_id=owner_id)
     chunks = [
         chunk
-        async for chunk in svc.stream_turn(
+        async for chunk in svc.turn_entry.stream(
             tenant_id=tid,
             workspace_id=wid,
             owner_id=owner_id,

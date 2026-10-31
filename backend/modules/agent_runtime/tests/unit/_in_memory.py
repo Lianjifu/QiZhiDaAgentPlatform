@@ -433,18 +433,59 @@ def make_copilot(*, agent: Any, llm: Any = None, tool_port: Any = None) -> Any:
         catalog=InMemoryCatalog(agent),
         events=deps["events"],
         graph=runner,
-        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
-        claim=deps["sessions"].claim,
-        turn_runner=make_turn_runner(
+        # ⚠️ **跑一轮**归模块侧入口 ✓（S-21b ✓）—— 幂等 / claim 在契约层 ✓。
+        turn_entry=make_turn_entry(
+            sessions=deps["sessions"],
+            messages=messages,
+            catalog=InMemoryCatalog(agent),
             graph=runner,
             journal=journal,
             events=deps["events"],
-            messages=messages,
-            sessions=deps["sessions"],
+            idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+            claim=deps["sessions"].claim,
         ),
     )
     return service, deps
+
+
+def make_turn_entry(
+    *,
+    sessions: Any,
+    messages: Any,
+    catalog: Any,
+    graph: Any,
+    journal: SessionJournal,
+    events: EventPublisher,
+    idempotency: Any,
+    claim: Any,
+    queue: Any = None,
+    sequence: Any = None,
+    executor: Any = None,
+) -> Any:
+    """模块侧的**跑一轮入口** ✓（S-21b ✓）—— 读 + 组装 ✓。
+
+    ⚠️ **准入（幂等 + claim）在契约层** ✓ —— 这里只把它接上 ✓。
+    """
+    from qzdap.modules.agent_runtime.application.turn_entry import TurnEntryService
+
+    return TurnEntryService(
+        sessions=sessions,
+        messages=messages,
+        catalog=catalog,
+        turn_runner=make_turn_runner(
+            graph=graph,
+            journal=journal,
+            events=events,
+            messages=messages,
+            sessions=sessions,
+            queue=queue,
+            sequence=sequence,
+            idempotency=idempotency,
+            claim=claim,
+            executor=executor,
+        ),
+    )
 
 
 def make_turn_runner(
@@ -455,6 +496,10 @@ def make_turn_runner(
     messages: Any,
     sessions: SessionRepository,
     queue: Any = None,
+    idempotency: Any = None,
+    claim: Any = None,
+    sequence: Any = None,
+    executor: Any = None,
 ) -> Any:
     """契约层的**真** ``TurnRunner`` + 模块侧的真实适配器 ✓。
 
@@ -471,13 +516,18 @@ def make_turn_runner(
     from qzdap_agent_runtime.session.turn_runner import TurnRunner
 
     return TurnRunner(
-        executor=SessionGraphExecutor(graph),
+        executor=executor if executor is not None else SessionGraphExecutor(graph),
         lifecycle=TurnLifecycle(journal=journal, events=events),
         messages=messages,
         session_state=SqlSessionState(sessions),
         cancel=SqlCancelProbe(sessions),
         # ⚠️ **排队端口** ✓（Router Stage 3 ✓）—— 没有它就不排队 ✓。
         queue=queue,
+        # ⚠️ **入站序号分配器** ✓（排队时用 ✓）。
+        sequence=sequence,
+        # ⚠️ **准入** ✓（S-21b ✓）—— 幂等 + 会话占用 ✓。
+        idempotency=idempotency,
+        claim=claim,
     )
 
 

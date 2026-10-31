@@ -24,6 +24,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+from qzdap.modules.agent_runtime.application.turn_entry import TurnEntryService
 from qzdap.modules.agent_runtime.domain.errors import DuplicateRequestError
 from qzdap_agent_runtime.router.strategy import Strategy
 from qzdap_agent_runtime.router.types import (
@@ -54,11 +55,14 @@ class ChannelTurnService:
         *,
         sessions: SessionManagerPort,
         copilot: CopilotSessionService,
+        turn_entry: TurnEntryService,
         ports: Callable[[ChannelTurnRequest], Mapping[str, Any]] | None = None,
         strategy: Strategy | None = None,
     ) -> None:
         self._sessions = sessions
         self._copilot = copilot
+        # ⚠️ **跑一轮**走模块侧入口 ✓（S-21b ✓）—— 与 web 侧**同一条** ✓。
+        self._turn_entry = turn_entry
         # 请求作用域的端口（skill / sandbox / tool）—— **每请求重新绑定** ✓
         # （web 侧由 HTTP 层绑；IM 侧由组合根给一个绑定回调 ✓）。
         self._ports = ports
@@ -160,7 +164,7 @@ class ChannelTurnService:
         )
         if self._ports is not None:
             self._copilot.bind_ports(**dict(self._ports(request)))
-        chunks = self._copilot.stream_turn(
+        chunks = self._turn_entry.stream(
             tenant_id=ref.tenant_id,
             workspace_id=ref.workspace_id,
             owner_id=ref.owner_id,

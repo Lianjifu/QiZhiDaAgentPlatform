@@ -30,15 +30,24 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from time import monotonic
 from typing import Any, Protocol, runtime_checkable
-from uuid import UUID
+from uuid import UUID, uuid4
 
+from qzdap_agent_runtime.gateway.idempotency import (
+    IdempotencyGuard,
+    InboxScope,
+    payload_hash_of,
+)
+from qzdap_agent_runtime.gateway.normalizer import resolve_idempotency_key
+from qzdap_agent_runtime.gateway.types import ChannelType, IdempotencyKey
 from qzdap_agent_runtime.session.approval import PendingApproval, arguments_digest
+from qzdap_agent_runtime.session.claim import TurnClaimPort
 from qzdap_agent_runtime.session.queue import (
     QueueCancelled,
     QueueFullError,
@@ -46,6 +55,8 @@ from qzdap_agent_runtime.session.queue import (
     TurnQueuePort,
     wait_for_turn_slot,
 )
+from qzdap_agent_runtime.session.sequence import SessionSequencePort
+from qzdap_kernel.contextvars import current_trace_id
 from qzdap_kernel.error_codes import ErrorCode, project_error_message
 from qzdap_kernel.ids import ModelId
 from qzdap_schema.dtos.turn import (
@@ -214,6 +225,62 @@ class TurnCancelled(Exception):
     """内部信号 —— 用户请求停止生成 ✓。"""
 
 
+class DuplicateTurnRequest(Exception):
+    """**同一个幂等键又来了** ✓ —— 重复到达（双击 / 网络重试）✓。
+
+    ⚠️ **这不是「错误」** ✓ —— 上层据此**重放上一轮的事件流** ✓
+    （Gateway 方案 §4.5 ✓ —— 客户端无感 ✓）。
+    """
+
+    def __init__(self, *, turn_id: UUID | None = None) -> None:
+        super().__init__("duplicate turn request")
+        self.turn_id = turn_id
+
+
+class TurnBusy(Exception):
+    """**会话已有轮次在飞** ✓ —— 上层翻成 409 ``SESSION_BUSY`` ✓。"""
+
+
+@dataclass(frozen=True, slots=True)
+class TurnContext:
+    """跑一轮的**输入** ✓ —— 模块侧读完会话之后交给契约层的东西 ✓。
+
+    ⚠️ **这里不放领域对象** ✓ —— 契约层不认模块侧的实体 ✓（§0 的规矩 ✓）；
+    需要模块侧数据的地方由 :class:`TurnRequestFactoryPort` 去读 ✓。
+    """
+
+    tenant_id: UUID
+    workspace_id: UUID
+    owner_id: UUID
+    session_id: UUID
+    user_input: str
+    model: str | None = None
+    route_id: ModelId | None = None
+    resume: dict[str, Any] | None = None
+    client_request_id: str = ""
+    channel: ChannelType = ChannelType.WEB
+    idempotency_key: IdempotencyKey | None = None
+    parent_span_context: Any = None
+
+
+@runtime_checkable
+class TurnRequestFactoryPort(Protocol):
+    """**模块侧组装这一轮的请求** ✓（读会话 / 历史 / agent → :class:`TurnRequest`）✓。
+
+    ⚠️ **契约层不读模块侧的表** ✓ —— 它要什么就**问模块侧要** ✓
+    （这正是「窄端口 + DTO」的延续 ✓ —— Session 方案 §6 ✓）。
+    """
+
+    async def build(
+        self,
+        *,
+        context: TurnContext,
+        turn_id: UUID,
+        idempotency_key: IdempotencyKey,
+        ingress_seq: int | None,
+    ) -> TurnRequest: ...
+
+
 class TurnRunner:
     """一轮的编排（**唯一** turn 实现 ✓）。"""
 
@@ -228,6 +295,12 @@ class TurnRunner:
         # ⚠️ **排队端口** ✓（Router Stage 3 ✓）—— **没有它就不排队** ✓
         # （开关关掉时的旧语义 ✓ —— 「拒绝 409」✓）。
         queue: TurnQueuePort | None = None,
+        # ⚠️ **入站序号分配器** ✓（Router 方案 §4.2 ✓）—— **排队时才用** ✓。
+        sequence: SessionSequencePort | None = None,
+        # ⚠️ **幂等守卫 + 会话占用** ✓（S-21b ✓）—— **准入归编排** ✓
+        # （薄壳只管「读 + 组装」✓ —— 台账 X18 的最后一层 ✓）。
+        idempotency: IdempotencyGuard | None = None,
+        claim: TurnClaimPort | None = None,
     ) -> None:
         self._executor = executor
         self._lifecycle = lifecycle
@@ -235,6 +308,97 @@ class TurnRunner:
         self._session_state = session_state
         self._cancel = cancel
         self._queue = queue
+        self._sequence = sequence
+        self._idempotency = idempotency
+        self._claim = claim
+
+    async def run_turn(
+        self,
+        *,
+        context: TurnContext,
+        factory: TurnRequestFactoryPort,
+    ) -> AsyncIterator[Any]:
+        """**跑一轮的入口** ✓ —— 幂等 + claim + 转发都在这里 ✓（S-21b ✓）。
+
+        顺序 ✓（与旧薄壳同口径 ✓ —— 一行不多一行不少 ✓）：
+
+        1. **幂等 accept** ✓ —— 重复 → :class:`DuplicateTurnRequest` ✓；
+        2. **轮次 id** ✓；
+        3. **排队模式** → 分配入站序号 ✓（放行由轮次行的状态 CAS 决定 ✓），
+           **非排队模式** → 抢会话占用 ✓（抢不到 → :class:`TurnBusy` ✓，
+           **键要释放** ✓ —— 否则调用方用同一个键重试会被误判成重复 ✗）；
+        4. **模块侧组装**这一轮的请求 ✓（:class:`TurnRequestFactoryPort` ✓）；
+        5. **跑** ✓；
+        6. **收尾**：幂等键落成 ✓ + 释放占用 ✓。
+        """
+        if self._idempotency is None or self._claim is None:
+            raise RuntimeError("turn admission ports are not wired")
+        key = context.idempotency_key or resolve_idempotency_key(
+            client_request_id=context.client_request_id or None,
+            channel=str(context.channel),
+            chat_id=str(context.session_id),
+            user_id=str(context.owner_id),
+            text=context.user_input,
+        )
+        scope = InboxScope.for_web(
+            tenant_id=context.tenant_id,
+            workspace_id=context.workspace_id,
+            channel=context.channel,
+        )
+        decision = await self._idempotency.accept(
+            scope,
+            key,
+            payload_hash=payload_hash_of(str(context.session_id), context.user_input),
+            trace_id=current_trace_id() or "",
+        )
+        if decision.is_duplicate:
+            # 同一个键又来了 —— 双击或网络重试, 不跑第二轮.
+            raise DuplicateTurnRequest(turn_id=decision.turn_id)
+        turn_id = uuid4()
+        ingress_seq: int | None = None
+        queueing = self._queue is not None and self._sequence is not None
+        if queueing and self._sequence is not None:
+            ingress_seq = await self._sequence.next_ingress_seq(
+                tenant_id=context.tenant_id, session_id=context.session_id
+            )
+        else:
+            claimed = await self._claim.claim(
+                tenant_id=context.tenant_id, session_id=context.session_id, turn_id=turn_id
+            )
+            if not claimed:
+                # 这一轮根本没跑起来 → 键不能被消费, 否则调用方用同一个键重试
+                # 会被误判成重复请求.
+                with contextlib.suppress(Exception):
+                    await self._idempotency.release(decision)
+                raise TurnBusy(f"session {context.session_id} already has a turn in flight")
+        try:
+            request = await factory.build(
+                context=context,
+                turn_id=turn_id,
+                idempotency_key=key,
+                ingress_seq=ingress_seq,
+            )
+            # ⚠️ **内层生成器要显式关掉** ✓ —— 客户端断开时 ``GeneratorExit``
+            # 落在**这一层**的 ``yield`` 上 ✓（不是内层 ✓）—— 不显式关的话
+            # 内层的 ``fail_turn`` 只能等 GC 收尾 ✓（轮次会停在 running ✗✗）。
+            stream = self.run(request=request)
+            try:
+                async for chunk in stream:
+                    yield chunk
+            finally:
+                with contextlib.suppress(Exception):
+                    await stream.aclose()
+        finally:
+            with contextlib.suppress(Exception):
+                await asyncio.shield(self._idempotency.complete(decision, turn_id=turn_id))
+            with contextlib.suppress(Exception):
+                await asyncio.shield(
+                    self._claim.release(
+                        tenant_id=context.tenant_id,
+                        session_id=context.session_id,
+                        turn_id=turn_id,
+                    )
+                )
 
     async def run(self, *, request: TurnRequest) -> AsyncIterator[Any]:
         """跑一轮 —— **产出 chunk 流** ✓。
@@ -471,10 +635,14 @@ def _auto_title(user_input: str) -> str:
 __all__ = [
     "AgentSnapshot",
     "CancelProbePort",
+    "DuplicateTurnRequest",
     "SessionStatePort",
+    "TurnBusy",
     "TurnCancelled",
+    "TurnContext",
     "TurnExecutorPort",
     "TurnLifecyclePort",
     "TurnRequest",
+    "TurnRequestFactoryPort",
     "TurnRunner",
 ]

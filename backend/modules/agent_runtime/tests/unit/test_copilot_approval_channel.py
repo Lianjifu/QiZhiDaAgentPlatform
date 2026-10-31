@@ -25,6 +25,7 @@ from _ar_unit_in_memory import (
     InMemorySessionJournal,
     InMemoryTurnRepository,
     make_dependencies,
+    make_turn_entry,
 )
 
 from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
@@ -34,8 +35,12 @@ from qzdap_agent_runtime.gateway.types import ChannelType
 from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
 
-class _RecordingTurnRunner:
-    """**只记请求** ✓ —— 这一条只关心「轮次带的那个标志」✓。"""
+class _RecordingExecutor:
+    """**只记请求** ✓ —— 这一条只关心「轮次带的那个标志」✓。
+
+    ⚠️ **执行器端口** ✓（S-21b ✓）—— 请求由模块侧组装 ✓（``build`` ✓），
+    执行器拿到的是**已经组装好**的 :class:`TurnRequest` ✓。
+    """
 
     def __init__(self) -> None:
         self.requests: list[Any] = []
@@ -44,6 +49,9 @@ class _RecordingTurnRunner:
         self.requests.append(request)
         return
         yield  # pragma: no cover —— 让它成为异步生成器 ✓
+
+    def latest_state(self) -> dict[str, Any]:
+        return {}
 
 
 class _Catalog:
@@ -85,25 +93,34 @@ async def _make_service(*, agent: CatalogAgent, owner_id: UserId):
     journal = InMemorySessionJournal()
     deps["journal"] = journal
     deps["turns"] = InMemoryTurnRepository(journal)
-    runner = _RecordingTurnRunner()
+    executor = _RecordingExecutor()
+    messages = _Messages()
     svc = CopilotSessionService(
         sessions=deps["sessions"],
         turns=deps["turns"],
-        messages=_Messages(),
+        messages=messages,
         catalog=_Catalog(agent),
         events=deps["events"],
         graph=deps["llm"],
-        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
-        claim=deps["sessions"].claim,
-        turn_runner=runner,
+        turn_entry=make_turn_entry(
+            sessions=deps["sessions"],
+            messages=messages,
+            catalog=_Catalog(agent),
+            graph=deps["llm"],
+            journal=journal,
+            events=deps["events"],
+            idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+            claim=deps["sessions"].claim,
+            executor=executor,
+        ),
     )
     tid = TenantId(agent.tenant_id)
     wid = WorkspaceId(agent.workspace_id)
     detail = await svc.create_session(
         tenant_id=tid, workspace_id=wid, owner_id=owner_id, agent_id=agent.id
     )
-    return svc, runner, detail["id"], tid, wid
+    return svc, executor, detail["id"], tid, wid
 
 
 @pytest.mark.asyncio
@@ -116,7 +133,7 @@ async def test_the_im_channels_cannot_suspend_for_approval(channel: ChannelType)
     agent = _agent()
     owner_id = UserId(UUID(int=3))
     svc, runner, sid, tid, wid = await _make_service(agent=agent, owner_id=owner_id)
-    async for _chunk in svc.stream_turn(
+    async for _chunk in svc.turn_entry.stream(
         tenant_id=tid,
         workspace_id=wid,
         owner_id=owner_id,
@@ -136,7 +153,7 @@ async def test_the_web_channels_keep_the_approval(channel: ChannelType) -> None:
     agent = _agent()
     owner_id = UserId(UUID(int=3))
     svc, runner, sid, tid, wid = await _make_service(agent=agent, owner_id=owner_id)
-    async for _chunk in svc.stream_turn(
+    async for _chunk in svc.turn_entry.stream(
         tenant_id=tid,
         workspace_id=wid,
         owner_id=owner_id,

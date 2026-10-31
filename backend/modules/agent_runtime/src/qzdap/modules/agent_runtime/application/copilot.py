@@ -1,14 +1,17 @@
-"""Copilot session facade — list/create/history + LangGraph turn stream."""
+"""Copilot session facade — 会话生命周期 + 审批 + 取消。
+
+⚠️ **「跑一轮」不在这儿** ✓（S-21b ✓）—— 薄壳退场 ✓（台账 X18 ✓）：
+幂等 + claim + 转发在契约层（``TurnRunner.run_turn`` ✓），读 + 组装在模块侧
+（``TurnEntryService`` ✓）—— 本类只留**会话生命周期 / 审批 / 取消** ✓。
+"""
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
 from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
@@ -18,42 +21,25 @@ from qzdap.modules.agent_runtime.application.ports import (
     SessionRepository,
     TurnRepository,
 )
+from qzdap.modules.agent_runtime.application.turn_entry import TurnEntryService
 from qzdap.modules.agent_runtime.application.use_cases.create_session import (
     CreateSessionUseCase,
 )
 from qzdap.modules.agent_runtime.domain import Session, SessionStatus, Turn
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 from qzdap.modules.agent_runtime.domain.errors import (
-    DuplicateRequestError,
-    SessionBusyError,
-    SessionClosedError,
     SessionNotFound,
 )
 from qzdap_agent_runtime.gateway.idempotency import (
-    IdempotencyGuard,
-    InboxScope,
     approval_key,
-    payload_hash_of,
 )
-from qzdap_agent_runtime.gateway.normalizer import resolve_idempotency_key
-from qzdap_agent_runtime.gateway.types import ChannelType, IdempotencyKey
 from qzdap_agent_runtime.router.types import RouteDecision
 from qzdap_agent_runtime.session.approval import PendingApproval, arguments_digest
-from qzdap_agent_runtime.session.claim import TurnClaimPort
 from qzdap_agent_runtime.session.message import SessionMessagePort
-from qzdap_agent_runtime.session.queue import TurnQueuePort
-from qzdap_agent_runtime.session.sequence import SessionSequencePort
-from qzdap_agent_runtime.session.turn_runner import (
-    AgentSnapshot,
-    TurnRequest,
-    TurnRunner,
-)
-from qzdap_kernel.contextvars import current_trace_id
 from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError, ConflictError, ValidationError
 from qzdap_kernel.ids import (
     AgentId,
-    ModelId,
     TenantId,
     UserId,
     WorkspaceId,
@@ -77,15 +63,10 @@ class CopilotSessionService:
         catalog: AgentCatalogService,
         events: EventPublisher,
         graph: SessionGraphRunner,
-        idempotency: IdempotencyGuard,
         journal: SessionJournal,
-        claim: TurnClaimPort,
-        turn_runner: TurnRunner,
-        # ⚠️ **入站序号分配器** ✓（Router 方案 §4.2 ✓）—— **排队时才用** ✓。
-        sequence: SessionSequencePort | None = None,
-        # ⚠️ **排队端口** ✓（Router Stage 3 ✓）—— **没有它就不排队** ✓
-        # （开关关掉时的旧语义 ✓ —— 「拒绝 409」✓）。
-        queue: TurnQueuePort | None = None,
+        # ⚠️ **跑一轮**归它 ✓（S-21b ✓）—— 本类**只管会话生命周期 + 审批 +
+        # 取消** ✓（薄壳已退场 ✓ —— 台账 X18 ✓）。
+        turn_entry: TurnEntryService,
     ) -> None:
         self._sessions = sessions
         self._turns = turns
@@ -93,17 +74,10 @@ class CopilotSessionService:
         self._catalog = catalog
         self._events = events
         self._graph = graph
-        self._idempotency = idempotency
         # 新架构的轮次 + 事件日志 —— 重放的落点（Gateway §4.5）。
         self._journal = journal
-        # 会话执行权（互斥）—— **轮次表是唯一权威**（Session 方案 §4.4 / §6）。
-        # 旧的 ``wait_status`` CAS 已迁走（台账 R3 已清理）✓。
-        self._claim = claim
-        # **唯一 turn 实现**（契约层）—— 编排不再留在本文件 ✓。
-        self._turn_runner = turn_runner
-        # ⚠️ **排队** ✓（Router Stage 3 ✓）—— 序号分配 ✓ + 放行判定 ✓。
-        self._sequence = sequence
-        self._queue = queue
+        # **跑一轮**的入口 ✓（幂等 + claim + 转发在契约层 ✓）。
+        self.turn_entry = turn_entry
 
     def bind_ports(self, **ports: Any) -> None:
         """Re-bind request-scoped ports (tenant/workspace are per request)."""
@@ -250,238 +224,6 @@ class CopilotSessionService:
             out.append(task)
         return out
 
-    async def stream_turn(
-        self,
-        *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        owner_id: UUID,
-        session_id: UUID,
-        user_input: str,
-        model: str | None = None,
-        route_id: ModelId | None = None,
-        resume: dict[str, Any] | None = None,
-        client_request_id: str = "",
-        channel: ChannelType = ChannelType.WEB,
-        idempotency_key: IdempotencyKey | None = None,
-        parent_span_context: Any = None,
-    ) -> AsyncIterator[TurnChunk]:
-        """Run one turn, holding an exclusive claim on the session.
-
-        Two turns on the same session would interleave their messages and
-        race on the message sequence number, so the second one is rejected
-        with ``SESSION_BUSY`` instead.
-
-        幂等在**抢占用之前**：同一个键重复到达（双击 / 网络重试）不会跑第二轮；
-        而因会话被占导致本轮没跑起来时，键会被释放，调用方仍可用同一个键重试。
-        """
-        # 先校验会话存在且未关闭, 再抢占用 —— 否则「会话不存在」会被误报成
-        # 「会话忙」.
-        # ⚠️ **旧编排的打点已撤除**（2026-10-30，Session Stage 3b）——
-        # 编排迁到契约层的 ``session/turn_runner.py`` 之后，这里只剩
-        # 「读 + 组装 + 转发」的薄壳 ✓（旧实现不在场 → 打点该撤 ✓）。
-        await self._require_session(tenant_id, session_id)
-        key = idempotency_key or self._select_key(
-            client_request_id=client_request_id,
-            channel=channel,
-            session_id=session_id,
-            owner_id=owner_id,
-            user_input=user_input,
-        )
-        scope = InboxScope.for_web(tenant_id=tenant_id, workspace_id=workspace_id, channel=channel)
-        decision = await self._idempotency.accept(
-            scope,
-            key,
-            payload_hash=payload_hash_of(str(session_id), user_input),
-            trace_id=current_trace_id() or "",
-        )
-        if decision.is_duplicate:
-            # 同一个键又来了 —— 双击或网络重试, 不跑第二轮.
-            # ⚠️ 带上「上次那一轮的 turn_id」：重复请求**不是错误** —— 上层据此
-            # **重放上一轮的事件流**（§4.5 / Stage 4b）。
-            raise DuplicateRequestError(
-                f"request {key.value} was already handled",
-                code=ErrorCode.DUPLICATE_REQUEST.value,
-                turn_id=decision.turn_id,
-            )
-        # ⚠️ **turn_id 预先生成** —— claim 需要它, 而 claim 必须在建轮次行
-        # **之前**（否则「会话忙」时会留下一行失败的轮次 —— 那是给用户看的
-        # 噪音 ✗✗）。
-        turn_id = uuid4()
-        # ⚠️ **排队模式** ✓（Router Stage 3 · 决策 #1 ✓）—— 有排队端口就**分配
-        # 入站序号** ✓ —— 轮次行先落 ``queued`` ✓，然后**等自己的 FIFO 位** ✓
-        # （放行由轮次行的状态 CAS 决定 ✓ —— 决策 #9 ✓）。
-        #
-        # ⚠️ **排队模式不再抢会话占用** ✓ —— 占用由放行那一步**原子地**做 ✓
-        # （抢占用 + 放行分成两步会插进另一轮 ✗✗）。
-        ingress_seq: int | None = None
-        sequence = self._sequence
-        queueing = self._queue is not None and sequence is not None
-        if queueing and sequence is not None:
-            ingress_seq = await sequence.next_ingress_seq(
-                tenant_id=tenant_id, session_id=session_id
-            )
-        else:
-            claimed = await self._claim.claim(
-                tenant_id=tenant_id, session_id=session_id, turn_id=turn_id
-            )
-            if not claimed:
-                # 这一轮根本没跑起来 → 键不能被消费, 否则调用方用同一个键重试
-                # 会被误判成重复请求.
-                with contextlib.suppress(Exception):
-                    await self._idempotency.release(decision)
-                raise SessionBusyError(
-                    f"session {session_id} already has a turn in flight",
-                    code=ErrorCode.SESSION_BUSY.value,
-                )
-        try:
-            async for chunk in self._run_turn(
-                tenant_id=tenant_id,
-                workspace_id=workspace_id,
-                owner_id=owner_id,
-                session_id=session_id,
-                user_input=user_input,
-                model=model,
-                route_id=route_id,
-                resume=resume,
-                parent_span_context=parent_span_context,
-                idempotency_key=key,
-                turn_id=turn_id,
-                ingress_seq=ingress_seq,
-                channel=channel,
-            ):
-                yield chunk
-        finally:
-            with contextlib.suppress(Exception):
-                await asyncio.shield(self._idempotency.complete(decision, turn_id=turn_id))
-            with contextlib.suppress(Exception):
-                await asyncio.shield(
-                    self._claim.release(tenant_id=tenant_id, session_id=session_id, turn_id=turn_id)
-                )
-
-    def _select_key(
-        self,
-        *,
-        client_request_id: str,
-        channel: ChannelType,
-        session_id: UUID,
-        owner_id: UUID,
-        user_input: str,
-    ) -> IdempotencyKey:
-        """幂等键的阶梯 —— **委托给 Gateway 的那一份**（Gateway 方案 §4.2）。
-
-        ⚠️ **阶梯只有一份实现**（``gateway/normalizer.py`` 的
-        ``resolve_idempotency_key``）—— 这里只是把本方法的参数映射过去，
-        不自己再写一遍规则。
-
-        走 HTTP 的入口**不再到这里**：web 的键由 Gateway ③ 派生后经
-        ``idempotency_key`` 传进来（§10 Stage 4a）；这里只服务**直接调用方**。
-        """
-        if not client_request_id:
-            _log.warning(
-                "inbound_without_client_request_id session_id=%s — 幂等降级为 weak（不抑制）",
-                session_id,
-            )
-        return resolve_idempotency_key(
-            client_request_id=client_request_id or None,
-            channel=str(channel),
-            chat_id=str(session_id),
-            user_id=str(owner_id),
-            text=user_input,
-        )
-
-    async def _run_turn(
-        self,
-        *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        owner_id: UUID,
-        session_id: UUID,
-        user_input: str,
-        model: str | None = None,
-        route_id: ModelId | None = None,
-        resume: dict[str, Any] | None = None,
-        parent_span_context: Any = None,
-        idempotency_key: IdempotencyKey,
-        turn_id: UUID,
-        ingress_seq: int | None = None,
-        channel: ChannelType = ChannelType.WEB,
-    ) -> AsyncIterator[TurnChunk]:
-        """组装这一轮的输入 → **交给唯一 turn 实现**（契约层的 ``TurnRunner``）✓。
-
-        ⚠️ **这里只做「读 + 组装」** —— 轮次的编排（轮次行 / 消息 / 事件 /
-        终态 / 取消 / 审批挂起）全在契约层（Session 方案 §6 ✓）。
-        旧实现（X18）那段 ~200 行的编排**已迁走** ✓。
-        """
-        session = await self._require_session(tenant_id, session_id)
-        if session.workspace_id != workspace_id or session.owner_id != owner_id:
-            raise SessionNotFound(f"session {session_id} not found")
-        if session.status is SessionStatus.CLOSED:
-            raise SessionClosedError(
-                f"session {session_id} is closed", code=ErrorCode.SESSION_CLOSED.value
-            )
-        # 上一轮遗留的停止标记不能影响这一轮.
-        await self._sessions.clear_cancel(session_id)
-        agent_row = await self._catalog.get_published(session.agent_id)
-        # 这一轮实际用的模型 —— 轮次表要留痕（``session_turns.model_version``）。
-        model_used = model or str(session.metadata.get("model") or agent_row.model or "default")
-        history = await self._messages.list_for_session(session_id)
-        hist_msgs = [
-            {
-                "role": item["role"],
-                "content": item["content"],
-                "name": item.get("toolName") or None,
-            }
-            for item in history
-            if item.get("role") in {"user", "assistant", "tool", "system"}
-        ]
-        # 续传状态 = 会话里存的 + 本轮恢复带进来的（后者覆盖前者 ✓）。
-        # ⚠️ **归 ``metadata["resume"]``** ✓（台账 X3 ✓ —— 旧的续传状态列
-        # 退役 ✓ —— 新的循环不写它 ✓）。
-        resume_state = dict((session.metadata or {}).get("resume") or {})
-        if resume:
-            resume_state = {**resume_state, **resume}
-        request = TurnRequest(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            owner_id=owner_id,
-            session_id=session_id,
-            turn_id=turn_id,
-            user_input=user_input,
-            idempotency_key=idempotency_key.value,
-            key_strength=idempotency_key.strength,
-            agent=AgentSnapshot(
-                agent_id=session.agent_id,
-                agent_version=session.agent_version,
-                model=model_used,
-                name=str(getattr(agent_row, "name", "") or ""),
-                # 执行器要用 agent 的完整配置（工具 / 模型）—— 契约层不解释它 ✓
-                raw=agent_row,
-            ),
-            history=hist_msgs,
-            model=model_used,
-            resume=resume,
-            route_id=route_id,
-            # ⚠️ **摘要只读新列** ✓（Context 方案 §5.1 ✓）—— 旧副本
-            # （``metadata`` 里的 ✓）的读写点**已全部归零** ✓（迁移 0047
-            # 已把历史行回填 ✓）。
-            rolling_summary=session.rolling_summary,
-            session_metadata=dict(session.metadata),
-            resume_state=resume_state,
-            # 路由决策随轮次留痕（``session_turns.route_decision``）——
-            # **产出者是 Router**，这里只是把它带进轮次行。
-            route_decision=session.metadata.get("route_decision"),
-            parent_span_context=parent_span_context,
-            trace_id=current_trace_id(),
-            # ⚠️ **入站序号** ✓（有值 = 排队 ✓ —— Router 方案 §4.2 ✓）。
-            ingress_seq=ingress_seq,
-            # ⚠️ **IM 渠道不能挂起审批** ✓（没有人能完成审批 ✓ —— 卡片点了
-            # 回不来 ✓ → 挂起 = 这一轮卡死 ✗✗）→ **需要审批的工具不暴露** ✓。
-            allow_approval=channel in (ChannelType.WEB, ChannelType.API),
-        )
-        async for chunk in self._turn_runner.run(request=request):
-            yield chunk
-
     async def decide_approval(
         self,
         *,
@@ -542,7 +284,7 @@ class CopilotSessionService:
         # 点击会撞键（连点两次「同意」只执行一次工具，台账 G10），而下一次
         # 审批（新的 approval_id）不会误伤.
         key = approval_key(str(approval_id), str(pending["decision"]))
-        async for chunk in self.stream_turn(
+        async for chunk in self.turn_entry.stream(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             owner_id=owner_id,

@@ -55,10 +55,22 @@ class _FakeSessions:
 
 
 class _FakeCopilot:
+    """门面替身 —— 这一条只关心路由 ✓（不跑轮次 ✓）。"""
+
     def __init__(self) -> None:
         self.session_ids: list[UUID] = []
 
-    async def stream_turn(self, **kwargs: Any):  # type: ignore[no-untyped-def]
+    def bind_ports(self, **ports: Any) -> None:
+        return
+
+
+class _FakeTurnEntry:
+    """**跑一轮**的入口替身 ✓（S-21b ✓ —— 渠道侧走模块侧入口 ✓）。"""
+
+    def __init__(self) -> None:
+        self.session_ids: list[UUID] = []
+
+    async def stream(self, **kwargs: Any):  # type: ignore[no-untyped-def]
         self.session_ids.append(kwargs["session_id"])
         from qzdap_schema.dtos.turn import DoneChunk
 
@@ -134,6 +146,7 @@ async def test_the_agent_comes_from_the_rule_chain() -> None:
     service = ChannelTurnService(
         sessions=sessions,  # type: ignore[arg-type]
         copilot=_FakeCopilot(),  # type: ignore[arg-type]
+        turn_entry=_FakeTurnEntry(),  # type: ignore[arg-type]
         strategy=strategy,  # type: ignore[arg-type]
     )
     await service.run(_request(agent_id=channel_agent))
@@ -163,6 +176,7 @@ async def test_the_existing_session_feeds_the_sticky_rule() -> None:
     service = ChannelTurnService(
         sessions=sessions,  # type: ignore[arg-type]
         copilot=_FakeCopilot(),  # type: ignore[arg-type]
+        turn_entry=_FakeTurnEntry(),  # type: ignore[arg-type]
         strategy=strategy,  # type: ignore[arg-type]
     )
     await service.run(_request(agent_id=channel_agent))
@@ -181,6 +195,7 @@ async def test_the_roles_reach_the_rule_chain() -> None:
     service = ChannelTurnService(
         sessions=sessions,  # type: ignore[arg-type]
         copilot=_FakeCopilot(),  # type: ignore[arg-type]
+        turn_entry=_FakeTurnEntry(),  # type: ignore[arg-type]
         strategy=strategy,  # type: ignore[arg-type]
     )
     await service.run(_request(agent_id=uuid4(), roles=("客服",)))
@@ -196,6 +211,7 @@ async def test_an_unmatched_routing_does_not_drop_the_message() -> None:
     service = ChannelTurnService(
         sessions=sessions,  # type: ignore[arg-type]
         copilot=_FakeCopilot(),  # type: ignore[arg-type]
+        turn_entry=_FakeTurnEntry(),  # type: ignore[arg-type]
         strategy=strategy,  # type: ignore[arg-type]
     )
     result = await service.run(_request(agent_id=channel_agent))
@@ -212,6 +228,7 @@ async def test_without_a_strategy_the_old_behavior_stays() -> None:
     service = ChannelTurnService(
         sessions=sessions,  # type: ignore[arg-type]
         copilot=_FakeCopilot(),  # type: ignore[arg-type]
+        turn_entry=_FakeTurnEntry(),  # type: ignore[arg-type]
     )
     await service.run(_request(agent_id=channel_agent))
     assert sessions.binding is not None
@@ -227,6 +244,7 @@ async def test_the_route_decision_is_left_on_the_session() -> None:
     service = ChannelTurnService(
         sessions=sessions,  # type: ignore[arg-type]
         copilot=_FakeCopilot(),  # type: ignore[arg-type]
+        turn_entry=_FakeTurnEntry(),  # type: ignore[arg-type]
         strategy=strategy,  # type: ignore[arg-type]
     )
     await service.run(_request(agent_id=uuid4()))

@@ -25,7 +25,7 @@ from _ar_unit_in_memory import (
     InMemoryTurnClaim,
     InMemoryTurnRepository,
     RecordingEventPublisher,
-    make_turn_runner,
+    make_turn_entry,
 )
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -123,15 +123,16 @@ def _build_test_app(
         catalog=catalog,  # type: ignore[arg-type]
         events=events,
         graph=runner,
-        idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
         journal=journal,
-        claim=claim,
-        turn_runner=make_turn_runner(
+        turn_entry=make_turn_entry(
+            sessions=sessions,
+            messages=messages,
+            catalog=catalog,
             graph=runner,
             journal=journal,
             events=events,
-            messages=messages,
-            sessions=sessions,
+            idempotency=IdempotencyGuard(InMemoryIdempotencyStore()),
+            claim=claim,
         ),
     )
     # Router 的规则链（真实现，候选池来自同一个 catalog 替身）。

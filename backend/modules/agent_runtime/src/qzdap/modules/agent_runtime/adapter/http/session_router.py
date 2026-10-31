@@ -390,7 +390,7 @@ def build_session_router() -> APIRouter:
                 session_id=session_id,
                 tenant_id=message.actor.tenant_id,
                 workspace_id=message.actor.workspace_id or x_workspace_id,
-                build=lambda span_ctx: svc.stream_turn(
+                build=lambda span_ctx: svc.turn_entry.stream(
                     tenant_id=message.actor.tenant_id,
                     workspace_id=message.actor.workspace_id or x_workspace_id,
                     owner_id=message.actor.actor_id,

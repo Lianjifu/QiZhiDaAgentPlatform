@@ -60,12 +60,22 @@ CREATE UNIQUE INDEX uq_agent_sessions_channel_key
 
 
 class _FakeCopilot:
-    """``CopilotSessionService`` 的替身 —— 只记「这一轮跑在哪个会话上」✓。"""
+    """``CopilotSessionService`` 的替身 —— 这一条只关心会话复用 ✓。"""
 
     def __init__(self) -> None:
         self.session_ids: list[UUID] = []
 
-    async def stream_turn(self, **kwargs: Any):  # type: ignore[no-untyped-def]
+    def bind_ports(self, **ports: Any) -> None:
+        return
+
+
+class _FakeTurnEntry:
+    """**跑一轮**的入口替身 ✓ —— 记下「这一轮跑在哪个会话上」✓。"""
+
+    def __init__(self) -> None:
+        self.session_ids: list[UUID] = []
+
+    async def stream(self, **kwargs: Any):  # type: ignore[no-untyped-def]
         self.session_ids.append(kwargs["session_id"])
         from qzdap_schema.dtos.turn import DoneChunk
 
@@ -124,10 +134,12 @@ def _request(*, key: str, tenant_id: UUID, workspace_id: UUID, owner_id: UUID) -
 @pytest.mark.asyncio
 async def test_the_same_channel_and_chat_reuse_one_session(store_ctx) -> None:  # type: ignore[no-untyped-def]
     copilot = _FakeCopilot()
+    turn_entry = _FakeTurnEntry()
     async with store_ctx.session() as db_session:
         service = ChannelTurnService(
             sessions=SessionManager(store=PostgresSessionStore(db_session)),
             copilot=copilot,  # type: ignore[arg-type]
+            turn_entry=turn_entry,  # type: ignore[arg-type]
         )
         tenant, workspace, owner = uuid4(), uuid4(), uuid4()
         first = await service.run(
@@ -149,16 +161,18 @@ async def test_the_same_channel_and_chat_reuse_one_session(store_ctx) -> None:  
         await db_session.commit()
 
     assert first.session_id == second.session_id
-    assert copilot.session_ids == [first.session_id, first.session_id]
+    assert turn_entry.session_ids == [first.session_id, first.session_id]
 
 
 @pytest.mark.asyncio
 async def test_different_chats_get_different_sessions(store_ctx) -> None:  # type: ignore[no-untyped-def]
     copilot = _FakeCopilot()
+    turn_entry = _FakeTurnEntry()
     async with store_ctx.session() as db_session:
         service = ChannelTurnService(
             sessions=SessionManager(store=PostgresSessionStore(db_session)),
             copilot=copilot,  # type: ignore[arg-type]
+            turn_entry=turn_entry,  # type: ignore[arg-type]
         )
         tenant, workspace, owner = uuid4(), uuid4(), uuid4()
         first = await service.run(
