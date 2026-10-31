@@ -21,6 +21,7 @@ from qzdap.composition.seeds import (
     seed_demo_agents,
     seed_demo_content,
     seed_demo_memory,
+    seed_demo_ops_docs,
 )
 from qzdap.composition.settings import Settings
 from qzdap.modules.tool.application.tool_catalog import BUILTIN_TOOL_SPECS
@@ -103,6 +104,7 @@ def test_dev_profile_seeds_no_demo_content(settings: Settings) -> None:
         "knowledge": [],
         "conversations": [],
         "memory": {},
+        "ops": {},
     }
 
 
@@ -179,3 +181,43 @@ def test_demo_kb_specs_carry_team_knowledge() -> None:
     states = {doc["publishState"] for doc in team_docs}
     assert "published" in states
     assert states & {"draft", "retired"}
+
+
+def test_demo_ops_docs_are_skipped_for_the_dev_profile(settings: Settings) -> None:
+    """⚠️ **管理台文档也是演示数据** ✓ —— 开发库不种 ✓（通道分离 ✓）。
+
+    传 ``session=None`` 是故意的 —— 万一实现先去碰 session 再判断, 这里
+    会直接炸, 而不是悄悄写进开发库.
+    """
+    import asyncio
+
+    dev = dev_profile(settings)
+    assert dev.label == "dev"
+    seeded = asyncio.run(seed_demo_ops_docs(None, dev, tenant_id=dev.tenant_id, workspace_id=None))
+    assert seeded == {}
+
+
+def test_the_ops_seed_covers_every_admin_console_collection() -> None:
+    """⚠️ **管理台八个页面都有数据** ✓ —— 少一个集合那一页就是空的 ✗✗。"""
+    from qzdap.modules.platform.fixtures.ops_seed import SEED
+
+    expected = {
+        "quotas.budgets",
+        "quotas.alerts",
+        "notifications.channels",
+        "notifications.webhooks",
+        "notifications.groups",
+        "evaluations.suites",
+        "regressions.tracks",
+        "feedback.list",
+        "operations.sessions",
+        "operations.incidents",
+        "audit.entries",
+        "metrics.dashboards",
+    }
+    assert expected <= set(SEED)
+    for collection, items in SEED.items():
+        assert items, f"{collection} 是空的 —— 那一页会是空的"
+        for item in items:
+            # ⚠️ **没有 id 的由仓储补** ✓（``seed_if_empty`` ✓）—— 不强制 ✓。
+            assert isinstance(item, dict) and item

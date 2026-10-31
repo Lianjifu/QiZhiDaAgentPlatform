@@ -1146,6 +1146,43 @@ async def _find_team_doc(session: Any, *, workspace_id: UUID) -> Any:
     return None
 
 
+async def seed_demo_ops_docs(
+    session: Any,
+    profile: SeedProfile,
+    *,
+    tenant_id: UUID,
+    workspace_id: UUID | None,
+) -> dict[str, int]:
+    """种**管理台文档** ✓ —— 额度 / 渠道 / 评测 / 回归 / 反馈 / 链路 / 审计 / 指标 ✓。
+
+    ⚠️ **之前这些页全是空的** ✓ —— ``admin_ops_docs`` 一行没有 ✓（种子数据在
+    ✅ —— ``ops_seed.json`` ✓ —— 但**没人调** ``seed_if_empty`` ✓）→ 管理台
+    八个页面在演示环境里**全空** ✗✗。
+    ⚠️ **只进演示库** ✓ —— 开发库不种 ✓（数据通道分离 ✓ —— 演示数据不进
+    开发库 ✓）。
+    ⚠️ **幂等** ✓ —— 已经有文档就整体跳过 ✓（不覆盖管理员改过的内容 ✓）。
+    """
+    if profile.label != "demo" or workspace_id is None:
+        return {}
+    from qzdap.modules.platform.adapter.persistence.ops_repositories import (
+        SqlAdminOpsRepository,
+    )
+    from qzdap.modules.platform.fixtures.ops_seed import SEED
+
+    repo = SqlAdminOpsRepository(session)
+    counts: dict[str, int] = {}
+    for collection, items in SEED.items():
+        seeded = await repo.seed_if_empty(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            collection=collection,
+            items=items,
+        )
+        if seeded:
+            counts[collection] = len(seeded)
+    return counts
+
+
 async def seed_demo_memory(
     session: Any,
     profile: SeedProfile,
@@ -1275,6 +1312,7 @@ async def seed_demo_content(
     memory = await seed_demo_memory(
         session, profile, tenant_id=tenant_id, workspace_id=workspace_id
     )
+    ops = await seed_demo_ops_docs(session, profile, tenant_id=tenant_id, workspace_id=workspace_id)
     return {
         "agents": agents,
         "skills": skills,
@@ -1282,6 +1320,7 @@ async def seed_demo_content(
         "knowledge": knowledge,
         "conversations": conversations,
         "memory": memory,
+        "ops": ops,
     }
 
 
