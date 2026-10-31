@@ -17,6 +17,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from qzdap_kernel.events import DomainEvent
+from qzdap_kernel.ids import TenantId, WorkspaceId
 
 __all__ = ["DomainEvent", "EventEnvelope"]
 
@@ -27,8 +28,8 @@ class EventEnvelope:
 
     event_id: UUID
     event_name: str
-    tenant_id: UUID
-    workspace_id: UUID | None
+    tenant_id: TenantId
+    workspace_id: WorkspaceId | None
     occurred_at_ms: int
     trace_id: str | None
     payload: dict[str, Any]
@@ -39,8 +40,8 @@ class EventEnvelope:
         cls,
         event: DomainEvent,
         *,
-        tenant_id: UUID,
-        workspace_id: UUID | None,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId | None,
         trace_id: str | None,
         metadata: dict[str, Any] | None = None,
     ) -> EventEnvelope:

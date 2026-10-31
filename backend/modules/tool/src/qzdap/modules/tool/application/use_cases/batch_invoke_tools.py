@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from typing import Any
-from uuid import UUID
 
 from qzdap.modules.tool.application.tool_factory import ToolServiceFactory
 from qzdap.modules.tool.domain import ToolCall
@@ -31,6 +30,7 @@ from qzdap.modules.tool.domain.errors import (
     ToolNotFound,
     UpstreamUnavailable,
 )
+from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
 
 @dataclass(slots=True, frozen=True)
@@ -60,9 +60,9 @@ _STATUS_FROM_ERROR: dict[type, int] = {
 async def _run_one(
     service_factory: ToolServiceFactory,
     *,
-    tenant_id: UUID,
-    workspace_id: UUID,
-    owner_id: UUID,
+    tenant_id: TenantId,
+    workspace_id: WorkspaceId,
+    owner_id: UserId,
     tool_name: str,
     arguments: dict,
 ) -> ToolCall:
@@ -88,9 +88,9 @@ class BatchInvokeToolsUseCase:
     async def execute(
         self,
         *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        owner_id: UUID,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId,
+        owner_id: UserId,
         calls: list[BatchInvokeInput],
     ) -> list[BatchInvokeResultItem]:
         if not calls:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from qzdap.modules.tool.application.ports import EventPublisher, ToolRepository
 from qzdap.modules.tool.domain import (
@@ -13,7 +13,7 @@ from qzdap.modules.tool.domain import (
     ToolProtocol,
 )
 from qzdap_kernel.contextvars import current_trace_id
-from qzdap_kernel.ids import ToolId
+from qzdap_kernel.ids import TenantId, ToolId, UserId, WorkspaceId
 
 
 class RegisterToolUseCase:
@@ -24,9 +24,9 @@ class RegisterToolUseCase:
     async def execute(
         self,
         *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        owner_id: UUID,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId,
+        owner_id: UserId,
         name: str,
         description: str,
         protocol: ToolProtocol,

@@ -11,6 +11,7 @@ query — a forgotten `.where(Model.tenant_id == ...)` cannot leak rows.
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, Index, MetaData
@@ -55,11 +56,11 @@ class TenantScopedMixin(TenantScopedLoader):
         return mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid4)
 
     @declared_attr
-    def created_at(self) -> Mapped[object]:
+    def created_at(self) -> Mapped[datetime]:
         return mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     @declared_attr
-    def updated_at(self) -> Mapped[object]:
+    def updated_at(self) -> Mapped[datetime]:
         return mapped_column(
             DateTime(timezone=True),
             nullable=False,

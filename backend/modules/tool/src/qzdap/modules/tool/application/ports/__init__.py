@@ -11,7 +11,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Protocol
-from uuid import UUID
 
 from qzdap.modules.tool.domain import (
     AuthConfig,
@@ -20,20 +19,21 @@ from qzdap.modules.tool.domain import (
     ToolCall,
 )
 from qzdap_kernel.events import DomainEvent
+from qzdap_kernel.ids import TenantId, ToolCallId, ToolId, TurnId, UserId, WorkspaceId
 
 
 class ToolRepository(ABC):
     @abstractmethod
     async def add(self, tool: Tool) -> None: ...
     @abstractmethod
-    async def get(self, tool_id: UUID) -> Tool | None: ...
+    async def get(self, tool_id: ToolId) -> Tool | None: ...
     @abstractmethod
-    async def get_by_name(self, *, tenant_id: UUID, name: str) -> Tool | None: ...
+    async def get_by_name(self, *, tenant_id: TenantId, name: str) -> Tool | None: ...
     @abstractmethod
     async def list(
         self,
         *,
-        tenant_id: UUID,
+        tenant_id: TenantId,
         enabled: bool | None = None,
         limit: int = 50,
         offset: int = 0,
@@ -41,14 +41,14 @@ class ToolRepository(ABC):
     @abstractmethod
     async def update(self, tool: Tool) -> None: ...
     @abstractmethod
-    async def delete(self, tool_id: UUID) -> None: ...
+    async def delete(self, tool_id: ToolId) -> None: ...
 
 
 class ToolCallRepository(ABC):
     @abstractmethod
     async def add(self, call: ToolCall) -> None: ...
     @abstractmethod
-    async def get(self, call_id: UUID) -> ToolCall | None: ...
+    async def get(self, call_id: ToolCallId) -> ToolCall | None: ...
 
 
 class ToolExecutionPort(Protocol):
@@ -64,9 +64,9 @@ class ToolExecutionPort(Protocol):
         idempotency_key: str,
         request_hash: str,
         tool_call_id: str,
-        turn_id: UUID,
-        tenant_id: UUID,
-        workspace_id: UUID,
+        turn_id: TurnId,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId,
     ) -> ToolExecutionClaim:
         """**占一次执行权** ✓。
 
@@ -113,8 +113,8 @@ class EventPublisher(ABC):
         self,
         event: DomainEvent,
         *,
-        tenant_id: UUID,
-        workspace_id: UUID | None,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId | None,
         trace_id: str | None = None,
     ) -> None: ...
 
@@ -136,10 +136,10 @@ class CustomInvokerPort(Protocol):
         *,
         name: str,
         arguments: dict,
-        tenant_id: UUID,
-        workspace_id: UUID | None,
-        call_id: UUID,
-        actor_id: UUID,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId | None,
+        call_id: ToolCallId,
+        actor_id: UserId,
     ) -> dict: ...
 
 

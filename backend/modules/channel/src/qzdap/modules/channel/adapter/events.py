@@ -18,10 +18,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from qzdap_kernel.ids import TenantId, WorkspaceId
 from qzdap_messaging.domain_event import EventEnvelope
 
 if TYPE_CHECKING:
-    from uuid import UUID
 
     from qzdap_messaging.bus import EventBus
 
@@ -36,8 +36,8 @@ class MessagingChannelEventPublisher:
         self,
         event: object,
         *,
-        tenant_id: UUID,
-        workspace_id: UUID | None,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId | None,
         trace_id: str | None = None,
     ) -> None:
         envelope = EventEnvelope.wrap(

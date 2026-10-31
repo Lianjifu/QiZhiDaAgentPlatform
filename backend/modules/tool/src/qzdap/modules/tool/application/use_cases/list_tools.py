@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from uuid import UUID
-
 from qzdap.modules.tool.application.ports import ToolRepository
 from qzdap.modules.tool.domain import Tool
+from qzdap_kernel.ids import TenantId
 
 
 class ListToolsUseCase:
@@ -15,7 +14,7 @@ class ListToolsUseCase:
     async def execute(
         self,
         *,
-        tenant_id: UUID,
+        tenant_id: TenantId,
         enabled: bool | None = None,
         limit: int = 50,
         offset: int = 0,

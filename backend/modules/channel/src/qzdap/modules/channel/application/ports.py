@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from qzdap_kernel.ids import WorkspaceId
+
 if TYPE_CHECKING:
     from datetime import datetime
     from uuid import UUID
@@ -124,7 +126,7 @@ class ChannelEventPublisher(Protocol):
         event: object,
         *,
         tenant_id: TenantId,
-        workspace_id: UUID | None,
+        workspace_id: WorkspaceId | None,
         trace_id: str | None = None,
     ) -> None: ...
 

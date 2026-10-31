@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from time import monotonic
 from uuid import UUID, uuid4
 
@@ -60,7 +61,7 @@ from qzdap.modules.tool.domain.errors import (
     UpstreamUnavailable,
 )
 from qzdap_kernel.contextvars import current_trace_id
-from qzdap_kernel.ids import TenantId, ToolCallId, WorkspaceId
+from qzdap_kernel.ids import TenantId, ToolCallId, TurnId, UserId, WorkspaceId
 
 _log = logging.getLogger("qzdap.modules.tool")
 
@@ -93,6 +94,16 @@ def _pick_operation(operations: list[SpecOperation], arguments: dict) -> SpecOpe
 
 class InvalidToolSpecCallError(Exception):
     """Local sentinel — translated to 422 by the HTTP layer."""
+
+
+@dataclass(slots=True, frozen=True)
+class _CallContext:
+    """**一次调用的身份上下文** ✓ —— 内置工具用它做审计与作用域判断 ✓。"""
+
+    tenant_id: TenantId
+    workspace_id: WorkspaceId
+    call_id: ToolCallId
+    actor_id: UserId
 
 
 class InvokeToolUseCase:
@@ -130,13 +141,13 @@ class InvokeToolUseCase:
     async def execute(
         self,
         *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        owner_id: UUID,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId,
+        owner_id: UserId,
         tool_name: str,
         arguments: dict,
-        call_id: UUID | None = None,
-        turn_id: UUID | None = None,
+        call_id: ToolCallId | None = None,
+        turn_id: TurnId | None = None,
         idempotency_key: str | None = None,
     ) -> ToolCall:
         # P5: gate sensitive tool calls behind the policy engine
@@ -159,7 +170,7 @@ class InvokeToolUseCase:
         if not tool.enabled:
             raise ToolDisabled(f"tool {tool_name!r} is disabled")
 
-        call_id = call_id or uuid4()
+        call_id = call_id or ToolCallId(uuid4())
 
         # ── 幂等：先占执行权 ✓（§5.3.2 ✓） ──────────────────────────────
         fingerprint = request_hash(arguments)
@@ -176,7 +187,7 @@ class InvokeToolUseCase:
             return reused
 
         call = ToolCall.create(
-            id=ToolCallId(call_id),
+            id=call_id,
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             tool_name=tool_name,
@@ -185,12 +196,12 @@ class InvokeToolUseCase:
         # Per-call tenant context: built-in tools (web_search / http_fetch)
         # need it for audit logging. Stored only for the duration of this
         # invocation; the use case is otherwise stateless.
-        self._last_call_ctx = {
-            "tenant_id": tenant_id,
-            "workspace_id": workspace_id,
-            "call_id": call_id,
-            "actor_id": owner_id,
-        }
+        self._last_call_ctx = _CallContext(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            call_id=call_id,
+            actor_id=owner_id,
+        )
         await self._calls.add(call)
         await self._events.publish(
             call.raise_invoked_event(),
@@ -279,10 +290,10 @@ class InvokeToolUseCase:
         *,
         idempotency_key: str | None,
         fingerprint: str,
-        call_id: UUID,
-        turn_id: UUID | None,
-        tenant_id: UUID,
-        workspace_id: UUID,
+        call_id: ToolCallId,
+        turn_id: TurnId | None,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId,
     ) -> ToolCall | None:
         """**占执行权** ✓ —— 返回**可复用的既有调用** ✓（没有就是 ``None`` ✓）。
 
@@ -312,7 +323,7 @@ class InvokeToolUseCase:
             )
         if claim.status == "succeeded" and claim.result_ref:
             try:
-                existing = await self._calls.get(UUID(claim.result_ref))
+                existing = await self._calls.get(ToolCallId(UUID(claim.result_ref)))
             except (TypeError, ValueError):
                 existing = None
             if existing is not None:
@@ -382,14 +393,16 @@ class InvokeToolUseCase:
         if protocol is ToolProtocol.CUSTOM:
             # Strip internal routing keys before handing to the callable.
             clean = {k: v for k, v in arguments.items() if not k.startswith("__")}
-            ctx = getattr(self, "_last_call_ctx", None) or {}
+            ctx = self._last_call_ctx
+            if ctx is None:
+                raise RuntimeError("custom tool dispatched without a call context")
             return await self._custom.invoke(
                 name=tool.name,
                 arguments=clean,
-                tenant_id=ctx.get("tenant_id"),
-                workspace_id=ctx.get("workspace_id"),
-                call_id=ctx.get("call_id"),
-                actor_id=ctx.get("actor_id"),
+                tenant_id=ctx.tenant_id,
+                workspace_id=ctx.workspace_id,
+                call_id=ctx.call_id,
+                actor_id=ctx.actor_id,
             )
 
         if protocol is ToolProtocol.OPENAPI:

@@ -11,6 +11,7 @@ The router reads the per-request `ToolService` factory from
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import Final
 from uuid import UUID
 
 from fastapi import (
@@ -45,9 +46,13 @@ from qzdap.modules.tool.application.use_cases import (
 )
 from qzdap.modules.tool.domain import ToolProtocol
 from qzdap_auth.workspace_guard_dep import _require_active_workspace
+from qzdap_kernel.ids import TenantId, ToolId, UserId, WorkspaceId
+
+#: **系统 owner** ✓ —— 注册工具时还没有真实用户 ✓（租户级登记 ✓）。
+_SYSTEM_OWNER_ID: Final = UserId(UUID("00000000-0000-0000-0000-000000000000"))
 
 
-async def tool_dependency(request: Request) -> ToolService:
+async def tool_dependency(request: Request) -> AsyncIterator[ToolService]:
     """Per-request OpenSession + service binding. Mirrors agent_runtime's pattern.
 
     Tests inject `tool_factory_for_session` on the app state; the live
@@ -89,9 +94,9 @@ def build_router() -> APIRouter:
         svc: ToolService = Depends(tool_dependency),
     ) -> JSONResponse:
         tool = await svc.register_tool().execute(
-            tenant_id=x_tenant_id,
-            workspace_id=x_workspace_id,
-            owner_id=UUID("00000000-0000-0000-0000-000000000000"),
+            tenant_id=TenantId(x_tenant_id),
+            workspace_id=WorkspaceId(x_workspace_id),
+            owner_id=_SYSTEM_OWNER_ID,
             name=body.name,
             description=body.description,
             protocol=ToolProtocol(body.protocol),
@@ -115,7 +120,7 @@ def build_router() -> APIRouter:
         svc: ToolService = Depends(tool_dependency),
     ) -> ToolListResponse:
         tools = await svc.list_tools().execute(
-            tenant_id=x_tenant_id,
+            tenant_id=TenantId(x_tenant_id),
             enabled=enabled,
             limit=limit,
             offset=offset,
@@ -131,7 +136,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: ToolService = Depends(tool_dependency),
     ) -> ToolResponse:
-        tool = await svc.get_tool().execute(tenant_id=x_tenant_id, tool_id=tid)
+        tool = await svc.get_tool().execute(tenant_id=TenantId(x_tenant_id), tool_id=ToolId(tid))
         return tool_to_dto(tool)
 
     @router.patch("/{tid}", response_model=ToolResponse)
@@ -151,8 +156,8 @@ def build_router() -> APIRouter:
                     status_code=400, detail="If-Match header must be an integer"
                 ) from None
         tool = await svc.update_tool().execute(
-            tenant_id=x_tenant_id,
-            tool_id=tid,
+            tenant_id=TenantId(x_tenant_id),
+            tool_id=ToolId(tid),
             expected_version=expected_version,
             description=body.description,
             spec=body.spec,
@@ -170,7 +175,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: ToolService = Depends(tool_dependency),
     ) -> Response:
-        await svc.delete_tool().execute(tenant_id=x_tenant_id, tool_id=tid)
+        await svc.delete_tool().execute(tenant_id=TenantId(x_tenant_id), tool_id=ToolId(tid))
         return Response(status_code=204)
 
     @router.post(
@@ -187,9 +192,9 @@ def build_router() -> APIRouter:
     ) -> JSONResponse:
         try:
             call = await svc.invoke_tool().execute(
-                tenant_id=x_tenant_id,
-                workspace_id=x_workspace_id,
-                owner_id=UUID("00000000-0000-0000-0000-000000000000"),
+                tenant_id=TenantId(x_tenant_id),
+                workspace_id=WorkspaceId(x_workspace_id),
+                owner_id=_SYSTEM_OWNER_ID,
                 tool_name=name,
                 arguments=body.arguments,
             )
@@ -224,9 +229,9 @@ def build_router() -> APIRouter:
         if factory is None:  # defensive — dependency guarantees this.
             raise HTTPException(status_code=503, detail="tool service factory not wired")
         results = await svc.batch_invoke_tools(factory).execute(
-            tenant_id=x_tenant_id,
-            workspace_id=x_workspace_id,
-            owner_id=UUID("00000000-0000-0000-0000-000000000000"),
+            tenant_id=TenantId(x_tenant_id),
+            workspace_id=WorkspaceId(x_workspace_id),
+            owner_id=_SYSTEM_OWNER_ID,
             calls=[
                 BatchInvokeInput(tool_name=c.tool_name, arguments=c.arguments) for c in body.calls
             ],

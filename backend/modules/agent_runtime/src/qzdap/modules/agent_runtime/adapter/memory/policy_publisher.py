@@ -13,10 +13,9 @@ Memory 模块**只依赖契约** ✓（层次不倒 ✓ —— §2.2 规则 6 �
 
 from __future__ import annotations
 
-from uuid import UUID
-
 from qzdap.modules.agent_runtime.application.catalog_ports import CatalogAgentRepository
 from qzdap_agent_runtime.memory.policy import MemoryPolicyConfig
+from qzdap_kernel.ids import TenantId, WorkspaceId
 
 
 class AgentMemoryPolicyPublisher:
@@ -28,8 +27,8 @@ class AgentMemoryPolicyPublisher:
     async def publish(
         self,
         *,
-        tenant_id: UUID,
-        workspace_id: UUID,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId,
         label: str,
         config: MemoryPolicyConfig,
     ) -> int:

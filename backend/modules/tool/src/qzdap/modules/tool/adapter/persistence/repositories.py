@@ -7,8 +7,6 @@ installed by `qzdap_persistence.tenant_guard.install_tenant_loader`.
 
 from __future__ import annotations
 
-from uuid import UUID
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +19,7 @@ from qzdap.modules.tool.adapter.persistence.mappers import (
 from qzdap.modules.tool.adapter.persistence.models import ToolCallORM, ToolORM
 from qzdap.modules.tool.application.ports import ToolCallRepository, ToolRepository
 from qzdap.modules.tool.domain import Tool, ToolCall
+from qzdap_kernel.ids import TenantId, ToolCallId, ToolId
 from qzdap_persistence.tenant_guard import current_tenant_id
 
 
@@ -58,19 +57,19 @@ class SqlToolRepository(ToolRepository):
         o.version = tool.version
         o.updated_at = tool.updated_at
 
-    async def delete(self, tool_id: UUID) -> None:
+    async def delete(self, tool_id: ToolId) -> None:
         o = await self._s.get(ToolORM, tool_id)
         if o is None or _cross_tenant(o):
             return
         await self._s.delete(o)
 
-    async def get(self, tool_id: UUID) -> Tool | None:
+    async def get(self, tool_id: ToolId) -> Tool | None:
         o = await self._s.get(ToolORM, tool_id)
         if o is None or _cross_tenant(o):
             return None
         return tool_orm_to_domain(o)
 
-    async def get_by_name(self, *, tenant_id: UUID, name: str) -> Tool | None:
+    async def get_by_name(self, *, tenant_id: TenantId, name: str) -> Tool | None:
         q = select(ToolORM).where(ToolORM.name == name)
         rows = (await self._s.execute(q)).scalars().all()
         for o in rows:
@@ -81,7 +80,7 @@ class SqlToolRepository(ToolRepository):
     async def list(
         self,
         *,
-        tenant_id: UUID,
+        tenant_id: TenantId,
         enabled: bool | None = None,
         limit: int = 50,
         offset: int = 0,
@@ -111,7 +110,7 @@ class SqlToolCallRepository(ToolCallRepository):
         o.finished_at = call.finished_at
         o.latency_ms = call.latency_ms
 
-    async def get(self, call_id: UUID) -> ToolCall | None:
+    async def get(self, call_id: ToolCallId) -> ToolCall | None:
         o = await self._s.get(ToolCallORM, call_id)
         if o is None or _cross_tenant(o):
             return None

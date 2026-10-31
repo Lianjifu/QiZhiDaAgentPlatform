@@ -12,6 +12,8 @@ from enum import StrEnum
 from typing import Self
 from uuid import UUID
 
+from qzdap_kernel.ids import TenantId, WorkspaceId
+
 
 class PrincipalType(StrEnum):
     USER = "user"
@@ -37,8 +39,8 @@ class Principal:
 
     id: UUID
     type: PrincipalType
-    tenant_id: UUID | None
-    workspace_id: UUID | None
+    tenant_id: TenantId | None
+    workspace_id: WorkspaceId | None
     roles: frozenset[str] = field(default_factory=frozenset)
     scopes: frozenset[str] = field(default_factory=frozenset)
     display_name: str | None = None
@@ -51,7 +53,7 @@ class Principal:
         if not isinstance(self.scopes, frozenset):
             object.__setattr__(self, "scopes", frozenset(self.scopes))
 
-    def with_workspace(self, workspace_id: UUID | None) -> Self:
+    def with_workspace(self, workspace_id: WorkspaceId | None) -> Self:
         """Return a copy scoped to a different workspace."""
         return type(self)(
             id=self.id,

@@ -7,22 +7,23 @@ through every UseCase. It guarantees we never accidentally cross tenants.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from uuid import UUID
+
+from qzdap_kernel.ids import TenantId, WorkspaceId
 
 
 @dataclass(slots=True, frozen=True)
 class TenantContext:
     """A tenant scope. Anything you read/write must belong to this tenant."""
 
-    tenant_id: UUID
+    tenant_id: TenantId
 
 
 @dataclass(slots=True, frozen=True)
 class WorkspaceContext:
     """A workspace within a tenant. Workspace always implies its tenant."""
 
-    tenant_id: UUID
-    workspace_id: UUID
+    tenant_id: TenantId
+    workspace_id: WorkspaceId
 
 
 @dataclass(slots=True, frozen=True)
@@ -34,8 +35,8 @@ class TenantWorkspaceContext:
     level (most CRUD).
     """
 
-    tenant_id: UUID
-    workspace_id: UUID | None
+    tenant_id: TenantId
+    workspace_id: WorkspaceId | None
 
     def to_workspace(self) -> WorkspaceContext:
         if self.workspace_id is None:

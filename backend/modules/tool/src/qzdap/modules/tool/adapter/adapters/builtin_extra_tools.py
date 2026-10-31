@@ -71,6 +71,10 @@ import httpx
 import pypdf
 from PIL import Image as PILImage
 
+#: **LANCZOS 重采样** ✓ —— Pillow ≥ 9.1 把它挪进了 `Image.Resampling` ✓
+#: （顶层 `Image.LANCZOS` 是旧别名 ✓ —— 类型存根里没有 ✗ → 用新的那个 ✓）。
+_LANCZOS = PILImage.Resampling.LANCZOS
+
 _log = logging.getLogger(__name__)
 
 
@@ -306,20 +310,23 @@ async def built_in_invoke_image_view(
             original_format = (img.format or "PNG").upper()
             if original_format not in {"PNG", "JPEG", "WEBP", "GIF", "BMP"}:
                 return {"error": f"unsupported source format: {original_format}"}
-            if img.mode not in {"RGB", "RGBA", "L"}:
-                img = img.convert("RGB")
-            width, height = img.size
+            # ⚠️ **转换 / 缩放的结果不再是 `ImageFile`** ✓（那是 `open()` 的具体
+            # 类型 ✓）→ 用一个 `Image` 类型的变量接 ✓（否则类型标注骗人 ✗）。
+            current: PILImage.Image = img
+            if current.mode not in {"RGB", "RGBA", "L"}:
+                current = current.convert("RGB")
+            width, height = current.size
             if max(width, height) > max_dim:
                 scale = max_dim / max(width, height)
                 new_size = (max(1, int(width * scale)), max(1, int(height * scale)))
-                img = img.resize(new_size, PILImage.LANCZOS)
+                current = current.resize(new_size, _LANCZOS)
             buf = io.BytesIO()
             save_kwargs: dict[str, Any] = {}
-            if fmt == "jpeg" and img.mode == "RGBA":
-                img = img.convert("RGB")
+            if fmt == "jpeg" and current.mode == "RGBA":
+                current = current.convert("RGB")
             if fmt == "jpeg":
                 save_kwargs["quality"] = 85
-            img.save(buf, format=fmt.upper(), **save_kwargs)
+            current.save(buf, format=fmt.upper(), **save_kwargs)
             data = buf.getvalue()
     except (OSError, ValueError) as exc:
         return {"error": f"image read/process failed: {exc}"}
@@ -553,7 +560,8 @@ def _jsonpath_filter(item: Any, expr: str) -> bool:
     if not m:
         return False
     field, op, raw = m.group(1), m.group(2), m.group(3).strip()
-    left = item.get(field) if (field and isinstance(item, dict)) else item
+    left: Any = item.get(field) if (field and isinstance(item, dict)) else item
+    right: Any
     try:
         right = ast.literal_eval(raw)
     except (ValueError, SyntaxError):
@@ -670,7 +678,7 @@ def _csv_eval_where(expr: str, row: dict[str, str]) -> bool:
     except SyntaxError:
         return False
     # Build safe namespace
-    safe_globals = {"__builtins__": {}}
+    safe_globals: dict[str, Any] = {"__builtins__": {}}
     safe_locals = dict(row.items())
     # Whitelist functions
     for fn in ("str", "int", "float", "len", "min", "max", "bool"):
@@ -800,12 +808,12 @@ async def built_in_invoke_code_search(
         )
         if proc.returncode == 0 and proc.stdout.strip():
             lines = proc.stdout.splitlines()[:max_results]
-            matches = []
+            ast_matches: list[dict[str, Any]] = []
             for ln in lines:
                 # ast-grep output: "file:line:col\tmatch"
                 parts = ln.split(":", 2)
                 if len(parts) >= 2:
-                    matches.append(
+                    ast_matches.append(
                         {
                             "path": parts[0],
                             "line": parts[1],
@@ -814,8 +822,8 @@ async def built_in_invoke_code_search(
                     )
             return {
                 "engine": "ast-grep",
-                "matches": matches,
-                "count": len(matches),
+                "matches": ast_matches,
+                "count": len(ast_matches),
                 "truncated": len(proc.stdout.splitlines()) > max_results,
             }
     except (FileNotFoundError, _subprocess.TimeoutExpired):
@@ -953,7 +961,7 @@ def _yaml_minimal_load(text: str) -> Any:
         content = first[indent:]
         # sequence?
         if content.startswith("- "):
-            items = []
+            items: list[Any] = []
             i = start
             while i < len(lines):
                 ln = lines[i]
@@ -1343,7 +1351,7 @@ async def built_in_invoke_todo_write(
     if not isinstance(todos, list):
         return {"error": "todos must be a list"}
     valid_status = {"pending", "in_progress", "completed"}
-    cleaned = []
+    cleaned: list[dict[str, Any]] = []
     for t in todos:
         if not isinstance(t, dict):
             continue

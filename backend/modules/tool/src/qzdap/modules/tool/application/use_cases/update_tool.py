@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from uuid import UUID
-
 from qzdap.modules.tool.application.ports import EventPublisher, ToolRepository
 from qzdap.modules.tool.domain import (
     AuthConfig,
@@ -13,6 +11,7 @@ from qzdap.modules.tool.domain import (
     ToolVersionMismatch,
 )
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_kernel.ids import TenantId, ToolId
 
 
 class UpdateToolUseCase:
@@ -23,8 +22,8 @@ class UpdateToolUseCase:
     async def execute(
         self,
         *,
-        tenant_id: UUID,
-        tool_id: UUID,
+        tenant_id: TenantId,
+        tool_id: ToolId,
         expected_version: int | None,
         description: str | None,
         spec: dict | None,

@@ -14,6 +14,7 @@ from uuid import UUID
 
 from qzdap_auth.jwt import JWTVerifier
 from qzdap_kernel.errors import AuthenticationError, ForbiddenError
+from qzdap_kernel.ids import TenantId, WorkspaceId
 from qzdap_kernel.principal import Principal, PrincipalType
 
 
@@ -30,12 +31,12 @@ class AuthenticatedPrincipal:
     raw_token: str
 
     @property
-    def tenant_id(self) -> UUID:
+    def tenant_id(self) -> TenantId:
         assert self.principal.tenant_id is not None
         return self.principal.tenant_id
 
     @property
-    def workspace_id(self) -> UUID | None:
+    def workspace_id(self) -> WorkspaceId | None:
         return self.principal.workspace_id
 
 
@@ -43,8 +44,10 @@ def _principal_from_jwt(claims: dict, raw: str) -> Principal:
     return Principal(
         id=UUID(claims["sub"]),
         type=PrincipalType.USER,
-        tenant_id=UUID(claims["tid"]),
-        workspace_id=UUID(claims["wid"]) if claims.get("wid") else None,
+        # ⚠️ **这里是「裸 UUID → 品牌 ID」的第一道边界** ✓（JWT 解析 ✓）——
+        # **进到应用层之前**转好 ✓（下游一律品牌 ID ✓）。
+        tenant_id=TenantId(UUID(claims["tid"])),
+        workspace_id=WorkspaceId(UUID(claims["wid"])) if claims.get("wid") else None,
         roles=frozenset(claims.get("roles") or []),
         scopes=frozenset(claims.get("scopes") or []),
     )

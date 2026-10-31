@@ -19,7 +19,7 @@ from qzdap.modules.agent_runtime.application.ports.catalog_model_resolver import
 from qzdap.modules.agent_runtime.domain import Session, Turn
 from qzdap_agent_runtime.memory.policy import MemoryPolicy
 from qzdap_kernel.events import DomainEvent
-from qzdap_kernel.ids import ModelId
+from qzdap_kernel.ids import ModelId, TenantId, WorkspaceId
 from qzdap_llm.client import ChatRequest, LLMChunk
 from qzdap_vault.actor import ActorContext
 
@@ -123,8 +123,8 @@ class EventPublisher(ABC):
         self,
         event: DomainEvent,
         *,
-        tenant_id: UUID,
-        workspace_id: UUID | None,
+        tenant_id: TenantId,
+        workspace_id: WorkspaceId | None,
         trace_id: str | None = None,
     ) -> None: ...
 

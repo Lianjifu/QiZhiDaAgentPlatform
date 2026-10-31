@@ -7,7 +7,7 @@ creating a `services ↔ use_cases` circular import.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager
 from typing import Protocol
 
 
@@ -22,7 +22,7 @@ class ToolServiceFactory(Protocol):
     session forbids concurrent operations on a shared session.
     """
 
-    def __call__(self) -> AsyncIterator[ToolService]: ...  # type: ignore[name-defined]  # noqa: F821
+    def __call__(self) -> AbstractAsyncContextManager[ToolService]: ...  # type: ignore[name-defined]  # noqa: F821
 
 
 __all__ = ["ToolServiceFactory"]
