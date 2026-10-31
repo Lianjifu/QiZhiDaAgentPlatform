@@ -79,27 +79,44 @@ class PostgresSessionStore:
         result = await self._s.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def close_session(
-        self, *, session_id: UUID, tenant_id: UUID, reason: CloseReason
-    ) -> None:
-        """关闭会话（终态 ✓）—— 已是终态就**不动**（幂等 ✓）。"""
+    async def release_channel_key(self, *, session_id: UUID, tenant_id: UUID) -> None:
+        """**释放外部会话键** ✓（复活路径 ✓ —— 方案 §3.4 ✓）。
+
+        ⚠️ **置 NULL 而不是删行** ✓ —— 旧会话保持 ``closed`` 终态 ✓（它是
+        历史 ✓）；**部分唯一索引允许多行 NULL** ✓（迁移 0046 ✓）→ 旧行让出
+        键 ✓ → 新会话占用同一个键 ✓ **不会冲突** ✓。
+        """
         result = await self._s.execute(
             update(SessionORM)
             .where(
                 SessionORM.id == session_id,
                 SessionORM.tenant_id == tenant_id,
-                SessionORM.status.notin_(
-                    [SessionStatus.CLOSED.value, SessionStatus.CANCELLED.value]
-                ),
             )
-            .values(
-                status=SessionStatus.CLOSED.value,
-                closed_at=datetime.now(UTC),
-                updated_at=datetime.now(UTC),
-            )
+            .values(channel_session_key=None, updated_at=datetime.now(UTC))
         )
         if result.rowcount:
             await self._s.commit()
+
+    async def close_session(
+        self, *, session_id: UUID, tenant_id: UUID, reason: CloseReason
+    ) -> None:
+        """关闭会话（终态 ✓）—— 已是终态就**不动**（幂等 ✓）。
+
+        ⚠️ **原因要落库** ✓ —— 写进 ``metadata["close_reason"]`` ✓ ——
+        之前 ``reason`` 参数**被丢掉了** ✗✗（关完之后没人知道为什么关 ✓）。
+        """
+        row = await self._s.get(SessionORM, session_id)
+        if row is None or row.tenant_id != tenant_id:
+            return
+        if row.status in (SessionStatus.CLOSED.value, SessionStatus.CANCELLED.value):
+            return
+        metadata = dict(row.metadata_ or {})
+        metadata["close_reason"] = reason.value
+        row.metadata_ = metadata
+        row.status = SessionStatus.CLOSED.value
+        row.closed_at = datetime.now(UTC)
+        row.updated_at = datetime.now(UTC)
+        await self._s.commit()
 
     async def archive_session(self, *, session_id: UUID, tenant_id: UUID) -> None:
         """归档 = 关闭 + 打归档标记（§3.2 ✓）。

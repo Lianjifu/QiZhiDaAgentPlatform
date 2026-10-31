@@ -20,9 +20,16 @@ class _BoomFactory:
         raise RuntimeError("db down")
 
 
+class _FakeSettings:
+    """⚠️ **只带清扫器要用的那一个设置** ✓ —— 组合根的容器是真设置 ✓。"""
+
+    session_idle_timeout_days = 30
+
+
 class _FakeContainer:
     def __init__(self) -> None:
         self.calls = 0
+        self.settings = _FakeSettings()
 
     def session_factory(self) -> _BoomFactory:
         self.calls += 1

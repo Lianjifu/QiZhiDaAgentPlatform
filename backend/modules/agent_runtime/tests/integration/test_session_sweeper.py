@@ -27,6 +27,28 @@ from qzdap.modules.agent_runtime.adapter.persistence.session_sweeper import (
 
 _DDL = [
     """
+CREATE TABLE "{schema}".agent_sessions (
+    id uuid PRIMARY KEY,
+    tenant_id uuid NOT NULL,
+    workspace_id uuid NOT NULL,
+    owner_id uuid NOT NULL,
+    agent_id uuid NOT NULL,
+    agent_version varchar(64) NOT NULL,
+    status varchar(16) NOT NULL DEFAULT 'open',
+    closed_at timestamptz,
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+    rolling_summary text NOT NULL DEFAULT '',
+    current_revision integer NOT NULL DEFAULT 0,
+    current_turn_id uuid,
+    agent_version_pinned varchar(64),
+    channel_session_key varchar(512),
+    next_ingress_seq integer NOT NULL DEFAULT 0,
+    next_message_seq integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+)
+""",
+    """
 CREATE TABLE "{schema}".session_turns (
     id uuid PRIMARY KEY,
     tenant_id uuid NOT NULL,
@@ -109,7 +131,9 @@ async def sweeper_ctx():
         await admin.dispose()
 
 
-async def _insert_turn(factory, *, status: str, started_at: datetime) -> uuid.UUID:
+async def _insert_turn(
+    factory, *, status: str, started_at: datetime, session_id: uuid.UUID | None = None
+) -> uuid.UUID:
     turn_id = uuid.uuid4()
     async with factory.session() as session, session.begin():
         await session.execute(
@@ -123,13 +147,38 @@ async def _insert_turn(factory, *, status: str, started_at: datetime) -> uuid.UU
                 "id": turn_id,
                 "tenant": uuid.uuid4(),
                 "ws": uuid.uuid4(),
-                "session": uuid.uuid4(),
+                "session": session_id or uuid.uuid4(),
                 "key": f"k-{turn_id}",
                 "status": status,
                 "started": started_at,
             },
         )
     return turn_id
+
+
+async def _insert_session(factory, *, channel_key: str | None, created_at: datetime) -> uuid.UUID:
+    """**建一个会话** ✓ —— ``channel_key`` 为空 = Web 会话 ✓。"""
+    session_id = uuid.uuid4()
+    async with factory.session() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO agent_sessions "
+                "(id, tenant_id, workspace_id, owner_id, agent_id, agent_version, "
+                " status, channel_session_key, created_at, updated_at) "
+                "VALUES (:id, :tenant, :ws, :owner, :agent, 'v1', 'open', :key, "
+                " :created, :created)"
+            ),
+            {
+                "id": session_id,
+                "tenant": uuid.uuid4(),
+                "ws": uuid.uuid4(),
+                "owner": uuid.uuid4(),
+                "agent": uuid.uuid4(),
+                "key": channel_key,
+                "created": created_at,
+            },
+        )
+    return session_id
 
 
 async def _insert_inbox(factory, *, expires_at: datetime) -> uuid.UUID:
@@ -199,3 +248,36 @@ async def test_expired_inbox_rows_are_deleted(sweeper_ctx) -> None:  # type: ign
     remaining = {row.id for row in rows}
     assert expired not in remaining
     assert alive in remaining
+
+
+@pytest.mark.asyncio
+async def test_idle_sessions_are_closed(sweeper_ctx) -> None:  # type: ignore[no-untyped-def]
+    """⚠️ **空闲超时的会话会被关掉** ✓（方案 §3.3 的第 3 类 ✓）。
+
+    ⚠️ **只关「有复活路径」的** ✓ —— 有外部会话键的 ✓（IM ✓）→ 用户下一句
+    话会**复活** ✓（新建一个接管 ✓）；**Web 会话不关** ✓（没有复活路径 ✓
+    → 关了就是「用户的旧对话从列表里消失」✗✗）。
+    """
+    sweeper, factory, _schema = sweeper_ctx
+    long_ago = datetime.now(UTC) - timedelta(days=40)
+    yesterday = datetime.now(UTC) - timedelta(days=1)
+
+    idle_im = await _insert_session(factory, channel_key="im-1", created_at=long_ago)
+    await _insert_turn(factory, status="succeeded", started_at=long_ago, session_id=idle_im)
+    idle_web = await _insert_session(factory, channel_key=None, created_at=long_ago)
+    await _insert_turn(factory, status="succeeded", started_at=long_ago, session_id=idle_web)
+    fresh_im = await _insert_session(factory, channel_key="im-2", created_at=yesterday)
+    await _insert_turn(factory, status="succeeded", started_at=yesterday, session_id=fresh_im)
+
+    report = await sweeper.sweep(now=datetime.now(UTC))
+    assert report.idle_sessions == 1
+
+    async with factory.session() as session:
+        rows = (
+            await session.execute(text("SELECT id, status, metadata FROM agent_sessions"))
+        ).all()
+    by_id = {row.id: row for row in rows}
+    assert by_id[idle_im].status == "closed"
+    assert by_id[idle_im].metadata["close_reason"] == "idle_timeout"
+    assert by_id[idle_web].status == "open", "Web 会话没有复活路径 —— 关了历史就没了"
+    assert by_id[fresh_im].status == "open"

@@ -27,7 +27,7 @@ from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
-from qzdap_agent_runtime.session.state import SessionStatus
+from qzdap_agent_runtime.session.state import TERMINAL_SESSION_STATUSES, SessionStatus
 
 
 class CloseReason(StrEnum):
@@ -94,6 +94,15 @@ class SessionStorePort(Protocol):
         """建会话；**唯一约束冲突**（别人先建了）返回 ``None`` ✓。"""
         ...
 
+    async def release_channel_key(self, *, session_id: UUID, tenant_id: UUID) -> None:
+        """**释放会话占着的外部会话键** ✓（复活路径用 ✓）。
+
+        ⚠️ **置 NULL 而不是删行** ✓ —— 旧会话保持 ``closed`` 终态 ✓（它是
+        历史 ✓）；**部分唯一索引允许多行 NULL** ✓（迁移 0046 ✓）→ 旧行释放
+        键 ✓ → 新会话占用同一个键 ✓ **不会冲突** ✓。
+        """
+        ...
+
     async def close_session(
         self, *, session_id: UUID, tenant_id: UUID, reason: CloseReason
     ) -> None: ...
@@ -145,12 +154,24 @@ class SessionManager(SessionManagerPort):
     async def resolve_or_create(
         self, *, identity: SessionIdentity, agent: AgentBinding
     ) -> SessionRef:
-        """外部会话 → 会话实例（复用优先 ✓；并发靠唯一约束 ✓）。"""
+        """外部会话 → 会话实例（复用优先 ✓；并发靠唯一约束 ✓）。
+
+        ⚠️ **终态会话会被「复活」** ✓（方案 §3.4 ✓）—— 旧会话是 ``closed``
+        ✓ → **不是状态转移** ✓（``closed`` 是终态 ✓）→ **新建一个接管**
+        ✓ → 旧行**释放外部会话键** ✓（置 NULL ✓ —— 部分唯一索引 ✓）。
+        ⚠️ **没有复活路径之前不做这件事** ✓ —— 只关不复活 = 用户「隔了一周
+        再问一句」就得到一个死会话 ✗✗（IM 渠道尤其致命 ✓）。
+        """
         existing = await self.lookup(
             session_key=identity.channel_session_key, tenant_id=identity.tenant_id
         )
-        if existing is not None:
+        if existing is not None and existing.status not in TERMINAL_SESSION_STATUSES:
             return existing
+        if existing is not None:
+            # ⚠️ **旧会话是终态** ✓ → 让出键 ✓ → 新会话接管 ✓。
+            await self._store.release_channel_key(
+                session_id=existing.session_id, tenant_id=identity.tenant_id
+            )
 
         session_id = await self._store.insert_session(identity=identity, agent=agent)
         if session_id is not None:
@@ -173,7 +194,9 @@ class SessionManager(SessionManagerPort):
                 session_key=identity.channel_session_key,
                 tenant_id=identity.tenant_id,
             )
-            if existing is not None:
+            # ⚠️ **终态的不算「对方建好了」** ✓ —— 它是旧的终态会话 ✓
+            # （键已被释放 ✓）→ 继续等 ✓（对方的新会话还没可见 ✓）。
+            if existing is not None and existing.status not in TERMINAL_SESSION_STATUSES:
                 return existing
         raise SessionCreationConflict(
             "session creation conflicted and the winner is still not visible "

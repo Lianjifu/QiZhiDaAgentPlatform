@@ -1,12 +1,14 @@
-"""``SessionSweeperPort`` 的实现 —— 僵尸轮次 + 幂等键过期。
+"""``SessionSweeperPort`` 的实现 —— 僵尸轮次 + 审批过期 + 会话空闲 + 幂等键过期。
 
 依据：Session 方案 §3.3（**四类超时** ✓）。
 
-⚠️ **只做两类**：① 僵尸轮次（30 分钟）② 幂等键过期（Gateway 的硬依赖 ✓）。
-另两类（审批过期 / 会话空闲）**不在这里做** ——
-- 审批过期归**治理域**（`approval_service.expire_if_due` ✓）；
-- 会话空闲必须等**「复活」路径**（Stage 2）—— 只关不复活 = 用户的旧对话
-  从列表里消失 ✗✗。
+⚠️ **四类都做** ✓：
+① 僵尸轮次（30 分钟 ✓）② 审批过期（15 分钟 ✓ —— 判定归治理域 ✓）
+③ 会话空闲（30 天 ✓ —— **只关「有复活路径」的** ✓）④ 幂等键过期
+（Gateway 的硬依赖 ✓）。
+⚠️ **会话空闲的前置是「复活」路径** ✓（方案 §3.4 ✓）—— 只关不复活 =
+用户的旧对话从列表里消失 ✗✗ → **复活 = 新建一个会话接管** ✓（旧行释放
+外部会话键 ✓ —— 部分唯一索引 ✓）。
 """
 
 from __future__ import annotations
@@ -16,12 +18,19 @@ from datetime import datetime, timedelta
 from logging import getLogger
 from typing import Any
 
-from sqlalchemy import update
+from sqlalchemy import func, select, update
 
 from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
     CLAIM_STALE_MINUTES,
 )
-from qzdap.modules.agent_runtime.adapter.persistence.models import SessionTurnORM
+from qzdap.modules.agent_runtime.adapter.persistence.models import (
+    SessionORM,
+    SessionTurnORM,
+)
+from qzdap.modules.agent_runtime.adapter.persistence.session_store import (
+    PostgresSessionStore,
+)
+from qzdap_agent_runtime.session.manager import CloseReason
 from qzdap_agent_runtime.session.state import (
     TurnStatus,
     assert_turn_transition,
@@ -30,6 +39,9 @@ from qzdap_agent_runtime.session.sweeper import SweepReport
 from qzdap_kernel.error_codes import ErrorCode
 
 _log = getLogger(__name__)
+
+#: 会话空闲的默认阈值（天）✓ —— 决策 #7 ✓（30 天 ✓ —— 可配 ✓）。
+DEFAULT_IDLE_TIMEOUT_DAYS = 30
 
 
 class PostgresSessionSweeper:
@@ -42,6 +54,7 @@ class PostgresSessionSweeper:
         idempotency_store: Any,
         expire_approvals: Callable[[datetime], Awaitable[int]] | None = None,
         batch_limit: int = 1000,
+        idle_timeout_days: int = DEFAULT_IDLE_TIMEOUT_DAYS,
     ) -> None:
         self._sf = session_factory
         self._inbox = idempotency_store
@@ -50,17 +63,65 @@ class PostgresSessionSweeper:
         #: **给它一个回调** ✓（不引治理模块 ✓ —— 组合根接线 ✓）。
         self._expire_approvals = expire_approvals
         self._batch_limit = batch_limit
+        #: ⚠️ **会话空闲阈值（天）** ✓ —— 决策 #7 ✓（30 天 ✓ —— 可配 ✓）。
+        self._idle_timeout_days = max(1, int(idle_timeout_days))
 
     async def sweep(self, *, now: datetime) -> SweepReport:
         """跑一次清扫 —— **每类独立**，一类失败不影响另一类 ✓。"""
         zombie_turns = await self._sweep_zombie_turns(now=now)
         expired_rows = await self._sweep_expired_idempotency()
         expired_approvals = await self._sweep_expired_approvals(now=now)
+        idle_sessions = await self._sweep_idle_sessions(now=now)
         return SweepReport(
             zombie_turns=zombie_turns,
             expired_idempotency_rows=expired_rows,
             expired_approvals=expired_approvals,
+            idle_sessions=idle_sessions,
         )
+
+    async def _sweep_idle_sessions(self, *, now: datetime) -> int:
+        """**空闲超时的会话 → 关闭** ✓（方案 §3.3 的第 3 类 ✓）。
+
+        ⚠️ **「最后活动」= 最后一轮的开始时间** ✓ —— 不是会话行的
+        ``updated_at`` ✓（那列会被摘要写入之类的动作顶上去 ✗）。
+        ⚠️ **只关「有外部会话键」的** ✓ —— 那些**有复活路径** ✓（方案 §3.4
+        ✓：用户「隔了一周再问一句」→ 新会话接管 ✓ → 不报错 ✓）。
+        ⚠️ **Web 会话不关** ✓ —— 它没有复活路径 ✓ → 关了就是「用户的旧
+        对话从列表里消失」✗✗（方案 §3.4 点名的坑 ✓）。
+        """
+        idle_before = now - timedelta(days=self._idle_timeout_days)
+        last_activity = (
+            select(func.max(SessionTurnORM.started_at))
+            .where(SessionTurnORM.session_id == SessionORM.id)
+            .correlate(SessionORM)
+            .scalar_subquery()
+        )
+        async with self._sf.session() as session:
+            rows = (
+                await session.execute(
+                    select(SessionORM.id, SessionORM.tenant_id)
+                    .where(
+                        SessionORM.status == "open",
+                        SessionORM.channel_session_key.isnot(None),
+                        func.coalesce(last_activity, SessionORM.created_at) < idle_before,
+                    )
+                    .limit(self._batch_limit)
+                )
+            ).all()
+            if not rows:
+                return 0
+            store = PostgresSessionStore(session)
+            closed = 0
+            for session_id, tenant_id in rows:
+                # ⚠️ **走仓储的关闭口** ✓ —— 关闭原因要落库 ✓
+                # （``metadata["close_reason"]`` ✓ —— 之前 reason 被丢掉了 ✗✗）。
+                await store.close_session(
+                    session_id=session_id,
+                    tenant_id=tenant_id,
+                    reason=CloseReason.IDLE_TIMEOUT,
+                )
+                closed += 1
+            return closed
 
     async def _sweep_expired_approvals(self, *, now: datetime) -> int:
         """**到期未决策的审批 → 自动过期** ✓（§3.3 第 2 类 ✓）。

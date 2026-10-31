@@ -1667,9 +1667,9 @@ async def _start_session_sweeper(
 ) -> Callable[[], Awaitable[None]]:
     """起超时清扫的后台任务 —— **幂等键过期**是 Gateway 的硬依赖 ✓。
 
-    ⚠️ 只清扫两类（Session 方案 §3.3）：僵尸轮次 + 幂等键过期。
-    审批过期归治理域；会话空闲要等「复活」路径（Stage 2）—— 只关不复活 =
-    用户的旧对话从列表里消失 ✗✗。
+    ⚠️ 清扫**四类**（Session 方案 §3.3 ✓）：僵尸轮次 ✓ + 幂等键过期 ✓ +
+    审批过期 ✓（判定归治理域 ✓）+ **会话空闲** ✓（30 天 ✓ —— 只关「有
+    复活路径」的 ✓ —— 方案 §3.4 ✓）。
     """
     from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
         PostgresIdempotencyStore,
@@ -1685,6 +1685,8 @@ async def _start_session_sweeper(
         # ⚠️ **审批过期归治理域** ✓（Session 方案 §3.3 的第 2 类 ✓ —— 判定
         # 只有一份 ✓ —— 治理域的 ``expire_if_due`` ✓）。
         expire_approvals=_expire_due_approvals(container),
+        # ⚠️ **会话空闲阈值可配** ✓（决策 #7 ✓ —— 默认 30 天 ✓）。
+        idle_timeout_days=container.settings.session_idle_timeout_days,
     )
 
     async def _loop() -> None:

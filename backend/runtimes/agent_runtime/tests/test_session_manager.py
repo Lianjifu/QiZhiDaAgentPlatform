@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
@@ -41,6 +42,8 @@ class _Store:
         self.insert_calls = 0
         self.closed: list[tuple[UUID, CloseReason]] = []
         self.archived: list[UUID] = []
+        #: **让出外部会话键的会话** ✓（复活路径 ✓）。
+        self.released: list[UUID] = []
         #: 第一次 insert 时返回冲突（模拟别人先建了 ✓）。
         self.conflict_once = False
         #: 冲突后重查是否可见。
@@ -48,6 +51,13 @@ class _Store:
 
     async def find_by_channel_key(self, *, tenant_id, channel_session_key):  # type: ignore[no-untyped-def]
         return self.rows.get((tenant_id, channel_session_key))
+
+    async def release_channel_key(self, *, session_id, tenant_id):  # type: ignore[no-untyped-def]
+        """**让出键** ✓（旧行置 NULL ✓ —— 部分唯一索引允许多行 NULL ✓）。"""
+        self.released.append(session_id)
+        for key, ref in list(self.rows.items()):
+            if ref.session_id == session_id:
+                del self.rows[key]
 
     async def insert_session(self, *, identity, agent):  # type: ignore[no-untyped-def]
         self.insert_calls += 1
@@ -132,6 +142,28 @@ async def test_resolve_or_create_reuses_an_existing_session() -> None:
     assert second.session_id == first.session_id
     assert second.created is False
     assert store.insert_calls == 1
+
+
+async def test_a_closed_session_is_revived_by_a_new_one() -> None:
+    """⚠️ **终态会话会被「复活」** ✓（方案 §3.4 ✓）。
+
+    ⚠️ **复活 = 新建一个接管** ✓ —— 不是状态转移 ✓（``closed`` 是终态 ✓）
+    → 旧行**让出外部会话键** ✓ → 新会话占用同一个键 ✓。
+    ⚠️ **没有这条路**的话，用户「隔了一周再问一句」就得到一个死会话 ✗✗。
+    """
+    store = _Store()
+    manager = _manager(store)
+
+    first = await manager.resolve_or_create(identity=_identity(), agent=_agent())
+    # 旧会话进了终态 ✓（空闲清扫会这么做 ✓）。
+    store.rows[(TENANT, KEY)] = replace(first, status=SessionStatus.CLOSED)
+
+    second = await manager.resolve_or_create(identity=_identity(), agent=_agent())
+
+    assert second.session_id != first.session_id
+    assert second.created is True
+    assert second.status is SessionStatus.OPEN
+    assert store.released == [first.session_id]
 
 
 async def test_a_concurrent_creation_resolves_to_the_winners_session() -> None:

@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # chunk ✓ 再开这个开关 ✓。
     router_queue_enabled: bool = False
 
+    # ── 会话超时清扫 ────────────────────────────────────────────────────
+    # ⚠️ **会话空闲阈值（天）** ✓ —— 决策 #7 ✓（30 天 ✓ —— 不按 agent /
+    # 工作区分别配 ✓ —— 那会让配置面爆炸 ✓）。
+    session_idle_timeout_days: int = 30
+
     # redis
     redis_url: str = "redis://localhost:9154/0"
     redis_max_connections: int = 50

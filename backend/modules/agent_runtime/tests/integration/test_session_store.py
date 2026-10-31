@@ -19,6 +19,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from qzdap.modules.agent_runtime.adapter.persistence.models import SessionORM
 from qzdap.modules.agent_runtime.adapter.persistence.session_store import (
     PostgresSessionStore,
 )
@@ -205,3 +206,56 @@ async def test_archiving_marks_the_metadata_and_closes(store_ctx) -> None:  # ty
         assert rows[0] == "closed"
         assert rows[1]["archived"] is True
         assert rows[1]["origin"] == "test"
+
+
+@pytest.mark.asyncio
+async def test_releasing_the_channel_key_frees_it_for_a_new_session(store_ctx) -> None:  # type: ignore[no-untyped-def]
+    """⚠️ **复活路径** ✓（方案 §3.4 ✓）—— 旧行让出键 ✓ → 新会话占用同一个键 ✓。
+
+    ⚠️ **旧行还在** ✓（它是历史 ✓）—— 只是不再占着那个键 ✓。
+    """
+    tenant = uuid4()
+    async with store_ctx.session() as session, session.begin():
+        store = PostgresSessionStore(session)
+        first = await store.insert_session(
+            identity=_identity(tenant_id=tenant, key="k1"), agent=_binding()
+        )
+        assert first is not None
+
+    async with store_ctx.session() as session:
+        store = PostgresSessionStore(session)
+        await store.release_channel_key(session_id=first, tenant_id=tenant)
+
+    async with store_ctx.session() as session, session.begin():
+        store = PostgresSessionStore(session)
+        # ⚠️ **同一个键能再被占用** ✓（部分唯一索引允许多行 NULL ✓）。
+        second = await store.insert_session(
+            identity=_identity(tenant_id=tenant, key="k1"), agent=_binding()
+        )
+        assert second is not None
+        assert second != first
+        found = await store.find_by_channel_key(tenant_id=tenant, channel_session_key="k1")
+        assert found is not None
+        assert found.session_id == second
+
+
+@pytest.mark.asyncio
+async def test_the_close_reason_is_recorded(store_ctx) -> None:  # type: ignore[no-untyped-def]
+    """⚠️ **关闭原因要落库** ✓ —— 之前 ``reason`` 参数**被丢掉了** ✗✗。"""
+    tenant = uuid4()
+    async with store_ctx.session() as session, session.begin():
+        store = PostgresSessionStore(session)
+        created = await store.insert_session(
+            identity=_identity(tenant_id=tenant, key="k1"), agent=_binding()
+        )
+        assert created is not None
+
+    async with store_ctx.session() as session:
+        store = PostgresSessionStore(session)
+        await store.close_session(
+            session_id=created, tenant_id=tenant, reason=CloseReason.IDLE_TIMEOUT
+        )
+        row = await session.get(SessionORM, created)
+        assert row is not None
+        assert row.status == "closed"
+        assert row.metadata_["close_reason"] == "idle_timeout"
