@@ -478,7 +478,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "input_tokens": 0,
                 "output_tokens": 0,
             }
-            async for chunk in graph.run_turn(
+            async for chunk in graph.run_graph(
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 owner_id=owner_id,

@@ -34,7 +34,7 @@ from qzdap.modules.agent_runtime.adapter.persistence.session_store import (
 from qzdap_agent_runtime.session.manager import CloseReason
 from qzdap_agent_runtime.session.state import (
     TurnStatus,
-    assert_turn_transition,
+    plan_turn_transition,
 )
 from qzdap_agent_runtime.session.sweeper import SweepReport
 from qzdap_kernel.error_codes import ErrorCode
@@ -184,16 +184,21 @@ class PostgresSessionSweeper:
         ⚠️ 转移 ``running → failed`` **由状态机判定** ✓（§4）—— 状态写点
         不自己判断「这个转移合不合法」。
         """
-        assert_turn_transition(TurnStatus.RUNNING, TurnStatus.FAILED)
+        target = plan_turn_transition(TurnStatus.RUNNING, TurnStatus.FAILED)
+        assert target is not None
         stale_before = now - timedelta(minutes=CLAIM_STALE_MINUTES)
         async with self._sf.session() as session, session.begin():
             result = await session.execute(
                 update(SessionTurnORM)
                 .where(
-                    SessionTurnORM.status == "running",
+                    SessionTurnORM.status == TurnStatus.RUNNING.value,
                     SessionTurnORM.started_at < stale_before,
                 )
-                .values(status="failed", error_code=ErrorCode.ZOMBIE_TAKEOVER.value)
+                .values(
+                    status=target,
+                    error_code=ErrorCode.ZOMBIE_TAKEOVER.value,
+                    finished_at=func.now(),
+                )
             )
             return int(result.rowcount or 0)
 

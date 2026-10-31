@@ -68,7 +68,7 @@ class _WorkingMemory:
 async def _run(runner: SessionGraphRunner) -> list[Any]:
     return [
         chunk
-        async for chunk in runner.run_turn(
+        async for chunk in runner.run_graph(
             tenant_id=TENANT,
             workspace_id=WORKSPACE,
             owner_id=OWNER,

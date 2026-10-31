@@ -305,7 +305,7 @@ async def test_the_mock_artifact_lands_in_the_table(artifact_ctx) -> None:  # ty
             artifact_store=PostgresArtifactStore(session),
         )
         chunks = []
-        async for chunk in runner.run_turn(
+        async for chunk in runner.run_graph(
             tenant_id=TENANT,
             workspace_id=WORKSPACE,
             owner_id=OWNER,

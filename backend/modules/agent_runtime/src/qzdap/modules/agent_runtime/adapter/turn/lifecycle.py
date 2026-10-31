@@ -21,6 +21,7 @@ from qzdap.modules.agent_runtime.application.ports import (
     SessionJournal,
 )
 from qzdap.modules.agent_runtime.domain import Turn
+from qzdap_agent_runtime.session.state import TurnStatus
 from qzdap_agent_runtime.session.turn_runner import TurnLifecyclePort, TurnRequest
 from qzdap_kernel.ids import SessionId, TenantId, TurnId, WorkspaceId
 
@@ -116,7 +117,9 @@ class TurnLifecycle(TurnLifecyclePort):
         try:
             await self.finish_turn(
                 turn_id=turn_id,
-                status="cancelled" if code == "TURN_CANCELLED" else "failed",
+                status=TurnStatus.CANCELLED.value
+                if code == "TURN_CANCELLED"
+                else TurnStatus.FAILED.value,
                 error_code=code,
                 error_message=message,
             )

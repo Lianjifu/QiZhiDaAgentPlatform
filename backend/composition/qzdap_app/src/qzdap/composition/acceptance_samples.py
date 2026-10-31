@@ -110,6 +110,7 @@ async def seed_acceptance_samples(session: Any, hasher: Any) -> dict[str, Any]:
     from qzdap.modules.agent_runtime.domain.entities import Session
     from qzdap.modules.identity.adapter.persistence.models import UserORM
     from qzdap.modules.memory.adapter.persistence.models import MemoryL2ORM
+    from qzdap_agent_runtime.session.state import TurnStatus
     from qzdap_kernel.ids import AgentId, SessionId, TenantId, UserId, WorkspaceId
 
     summary: dict[str, Any] = {"tenants": [], "sessions": [], "turns": 0, "memories": 0}
@@ -205,7 +206,7 @@ async def seed_acceptance_samples(session: Any, hasher: Any) -> dict[str, Any]:
                         session_id=long_session.id,
                         idempotency_key=f"qa:long:{profile.label}:{index}",
                         key_strength="strong",
-                        status="succeeded",
+                        status=TurnStatus.SUCCEEDED.value,
                         agent_version=long_session.agent_version or "v1",
                         model_version=agent.model or "default",
                         user_input=f"验收样本第 {index + 1} 轮",
@@ -260,7 +261,7 @@ async def seed_acceptance_samples(session: Any, hasher: Any) -> dict[str, Any]:
                     session_id=tool_session.id,
                     idempotency_key=f"qa:tool:{profile.label}",
                     key_strength="strong",
-                    status="succeeded",
+                    status=TurnStatus.SUCCEEDED.value,
                     agent_version=tool_session.agent_version or "v1",
                     model_version=agent.model or "default",
                     user_input="验收样本：跑一次工具",
@@ -328,7 +329,7 @@ async def seed_acceptance_samples(session: Any, hasher: Any) -> dict[str, Any]:
                     key_strength="strong",
                     # ⚠️ **挂在审批上** ✓ —— 状态是 ``waiting`` ✓（不是 running ✓
                     # —— 那是「卡住」✓ —— 审批是**有意停住** ✓）。
-                    status="waiting",
+                    status=TurnStatus.WAITING.value,
                     agent_version=approval_session.agent_version or "v1",
                     model_version=agent.model or "default",
                     user_input="验收样本：需要审批的动作",

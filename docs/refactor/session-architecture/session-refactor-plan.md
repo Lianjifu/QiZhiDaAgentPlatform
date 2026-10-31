@@ -785,7 +785,7 @@ DROP TABLE IF EXISTS checkpoints;
 | **清扫第 3 类** | 会话空闲（30 天） | ✅ **2026-10-31 已达成** ✓—— ① **复活路径** ✓（契约层 `SessionManager.resolve_or_create` ✓ —— 查到**终态**会话就**让出外部会话键** ✓（置 NULL ✓ —— 部分唯一索引 ✓）→ **新建一个接管** ✓（不是状态转移 ✓ —— `closed` 是终态 ✓）→ 用户「隔了一周再问一句」拿到的是新会话 ✓ 而不是死会话 ✓）；② **空闲清扫** ✓（模块侧 `PostgresSessionSweeper._sweep_idle_sessions` ✓ —— 「最后活动」= **最后一轮的开始时间** ✓（不是会话行的 `updated_at` ✓ —— 那列会被摘要写入顶上去 ✗）→ 关闭并记 `metadata["close_reason"]="idle_timeout"` ✓（之前 `reason` 参数**被丢掉了** ✗✗）；③ ⚠️ **只关「有外部会话键」的** ✓ —— 那些**有复活路径** ✓；**Web 会话不关** ✓（没有复活路径 ✓ → 关了就是「用户的旧对话从列表里消失」✗✗ —— 方案 §3.4 点名的坑 ✓）；④ **阈值可配** ✓（`QZDAP_SESSION_IDLE_TIMEOUT_DAYS` ✓ —— 默认 30 天 ✓ —— 决策 #7 ✓）| — |
 | **S-07** | `X7`（审批吞异常）**提前清理** | 该缺陷 = 审批失败后**工具照常执行**；本轮改成「记日志 + **再抛**」（旧打点撤除） | 比原定的 Stage 5 提前到 Stage 1 |
 | **两套 `TurnStatus`** | 契约层 `session/state.py` 的 `TurnStatus`（`queued`/`running`/`waiting`/`succeeded`/`failed`/`cancelled` = `session_turns` 的 check constraint）与模块领域 `entities.py` 的 `TurnStatus`（`running`/`succeeded`/`failed`/`denied` = 旧 `agent_turns` 的语义） | **语义不同** —— `denied` 在新表里没有对应值，不能直接换掉 | **Stage 3**（唯一 turn 实现时合并）。本轮只收敛了 `SessionStatus`（两边语义完全一致，只是取值集合落后于表约束） |
-| **§13.2 规则 1 / 2** | 架构测试里的「只有一个 turn 实现」「状态机是唯一状态写入点」 | 依赖 Stage 3 的唯一 turn 实现 —— 现在跑必然红（两套都在） | Stage 3；本轮只落**能判真**的规则（框架禁令 / 不反向依赖 / 不用同步 saver / `SessionStatus` 只有一处定义） |
+| **§13.2 规则 1 / 2** | 架构测试里的「只有一个 turn 实现」「状态机是唯一状态写入点」 | ✅ **2026-10-31 已达成**（S-39 ✓）—— 规则 1：模块侧图执行器改名 `run_graph` ✓ → `run_turn` 的定义只剩契约层 ✓（架构测试按「别处只许转调」判红 ✓）；规则 2：契约层 `plan_turn_transition` ✓ → 三个写入点全部改走状态机 ✓（**放行的状态值也由状态机给** ✓）。⚠️ 规则 2 的**判据与原文有偏差**（`state.py` 是纯契约层 ✓ → 「裸赋值只许在 `state.py`」字面做不到 ✓ → 落成「写点必须用状态机的词表与判定」✓）| — |
 
 ### Stage 2：Thread 落地
 
@@ -1175,11 +1175,11 @@ def test_session_layer_has_no_framework_imports():
 
 另加三条本层特有的规则：
 
-| # | 规则 | 检查方式 |
-|---|---|---|
-| 1 | **只有一个 turn 实现** | 全仓 `run_turn` / `_run_turn` 的实现类只允许一处（Session 的 `turn_runner.py`）；`use_cases/` 下的旧实现在 Stage 6 后必须不存在 |
-| 2 | **状态机是唯一的状态写入点** | 关键字扫描：`session_turns.status` 的**裸赋值**（`SET status =` / `status =`）只允许出现在 `session/state.py`；其他位置必须调用状态机暴露的转换函数。**放行 CAS（`queued → running`）是状态机的入口**：其 SQL 由 `session/state.py` 的 `claim_turn()` 实现，`turn_runner` 只调用该函数 —— 否则 §4.4 / Router §4.2(c) 的放行判定会被本规则误杀 |
-| 3 | **不使用同步 saver** | import 扫描：`langgraph.checkpoint.postgres`（同步）**禁止**出现，只允许 `langgraph.checkpoint.postgres.aio` |
+| # | 规则 | 检查方式 | 状态 |
+|---|---|---|---|
+| 1 | **只有一个 turn 实现** | 全仓 `run_turn` / `_run_turn` 的实现类只允许一处（Session 的 `turn_runner.py`）；`use_cases/` 下的旧实现在 Stage 6 后必须不存在 | ✅ **已落地**（S-39 · 2026-10-31）—— 模块侧图执行器改名 `run_graph` ✓；架构测试 `test_there_is_exactly_one_turn_implementation` ✓（别处只许转调 ✓）+ `test_the_old_turn_use_cases_are_gone` ✓ |
+| 2 | **状态机是唯一的状态写入点** | 关键字扫描：`session_turns.status` 的**裸赋值**（`SET status =` / `status =`）只允许出现在 `session/state.py`；其他位置必须调用状态机暴露的转换函数。**放行 CAS（`queued → running`）是状态机的入口**：其 SQL 由 `session/state.py` 的 `claim_turn()` 实现，`turn_runner` 只调用该函数 —— 否则 §4.4 / Router §4.2(c) 的放行判定会被本规则误杀 | ✅ **已落地**（S-39 · 2026-10-31）—— ⚠️ **判据与本节原文有偏差（已记录）** ✓：`state.py` 是**纯契约层**（不引 SQLAlchemy ✓ —— 本节第一条禁令 ✓）→ 「裸赋值只许在 `state.py`」字面做不到 ✓ → 落成「**写点必须用状态机的词表与判定**」✓（`TurnStatus` / `plan_turn_transition` ✓）；三个写入点（journal 终态 / 挂起 / 僵尸接管 ✓ + sweeper 僵尸清扫 ✓ + queue 放行 CAS ✓）全部改走它 ✓ —— **放行的状态值由状态机给** ✓（SQL 绑参 ✓）；架构测试按 AST 扫三种写法 ✓（建行 / 改行 / 裸 SQL ✓） |
+| 3 | **不使用同步 saver** | import 扫描：`langgraph.checkpoint.postgres`（同步）**禁止**出现，只允许 `langgraph.checkpoint.postgres.aio` | ✅ 已落地 |
 
 ### 13.3 「没有第二套实现」的扫描
 
@@ -1326,7 +1326,7 @@ def test_session_layer_has_no_framework_imports():
 | **S4** | 严重 | 把 `try_claim` 说成「拆：顺序 → Router、执行权 → Session」 —— 实测它**只有互斥**，`modules/` 里 `ingress_seq` 零命中 | 改为「只管执行权」；顺序是 Router 的**新建**能力 | §11.2 / 附录 B |
 | **S5** | 严重 | X18（`copilot.py` 的 turn 编排）**没有删除落点** → 会永远停在「已弃用」 | 新增 **Stage 3b**（清理窗口 ≥7 天 + 指标归零后删除）；§11.4 改为「按 Stage 执行」 | §11.4 / §12 Stage 3b |
 | **M1** | 中 | 复活语义矛盾：§4.2 有 `closed → open`，§3.4 却是「新建会话」 | **`closed` 定为终态**，复活 = 创建侧行为（新建会话），删掉 `closed → open` | §4.2 / §3.4 |
-| **M2** | 中 | 架构测试规则 2（「`status` 赋值只能在 `state.py`」）会误杀 §4.4 / Router §4.2(c) 的放行 CAS | 改为「**裸赋值**只能在 `state.py`；放行 CAS 是状态机入口（`claim_turn()`）」 | §13.2 |
+| **M2** | 中 | 架构测试规则 2（「`status` 赋值只能在 `state.py`」）会误杀 §4.4 / Router §4.2(c) 的放行 CAS | ⚠️ **已按另一种口径落地**（2026-10-31 ✓）：`state.py` 是**纯契约层** ✓ → 「裸赋值只许在 `state.py`」字面做不到 ✓ → 判据落成「**写点必须用状态机的词表与判定**」✓（`TurnStatus` / `plan_turn_transition` ✓）→ **放行 CAS 不会被误杀** ✓（它的状态值**由状态机给** ✓ —— SQL 绑参 ✓）；另外**「终态 → 另一个终态」不覆盖** ✓（僵尸接管先到就以它为准 ✓）| §13.2 ✓ |
 | **M3** | 中 | 执行权口径与 Router 方案相反（advisory lock + CAS ↔ CAS 是唯一权威） | 统一为「**CAS 是唯一权威**，advisory lock 仅作优化」 | §9 / §6 |
 | **M4** | 中 | 验收第 8 项只列三类超时（sweeper 已是四类） | 补上 `session_inbox` 幂等键过期 | §13.1 |
 | **M5** | 中 | `runner.py` 行数写 915，实测 **914**（三处） | 全部改为 914 | §1.1 / §11.2 / 附录 B |

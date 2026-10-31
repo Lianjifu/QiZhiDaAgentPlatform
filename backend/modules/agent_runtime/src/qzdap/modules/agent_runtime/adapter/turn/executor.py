@@ -5,7 +5,7 @@
 A-26 退役（改接 LangGraph 图）✓ —— Session 层只负责**编排**，
 不碰「循环怎么跑」✓。
 
-⚠️ 因此这里是**适配**而不是「搬」：``SessionGraphRunner.run_turn`` 的参数
+⚠️ 因此这里是**适配**而不是「搬」：``SessionGraphRunner.run_graph`` 的参数
 是 ``**kwargs``，本适配器把契约层的 :class:`TurnRequest` 翻译过去 ✓。
 """
 
@@ -32,7 +32,7 @@ class SessionGraphExecutor:
         resume_state = dict(request.resume_state or {})
         resume = request.resume
         merged = {**resume_state, **(resume or {})} if resume else resume_state
-        return self._graph.run_turn(
+        return self._graph.run_graph(
             tenant_id=request.tenant_id,
             workspace_id=request.workspace_id,
             owner_id=request.owner_id,

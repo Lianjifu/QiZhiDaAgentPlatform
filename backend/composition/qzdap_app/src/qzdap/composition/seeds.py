@@ -33,6 +33,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap_agent_runtime.session.state import TurnStatus
+
 _log = logging.getLogger(__name__)
 
 
@@ -1050,7 +1052,7 @@ async def seed_demo_conversations(
                 session_id=conversation.id,
                 idempotency_key=f"demo:{conversation.id}",
                 key_strength="strong",
-                status="succeeded",
+                status=TurnStatus.SUCCEEDED.value,
                 agent_version=conversation.agent_version or "v1",
                 model_version=agent.model or "default",
             )

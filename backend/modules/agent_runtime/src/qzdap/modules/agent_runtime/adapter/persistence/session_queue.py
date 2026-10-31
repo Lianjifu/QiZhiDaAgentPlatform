@@ -3,8 +3,11 @@
 ⚠️ **放行只有一个权威** ✓（决策 #9 ✓）—— 轮次行的**状态 CAS** ✓：
 
 ```sql
-UPDATE session_turns SET status = 'running' WHERE id = :turn_id AND status = 'queued'
+UPDATE session_turns SET status = :running_status WHERE id = :turn_id AND status = :queued_status
 ```
+
+⚠️ **状态值由状态机给** ✓（§13.2 规则 2 ✓ —— 状态机是唯一的状态写入点 ✓
+—— 这里不另写字符串 ✓）。
 
 只有**原子地**把状态从 ``queued`` 改成 ``running`` 的那个 worker 才能执行 ✓
 —— 不需要任何跨事务锁 ✓（``pg_try_advisory_xact_lock`` 在事务提交时就释放 ✗✗
@@ -29,6 +32,7 @@ from uuid import UUID
 from sqlalchemy import text
 
 from qzdap_agent_runtime.session.queue import QueueDecision, QueueOutcome
+from qzdap_agent_runtime.session.state import TurnStatus, plan_turn_transition
 from qzdap_observability.metrics import (
     record_router_queue_depth,
     record_router_seq_snapshot_drift,
@@ -42,13 +46,13 @@ _RELEASE_SQL = text(
     """
     WITH released AS (
         UPDATE session_turns t
-           SET status = 'running',
+           SET status = :running_status,
                started_at = now()
           FROM agent_sessions s
          WHERE t.id = :turn_id
            AND t.tenant_id = :tenant_id
            AND t.session_id = :session_id
-           AND t.status = 'queued'
+           AND t.status = :queued_status
            AND t.ingress_seq IS NOT NULL
            AND s.id = t.session_id
            AND s.tenant_id = :tenant_id
@@ -72,7 +76,7 @@ _RELEASE_SQL = text(
                 -- ⚠️ **会话里没有正在跑的轮次** ✓（互斥 ✓ —— 决策 #9 ✓）
                 SELECT 1 FROM session_turns running
                  WHERE running.session_id = t.session_id
-                   AND running.status = 'running'
+                   AND running.status = :running_status
            )
         RETURNING t.id, t.session_id, t.ingress_seq
     )
@@ -162,6 +166,10 @@ class PostgresTurnQueue:
         ingress_seq: int,
     ) -> QueueDecision:
         """**试一次放行** ✓ —— 成功时轮次已经是 ``running`` ✓。"""
+        # ⚠️ **要写进去的状态由状态机给** ✓（§13.2 规则 2 ✓ —— 状态机是
+        # 唯一的状态写入点 ✓ —— 这里不另写字符串 ✓）。
+        running_status = plan_turn_transition(TurnStatus.QUEUED, TurnStatus.RUNNING)
+        assert running_status is not None
         drift = await self._snapshot_drift(
             tenant_id=tenant_id, session_id=session_id, ingress_seq=ingress_seq
         )
@@ -171,6 +179,8 @@ class PostgresTurnQueue:
                 "turn_id": turn_id,
                 "session_id": session_id,
                 "tenant_id": tenant_id,
+                "running_status": running_status,
+                "queued_status": TurnStatus.QUEUED.value,
             },
         )
         released = result.scalar_one_or_none() is not None

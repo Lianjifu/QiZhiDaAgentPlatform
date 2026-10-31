@@ -39,6 +39,8 @@ from qzdap_agent_runtime.session.state import (
     can_transition_session,
     is_terminal_session,
     is_terminal_turn,
+    plan_turn_transition,
+    turn_status_of,
 )
 
 __all__ = [
@@ -63,4 +65,6 @@ __all__ = [
     "can_transition_session",
     "is_terminal_session",
     "is_terminal_turn",
+    "plan_turn_transition",
+    "turn_status_of",
 ]

@@ -56,6 +56,7 @@ from qzdap_agent_runtime.session.queue import (
     wait_for_turn_slot,
 )
 from qzdap_agent_runtime.session.sequence import SessionSequencePort
+from qzdap_agent_runtime.session.state import TurnStatus
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_kernel.error_codes import ErrorCode, project_error_message
 from qzdap_kernel.ids import ModelId
@@ -504,7 +505,7 @@ class TurnRunner:
                     )
                     await self._lifecycle.finish_turn(
                         turn_id=request.turn_id,
-                        status="succeeded",
+                        status=TurnStatus.SUCCEEDED.value,
                         final_response=final,
                         input_tokens=turn_usage.input_tokens if turn_usage else None,
                         output_tokens=(turn_usage.output_tokens if turn_usage else None),
@@ -599,12 +600,16 @@ class TurnRunner:
                 seq += 1
         except QueueCancelled as exc:
             # ⚠️ **取消 = 轮次落终态** ✓（不留一行 running ✗✗）。
-            await self._lifecycle.finish_turn(turn_id=request.turn_id, status="cancelled")
+            await self._lifecycle.finish_turn(
+                turn_id=request.turn_id, status=TurnStatus.CANCELLED.value
+            )
             raise TurnCancelled(str(exc)) from exc
         except (QueueFullError, QueueTimeoutError):
             # ⚠️ **超限 / 超时 → 轮次落 cancelled** ✓（可查 ✓ —— 决策 #7 ✓）
             # —— **不静默丢弃** ✓。
-            await self._lifecycle.finish_turn(turn_id=request.turn_id, status="cancelled")
+            await self._lifecycle.finish_turn(
+                turn_id=request.turn_id, status=TurnStatus.CANCELLED.value
+            )
             raise
 
     async def _publish_chunk(self, *, turn_id: UUID, chunk: Any, seq: int) -> Any:

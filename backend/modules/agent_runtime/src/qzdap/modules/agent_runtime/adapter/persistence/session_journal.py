@@ -39,12 +39,18 @@ from qzdap.modules.agent_runtime.adapter.persistence.models import (
     SessionTurnORM,
 )
 from qzdap_agent_runtime.gateway.replay import StoredEvent
+from qzdap_agent_runtime.session.state import (
+    TERMINAL_TURN_STATUSES,
+    TurnStatus,
+    plan_turn_transition,
+)
 from qzdap_kernel.error_codes import ErrorCode
 
 _log = logging.getLogger(__name__)
 
 #: 轮次的终态 —— 重放时用它判断「这一轮结束了没有」。
-FINISHED_STATUSES = ("succeeded", "failed", "cancelled")
+#: ⚠️ **词表来自状态机** ✓（§4.3 ✓ —— 不在这里另写一份 ✓）。
+FINISHED_STATUSES = tuple(status.value for status in TurnStatus if status in TERMINAL_TURN_STATUSES)
 
 
 class PostgresSessionJournal:
@@ -94,7 +100,8 @@ class PostgresSessionJournal:
             key_strength=key_strength,
             # ⚠️ **排队中的轮次落 ``queued``** ✓（Router 方案 §4.2 ✓）——
             # 放行时**原子地**改成 ``running`` ✓（决策 #9 ✓ —— 唯一权威 ✓）。
-            status="queued" if ingress_seq is not None else "running",
+            # ⚠️ **状态词表来自状态机** ✓（§4.3 ✓ —— 不在这里另写字符串 ✓）。
+            status=TurnStatus.QUEUED.value if ingress_seq is not None else TurnStatus.RUNNING.value,
             # ⚠️ **入站序号** ✓（FIFO 的排序依据 ✓）。
             ingress_seq=ingress_seq,
             agent_version=agent_version,
@@ -124,19 +131,39 @@ class PostgresSessionJournal:
 
         返回 True = 确实清掉了一行僵尸（可以重试插入）；False = 撞键的是
         **年轻的**在飞轮次（真的重复执行）→ **不碰**，让调用方撞到 IntegrityError。
+
+        ⚠️ **转移由状态机判定** ✓（§4.3 ✓）—— 每一行各自问一次「这个转移
+        合法吗」✓（``queued`` / ``running`` / ``waiting`` 都能落到 ``failed``
+        ✓ —— 僵尸接管的合法转移 ✓）。
         """
         async with self._sf.session() as session, session.begin():
+            rows = (
+                await session.execute(
+                    select(SessionTurnORM.id, SessionTurnORM.status).where(
+                        SessionTurnORM.session_id == session_id,
+                        SessionTurnORM.idempotency_key == idempotency_key,
+                        SessionTurnORM.key_strength == "strong",
+                        SessionTurnORM.status.in_(("queued", "running", "waiting")),
+                        SessionTurnORM.started_at
+                        < func.now() - text(f"INTERVAL '{CLAIM_STALE_MINUTES} minutes'"),
+                    )
+                )
+            ).all()
+            reaped: list[UUID] = []
+            for turn_id, status in rows:
+                if plan_turn_transition(status, TurnStatus.FAILED) is None:
+                    continue
+                reaped.append(turn_id)
+            if not reaped:
+                return False
             result = await session.execute(
                 update(SessionTurnORM)
-                .where(
-                    SessionTurnORM.session_id == session_id,
-                    SessionTurnORM.idempotency_key == idempotency_key,
-                    SessionTurnORM.key_strength == "strong",
-                    SessionTurnORM.status.in_(("queued", "running", "waiting")),
-                    SessionTurnORM.started_at
-                    < func.now() - text(f"INTERVAL '{CLAIM_STALE_MINUTES} minutes'"),
+                .where(SessionTurnORM.id.in_(reaped))
+                .values(
+                    status=TurnStatus.FAILED.value,
+                    error_code=ErrorCode.ZOMBIE_TAKEOVER.value,
+                    finished_at=func.now(),
                 )
-                .values(status="failed", error_code=ErrorCode.ZOMBIE_TAKEOVER.value)
             )
             return bool(result.rowcount)
 
@@ -153,20 +180,31 @@ class PostgresSessionJournal:
         ⚠️ **同事务更新会话的入站序号快照** ✓（Router 方案 §4.2 ✓）——
         轮次终态与会话行 ``last_completed_seq`` **一起落** ✓ → 正常路径上
         **不一致窗口 = 0** ✓（不一致 → 兜底路径 ✓ + 告警 ✓）。
+
+        ⚠️ **状态写点过状态机** ✓（§13.2 规则 2 ✓）—— 先读当前状态，
+        再由状态机决定「写不写、写什么」✓（**已在终态就不覆盖** ✓ ——
+        僵尸接管先到就以它为准 ✓）。
         """
         if status not in FINISHED_STATUSES:
             raise ValueError(f"not a terminal turn status: {status}")
         async with self._sf.session() as session, session.begin():
-            await session.execute(
-                update(SessionTurnORM)
-                .where(SessionTurnORM.id == turn_id)
-                .values(
-                    status=status,
-                    error_code=error_code,
-                    cost_usd=cost_usd,
-                    finished_at=func.now(),
+            source = (
+                await session.execute(
+                    select(SessionTurnORM.status).where(SessionTurnORM.id == turn_id)
                 )
-            )
+            ).scalar_one_or_none()
+            target = plan_turn_transition(source, status) if source is not None else None
+            if target is not None:
+                await session.execute(
+                    update(SessionTurnORM)
+                    .where(SessionTurnORM.id == turn_id)
+                    .values(
+                        status=target,
+                        error_code=error_code,
+                        cost_usd=cost_usd,
+                        finished_at=func.now(),
+                    )
+                )
             # ⚠️ **快照推进** ✓ —— **任何终态都推进** ✓（失败的那一轮也推进 ✓
             # —— 否则队列会卡在失败那一轮 ✗✗）。
             await session.execute(
@@ -189,12 +227,24 @@ class PostgresSessionJournal:
 
         ⚠️ 同时把轮次状态置 ``waiting`` —— 「这一轮在等审批」这件事
         **由轮次表说了算** ✓（会话那一列只是给人看的 ✓）。
+
+        ⚠️ **状态写点过状态机** ✓（§13.2 规则 2 ✓）—— ``running → waiting``
+        ✓ 合法 ✓（挂起信息**照写** ✓ —— 状态不合法只说明状态没变 ✓）。
         """
         async with self._sf.session() as session, session.begin():
+            source = (
+                await session.execute(
+                    select(SessionTurnORM.status).where(SessionTurnORM.id == turn_id)
+                )
+            ).scalar_one_or_none()
+            target = (
+                plan_turn_transition(source, TurnStatus.WAITING) if source is not None else None
+            )
+            values: dict[str, Any] = {"pending_approval": pending}
+            if target is not None:
+                values["status"] = target
             await session.execute(
-                update(SessionTurnORM)
-                .where(SessionTurnORM.id == turn_id)
-                .values(pending_approval=pending, status="waiting")
+                update(SessionTurnORM).where(SessionTurnORM.id == turn_id).values(**values)
             )
 
     async def find_pending_approval(

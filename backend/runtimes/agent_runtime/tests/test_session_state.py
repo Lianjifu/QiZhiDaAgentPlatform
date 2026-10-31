@@ -19,6 +19,8 @@ from qzdap_agent_runtime.session.state import (
     can_transition_session,
     is_terminal_session,
     is_terminal_turn,
+    plan_turn_transition,
+    turn_status_of,
 )
 
 
@@ -93,10 +95,15 @@ def test_every_illegal_turn_transition_raises(source: TurnStatus, target: TurnSt
         assert_turn_transition(source, target)
 
 
-def test_a_queued_turn_can_only_start_or_be_cancelled() -> None:
-    """排队中的轮次只能「开跑」或「被取消」✓。"""
+def test_a_queued_turn_can_start_be_cancelled_or_be_reaped() -> None:
+    """排队中的轮次只能「开跑」「被取消」「被僵尸接管」✓。
+
+    ⚠️ **``queued → failed`` 合法** ✓ —— 幂等键撞上一个排队途中死掉的轮次
+    ✓ → 把它落终态 ✓（不落它就一直占着键 ✗✗）。
+    """
     assert TurnStatus.RUNNING in TURN_TRANSITIONS[TurnStatus.QUEUED]
     assert TurnStatus.CANCELLED in TURN_TRANSITIONS[TurnStatus.QUEUED]
+    assert TurnStatus.FAILED in TURN_TRANSITIONS[TurnStatus.QUEUED]
     assert TurnStatus.SUCCEEDED not in TURN_TRANSITIONS[TurnStatus.QUEUED]
 
 
@@ -105,3 +112,46 @@ def test_the_terminal_turn_statuses() -> None:
     assert is_terminal_turn(TurnStatus.FAILED) is True
     assert is_terminal_turn(TurnStatus.CANCELLED) is True
     assert is_terminal_turn(TurnStatus.RUNNING) is False
+
+
+# ── 唯一的状态写入点（§13.2 规则 2）────────────────────────────────────────
+
+
+def test_turn_status_of_normalizes_and_rejects_unknown_statuses() -> None:
+    """**状态词表只有一份** ✓ —— 认不出来的直接报错 ✓（不猜 ✓）。"""
+    assert turn_status_of("running") is TurnStatus.RUNNING
+    assert turn_status_of(TurnStatus.WAITING) is TurnStatus.WAITING
+    with pytest.raises(ValueError):
+        turn_status_of("done")
+
+
+def test_plan_turn_transition_returns_the_target_for_a_legal_move() -> None:
+    assert plan_turn_transition(TurnStatus.RUNNING, TurnStatus.SUCCEEDED) == "succeeded"
+    assert plan_turn_transition("running", TurnStatus.WAITING) == "waiting"
+    assert plan_turn_transition(TurnStatus.QUEUED, TurnStatus.RUNNING) == "running"
+
+
+def test_plan_turn_transition_writes_nothing_for_the_same_status() -> None:
+    """同态 = 幂等 ✓ —— 不写 ✓（重复收尾不会把状态改坏 ✓）。"""
+    assert plan_turn_transition(TurnStatus.SUCCEEDED, TurnStatus.SUCCEEDED) is None
+
+
+def test_plan_turn_transition_never_overwrites_a_finished_turn() -> None:
+    """⚠️ **已经在终态就不写** ✓ —— 僵尸接管先到就以它为准 ✓。
+
+    （否则一个迟到的「成功」会把僵尸的结论盖掉 ✗✗ —— 状态机说终态不可转移 ✓。）
+    """
+    assert plan_turn_transition(TurnStatus.FAILED, TurnStatus.SUCCEEDED) is None
+    assert plan_turn_transition(TurnStatus.CANCELLED, TurnStatus.FAILED) is None
+
+
+def test_plan_turn_transition_refuses_to_revive_a_finished_turn() -> None:
+    """**终态 → 非终态非法** ✓ —— 把完结的轮次拉回运行 ✗✗ → 报错 ✓。"""
+    with pytest.raises(IllegalTransitionError):
+        plan_turn_transition(TurnStatus.SUCCEEDED, TurnStatus.RUNNING)
+
+
+def test_plan_turn_transition_rejects_an_illegal_move() -> None:
+    """非法转移**报错** ✓ —— 不是静默忽略 ✓。"""
+    with pytest.raises(IllegalTransitionError):
+        plan_turn_transition(TurnStatus.RUNNING, TurnStatus.QUEUED)

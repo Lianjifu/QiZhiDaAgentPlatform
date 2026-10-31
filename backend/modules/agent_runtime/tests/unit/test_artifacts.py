@@ -261,7 +261,7 @@ async def test_a_tool_artifact_becomes_a_card() -> None:
     session_id = uuid4()
     turn_id = uuid4()
     chunks = []
-    async for chunk in runner.run_turn(
+    async for chunk in runner.run_graph(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=OWNER,
@@ -309,7 +309,7 @@ async def test_without_a_store_no_card_is_emitted() -> None:
         tool_port=_ArtifactToolPort(),  # type: ignore[arg-type]
     )
     chunks = []
-    async for chunk in runner.run_turn(
+    async for chunk in runner.run_graph(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=OWNER,

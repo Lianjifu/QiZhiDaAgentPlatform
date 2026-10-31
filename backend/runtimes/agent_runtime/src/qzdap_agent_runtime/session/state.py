@@ -86,7 +86,9 @@ SESSION_TRANSITIONS: Mapping[SessionStatus, frozenset[SessionStatus]] = {
 
 #: 轮次状态的合法转移（§4.3）。
 TURN_TRANSITIONS: Mapping[TurnStatus, frozenset[TurnStatus]] = {
-    TurnStatus.QUEUED: frozenset({TurnStatus.RUNNING, TurnStatus.CANCELLED}),
+    # ⚠️ **``queued → failed`` 合法** ✓ —— 僵尸接管（幂等键撞上一个排队
+    # 途中死掉的轮次 ✓ → 把它落终态 ✓ —— 不落它就一直占着键 ✗✗）。
+    TurnStatus.QUEUED: frozenset({TurnStatus.RUNNING, TurnStatus.CANCELLED, TurnStatus.FAILED}),
     TurnStatus.RUNNING: frozenset(
         {
             TurnStatus.WAITING,
@@ -141,6 +143,43 @@ def can_transition_session(source: SessionStatus, target: SessionStatus) -> bool
     return target in SESSION_TRANSITIONS.get(source, frozenset())
 
 
+def turn_status_of(status: str | TurnStatus) -> TurnStatus:
+    """**把状态归一成枚举** ✓ —— 认不出来就报错 ✓（不猜 ✓）。"""
+    if isinstance(status, TurnStatus):
+        return status
+    try:
+        return TurnStatus(str(status))
+    except ValueError as exc:
+        raise ValueError(f"未知的轮次状态：{status!r}") from exc
+
+
+def plan_turn_transition(source: str | TurnStatus, target: str | TurnStatus) -> str | None:
+    """**状态机是唯一的状态写入点** ✓（Session 方案 §13.2 规则 2 ✓）。
+
+    返回**要写进库的状态** ✓ —— ``None`` = **不要写** ✓。
+
+    三种情形 ✓：
+
+    1. **同态** ✓（已经是目标状态 ✓）→ 不写 ✓（幂等 ✓）；
+    2. **已经在终态** ✓ → 不写 ✓（**不覆盖僵尸清扫的结论** ✓ ——
+       僵尸先到就以僵尸为准 ✓）；
+    3. 其余 → **校验转移合法性** ✓（非法就报错 ✓）→ 返回目标状态 ✓。
+
+    ⚠️ **终态 → 非终态非法** ✓（把已完结的轮次拉回运行 ✗✗ → 报错 ✓），
+    但**终态 → 另一个终态** = 不写 ✓（不是错 ✓ —— 只是不改 ✓）。
+    """
+    src = turn_status_of(source)
+    dst = turn_status_of(target)
+    if src == dst:
+        return None
+    if src in TERMINAL_TURN_STATUSES:
+        if dst in TERMINAL_TURN_STATUSES:
+            return None
+        raise IllegalTransitionError("turn", str(src), str(dst))
+    assert_turn_transition(src, dst)
+    return str(dst)
+
+
 def is_terminal_session(status: SessionStatus) -> bool:
     return status in TERMINAL_SESSION_STATUSES
 
@@ -162,4 +201,6 @@ __all__ = [
     "can_transition_session",
     "is_terminal_session",
     "is_terminal_turn",
+    "plan_turn_transition",
+    "turn_status_of",
 ]

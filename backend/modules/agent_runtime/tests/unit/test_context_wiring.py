@@ -105,7 +105,7 @@ async def _run(
 ) -> list[Any]:
     return [
         chunk
-        async for chunk in runner.run_turn(
+        async for chunk in runner.run_graph(
             tenant_id=TENANT,
             workspace_id=WORKSPACE,
             owner_id=OWNER,
@@ -212,7 +212,7 @@ class TestModelResolution:
         runner = SessionGraphRunner(llm=llm)
         chunks = [
             chunk
-            async for chunk in runner.run_turn(
+            async for chunk in runner.run_graph(
                 tenant_id=TENANT,
                 workspace_id=WORKSPACE,
                 owner_id=OWNER,

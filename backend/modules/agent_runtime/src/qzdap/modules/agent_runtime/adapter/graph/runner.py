@@ -162,7 +162,7 @@ class SessionGraphRunner:
         if expert_assembler is not None:
             self._expert_assembler = expert_assembler
 
-    async def run_turn(
+    async def run_graph(
         self, *, parent_span_context: Any = None, **kwargs: Any
     ) -> AsyncGenerator[TurnChunk, None]:
         """Run one turn under an ``agent.turn`` span.
@@ -230,7 +230,7 @@ class SessionGraphRunner:
         # ⚠️ **这一轮能不能挂起审批** ✓ —— IM 渠道是 False ✓（没有人能完成
         # 审批 ✓ → 挂起 = 这一轮卡死 ✗✗）→ **需要审批的工具不暴露** ✓。
         allow_approval: bool = True,
-        # ⚠️ **本轮的降级标记盒子** ✓（C-22 ✓）—— 由 ``run_turn`` 建 ✓，
+        # ⚠️ **本轮的降级标记盒子** ✓（C-22 ✓）—— 由 ``run_graph`` 建 ✓，
         # 这里**装配完**就填 ✓（第一块产出之前 ✓ → 每块都带得上 ✓）。
         flags_box: dict[str, tuple[str, ...]] | None = None,
     ) -> AsyncGenerator[TurnChunk, None]:

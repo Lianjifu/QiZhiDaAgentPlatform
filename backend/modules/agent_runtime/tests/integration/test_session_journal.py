@@ -435,3 +435,64 @@ async def test_a_zombie_turn_does_not_block_the_key_forever(journal_ctx) -> None
     assert second != zombie
     assert await journal.get_turn_status(zombie, tenant_id=tenant) == "failed"
     assert await journal.get_turn_status(second, tenant_id=tenant) == "running"
+
+
+# ── 状态机是唯一的状态写入点（§13.2 规则 2）────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_finished_turn_is_not_rewritten_by_a_late_finish(journal_ctx) -> None:  # type: ignore[no-untyped-def]
+    """⚠️ **已经在终态就不写** ✓ —— 僵尸接管先到就以它为准 ✓。
+
+    （否则一个迟到的「成功」会把僵尸的结论盖掉 ✗✗ —— 状态机说终态不可转移 ✓。）
+    """
+    journal, factory = journal_ctx
+    tenant = uuid4()
+    session_id = await _session(factory, tenant_id=tenant)
+    turn_id = await _start(journal, session_id=session_id, tenant_id=tenant, key="k1")
+
+    await journal.finish_turn(turn_id=turn_id, status="failed", error_code="ZOMBIE_TAKEOVER")
+    # 迟到的「成功」—— 不该把终态改回去。
+    await journal.finish_turn(turn_id=turn_id, status="succeeded")
+
+    assert await journal.get_turn_status(turn_id, tenant_id=tenant) == "failed"
+
+
+@pytest.mark.asyncio
+async def test_a_pending_approval_moves_the_turn_to_waiting(journal_ctx) -> None:  # type: ignore[no-untyped-def]
+    """**审批挂起** → 轮次落 ``waiting`` ✓（§8 · 决策 #6 ✓）。"""
+    journal, factory = journal_ctx
+    tenant = uuid4()
+    session_id = await _session(factory, tenant_id=tenant)
+    turn_id = await _start(journal, session_id=session_id, tenant_id=tenant, key="k1")
+
+    await journal.write_pending_approval(turn_id=turn_id, pending={"approval_id": "a-1"})
+
+    assert await journal.get_turn_status(turn_id, tenant_id=tenant) == "waiting"
+    # 再挂一次也不报错（幂等 ✓）—— 挂起信息照写 ✓。
+    await journal.write_pending_approval(turn_id=turn_id, pending={"approval_id": "a-2"})
+    assert await journal.get_turn_status(turn_id, tenant_id=tenant) == "waiting"
+
+
+@pytest.mark.asyncio
+async def test_a_queued_turn_can_be_cancelled(journal_ctx) -> None:  # type: ignore[no-untyped-def]
+    """排队中的轮次被取消 ✓ —— ``queued → cancelled`` ✓（状态机放行 ✓）。"""
+    journal, factory = journal_ctx
+    tenant = uuid4()
+    session_id = await _session(factory, tenant_id=tenant)
+    turn_id = uuid4()
+    await journal.start_turn(
+        turn_id=turn_id,
+        tenant_id=tenant,
+        workspace_id=uuid4(),
+        session_id=session_id,
+        idempotency_key="k-queued",
+        key_strength="strong",
+        agent_version="v1",
+        model_version="default",
+        ingress_seq=1,
+    )
+    assert await journal.get_turn_status(turn_id, tenant_id=tenant) == "queued"
+
+    await journal.finish_turn(turn_id=turn_id, status="cancelled")
+    assert await journal.get_turn_status(turn_id, tenant_id=tenant) == "cancelled"

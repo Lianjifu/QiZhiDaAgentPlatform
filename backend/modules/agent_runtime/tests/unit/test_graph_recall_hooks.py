@@ -98,7 +98,7 @@ def _agent() -> CatalogAgent:
 async def _run(runner: SessionGraphRunner) -> list[Any]:
     return [
         chunk
-        async for chunk in runner.run_turn(
+        async for chunk in runner.run_graph(
             tenant_id=TENANT,
             workspace_id=WORKSPACE,
             owner_id=OWNER,
@@ -153,7 +153,7 @@ async def test_the_agent_knowledge_bindings_reach_the_search_port() -> None:
         {"id": str(enabled), "enabled": True},
         {"id": str(disabled), "enabled": False},
     ]
-    async for _chunk in runner.run_turn(
+    async for _chunk in runner.run_graph(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=OWNER,

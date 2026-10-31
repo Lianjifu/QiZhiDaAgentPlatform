@@ -126,7 +126,7 @@ async def test_loop_chains_tool_calls_then_finishes() -> None:
 
     runner = SessionGraphRunner(llm=llm, skill_port=LookupSkill())  # type: ignore[arg-type]
     chunks = []
-    async for chunk in runner.run_turn(
+    async for chunk in runner.run_graph(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=OWNER,
@@ -168,7 +168,7 @@ async def test_max_steps_stops() -> None:
     agent = replace(agent, max_steps=2)
     runner = SessionGraphRunner(llm=llm, skill_port=LookupSkill())  # type: ignore[arg-type]
     kinds = []
-    async for chunk in runner.run_turn(
+    async for chunk in runner.run_graph(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=OWNER,
@@ -195,7 +195,7 @@ async def test_high_risk_emits_approval_and_resume_executes() -> None:
     )
     runner = SessionGraphRunner(llm=llm, skill_port=ConfirmSkill())  # type: ignore[arg-type]
     first = []
-    async for chunk in runner.run_turn(
+    async for chunk in runner.run_graph(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=OWNER,
@@ -210,7 +210,7 @@ async def test_high_risk_emits_approval_and_resume_executes() -> None:
     pending = dict(runner.last_loop_state.get("pending_approval") or {})
     pending["decision"] = "approved"
     second = []
-    async for chunk in runner.run_turn(
+    async for chunk in runner.run_graph(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=OWNER,
@@ -231,7 +231,7 @@ async def test_memory_write_and_second_turn_recall() -> None:
     memory = RecordingMemory()
     llm = ScriptedLLM([{"delta": "客户叫张三。"}])
     runner = SessionGraphRunner(llm=llm, memory_port=memory)  # type: ignore[arg-type]
-    async for _chunk in runner.run_turn(
+    async for _chunk in runner.run_graph(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=OWNER,
@@ -247,7 +247,7 @@ async def test_memory_write_and_second_turn_recall() -> None:
     llm2 = ScriptedLLM([{"delta": "客户是张三。"}])
     runner2 = SessionGraphRunner(llm=llm2, memory_port=memory)  # type: ignore[arg-type]
     texts = []
-    async for chunk in runner2.run_turn(
+    async for chunk in runner2.run_graph(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=OWNER,
@@ -282,7 +282,7 @@ async def test_compact_chunk_on_long_history() -> None:
     runner = SessionGraphRunner(llm=llm)
     history = [{"role": "user", "content": "y" * 400} for _ in range(30)]
     kinds = []
-    async for chunk in runner.run_turn(
+    async for chunk in runner.run_graph(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=OWNER,
@@ -362,7 +362,7 @@ async def test_saved_graph_early_delta_cancellation_closes_provider() -> None:
         # （旧路径是无条件暴露 ✓ —— 那等于每个 agent 都凭空多了跑代码的能力 ✗✗）。
         sandbox_port=Sandbox(),  # type: ignore[arg-type]
     )
-    stream = runner.run_turn(
+    stream = runner.run_graph(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
         owner_id=OWNER,
