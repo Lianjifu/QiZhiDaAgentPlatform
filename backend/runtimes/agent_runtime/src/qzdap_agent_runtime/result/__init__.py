@@ -1,40 +1,23 @@
-"""Result 层：内部事件类型 ✓（⚠️ **对外契约只有前端那一套** ✓）。
+"""Result 层：**只有一套**结果形状 ✓ —— 一律是**对外 chunk** ✓（A-39 ✓）。
 
-⚠️ **事件类型有两套** ✓ —— 本模块的是**内部**的 ✓（出站编码器在用 ✓），
-**前端契约**是 ``libs/schema/dtos/turn.py`` 的 ``TurnChunk`` ✓
-（关注点 #24 ✓ —— 两套并存归 Agent Stage 7 收口 ✓）。
+⚠️ **以前这里有第二套** ✓（16 种 ``*Event`` ✓ —— 与对外 chunk **一一对应**
+✓）—— 两套形状 = **两处要改** ✗✗ → 现在**只剩 chunk** ✓
+（``qzdap_schema.dtos.turn`` ✓ —— **前端已经认这个** ✓）。
+
+⚠️ **换的过程中没丢字段** ✓（方案 A-39 的提醒 ✓）—— 内部事件多带的东西已经
+**补进 chunk 契约** ✓（``event_id`` ✓ / usage 的 6 维 ✓ / error 的
+``detailed`` ✓ / ``source_turn_id`` ✓ / ``query_hash`` ✓ / ``removed_ids``
+✓ / ``expires_at`` ✓ / done 的状态与版本 ✓）。
+
+依据：Agent 方案（关注点 #24 ✓）+ Gateway 方案 §9.0（降级标记 ✓ —— C-22 ✓）。
 """
 
 from __future__ import annotations
 
-from .events import (
-    ApprovalRequiredEvent,
-    ContextCompactedEvent,
-    DoneEvent,
-    ErrorEvent,
-    EventKind,
-    KnowledgeSearchEvent,
-    MemoryWriteEvent,
-    MessageEvent,
-    ResultEvent,
-    SkillInvocationEvent,
-    ToolCallEvent,
-    ToolResultEvent,
-    UsageEvent,
-)
+from .factory import DEGRADATION_FLAGS, DegradationFlag, to_chunk
 
 __all__ = [
-    "ApprovalRequiredEvent",
-    "ContextCompactedEvent",
-    "DoneEvent",
-    "ErrorEvent",
-    "EventKind",
-    "KnowledgeSearchEvent",
-    "MemoryWriteEvent",
-    "MessageEvent",
-    "ResultEvent",
-    "SkillInvocationEvent",
-    "ToolCallEvent",
-    "ToolResultEvent",
-    "UsageEvent",
+    "DEGRADATION_FLAGS",
+    "DegradationFlag",
+    "to_chunk",
 ]

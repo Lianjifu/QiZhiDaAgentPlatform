@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol, get_args, runtime_checkable
 
-from ..result.events import DegradationFlag
+from ..result import DegradationFlag
 
 logger = logging.getLogger(__name__)
 
@@ -349,163 +349,26 @@ class OutboxWorker:
 
 
 def to_result_event(event: Any) -> Any:
-    """**outbox 事件 → 标准结果事件** ✓（一份转换，多处复用 ✓）。
+    """**outbox 事件 → 对外 chunk** ✓（一份转换 ✓ —— 真正的转换在
+    :func:`qzdap_agent_runtime.result.to_chunk` ✓）。
 
-    ⚠️ 转换**不抛**（未知类型落成 ErrorEvent ✓）—— 投递失败要能被 worker
-    记成 FAILED，而不是让 worker 自己崩 ✓。
+    ⚠️ **这里只做「取字段」** ✓ —— 形状的活儿全在工厂里 ✓（**单一实现**
+    ✓ —— 之前这里与 ``result/events.py`` **各有一份** ✗✗ → A-39 已合并 ✓）。
     """
-    from ..result.events import (
-        ApprovalRequiredEvent,
-        ContextCompactedEvent,
-        DoneEvent,
-        ErrorEvent,
-        KnowledgeSearchEvent,
-        MemoryWriteEvent,
-        MessageEvent,
-        SkillInvocationEvent,
-        ToolCallEvent,
-        ToolResultEvent,
-        UsageEvent,
-    )
+    from ..result import to_chunk
 
-    ev_type = getattr(event, "event_type", "message")
+    ev_type = str(getattr(event, "event_type", "message"))
     payload = getattr(event, "payload", {}) or {}
-    turn_id = getattr(event, "turn_id", "unknown")
-    seq = getattr(event, "seq", 0)
-    event_id = f"outbox-{turn_id}-{seq}"
-    # ⚠️ **降级标记透传** ✓（C-22 ✓）—— 词汇**只有这三个** ✓（Gateway 方案
-    # §9.0 ✓）—— 认不出来的**丢掉** ✓（前端按固定词汇判断 ✓ —— 塞别的进去
-    # 前端不认 ✗✗）。
-    flags = tuple(
-        str(flag) for flag in (payload.get("flags") or []) if str(flag) in _DEGRADATION_FLAGS
+    turn_id = str(getattr(event, "turn_id", "unknown"))
+    seq = int(getattr(event, "seq", 0))
+    return to_chunk(
+        event_type=ev_type,
+        payload=payload,
+        turn_id=turn_id,
+        seq=seq,
+        event_id=f"outbox-{turn_id}-{seq}",
+        trace_id=payload.get("trace_id") if isinstance(payload, dict) else None,
     )
-
-    result_event: Any = None
-    if ev_type in ("message", IM_REPLY_EVENT_TYPE):
-        # ⚠️ 出站队列里的那条消息（``im_reply``）与轮次里的 chunk 消息**同形** ——
-        # 都是「一段文本」✓（投递目标在 payload 里 ✓）。
-        result_event = MessageEvent(
-            turn_id=turn_id,
-            seq=seq,
-            event_id=event_id,
-            delta=str(payload.get("content", "") or payload.get("text", "")),
-        )
-    elif ev_type == "tool_call":
-        result_event = ToolCallEvent(
-            turn_id=turn_id,
-            seq=seq,
-            event_id=event_id,
-            tool_name=str(payload.get("tool_name", "")),
-            tool_call_id=str(payload.get("tool_call_id", "")),
-            arguments=payload.get("arguments", {}),
-        )
-    elif ev_type == "tool_result":
-        result_event = ToolResultEvent(
-            turn_id=turn_id,
-            seq=seq,
-            event_id=event_id,
-            tool_call_id=str(payload.get("tool_call_id", "")),
-            output=payload.get("output"),
-            is_error=bool(payload.get("is_error", False)),
-            latency_ms=int(payload.get("latency_ms", 0)),
-        )
-    elif ev_type == "skill_invocation":
-        result_event = SkillInvocationEvent(
-            turn_id=turn_id,
-            seq=seq,
-            event_id=event_id,
-            invocation_id=str(payload.get("invocation_id", "")),
-            skill=str(payload.get("skill", "")),
-            status=str(payload.get("status", "started")),
-        )
-    elif ev_type == "memory_write":
-        result_event = MemoryWriteEvent(
-            turn_id=turn_id,
-            seq=seq,
-            event_id=event_id,
-            layer=str(payload.get("layer", "l1")),
-            source_turn_id=str(payload.get("source_turn_id", "")),
-            preview=str(payload.get("preview", "")),
-        )
-    elif ev_type == "knowledge_search":
-        result_event = KnowledgeSearchEvent(
-            turn_id=turn_id,
-            seq=seq,
-            event_id=event_id,
-            query_hash=str(payload.get("query_hash", "")),
-            hits=payload.get("hits", []),
-            citations=payload.get("citations", []),
-            degraded=bool(payload.get("degraded", False)),
-        )
-    elif ev_type == "context_compacted":
-        result_event = ContextCompactedEvent(
-            turn_id=turn_id,
-            seq=seq,
-            event_id=event_id,
-            tokens_before=int(payload.get("tokens_before", 0)),
-            tokens_after=int(payload.get("tokens_after", 0)),
-            removed_ids=payload.get("removed_ids", []),
-        )
-    elif ev_type == "approval_required":
-        result_event = ApprovalRequiredEvent(
-            turn_id=turn_id,
-            seq=seq,
-            event_id=event_id,
-            approval_id=str(payload.get("approval_id", "")),
-            tool_call_id=str(payload.get("tool_call_id", "")),
-            tool=str(payload.get("tool", "")),
-            args_preview=str(payload.get("args_preview", "")),
-            reason=str(payload.get("reason", "")),
-            expires_at=str(payload.get("expires_at", "2026-10-15T10:15:00Z")),
-        )
-    elif ev_type == "usage":
-        result_event = UsageEvent(
-            turn_id=turn_id,
-            seq=seq,
-            event_id=event_id,
-            input_tokens=int(payload.get("input_tokens", 0)),
-            output_tokens=int(payload.get("output_tokens", 0)),
-            cache_tokens=int(payload.get("cache_tokens", 0)),
-            cost_usd=payload.get("cost_usd"),
-            cost_unknown=bool(payload.get("cost_unknown", True)),
-            tenant_id=str(payload.get("tenant_id", "")),
-            workspace_id=str(payload.get("workspace_id", "")),
-            user_id=str(payload.get("user_id", "")),
-            agent_id=str(payload.get("agent_id", "")),
-            agent_version=str(payload.get("agent_version", "")),
-            model_version=str(payload.get("model_version", "")),
-            retry_count=int(payload.get("retry_count", 0)),
-        )
-    elif ev_type == "done":
-        result_event = DoneEvent(
-            turn_id=turn_id,
-            seq=seq,
-            event_id=event_id,
-            final_message=str(payload.get("final_message", "")),
-            status=str(payload.get("status", "succeeded")),
-            agent_version=str(payload.get("agent_version", "")),
-            model_version=str(payload.get("model_version", "")),
-        )
-    else:
-        result_event = ErrorEvent(
-            turn_id=turn_id,
-            seq=seq,
-            event_id=event_id,
-            error_code=str(payload.get("error_code", "INTERNAL_ERROR")),
-            safe_message=str(payload.get("message", ev_type)),
-            retriable=False,
-        )
-
-    if flags:
-        # ⚠️ **一处盖章** ✓（所有事件类型都带 ✓ —— 前端读哪一块都一样 ✓）。
-        result_event = result_event.model_copy(update={"flags": flags})
-
-    return result_event
-
-
-# ---------------------------------------------------------------------------
-# OutboxToSinkAdapter (Stage 5 PR B)
-# ---------------------------------------------------------------------------
 
 
 class OutboxToSinkAdapter:

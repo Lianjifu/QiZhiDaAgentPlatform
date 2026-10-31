@@ -9,7 +9,7 @@
 
 ⚠️ **与方案草图的一处偏离（实施修正）**：方案写的是
 ``deliver(event) -> DeliveryOutcome`` —— 但**投递目标**（渠道、外部会话、渠道能力）
-不在事件里：``ResultEvent`` 是**会话内部**的协议，与渠道无关。没有目标就无法投递，
+不在事件里：``TurnChunk`` 是**会话内部**的协议，与渠道无关。没有目标就无法投递，
 所以本端口带一个 ``target`` 参数。事件与目标分开，Gateway 才能把同一份事件流
 投给不同渠道。
 """
@@ -24,7 +24,7 @@ from qzdap_agent_runtime.gateway.types import ChannelCapabilities, ChannelType
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Mapping
 
-    from qzdap_agent_runtime.result.events import ResultEvent
+    from qzdap_schema.dtos.turn import TurnChunk
 
 DeliveryStatus = Literal["sent", "degraded", "skipped", "failed"]
 
@@ -81,11 +81,11 @@ class ResultSink(Protocol):
     台账 §5.3 点名要取用的资产）。
     """
 
-    async def deliver(self, event: ResultEvent, *, target: OutboundTarget) -> DeliveryOutcome:
+    async def deliver(self, event: TurnChunk, *, target: OutboundTarget) -> DeliveryOutcome:
         """编码并投递一条事件 —— 失败抛异常还是返回 failed 由实现自选。"""
         ...
 
-    def replay(self, turn_id: str, after_seq: int = 0) -> AsyncIterator[ResultEvent]:
+    def replay(self, turn_id: str, after_seq: int = 0) -> AsyncIterator[TurnChunk]:
         """按 seq 重放某一轮的事件流（无感重放的前置能力，Stage 4b 启用）。"""
         ...
 

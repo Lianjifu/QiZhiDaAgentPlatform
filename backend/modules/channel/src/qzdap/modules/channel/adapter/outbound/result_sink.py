@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
     from qzdap.modules.channel.application.ports import OutboundAdapter
     from qzdap_agent_runtime.gateway.types import ChannelType
-    from qzdap_agent_runtime.result.events import ResultEvent
+    from qzdap_schema.dtos.turn import TurnChunk
 
 _log = logging.getLogger("qzdap.channel.outbound")
 
@@ -34,7 +34,7 @@ class ChannelResultSink:
     def __init__(self, *, outbound_registry: Mapping[ChannelType, OutboundAdapter]) -> None:
         self._registry = dict(outbound_registry)
 
-    async def deliver(self, event: ResultEvent, *, target: OutboundTarget) -> DeliveryOutcome:
+    async def deliver(self, event: TurnChunk, *, target: OutboundTarget) -> DeliveryOutcome:
         """编码一条事件并投给目标渠道。
 
         **不抛异常**：投递失败返回 ``status="failed"`` —— 由调用方决定重试还是
@@ -93,7 +93,7 @@ class ChannelResultSink:
             degraded_flags=tuple(degraded),
         )
 
-    async def replay(self, turn_id: str, after_seq: int = 0) -> AsyncIterator[ResultEvent]:
+    async def replay(self, turn_id: str, after_seq: int = 0) -> AsyncIterator[TurnChunk]:
         """出站重放 —— **未实现**。
 
         无感重放要的是「把事件流重放给**客户端**」，那需要 ``session_events``

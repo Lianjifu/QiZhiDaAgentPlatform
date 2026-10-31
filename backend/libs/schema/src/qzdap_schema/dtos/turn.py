@@ -48,6 +48,12 @@ class ChunkEnvelope(BaseModel):
     turn_id: UUID
     seq: int = Field(ge=0)
     kind: ChunkKind
+    #: ⚠️ **事件的稳定 id** ✓（A-39 ✓）—— 之前只存在于内部事件协议 ✓
+    #: （`ResultEvent.event_id` ✓）→ 换成 chunk 之后**不能丢** ✓。
+    #: ⚠️ **可选** ✓（前端不读 ✓ —— 向后兼容 ✓）。
+    event_id: str = ""
+    #: **trace id** ✓（同 A-39 ✓ —— 排查用 ✓ —— 可选 ✓）。
+    trace_id: str | None = None
     #: ⚠️ **降级标记** ✓（C-22 ✓ —— Gateway 方案 §9.0 ✓）——
     #: `recall_degraded` / `compaction_degraded` / `interactive_degraded` ✓
     #: —— **不进错误码枚举** ✓（那是「降级」✓ 不是「错误」✓ —— 前端按策略
@@ -93,6 +99,8 @@ class MemoryWriteChunk(ChunkEnvelope):
     kind: Literal["memory_write"] = "memory_write"
     layer: Literal["l1", "l2"] = "l1"
     preview: str = ""
+    #: **来源轮次** ✓（A-39 ✓ —— 可追溯 ✓）。
+    source_turn_id: str = ""
 
 
 class ApprovalRequiredChunk(ChunkEnvelope):
@@ -101,6 +109,8 @@ class ApprovalRequiredChunk(ChunkEnvelope):
     tool_name: str
     arguments: dict = Field(default_factory=dict)
     reason: str = ""
+    #: **过期时刻** ✓（A-39 ✓ —— ISO-8601 ✓ —— 前端据此提示「快过期了」✓）。
+    expires_at: str = ""
 
 
 class ContextCompactedChunk(ChunkEnvelope):
@@ -111,6 +121,8 @@ class ContextCompactedChunk(ChunkEnvelope):
     #: ⚠️ **可选字段** ✓ —— 前端目前只按 ``kind`` 提示 ✓，不读任何字段 ✓
     #: → 向后兼容 ✓（Context 方案决策 #7 ✓）。
     degraded: bool = False
+    #: **被压缩掉的条目 id** ✓（A-39 ✓ —— 排查「压掉了什么」✓）。
+    removed_ids: list[str] = Field(default_factory=list)
 
 
 class UsageChunk(ChunkEnvelope):
@@ -120,11 +132,27 @@ class UsageChunk(ChunkEnvelope):
     cache_read_tokens: int = Field(ge=0)
     cache_write_tokens: int = Field(ge=0)
     cost_usd: float = Field(ge=0)
+    # ⚠️ **归属的 6 个维度** ✓（A-39 ✓）—— 之前只存在于内部事件协议 ✓
+    #: （`UsageEvent` ✓）→ 换成 chunk **不能丢** ✓（成本要按租户/工作区/用户
+    #: 归集 ✓ —— 丢了就归不了 ✗✗）。
+    tenant_id: str = ""
+    workspace_id: str = ""
+    user_id: str = ""
+    agent_id: str = ""
+    agent_version: str = ""
+    model_version: str = ""
+    #: **重试次数** ✓（同 A-39 ✓）。
+    retry_count: int = Field(ge=0, default=0)
 
 
 class DoneChunk(ChunkEnvelope):
     kind: Literal["done"] = "done"
     final_message: str | None = None
+    #: **终态** ✓（A-39 ✓ —— `succeeded` / `failed` / `cancelled` ✓）。
+    status: Literal["succeeded", "failed", "cancelled"] = "succeeded"
+    #: **产出这一轮的版本** ✓（A-39 ✓ —— 排查「当时跑的是哪个版本」✓）。
+    agent_version: str = ""
+    model_version: str = ""
 
 
 class QueuedChunk(ChunkEnvelope):
@@ -148,6 +176,9 @@ class ErrorChunk(ChunkEnvelope):
     code: str
     message: str
     retriable: bool = False
+    #: ⚠️ **技术细节** ✓（A-39 ✓）—— 只给**日志 / trace** 看 ✓
+    #: （**不给用户** ✓ —— 用户看的是 `message` ✓ —— 那才是安全摘要 ✓）。
+    detailed: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +257,8 @@ class KnowledgeSearchChunk(ChunkEnvelope):
 
     kind: Literal["knowledge_search"] = "knowledge_search"
     query: str
+    #: **查询的哈希** ✓（A-39 ✓ —— 日志里能对上同一批检索 ✓ —— 不记原文 ✓）。
+    query_hash: str = ""
     hits: list[dict] = Field(
         default_factory=list,
         description="每条 {id, title, snippet, score}",

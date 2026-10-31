@@ -975,6 +975,7 @@ ToolRuntimePort
 | 未接线的**整包** | `engine.py` ✓ / `governance/` ✓ / `evaluation/` ✓ / `observability/` ✓ / `tools/` ✓ / `execution/executor.py` ✓ / `execution/lock.py` ✓ / `context/budget.py` ✓ / `memory/layered.py` ✓ / `result/sink.py` ✓ | ✅ **Agent Stage 7 已删**（2026-10-31 —— 台账 **X1** ✓） |
 | 旧模块侧的模型流 | `adapter/graph/chat_model.py`（`stream_chat` / `complete_chat` / 旧的 `ToolCallAccumulator`） | ✅ **Agent Stage 7 已删**（2026-10-31 —— 工具调用装配迁到 runtime 的 `agent_loop/reason.py` ✓） |
 | 模块侧的**第二个工具运行时** | `adapter/tools/tool_runtime_adapter.py`（Stage 2 的 `ToolRuntimeAdapter`） | ✅ **Agent Stage 7 已删**（2026-10-31 —— 工具执行统一走 `ModuleToolRuntime` ✓ → `execute_tool` ✓ → `modules/tool` ✓） |
+| **平行的 16 种 `*Event`** | `runtimes/agent_runtime/.../result/events.py` | ✅ **已删**（2026-10-31 · **A-39** ✓ —— 台账 **X1-a** ✓）—— **先扩 chunk 契约** ✓（usage 的 6 维 ✓ / error 的 `detailed` ✓ / `event_id` ✓ …—— 没丢字段 ✓）**再换** ✓ → `result/` 只剩**一个工厂** ✓（`to_chunk` ✓）—— 出站编码器改吃 chunk ✓ |
 
 ---
 

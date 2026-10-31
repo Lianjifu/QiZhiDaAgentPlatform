@@ -9,11 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-from pydantic import ValidationError
-
 from qzdap_agent_runtime.outbox import to_result_event
-from qzdap_agent_runtime.result.events import DegradationFlag, MessageEvent
+from qzdap_agent_runtime.result import DEGRADATION_FLAGS, DegradationFlag
 
 
 class _OutboxEvent:
@@ -38,7 +35,7 @@ def test_the_outbox_passes_the_flags_through() -> None:
     event = to_result_event(
         _OutboxEvent({"content": "你好", "flags": ["recall_degraded", "compaction_degraded"]})
     )
-    assert event.flags == ("recall_degraded", "compaction_degraded")
+    assert event.flags == ["recall_degraded", "compaction_degraded"]
 
 
 def test_an_unknown_flag_is_dropped() -> None:
@@ -46,10 +43,9 @@ def test_an_unknown_flag_is_dropped() -> None:
     event = to_result_event(
         _OutboxEvent({"content": "你好", "flags": ["recall_degraded", "bogus"]})
     )
-    assert event.flags == ("recall_degraded",)
+    assert event.flags == ["recall_degraded"]
 
 
-def test_the_event_validates_the_flag() -> None:
-    """**事件上的标记是受约束的** ✓（写错就报错 ✓ —— 不静默接受 ✓）。"""
-    with pytest.raises(ValidationError):
-        MessageEvent(turn_id="t", seq=0, event_id="e", delta="x", flags=("nope",))  # type: ignore[arg-type]
+def test_the_flag_vocabulary_is_shared_with_the_factory() -> None:
+    """**标记的词汇只有一份** ✓（契约层一份 ✓ —— 出站只放行这三个 ✓）。"""
+    assert set(DegradationFlag.__args__) == DEGRADATION_FLAGS

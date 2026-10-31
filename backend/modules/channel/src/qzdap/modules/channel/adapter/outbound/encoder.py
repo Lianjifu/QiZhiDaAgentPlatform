@@ -22,16 +22,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from qzdap_agent_runtime.result.events import (
-    ApprovalRequiredEvent,
-    ArtifactReadyEvent,
-    AttachmentReadyEvent,
-    ErrorEvent,
-    MessageEvent,
-    PlanProposedEvent,
-    ResultEvent,
-)
 from qzdap_schema.dtos.errors import try_project_error
+from qzdap_schema.dtos.turn import (
+    ApprovalRequiredChunk,
+    ArtifactReadyChunk,
+    AttachmentReadyChunk,
+    ErrorChunk,
+    MessageChunk,
+    PlanProposedChunk,
+)
 
 if TYPE_CHECKING:
     from qzdap_agent_runtime.gateway.types import ChannelCapabilities
@@ -70,25 +69,29 @@ class EncodedOutbound:
     metadata: dict[str, str] = field(default_factory=dict)
 
 
-def encode_result_event(event: ResultEvent, capabilities: ChannelCapabilities) -> EncodedOutbound:
-    """把一条标准结果事件编码成渠道表达。
+def encode_result_event(event: Any, capabilities: ChannelCapabilities) -> EncodedOutbound:
+    """把一条**对外 chunk** 编码成渠道表达。
 
     **规则表见 Gateway 方案 §6**；能力来自**入站时**的渠道能力声明（§3.5），
     出站不再按 ``channel_type`` 硬判断。
+
+    ⚠️ **入参是 chunk** ✓（A-39 ✓ —— 内部那 16 种事件类型**已删** ✓ ——
+    两套形状 = 两处要改 ✗✗）。
     """
-    kind = event.kind
+    kind = str(getattr(event, "kind", "unknown"))
 
     if kind in SILENT_KINDS:
         return EncodedOutbound(text="", skip=True)
 
-    if isinstance(event, MessageEvent):
-        return EncodedOutbound(text=event.delta)
+    if isinstance(event, MessageChunk):
+        return EncodedOutbound(text=event.content)
 
-    if isinstance(event, ApprovalRequiredEvent):
+    if isinstance(event, ApprovalRequiredChunk):
+        args = _args_preview(event.arguments)
         text = (
-            f"需要审批：{event.tool}\n"
+            f"需要审批：{event.tool_name}\n"
             f"理由：{event.reason}\n"
-            f"参数：{event.args_preview}\n"
+            f"参数：{args}\n"
             f"回复 YES 同意 / NO 拒绝（审批编号 {event.approval_id}）"
         )
         if not capabilities.cards:
@@ -97,17 +100,17 @@ def encode_result_event(event: ResultEvent, capabilities: ChannelCapabilities) -
             text=text,
             card={
                 "type": "approval",
-                "title": f"需要审批：{event.tool}",
-                "body": f"{event.reason}\n{event.args_preview}",
+                "title": f"需要审批：{event.tool_name}",
+                "body": f"{event.reason}\n{args}",
                 # 回调必须带 approval_id —— 点击动作要能找回是哪一次审批。
                 "actions": [
-                    {"label": "同意", "value": {"approval_id": event.approval_id}},
-                    {"label": "拒绝", "value": {"approval_id": event.approval_id}},
+                    {"label": "同意", "value": {"approval_id": str(event.approval_id)}},
+                    {"label": "拒绝", "value": {"approval_id": str(event.approval_id)}},
                 ],
             },
         )
 
-    if isinstance(event, PlanProposedEvent):
+    if isinstance(event, PlanProposedChunk):
         steps = "\n".join(
             f"{index}. {_step_title(step)}" for index, step in enumerate(event.steps, start=1)
         )
@@ -123,7 +126,7 @@ def encode_result_event(event: ResultEvent, capabilities: ChannelCapabilities) -
             },
         )
 
-    if isinstance(event, (ArtifactReadyEvent, AttachmentReadyEvent)):
+    if isinstance(event, (ArtifactReadyChunk, AttachmentReadyChunk)):
         text = f"{event.name} 已就绪：{event.download_path}"
         if not capabilities.cards:
             return EncodedOutbound(text=text, degraded_flags=(FLAG_ARTIFACT_DEGRADED,))
@@ -136,17 +139,27 @@ def encode_result_event(event: ResultEvent, capabilities: ChannelCapabilities) -
             },
         )
 
-    if isinstance(event, ErrorEvent):
+    if isinstance(event, ErrorChunk):
         # 错误**要告诉用户**（不是 usage/done 那类「不打扰用户」的事件）。
         # 已知错误码 → 用**投影文案**（同一个码永远说同一句话 ✓）；
-        # 细节留在事件的 `detailed` 里（仅日志/trace 用）。
-        projected = try_project_error(event.error_code, "im")
+        # 细节留在 `detailed` 里（仅日志/trace 用）。
+        projected = try_project_error(event.code, "im")
         if projected:
             return EncodedOutbound(text=projected)
-        return EncodedOutbound(text=f"出错了：{event.safe_message}")
+        return EncodedOutbound(text=f"出错了：{event.message}")
 
     # 未知种类 —— 不静默丢：按文本兜底，交给投递结果记账。
-    return EncodedOutbound(text=str(getattr(event, "kind", "unknown")))
+    return EncodedOutbound(text=kind)
+
+
+def _args_preview(arguments: Any) -> str:
+    """**参数预览** ✓（chunk 里是结构化的参数 ✓ —— 这里拍平成一行 ✓）。"""
+    if isinstance(arguments, dict):
+        preview = arguments.get("preview")
+        if preview:
+            return str(preview)
+        return ", ".join(f"{key}={value}" for key, value in sorted(arguments.items()))
+    return str(arguments)
 
 
 def _step_title(step: Any) -> str:
