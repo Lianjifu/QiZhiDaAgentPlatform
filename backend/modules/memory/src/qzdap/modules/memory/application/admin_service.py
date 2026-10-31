@@ -384,7 +384,7 @@ class MemoryAdminService:
             "config": config.to_agent_policy(label=label),
         }
 
-    async def trend(self, *, workspace_id: UUID, range: str = "7d") -> dict[str, list[int]]:
+    async def trend(self, *, workspace_id: UUID, range: str = "7d") -> dict[str, Any]:
         """**真实使用趋势** ✓（C7 ✓ —— M-33 ✓）。
 
         ⚠️ **不再编序列** ✓（旧的 ``_series(n)`` 是拿条目数编出来的 ✗✗ ——

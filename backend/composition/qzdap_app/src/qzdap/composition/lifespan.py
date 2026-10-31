@@ -1596,7 +1596,7 @@ async def _refine_memory_buffers(app: Any, container: Container) -> None:
     if factory is None:
         return
     try:
-        async with container.session_factory() as session:
+        async with container.session_factory().session() as session:
             service = factory.for_session(session)
             now = datetime.now(UTC)
             report = await service.refine_buffers(now=now)

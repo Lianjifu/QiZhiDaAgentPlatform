@@ -45,14 +45,14 @@ class DataSubjectService:
         """
         results, failures = await self._run("delete", request)
         if failures:
-            raise DataSubjectFailed(failures)
+            raise DataSubjectFailed(_describe(failures))
         return results
 
     async def export(self, request: DataSubjectRequest) -> dict[str, Any]:
         """**导出** ✓（逐个 scope ✓ —— 汇总成一个 dict ✓）。"""
         results, failures = await self._run("export", request)
         if failures:
-            raise DataSubjectFailed(failures)
+            raise DataSubjectFailed(_describe(failures))
         return results
 
     async def _run(
@@ -66,6 +66,11 @@ class DataSubjectService:
             except Exception as exc:
                 failures[name] = f"{type(exc).__name__}: {exc}"
         return results, failures
+
+
+def _describe(failures: dict[str, str]) -> str:
+    """**失败要说清楚** ✓（哪个 scope 报了什么 ✓）。"""
+    return "; ".join(f"{name}: {reason}" for name, reason in sorted(failures.items()))
 
 
 __all__ = [

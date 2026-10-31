@@ -153,8 +153,11 @@ def create_app() -> FastAPI:
     app.include_router(governance_router)
 
     def _actor_from_principal(p: Principal) -> ActorContext:
+        tenant_id = p.tenant_id
+        if tenant_id is None:
+            raise HTTPException(status_code=401, detail="principal has no tenant")
         return ActorContext(
-            tenant_id=p.tenant_id,
+            tenant_id=tenant_id,
             workspace_id=p.workspace_id,
             principal_id=p.id,
             roles=frozenset(p.roles),

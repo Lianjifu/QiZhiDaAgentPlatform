@@ -93,7 +93,7 @@ class SqlMemoryBufferRepository:
             .where(SessionMemoryBufferORM.user_id == user_id)
         )
         result = await self._s.execute(stmt)
-        return int(result.rowcount or 0)
+        return int(getattr(result, "rowcount", 0) or 0)
 
     # ── 管理面（L1 表退役后的唯一来源 ✓ —— M-46 ✓）──────────────────
 
@@ -172,7 +172,7 @@ class SqlMemoryBufferRepository:
         result = await self._s.execute(
             delete(SessionMemoryBufferORM).where(SessionMemoryBufferORM.session_id == session_id)
         )
-        return int(result.rowcount or 0)
+        return int(getattr(result, "rowcount", 0) or 0)
 
 
 __all__ = ["SqlMemoryBufferRepository"]
