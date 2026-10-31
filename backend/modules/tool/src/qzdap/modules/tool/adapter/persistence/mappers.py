@@ -14,7 +14,7 @@ from qzdap.modules.tool.domain import (
     ToolCallStatus,
     ToolProtocol,
 )
-from qzdap_schema.ids import TenantId, ToolCallId, ToolId, WorkspaceId
+from qzdap_kernel.ids import TenantId, ToolCallId, ToolId, WorkspaceId
 
 
 def _to_auth_config(raw: dict | None) -> AuthConfig | None:

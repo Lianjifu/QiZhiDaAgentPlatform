@@ -20,7 +20,7 @@ from qzdap.modules.governance.domain.errors import (
     ApproverMustDiffer,
 )
 from qzdap.modules.governance.domain.value_objects import ApprovalStatus
-from qzdap_schema.ids import TenantId, UserId
+from qzdap_kernel.ids import TenantId, UserId
 
 TID = TenantId(UUID("00000000-0000-0000-0000-000000000001"))
 USER_A = UserId(UUID("00000000-0000-0000-0000-00000000000a"))

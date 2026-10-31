@@ -22,7 +22,7 @@ from qzdap.modules.governance.domain.policy_match import (
     match,
 )
 from qzdap.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
-from qzdap_schema.ids import PolicyId, TenantId, WorkspaceId
+from qzdap_kernel.ids import PolicyId, TenantId, WorkspaceId
 from qzdap_vault.actor import ActorContext
 
 TID = TenantId(UUID("00000000-0000-0000-0000-000000000001"))

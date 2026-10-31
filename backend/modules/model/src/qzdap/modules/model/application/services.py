@@ -43,8 +43,8 @@ from qzdap.modules.model.domain.errors import (
     ModelNotFound,
     RouteNotFound,
 )
+from qzdap_kernel.ids import ModelId, TenantId, WorkspaceId
 from qzdap_llm import ChatRequest, ChatResponse, LLMChunk
-from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
 _log = logging.getLogger(__name__)
@@ -1163,7 +1163,10 @@ class ModelService:
                 "chain": [],
                 "error": f"route {route_id} not found",
             }
-        actor = ActorContext(tenant_id=tenant_id, workspace_id=workspace_id)
+        actor = ActorContext(
+            tenant_id=TenantId(tenant_id),
+            workspace_id=WorkspaceId(workspace_id) if workspace_id is not None else None,
+        )
         try:
             chain = await self.select_chain_for_strategy(actor=actor, route_id=ModelId(route_id))
         except ModelNotFound as exc:

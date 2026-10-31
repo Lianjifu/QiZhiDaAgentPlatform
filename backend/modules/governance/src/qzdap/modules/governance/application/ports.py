@@ -18,7 +18,7 @@ from qzdap.modules.governance.domain.entities import (
     PolicyRule,
 )
 from qzdap.modules.governance.domain.value_objects import ApprovalStatus
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     ApprovalId,
     PolicyId,
     TenantId,

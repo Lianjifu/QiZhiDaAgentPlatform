@@ -45,7 +45,7 @@ from qzdap.modules.platform.domain.entities import (
     TenantSetting,
 )
 from qzdap.modules.platform.domain.errors import PlanAlreadyExists
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     PlanId,
     SubscriptionId,
     TenantId,

@@ -17,7 +17,7 @@ from qzdap.modules.skill.domain.errors import (
     SkillNotFound,
     SkillSandboxUnavailable,
 )
-from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
 
 @dataclass(slots=True)

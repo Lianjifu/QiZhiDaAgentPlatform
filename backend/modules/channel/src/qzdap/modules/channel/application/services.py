@@ -67,7 +67,7 @@ if TYPE_CHECKING:
         WebhookSecretRepository,
     )
     from qzdap_agent_runtime.gateway.types import ChannelType
-    from qzdap_schema.ids import ChannelId, TenantId
+    from qzdap_kernel.ids import ChannelId, TenantId
 
 DEFAULT_TIMESTAMP_TOLERANCE_SECONDS = 300
 

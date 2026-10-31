@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from qzdap.modules.evaluation.application.ports import SubAgentPort
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentTemplateId,
     TenantId,
     UserId,

@@ -27,7 +27,7 @@ from uuid import UUID
 
 from langchain_core.tools import BaseTool
 
-from qzdap_schema.ids import ModelId
+from qzdap_kernel.ids import ModelId
 
 from ..agent_router.classifier import TaskKind
 from ..execution.chat_model import QZDAPChatModel

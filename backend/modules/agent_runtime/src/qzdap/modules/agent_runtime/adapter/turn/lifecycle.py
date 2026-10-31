@@ -22,7 +22,7 @@ from qzdap.modules.agent_runtime.application.ports import (
 )
 from qzdap.modules.agent_runtime.domain import Turn
 from qzdap_agent_runtime.session.turn_runner import TurnLifecyclePort, TurnRequest
-from qzdap_schema.ids import SessionId, TenantId, TurnId, WorkspaceId
+from qzdap_kernel.ids import SessionId, TenantId, TurnId, WorkspaceId
 
 _log = logging.getLogger(__name__)
 

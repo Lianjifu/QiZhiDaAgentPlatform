@@ -37,7 +37,7 @@ from qzdap.modules.observability_module.domain.value_objects import (
     RunStatus,
     RunType,
 )
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     TenantId,
     UserId,
     WorkspaceId,

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from qzdap.modules.agent_factory.application.ports import AgentTemplateRepository
 from qzdap.modules.agent_factory.domain.entities import AgentTemplate
-from qzdap_schema.ids import AgentTemplateId, TenantId
+from qzdap_kernel.ids import AgentTemplateId, TenantId
 
 
 @dataclass(slots=True)

@@ -53,7 +53,7 @@ from qzdap.modules.governance.domain.value_objects import (
     PolicyEffect,
     PolicySubject,
 )
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     DecisionEventId,
     TenantId,
     UserId,

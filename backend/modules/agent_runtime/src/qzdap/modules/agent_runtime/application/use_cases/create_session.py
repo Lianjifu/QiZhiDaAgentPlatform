@@ -18,7 +18,7 @@ from qzdap.modules.agent_runtime.application.ports import (
     SessionRepository,
 )
 from qzdap.modules.agent_runtime.domain import Session
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentId,
     SessionId,
     TenantId,

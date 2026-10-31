@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from qzdap.modules.evaluation.application.ports import EvalDatasetRepository
 from qzdap.modules.evaluation.domain.entities import EvalDataset
 from qzdap.modules.evaluation.domain.errors import EvalDatasetNotFound
-from qzdap_schema.ids import EvalDatasetId, TenantId, WorkspaceId
+from qzdap_kernel.ids import EvalDatasetId, TenantId, WorkspaceId
 
 
 @dataclass(slots=True)

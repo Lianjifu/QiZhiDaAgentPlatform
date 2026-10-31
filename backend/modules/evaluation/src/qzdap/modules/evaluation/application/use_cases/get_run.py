@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from qzdap.modules.evaluation.application.ports import EvalRunRepository
 from qzdap.modules.evaluation.domain.entities import EvalRun
 from qzdap.modules.evaluation.domain.errors import EvalRunNotFound
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentTemplateId,
     AgentVersionId,
     EvalRunId,

@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from qzdap_kernel.errors import BusinessRuleError
-from qzdap_schema.ids import TenantId, WorkspaceId
+from qzdap_kernel.ids import TenantId, WorkspaceId
 
 if TYPE_CHECKING:
     from qzdap.modules.observability_module.application.services import (

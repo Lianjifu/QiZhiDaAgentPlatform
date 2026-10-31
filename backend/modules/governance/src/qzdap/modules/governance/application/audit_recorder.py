@@ -32,7 +32,7 @@ import logging
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
-from qzdap_schema.ids import TenantId, UserId
+from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 from qzdap_vault.actor import ActorContext
 
 if TYPE_CHECKING:
@@ -268,8 +268,10 @@ def actor_from_payload(
     if not isinstance(roles, (frozenset, list, tuple, set)):
         roles = ()
     return ActorContext(
-        tenant_id=tenant_id,
-        workspace_id=workspace_id if isinstance(workspace_id, type(tenant_id)) else None,
+        tenant_id=TenantId(tenant_id),
+        workspace_id=(
+            WorkspaceId(workspace_id) if isinstance(workspace_id, type(tenant_id)) else None
+        ),
         principal_id=principal_id,
         roles=frozenset(roles),
     )

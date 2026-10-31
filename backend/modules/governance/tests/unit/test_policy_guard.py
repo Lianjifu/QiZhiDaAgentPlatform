@@ -18,7 +18,7 @@ from qzdap.modules.governance.application.policy_evaluator import PolicyEvaluato
 from qzdap.modules.governance.domain.entities import PolicyRule
 from qzdap.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
 from qzdap_kernel.errors import ActionDeniedError, ApprovalRequiredError
-from qzdap_schema.ids import TenantId, UserId
+from qzdap_kernel.ids import TenantId, UserId
 from qzdap_vault.actor import ActorContext
 
 TID = TenantId(UUID("00000000-0000-0000-0000-000000000001"))

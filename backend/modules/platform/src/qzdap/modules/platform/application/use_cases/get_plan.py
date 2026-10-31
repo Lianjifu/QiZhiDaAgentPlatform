@@ -19,7 +19,7 @@ def build(service: PlatformService) -> Any:
             if plan is not None:
                 return plan
         if plan_id:
-            from qzdap_schema.ids import PlanId
+            from qzdap_kernel.ids import PlanId
 
             plan = await service.plan_repo.get(plan_id=PlanId(UUID(plan_id)))
             if plan is not None:

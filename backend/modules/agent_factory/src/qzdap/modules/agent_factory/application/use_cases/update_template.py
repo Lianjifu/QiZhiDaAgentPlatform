@@ -14,7 +14,7 @@ from qzdap.modules.agent_factory.application.ports import (
 )
 from qzdap.modules.agent_factory.domain.entities import AgentTemplate
 from qzdap.modules.agent_factory.domain.value_objects import AgentTemplateStatus
-from qzdap_schema.ids import AgentTemplateId, TenantId
+from qzdap_kernel.ids import AgentTemplateId, TenantId
 
 
 @dataclass(slots=True)

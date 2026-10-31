@@ -25,7 +25,7 @@ from qzdap.modules.governance.domain.errors import (
 )
 from qzdap.modules.governance.domain.events import ApprovalDecided
 from qzdap.modules.governance.domain.value_objects import ApprovalStatus
-from qzdap_schema.ids import ApprovalId, TenantId, UserId
+from qzdap_kernel.ids import ApprovalId, TenantId, UserId
 
 
 class ApprovalService:

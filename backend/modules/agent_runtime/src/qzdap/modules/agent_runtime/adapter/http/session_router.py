@@ -100,7 +100,7 @@ async def copilot_dependency(request: Request) -> CopilotSessionService:
             )
             from qzdap.modules.agent_runtime.adapter.skills import SkillServiceAdapter
             from qzdap.modules.agent_runtime.adapter.tools import ToolServiceAdapter
-            from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+            from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
             tenant_id = TenantId(UUID(tenant_raw))
             workspace_id = WorkspaceId(UUID(workspace_raw))
@@ -347,7 +347,7 @@ def build_session_router() -> APIRouter:
             import logging
 
             try:
-                from qzdap_schema.ids import ModelId
+                from qzdap_kernel.ids import ModelId
 
                 route_id_uuid = ModelId(UUID(str(route_id_raw)))
             except (ValueError, TypeError, AttributeError) as exc:

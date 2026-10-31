@@ -36,8 +36,8 @@ from qzdap_agent_runtime.ports import (
     ToolInvocationResult,
     ToolRuntimePort,
 )
+from qzdap_kernel.ids import ModelId
 from qzdap_llm.client import ChatRequest, LLMChunk
-from qzdap_schema.ids import ModelId
 
 # ---------------------------------------------------------------------------
 # 五个端口的契约测试

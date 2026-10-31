@@ -23,7 +23,7 @@ from qzdap.modules.governance.domain.events import (
     PolicyUpdated,
 )
 from qzdap.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
-from qzdap_schema.ids import PolicyId, TenantId, UserId, WorkspaceId
+from qzdap_kernel.ids import PolicyId, TenantId, UserId, WorkspaceId
 
 
 class PolicyService:

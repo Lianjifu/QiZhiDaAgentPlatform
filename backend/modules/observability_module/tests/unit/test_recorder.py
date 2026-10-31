@@ -22,7 +22,7 @@ from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunType,
 )
-from qzdap_schema.ids import TenantId, WorkspaceId
+from qzdap_kernel.ids import TenantId, WorkspaceId
 
 from ._in_memory import (
     InMemoryCostRecordRepository,

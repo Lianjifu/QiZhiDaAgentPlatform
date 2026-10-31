@@ -19,8 +19,8 @@ from qzdap.modules.agent_runtime.domain import TurnStatus as DomainTurnStatus
 from qzdap_agent_runtime.gateway.replay import StoredEvent
 from qzdap_agent_runtime.session.state import TurnStatus
 from qzdap_kernel.events import DomainEvent
+from qzdap_kernel.ids import SessionId, TenantId, TurnId, WorkspaceId
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
-from qzdap_schema.ids import SessionId, TenantId, TurnId, WorkspaceId
 
 
 class InMemoryTurnClaim:

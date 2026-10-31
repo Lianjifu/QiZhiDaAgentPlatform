@@ -110,7 +110,7 @@ async def seed_acceptance_samples(session: Any, hasher: Any) -> dict[str, Any]:
     from qzdap.modules.agent_runtime.domain.entities import Session
     from qzdap.modules.identity.adapter.persistence.models import UserORM
     from qzdap.modules.memory.adapter.persistence.models import MemoryL2ORM
-    from qzdap_schema.ids import AgentId, SessionId, TenantId, UserId, WorkspaceId
+    from qzdap_kernel.ids import AgentId, SessionId, TenantId, UserId, WorkspaceId
 
     summary: dict[str, Any] = {"tenants": [], "sessions": [], "turns": 0, "memories": 0}
 

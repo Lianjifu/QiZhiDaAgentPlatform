@@ -119,7 +119,7 @@ class TestExpertAssembler:
     @pytest.mark.asyncio
     async def test_the_model_id_is_resolved_by_name(self) -> None:
         """**模型名 → 查表 → 模型 id** ✓（§5.2.1 ✓ —— 查表不是决策 ✓）。"""
-        from qzdap_schema.ids import ModelId
+        from qzdap_kernel.ids import ModelId
 
         resolved = ModelId(uuid4())
         selection = AgentSelection(

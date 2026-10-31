@@ -15,7 +15,7 @@ from qzdap.modules.tool.application.tool_schema import (
     tool_risk,
 )
 from qzdap.modules.tool.domain import Tool, ToolProtocol
-from qzdap_schema.ids import TenantId, ToolId, WorkspaceId
+from qzdap_kernel.ids import TenantId, ToolId, WorkspaceId
 
 _TENANT = TenantId(uuid4())
 _WORKSPACE = WorkspaceId(uuid4())

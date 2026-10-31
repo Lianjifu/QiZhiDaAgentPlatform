@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from qzdap.modules.observability_module.domain.entities import CostRecord
 from qzdap.modules.observability_module.domain.value_objects import CostType
-from qzdap_schema.ids import TenantId, WorkspaceId
+from qzdap_kernel.ids import TenantId, WorkspaceId
 
 if TYPE_CHECKING:
     from qzdap.modules.observability_module.application.services import (

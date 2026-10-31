@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from qzdap_kernel.ids import TenantId, WorkspaceId
 from qzdap_vault import (
     ActorContext,
     EnvVaultSecretsResolver,
@@ -24,7 +25,10 @@ from qzdap_vault import (
 def _actor() -> ActorContext:
     from uuid import UUID
 
-    return ActorContext(tenant_id=UUID(int=1), workspace_id=UUID(int=2))
+    return ActorContext(
+        tenant_id=TenantId(UUID(int=1)),
+        workspace_id=WorkspaceId(UUID(int=2)),
+    )
 
 
 # parse_ref -----------------------------------------------------------------

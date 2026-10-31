@@ -60,7 +60,7 @@ from qzdap.modules.tool.domain.errors import (
     UpstreamUnavailable,
 )
 from qzdap_kernel.contextvars import current_trace_id
-from qzdap_schema.ids import ToolCallId
+from qzdap_kernel.ids import TenantId, ToolCallId, WorkspaceId
 
 _log = logging.getLogger("qzdap.modules.tool")
 
@@ -145,8 +145,8 @@ class InvokeToolUseCase:
 
             await self._policy_guard.check(  # type: ignore[attr-defined]
                 actor=ActorContext(
-                    tenant_id=tenant_id,
-                    workspace_id=workspace_id,
+                    tenant_id=TenantId(tenant_id),
+                    workspace_id=WorkspaceId(workspace_id) if workspace_id is not None else None,
                     principal_id=owner_id,
                 ),
                 action=f"tool:execute:{tool_name}",

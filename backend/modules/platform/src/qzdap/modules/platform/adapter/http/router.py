@@ -82,7 +82,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: PlatformService = Depends(platform_service_dependency),
     ) -> SubscriptionResponse | None:
-        from qzdap_schema.ids import TenantId
+        from qzdap_kernel.ids import TenantId
 
         sub = await svc.get_my_subscription(tenant_id=TenantId(x_tenant_id))
         if sub is None:
@@ -99,7 +99,7 @@ def build_router() -> APIRouter:
         x_user_id: UUID | None = Header(None, alias="X-User-Id"),
         svc: PlatformService = Depends(platform_service_dependency),
     ) -> SubscriptionResponse:
-        from qzdap_schema.ids import TenantId, UserId
+        from qzdap_kernel.ids import TenantId, UserId
 
         try:
             sub = await svc.assign_subscription(
@@ -122,7 +122,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: PlatformService = Depends(platform_service_dependency),
     ) -> TenantSettingListResponse:
-        from qzdap_schema.ids import TenantId
+        from qzdap_kernel.ids import TenantId
 
         rows = await svc.list_settings(tenant_id=TenantId(x_tenant_id))
         items = [tenant_setting_to_dto(s) for s in rows]
@@ -207,7 +207,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: PlatformService = Depends(platform_service_dependency),
     ) -> TenantSettingResponse:
-        from qzdap_schema.ids import TenantId
+        from qzdap_kernel.ids import TenantId
 
         rows = await svc.list_settings(tenant_id=TenantId(x_tenant_id))
         match = next((s for s in rows if s.key == key), None)

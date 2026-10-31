@@ -9,7 +9,7 @@ from qzdap.modules.evaluation.domain.entities import (
     EvalDataset,
     EvalRun,
 )
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentTemplateId,
     AgentVersionId,
     EvalCaseId,

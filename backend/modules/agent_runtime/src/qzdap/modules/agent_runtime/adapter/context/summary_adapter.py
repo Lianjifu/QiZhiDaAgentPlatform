@@ -16,8 +16,8 @@ import logging
 
 from qzdap.modules.agent_runtime.application.ports import LLMPort
 from qzdap_agent_runtime.context.compressor import SummaryModelPort
+from qzdap_kernel.ids import ModelId
 from qzdap_llm.client import ChatMessage, ChatRequest
-from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
 _log = logging.getLogger(__name__)

@@ -17,6 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
+from qzdap_kernel.ids import TenantId, WorkspaceId
+
 
 @dataclass(slots=True, frozen=True)
 class ActorContext:
@@ -25,15 +27,19 @@ class ActorContext:
     ``tenant_id`` is required; ``workspace_id`` and ``principal_id`` are
     optional but recommended.  A resolver MAY raise ``SecretAccessDenied``
     when these are missing.
+
+    ⚠️ **租户 / 工作区用品牌 ID** ✓（`TenantId` / `WorkspaceId` ✓）—— 这是
+    「**身份上下文 → 应用层**」的那道边界 ✓：**裸 `UUID` 只允许出现在最外层**
+    （JWT 解析 / HTTP 参数 / DB 行 ✓）→ **进到这里之前就转好** ✓。
     """
 
-    tenant_id: UUID
-    workspace_id: UUID | None = None
+    tenant_id: TenantId
+    workspace_id: WorkspaceId | None = None
     principal_id: UUID | None = None
     roles: frozenset[str] = frozenset()
 
     @classmethod
-    def anonymous(cls, *, tenant_id: UUID) -> ActorContext:
+    def anonymous(cls, *, tenant_id: TenantId) -> ActorContext:
         return cls(tenant_id=tenant_id)
 
 

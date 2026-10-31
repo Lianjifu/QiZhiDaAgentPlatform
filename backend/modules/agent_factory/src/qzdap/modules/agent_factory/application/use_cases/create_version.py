@@ -13,7 +13,7 @@ from qzdap.modules.agent_factory.application.ports import (
     AgentVersionRepository,
 )
 from qzdap.modules.agent_factory.domain.entities import AgentVersion
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentTemplateId,
     AgentVersionId,
     TenantId,

@@ -25,7 +25,7 @@ from qzdap.modules.self_evolution.domain.value_objects import (
     EvolveKind,
     EvolveStatus,
 )
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     EvolveCandidateId,
     TenantId,
     UserId,

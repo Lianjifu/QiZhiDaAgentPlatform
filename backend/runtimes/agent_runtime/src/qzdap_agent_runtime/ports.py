@@ -29,8 +29,8 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 from uuid import UUID
 
+from qzdap_kernel.ids import ModelId
 from qzdap_llm.client import ChatRequest, LLMChunk
-from qzdap_schema.ids import ModelId
 
 from .agent_router.classifier import TaskKind
 

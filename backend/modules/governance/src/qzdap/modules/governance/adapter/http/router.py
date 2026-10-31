@@ -42,7 +42,7 @@ from qzdap.modules.governance.application.approval_service import ApprovalServic
 from qzdap.modules.governance.application.data_subject import DataSubjectService
 from qzdap.modules.governance.application.policy_service import PolicyService
 from qzdap_agent_runtime.governance.data_subject import DataSubjectRequest
-from qzdap_schema.ids import ApprovalId, PolicyId
+from qzdap_kernel.ids import ApprovalId, PolicyId, WorkspaceId
 from qzdap_vault.actor import ActorContext
 
 router = APIRouter(tags=["governance"])
@@ -83,7 +83,7 @@ async def create_policy(
         subject_ref=body.subject_ref,
         action_pattern=body.action_pattern,
         effect=body.effect,
-        workspace_id=body.workspace_id,
+        workspace_id=WorkspaceId(body.workspace_id) if body.workspace_id else None,
         priority=body.priority,
         approval_required=body.approval_required,
         quota=body.quota,
@@ -103,7 +103,7 @@ async def list_policies(
 ) -> PolicyListResponse:
     rules = await svc.list(
         tenant_id=actor.tenant_id,
-        workspace_id=workspace_id,
+        workspace_id=WorkspaceId(workspace_id) if workspace_id else None,
         enabled_only=enabled_only,
         limit=limit,
         cursor=cursor,

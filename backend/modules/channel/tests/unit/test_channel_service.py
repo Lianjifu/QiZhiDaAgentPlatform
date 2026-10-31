@@ -69,7 +69,7 @@ from qzdap_agent_runtime.gateway.types import (
     ChannelType,
     InboundMessage,
 )
-from qzdap_schema.ids import ChannelId, TenantId
+from qzdap_kernel.ids import ChannelId, TenantId
 
 if TYPE_CHECKING:
     from qzdap_agent_runtime.gateway.normalizer import NormalizerContext

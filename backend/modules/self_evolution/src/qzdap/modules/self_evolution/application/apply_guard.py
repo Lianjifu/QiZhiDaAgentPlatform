@@ -44,7 +44,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from qzdap.modules.self_evolution.domain.entities import EvolveCandidate
 from qzdap.modules.self_evolution.domain.value_objects import EvolveKind
-from qzdap_schema.ids import TenantId
+from qzdap_kernel.ids import TenantId
 
 logger = logging.getLogger(__name__)
 

@@ -36,7 +36,7 @@ from qzdap.modules.agent_runtime.application.use_cases.create_session import (
 from qzdap.modules.agent_runtime.domain.catalog_errors import CatalogAgentNotFound
 from qzdap_agent_runtime.session.completion import TurnFailedError
 from qzdap_kernel.errors import AppError
-from qzdap_schema.ids import AgentId
+from qzdap_kernel.ids import AgentId
 
 _log = logging.getLogger(__name__)
 

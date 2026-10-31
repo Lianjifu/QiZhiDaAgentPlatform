@@ -30,13 +30,13 @@ from ._in_memory import (
 
 
 def _tenant_id():
-    from qzdap_schema.ids import TenantId
+    from qzdap_kernel.ids import TenantId
 
     return TenantId(uuid4())
 
 
 def _user_id():
-    from qzdap_schema.ids import UserId
+    from qzdap_kernel.ids import UserId
 
     return UserId(uuid4())
 

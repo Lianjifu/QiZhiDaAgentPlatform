@@ -93,12 +93,17 @@ async def test_saved_model_stream_facade_session_lifecycle(monkeypatch, outcome:
     from qzdap.modules.model.adapter.llm import client_factory
     from qzdap.modules.model.adapter.persistence import repositories
     from qzdap.modules.model.application import services
+    from qzdap_kernel.ids import TenantId, WorkspaceId
     from qzdap_llm.client import ChatRequest, LLMChunk
     from qzdap_vault.actor import ActorContext
 
     events: list[str] = []
     waiting = asyncio.Event()
-    actor = ActorContext(tenant_id=uuid4(), workspace_id=uuid4(), principal_id=uuid4())
+    actor = ActorContext(
+        tenant_id=TenantId(uuid4()),
+        workspace_id=WorkspaceId(uuid4()),
+        principal_id=uuid4(),
+    )
     saved_id = uuid4()
     req = ChatRequest(model="saved", messages=[])
 

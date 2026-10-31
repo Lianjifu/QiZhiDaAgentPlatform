@@ -32,7 +32,7 @@ from qzdap.modules.evaluation.domain.value_objects import (
     EvalDatasetStatus,
     EvalRunStatus,
 )
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentTemplateId,
     AgentVersionId,
     EvalCaseId,

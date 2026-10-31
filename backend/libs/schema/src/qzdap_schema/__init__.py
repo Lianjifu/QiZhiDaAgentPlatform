@@ -1,4 +1,10 @@
-"""Cross-module ID types and DTOs."""
+"""Cross-module DTOs (wire contracts).
+
+⚠️ **品牌 ID 不在这里** ✓ —— 它们住在 :mod:`qzdap_kernel.ids` ✓（2026-10-31，
+P-13 ✓）—— 品牌 ID 是**最底层的值对象** ✓ → 住进零依赖的 base 层 ✓，
+**每一层**（libs / modules / composition / 契约层 ✓）都共用同一套品牌词汇 ✓。
+本包只留**线上的 DTO** ✓（chunk / 错误 / 分页 ✓）。
+"""
 
 from __future__ import annotations
 
@@ -16,72 +22,18 @@ from qzdap_schema.dtos import (
     TurnChunk,
     UsageChunk,
 )
-from qzdap_schema.errors import ProblemDetails
-from qzdap_schema.ids import (
-    AgentId,
-    AgentTemplateId,
-    AgentVersionId,
-    ApiKeyId,
-    ChannelId,
-    EvalCaseId,
-    EvalDatasetId,
-    EvalRunId,
-    KnowledgeAssetId,
-    KnowledgePackageId,
-    MemoryEntryId,
-    ModelId,
-    PlanId,
-    PolicyId,
-    ReleaseId,
-    SessionId,
-    SkillId,
-    SkillInstallId,
-    SkillInvocationId,
-    TenantId,
-    ToolCallId,
-    ToolId,
-    TurnId,
-    UserId,
-    WorkspaceId,
-)
 
 __all__ = [
-    "AgentId",
-    "AgentTemplateId",
-    "AgentVersionId",
-    "ApiKeyId",
-    "ChannelId",
     "ChunkEnvelope",
     "DoneChunk",
     "ErrorChunk",
-    "EvalCaseId",
-    "EvalDatasetId",
-    "EvalRunId",
-    "KnowledgeAssetId",
-    "KnowledgePackageId",
     "MemoryEntryDTO",
-    "MemoryEntryId",
     "MessageChunk",
-    "ModelId",
     "PageRequest",
     "PageResponse",
-    "PlanId",
-    "PolicyId",
-    "ProblemDetails",
-    "ReleaseId",
-    "SessionId",
-    "SkillId",
-    "SkillInstallId",
     "SkillInvocationChunk",
-    "SkillInvocationId",
-    "TenantId",
     "ToolCallChunk",
-    "ToolCallId",
-    "ToolId",
     "ToolResultChunk",
     "TurnChunk",
-    "TurnId",
     "UsageChunk",
-    "UserId",
-    "WorkspaceId",
 ]

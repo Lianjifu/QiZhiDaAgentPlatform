@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from qzdap_schema.ids import SkillId, TenantId, UserId, WorkspaceId
+from qzdap_kernel.ids import SkillId, TenantId, UserId, WorkspaceId
 
 
 def make_tenant() -> TenantId:

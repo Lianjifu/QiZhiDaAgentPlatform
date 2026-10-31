@@ -48,9 +48,9 @@ from qzdap_agent_runtime.ports import (
     ToolInvocationResult,
     ToolRuntimePort,
 )
+from qzdap_kernel.ids import ModelId, TenantId, WorkspaceId
 from qzdap_llm.client import ChatRequest
 from qzdap_observability.tracing import get_tracer
-from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext as VaultActorContext
 
 _tracer = get_tracer("qzdap.agent_runtime")
@@ -308,9 +308,11 @@ def to_vault_actor(actor: ActorContext | None) -> VaultActorContext | None:
     """**runtime 的 actor → vault 的 actor** ✓（没有就 ``None`` ✓）。"""
     if actor is None:
         return None
+    tenant_id = _as_uuid(actor.tenant_id) or UUID(int=0)
+    workspace_id = _as_uuid(actor.workspace_id)
     return VaultActorContext(
-        tenant_id=_as_uuid(actor.tenant_id) or UUID(int=0),
-        workspace_id=_as_uuid(actor.workspace_id),
+        tenant_id=TenantId(tenant_id),
+        workspace_id=WorkspaceId(workspace_id) if workspace_id is not None else None,
         principal_id=_as_uuid(actor.actor_id),
         roles=frozenset(actor.roles or ()),
     )

@@ -7,7 +7,7 @@ from qzdap.modules.agent_runtime.adapter.persistence.models import (
     SessionTurnORM,
 )
 from qzdap.modules.agent_runtime.domain import Session, SessionStatus, Turn, TurnStatus
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentId,
     SessionId,
     TenantId,

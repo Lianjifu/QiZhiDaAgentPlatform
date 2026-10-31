@@ -971,7 +971,7 @@ async def seed_demo_conversations(
     )
     from qzdap.modules.agent_runtime.domain.entities import Session
     from qzdap.modules.identity.adapter.persistence.models import UserORM
-    from qzdap_schema.ids import AgentId, SessionId, TenantId, UserId, WorkspaceId
+    from qzdap_kernel.ids import AgentId, SessionId, TenantId, UserId, WorkspaceId
 
     agent_repo = SqlCatalogAgentRepository(session)
     agents = {agent.name: agent for agent in await agent_repo.list_for_workspace(workspace_id)}

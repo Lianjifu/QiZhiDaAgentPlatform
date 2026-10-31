@@ -35,8 +35,8 @@ from qzdap_agent_runtime.gateway.facade import Gateway
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_agent_runtime.gateway.types import ChannelType
 from qzdap_agent_runtime.gateway.web import WebChatNormalizer, WebIdentityVerifier
+from qzdap_kernel.ids import AgentId, TenantId, UserId, WorkspaceId
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
-from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 
 
 class _Catalog:

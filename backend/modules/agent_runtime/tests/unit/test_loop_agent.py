@@ -12,6 +12,7 @@ from qzdap.modules.agent_runtime.adapter.llm import LLMPortAdapter
 from qzdap.modules.agent_runtime.application.ports import LLMPort
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 from qzdap_agent_runtime.agent_loop.evaluate import HARD_MAX_STEPS
+from qzdap_kernel.ids import ModelId
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
@@ -19,7 +20,6 @@ from qzdap_schema.dtos.turn import (
     DoneChunk,
     MemoryWriteChunk,
 )
-from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")

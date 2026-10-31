@@ -22,14 +22,14 @@ from ._in_memory import (
 
 @pytest.fixture
 def tenant_id() -> object:
-    from qzdap_schema.ids import TenantId
+    from qzdap_kernel.ids import TenantId
 
     return TenantId(uuid4())
 
 
 @pytest.fixture
 def other_tenant_id() -> object:
-    from qzdap_schema.ids import TenantId
+    from qzdap_kernel.ids import TenantId
 
     return TenantId(uuid4())
 

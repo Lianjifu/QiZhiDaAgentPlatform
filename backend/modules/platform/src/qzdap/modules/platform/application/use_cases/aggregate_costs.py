@@ -11,6 +11,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from qzdap_kernel.ids import TenantId, WorkspaceId
+
 if TYPE_CHECKING:
     from qzdap.modules.platform.application.services import PlatformService
 
@@ -18,11 +20,11 @@ if TYPE_CHECKING:
 def build(service: PlatformService) -> Any:
     async def aggregate(
         *,
-        tenant_id: object,
+        tenant_id: TenantId,
         group_by: str = "cost_type",
         since: datetime | None = None,
         until: datetime | None = None,
-        workspace_id: object | None = None,
+        workspace_id: WorkspaceId | None = None,
     ) -> list[dict[str, object]]:
         repo = service.cost_repo
         if repo is None:

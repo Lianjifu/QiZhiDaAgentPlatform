@@ -45,7 +45,7 @@ from qzdap.modules.governance.application.policy_service import PolicyService
 from qzdap.modules.governance.application.ports import PolicyEventPublisher
 from qzdap_http.error_envelope import error_envelope_middleware
 from qzdap_kernel.errors import ActionDeniedError, ApprovalRequiredError
-from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 from qzdap_vault.actor import ActorContext
 
 # ── Constants ───────────────────────────────────────────────────────────

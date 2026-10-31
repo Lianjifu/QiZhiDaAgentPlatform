@@ -12,6 +12,7 @@ from qzdap_http.cors import build_cors_config
 from qzdap_http.health import health_router, liveness_router, readiness_router
 from qzdap_http.middleware import build_default_middleware_chain
 from qzdap_http.rate_limit import RateLimitPolicy
+from qzdap_kernel.ids import TenantId, WorkspaceId
 from qzdap_kernel.principal import Principal
 from qzdap_persistence.tenant_guard import install_tenant_loader
 from qzdap_vault.actor import ActorContext
@@ -156,9 +157,12 @@ def create_app() -> FastAPI:
         tenant_id = p.tenant_id
         if tenant_id is None:
             raise HTTPException(status_code=401, detail="principal has no tenant")
+        # ⚠️ **这里就是「裸 UUID → 品牌 ID」的那道边界** ✓ —— JWT 解析出来的
+        # 是裸 `UUID` ✓；**进到应用层之前**转成 `TenantId` / `WorkspaceId` ✓
+        # （下游一律用品牌 ID ✓ —— 传错 ID 的类型错误在编译期暴露 ✓）。
         return ActorContext(
-            tenant_id=tenant_id,
-            workspace_id=p.workspace_id,
+            tenant_id=TenantId(tenant_id),
+            workspace_id=WorkspaceId(p.workspace_id) if p.workspace_id is not None else None,
             principal_id=p.id,
             roles=frozenset(p.roles),
         )

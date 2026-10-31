@@ -34,7 +34,7 @@ from qzdap.modules.self_evolution.adapter.http.mappers import (
 from qzdap.modules.self_evolution.application.evolution_service import (
     EvolutionCandidateService,
 )
-from qzdap_schema.ids import EvolveCandidateId
+from qzdap_kernel.ids import EvolveCandidateId
 from qzdap_vault.actor import ActorContext
 
 router = APIRouter(tags=["self-evolution"])

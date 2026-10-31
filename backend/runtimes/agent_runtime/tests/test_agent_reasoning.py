@@ -20,8 +20,8 @@ from qzdap_agent_runtime.agent_loop import Reasoner, ToolCallAccumulator
 from qzdap_agent_runtime.execution import QZDAPChatModel
 from qzdap_agent_runtime.execution.llm_client import LLMCaller
 from qzdap_agent_runtime.ports import ActorContext
+from qzdap_kernel.ids import ModelId
 from qzdap_llm.client import ChatRequest, LLMChunk
-from qzdap_schema.ids import ModelId
 
 TENANT = uuid4()
 WORKSPACE = uuid4()

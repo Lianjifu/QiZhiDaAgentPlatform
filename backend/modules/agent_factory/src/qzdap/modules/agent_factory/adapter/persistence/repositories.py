@@ -42,7 +42,7 @@ from qzdap.modules.agent_factory.domain.errors import (
     AgentTemplateNameConflict,
     AgentVersionTagConflict,
 )
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentTemplateId,
     AgentVersionId,
     ReleaseId,

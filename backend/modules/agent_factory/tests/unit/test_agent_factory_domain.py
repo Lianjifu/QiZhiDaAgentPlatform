@@ -21,7 +21,7 @@ from qzdap.modules.agent_factory.domain.value_objects import (
     AgentVersionStatus,
     ReleaseStatus,
 )
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentTemplateId,
     AgentVersionId,
     EvalRunId,

@@ -114,7 +114,7 @@ async def _resolve_model_uuid(
     if resolver is None:
         # 没注册就回退成 str (Phase 1 兼容, 让旧 agent 还能创建)
         return raw
-    from qzdap_schema.ids import ModelId
+    from qzdap_kernel.ids import ModelId
 
     model_id: ModelId | None = await resolver.resolve(
         tenant_id=tenant_id,
@@ -167,7 +167,7 @@ def build_router() -> APIRouter:
         x_user_id: UUID = Header(..., alias="X-User-Id"),
         svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> TemplateResponse:
-        from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+        from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
         # Phase 2: 解析 default_model_id str → UUID. 没命中 raise 422.
         resolved_default_model_id = await _resolve_model_uuid(
@@ -204,7 +204,7 @@ def build_router() -> APIRouter:
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ) -> TemplateListResponse:
-        from qzdap_schema.ids import TenantId, WorkspaceId
+        from qzdap_kernel.ids import TenantId, WorkspaceId
 
         rows = await svc.list_templates.execute(  # type: ignore[union-attr]
             tenant_id=TenantId(x_tenant_id),
@@ -226,7 +226,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> TemplateResponse:
-        from qzdap_schema.ids import AgentTemplateId, TenantId
+        from qzdap_kernel.ids import AgentTemplateId, TenantId
 
         try:
             template = await svc.get_template.execute(  # type: ignore[union-attr]
@@ -248,7 +248,7 @@ def build_router() -> APIRouter:
         svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> TemplateResponse:
         from qzdap.modules.agent_factory.domain.value_objects import AgentTemplateStatus
-        from qzdap_schema.ids import AgentTemplateId, TenantId
+        from qzdap_kernel.ids import AgentTemplateId, TenantId
 
         if body.status is None:
             raise HTTPException(status_code=422, detail="status is required")
@@ -410,7 +410,7 @@ def build_router() -> APIRouter:
         x_user_id: UUID = Header(..., alias="X-User-Id"),
         svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> VersionResponse:
-        from qzdap_schema.ids import AgentTemplateId, TenantId, UserId, WorkspaceId
+        from qzdap_kernel.ids import AgentTemplateId, TenantId, UserId, WorkspaceId
 
         # Phase 2: 解析 model_id str → UUID. 没命中 raise 422.
         resolved_model_id = await _resolve_model_uuid(
@@ -465,7 +465,7 @@ def build_router() -> APIRouter:
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ) -> VersionListResponse:
-        from qzdap_schema.ids import AgentTemplateId, TenantId
+        from qzdap_kernel.ids import AgentTemplateId, TenantId
 
         rows = await svc.list_versions.execute(  # type: ignore[union-attr]
             tenant_id=TenantId(x_tenant_id),
@@ -488,7 +488,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> VersionResponse:
-        from qzdap_schema.ids import AgentVersionId, TenantId
+        from qzdap_kernel.ids import AgentVersionId, TenantId
 
         try:
             version = await svc.get_version.execute(  # type: ignore[union-attr]
@@ -510,7 +510,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> VersionResponse:
-        from qzdap_schema.ids import AgentVersionId, TenantId
+        from qzdap_kernel.ids import AgentVersionId, TenantId
 
         try:
             version = await svc.update_version_notes.execute(  # type: ignore[union-attr]
@@ -534,7 +534,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> VersionResponse:
-        from qzdap_schema.ids import AgentVersionId, TenantId
+        from qzdap_kernel.ids import AgentVersionId, TenantId
 
         try:
             version = await svc.publish_version.execute(  # type: ignore[union-attr]
@@ -559,7 +559,7 @@ def build_router() -> APIRouter:
         x_user_id: UUID = Header(..., alias="X-User-Id"),
         svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> ReleaseResponse:
-        from qzdap_schema.ids import (
+        from qzdap_kernel.ids import (
             AgentTemplateId,
             AgentVersionId,
             TenantId,
@@ -591,7 +591,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> VersionResponse:
-        from qzdap_schema.ids import AgentVersionId, TenantId
+        from qzdap_kernel.ids import AgentVersionId, TenantId
 
         try:
             version = await svc.retire_version.execute(  # type: ignore[union-attr]
@@ -614,7 +614,7 @@ def build_router() -> APIRouter:
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ) -> ReleaseListResponse:
-        from qzdap_schema.ids import AgentTemplateId, TenantId
+        from qzdap_kernel.ids import AgentTemplateId, TenantId
 
         rows = await svc.list_releases.execute(  # type: ignore[union-attr]
             tenant_id=TenantId(x_tenant_id),

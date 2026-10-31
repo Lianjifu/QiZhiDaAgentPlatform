@@ -16,7 +16,7 @@ from qzdap.modules.observability_module.domain.value_objects import (
     RunStatus,
     RunType,
 )
-from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
 # ── RunRecord ─────────────────────────────────────────────────────────────
 

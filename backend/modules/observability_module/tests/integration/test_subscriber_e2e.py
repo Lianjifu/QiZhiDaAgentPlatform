@@ -31,9 +31,9 @@ from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunType,
 )
+from qzdap_kernel.ids import TenantId, WorkspaceId
 from qzdap_messaging.domain_event import EventEnvelope
 from qzdap_messaging.in_process import InProcessBus
-from qzdap_schema.ids import TenantId, WorkspaceId
 
 from ..unit._in_memory import (
     InMemoryCostRecordRepository,

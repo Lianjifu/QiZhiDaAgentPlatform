@@ -42,7 +42,7 @@ from qzdap.modules.self_evolution.application.evolution_service import (
     EvolutionCandidateService,
 )
 from qzdap_http.error_envelope import error_envelope_middleware
-from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 from qzdap_vault.actor import ActorContext
 
 # ── Constants ──────────────────────────────────────────────────────────

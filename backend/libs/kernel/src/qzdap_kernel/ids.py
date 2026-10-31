@@ -3,6 +3,17 @@
 A branded type is a `NewType`-derived UUID alias that the type-checker treats
 as distinct from raw UUID. This stops you from passing a SessionId where a
 UserId is expected — a category of bug the type-checker can't otherwise catch.
+
+⚠️ **为什么住在 kernel 而不是 schema** ✓（2026-10-31，P-13 ✓）——
+品牌 ID 是**最底层的值对象** ✓；**每一层**（libs ✓ / modules ✓ / composition ✓ /
+契约层 ✓）都已经依赖 `qzdap_kernel` ✓ → 住在这里，**整条栈共用同一套品牌词汇** ✓
+（住 schema 的话 kernel 自己用不上 ✓ —— `Principal` / `EventEnvelope` / 上下文
+就只能是裸 `UUID` ✗✗ → 「进应用层前转品牌 ID」这条规则**在 kernel 层就断了** ✗）。
+
+**边界规则**（P-13 的落点 ✓）：
+- **裸 `UUID` 只允许出现在最外层** ✓ —— HTTP 头 / 查询参数 / JWT 解析 / DB 行 ✓；
+- **进到应用层之前**转成品牌 ID ✓；
+- 应用层往下（用例 / 端口 / 领域实体）**一律品牌 ID** ✓。
 """
 
 from __future__ import annotations

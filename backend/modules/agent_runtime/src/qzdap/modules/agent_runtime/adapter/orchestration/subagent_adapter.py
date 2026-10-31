@@ -28,7 +28,7 @@ from qzdap.modules.agent_runtime.application.one_shot_turn import (
 )
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_kernel.errors import AppError
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentId,
     SessionId,
     TenantId,

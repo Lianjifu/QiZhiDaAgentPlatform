@@ -29,7 +29,7 @@ from qzdap.modules.channel.domain.value_objects import ChannelStatus
 if TYPE_CHECKING:
     from qzdap.modules.channel.domain.entities import Channel, ChannelDelivery
     from qzdap_agent_runtime.gateway.types import ChannelType
-    from qzdap_schema.ids import ChannelId, TenantId
+    from qzdap_kernel.ids import ChannelId, TenantId
 
 # ── ChannelRepository ──────────────────────────────────────────────────────
 

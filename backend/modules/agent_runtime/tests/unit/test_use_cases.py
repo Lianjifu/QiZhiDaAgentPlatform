@@ -15,7 +15,7 @@ from _ar_unit_in_memory import make_copilot
 from qzdap.modules.agent_runtime.domain import SessionStatus
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 from qzdap.modules.agent_runtime.domain.errors import SessionNotFound
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentId,
     TenantId,
     UserId,

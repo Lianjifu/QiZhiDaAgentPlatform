@@ -8,7 +8,7 @@ from uuid import UUID
 
 from qzdap.modules.self_evolution.domain.entities import EvolveCandidate
 from qzdap.modules.self_evolution.domain.value_objects import EvolveStatus
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     EvolveCandidateId,
     TenantId,
 )

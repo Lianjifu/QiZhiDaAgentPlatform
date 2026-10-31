@@ -27,7 +27,7 @@ from qzdap.modules.agent_factory.domain.value_objects import (
     AgentVersionStatus,
 )
 from qzdap_kernel.errors import BusinessRuleError
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentTemplateId,
     AgentVersionId,
     EvalRunId,

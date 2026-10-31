@@ -30,7 +30,7 @@ from qzdap.modules.model.adapter.persistence.repositories import (
 )
 from qzdap.modules.model.application.services import ModelService
 from qzdap.modules.model.domain.entities import HealthEvent, Model, Provider, RouteRule
-from qzdap_schema.ids import ModelId
+from qzdap_kernel.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
 

@@ -27,7 +27,7 @@ from _governance_unit_in_memory import (
 from qzdap.modules.governance.application.policy_evaluator import PolicyEvaluator
 from qzdap.modules.governance.domain.entities import PolicyRule
 from qzdap.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
-from qzdap_schema.ids import TenantId
+from qzdap_kernel.ids import TenantId
 from qzdap_vault.actor import ActorContext
 
 TID = TenantId(UUID("00000000-0000-0000-0000-000000000001"))
@@ -236,7 +236,7 @@ async def test_evaluate_disabled_rule_ignored():
 
 async def test_evaluate_workspace_scoped_rule_filters():
     """Rule pinned to workspace A must not match resource carrying workspace B."""
-    from qzdap_schema.ids import WorkspaceId
+    from qzdap_kernel.ids import WorkspaceId
 
     ev, repo, _, _, _ = _evaluator()
     a = WorkspaceId(uuid4())

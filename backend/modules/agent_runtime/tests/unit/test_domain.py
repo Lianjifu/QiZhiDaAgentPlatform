@@ -13,7 +13,7 @@ from qzdap.modules.agent_runtime.domain import (
     TurnStatus,
 )
 from qzdap.modules.agent_runtime.domain.errors import SessionClosedError
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentId,
     SessionId,
     TenantId,

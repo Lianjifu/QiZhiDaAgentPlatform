@@ -17,8 +17,8 @@ from qzdap.modules.model.application.ports import (
 from qzdap.modules.model.application.services import ModelService
 from qzdap.modules.model.domain.entities import HealthEvent, Model, Provider, RouteRule
 from qzdap.modules.model.domain.errors import ModelDisabled, ModelNotFound
+from qzdap_kernel.ids import ModelId
 from qzdap_llm.client import ChatMessage, ChatRequest, ChatResponse, Usage
-from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")

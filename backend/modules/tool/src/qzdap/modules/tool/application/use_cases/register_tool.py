@@ -13,7 +13,7 @@ from qzdap.modules.tool.domain import (
     ToolProtocol,
 )
 from qzdap_kernel.contextvars import current_trace_id
-from qzdap_schema.ids import ToolId
+from qzdap_kernel.ids import ToolId
 
 
 class RegisterToolUseCase:

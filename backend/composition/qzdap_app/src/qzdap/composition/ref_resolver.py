@@ -37,6 +37,7 @@ import os
 from typing import Final
 from uuid import UUID
 
+from qzdap_kernel.ids import TenantId
 from qzdap_vault.actor import ActorContext
 from qzdap_vault.errors import (
     InvalidSecretRef,
@@ -56,7 +57,7 @@ _REF_SUFFIX: Final = "_REF"
 # actor ownership (e.g. tool-runtime secrets) are not consulted here,
 # only the underlying KV / CSI / file backends.
 _BOOT_ACTOR: Final = ActorContext(
-    tenant_id=UUID(int=0),
+    tenant_id=TenantId(UUID(int=0)),
     workspace_id=None,
     principal_id=None,
     roles=frozenset(),

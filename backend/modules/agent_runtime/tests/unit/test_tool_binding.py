@@ -17,7 +17,7 @@ from qzdap.modules.agent_runtime.adapter.tools import (
 )
 from qzdap.modules.tool.domain import Tool, ToolProtocol
 from qzdap_agent_runtime.ports import ActorContext, ToolInvocation
-from qzdap_schema.ids import TenantId, ToolId, UserId, WorkspaceId
+from qzdap_kernel.ids import TenantId, ToolId, UserId, WorkspaceId
 
 _TENANT = TenantId(uuid4())
 _WORKSPACE = WorkspaceId(uuid4())

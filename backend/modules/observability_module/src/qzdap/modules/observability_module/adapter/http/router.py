@@ -75,7 +75,7 @@ def build_router() -> APIRouter:
         offset: int = Query(0, ge=0),
     ) -> RunRecordListResponse:
         from qzdap.modules.observability_module.domain.value_objects import RunType
-        from qzdap_schema.ids import TenantId, WorkspaceId
+        from qzdap_kernel.ids import TenantId, WorkspaceId
 
         rt_enum: RunType | None = None
         if run_type is not None:
@@ -112,7 +112,7 @@ def build_router() -> APIRouter:
         offset: int = Query(0, ge=0),
     ):
         from qzdap.modules.observability_module.domain.value_objects import CostType
-        from qzdap_schema.ids import TenantId, WorkspaceId
+        from qzdap_kernel.ids import TenantId, WorkspaceId
 
         ct_enum: CostType | None = None
         if cost_type is not None:
@@ -167,7 +167,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: ObservabilityService = Depends(observability_service_dependency),
     ) -> QualityScoreResponse:
-        from qzdap_schema.ids import (
+        from qzdap_kernel.ids import (
             AgentTemplateId,
             AgentVersionId,
             TenantId,

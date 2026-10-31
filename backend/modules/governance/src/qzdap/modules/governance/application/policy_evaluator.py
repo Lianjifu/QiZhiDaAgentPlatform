@@ -42,6 +42,7 @@ from qzdap.modules.governance.domain.policy_match import action_precedence, matc
 from qzdap.modules.governance.domain.value_objects import (
     PolicyEffect,
 )
+from qzdap_kernel.ids import DecisionEventId, UserId
 from qzdap_vault.actor import ActorContext
 
 _log = logging.getLogger(__name__)
@@ -136,9 +137,9 @@ class PolicyEvaluator:
             )
             await self._decisions.append(
                 DecisionEvent(
-                    id=self._ids.new_id(),
+                    id=DecisionEventId(self._ids.new_id()),
                     tenant_id=actor.tenant_id,
-                    actor_id=actor.principal_id or _zero_user_id(),
+                    actor_id=UserId(actor.principal_id) if actor.principal_id else _zero_user_id(),
                     action=action,
                     effect=PolicyEffect.ALLOW,
                     resource=res,
@@ -179,9 +180,9 @@ class PolicyEvaluator:
 
         await self._decisions.append(
             DecisionEvent(
-                id=self._ids.new_id(),
+                id=DecisionEventId(self._ids.new_id()),
                 tenant_id=actor.tenant_id,
-                actor_id=actor.principal_id or _zero_user_id(),
+                actor_id=UserId(actor.principal_id) if actor.principal_id else _zero_user_id(),
                 action=action,
                 effect=rec.effect,
                 resource=res,
@@ -231,7 +232,7 @@ class PolicyEvaluator:
         expires_at = now + timedelta(seconds=self._approval_ttl)
         approval = Approval.create(
             tenant_id=actor.tenant_id,
-            requester_id=actor.principal_id,
+            requester_id=UserId(actor.principal_id),
             action=action,
             resource=resource,
             expires_at=expires_at,
@@ -253,10 +254,10 @@ class PolicyEvaluator:
         return approval
 
 
-def _zero_user_id() -> Any:
+def _zero_user_id() -> UserId:
     from uuid import UUID
 
-    return UUID("00000000-0000-0000-0000-000000000000")
+    return UserId(UUID("00000000-0000-0000-0000-000000000000"))
 
 
 __all__ = ["PolicyEvaluator"]

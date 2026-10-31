@@ -613,7 +613,7 @@ class Container:
                 """
                 from contextlib import aclosing
 
-                from qzdap_schema.ids import ModelId
+                from qzdap_kernel.ids import ModelId
 
                 chain = [ModelId(primary_model_id)]
                 for fid in fallback_model_ids or []:
@@ -649,7 +649,7 @@ class Container:
                 """Phase 7: 策略路由 stream. route_id → select_chain_for_strategy → stream_with_fallback."""
                 from contextlib import aclosing
 
-                from qzdap_schema.ids import ModelId
+                from qzdap_kernel.ids import ModelId
 
                 async with session_factory.session() as session:
                     svc = ModelService(

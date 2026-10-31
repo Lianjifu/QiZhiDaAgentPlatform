@@ -41,7 +41,7 @@ from qzdap.modules.agent_factory.domain.errors import (
 )
 from qzdap.modules.agent_factory.domain.events import AgentReleased
 from qzdap.modules.agent_factory.domain.value_objects import AgentVersionStatus
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentTemplateId,
     AgentVersionId,
     ReleaseId,

@@ -306,7 +306,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
             from qzdap.modules.agent_runtime.adapter.skills import SkillServiceAdapter
             from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
-            from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+            from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
             knowledge_factory = getattr(app.state, "knowledge_service_factory", None)
             memory_factory = getattr(app.state, "memory_runtime_service_factory", None)
@@ -503,7 +503,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from qzdap.modules.agent_runtime.adapter.sandbox import SandboxRuntimeAdapter
         from qzdap.modules.agent_runtime.adapter.skills import SkillServiceAdapter
         from qzdap.modules.agent_runtime.adapter.tools import ToolServiceAdapter
-        from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+        from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
         tenant_id = TenantId(request.tenant_id)
         workspace_id = WorkspaceId(request.workspace_id)
@@ -869,7 +869,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 ToolServiceAdapter,
             )
             from qzdap_agent_runtime.agent_loop.expert import ExpertAssembler
-            from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+            from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
             tid = TenantId(tenant_id)
             wid = WorkspaceId(workspace_id)
@@ -1782,7 +1782,7 @@ async def _seed_builtin_eval_datasets(app: FastAPI, container: Container) -> Non
         BUILTIN_GOLDEN_DATASET_NAME,
         builtin_golden_cases,
     )
-    from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+    from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
     factory = getattr(app.state, "evaluation_service_factory", None)
     if factory is None:

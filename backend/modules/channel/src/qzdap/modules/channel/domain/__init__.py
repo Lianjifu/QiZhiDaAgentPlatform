@@ -21,7 +21,7 @@ from qzdap.modules.channel.domain.events import (
 )
 from qzdap.modules.channel.domain.value_objects import ChannelStatus, DeliveryStatus
 from qzdap_agent_runtime.gateway.types import ChannelType
-from qzdap_schema.ids import ChannelId
+from qzdap_kernel.ids import ChannelId
 
 __all__ = [
     "Channel",

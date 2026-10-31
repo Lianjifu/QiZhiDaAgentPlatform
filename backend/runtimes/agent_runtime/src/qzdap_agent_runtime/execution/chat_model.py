@@ -25,8 +25,8 @@ from langchain_core.messages.tool import ToolCallChunk
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from pydantic import ConfigDict
 
+from qzdap_kernel.ids import ModelId
 from qzdap_llm.client import ChatMessage, ChatRequest
-from qzdap_schema.ids import ModelId
 
 from ..ports import ActorContext, LLMPort
 

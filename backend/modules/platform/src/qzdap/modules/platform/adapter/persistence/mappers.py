@@ -21,7 +21,7 @@ from qzdap.modules.platform.domain.value_objects import (
     PlanStatus,
     SubscriptionStatus,
 )
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     PlanId,
     SubscriptionId,
     TenantId,

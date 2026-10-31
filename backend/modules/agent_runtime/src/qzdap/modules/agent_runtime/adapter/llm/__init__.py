@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from qzdap.modules.agent_runtime.application.ports import LLMPort
+from qzdap_kernel.ids import ModelId, TenantId, WorkspaceId
 from qzdap_llm.client import ChatRequest, LLMChunk, LLMClient
-from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
 
@@ -45,8 +45,10 @@ class LLMPortAdapter(LLMPort):
                 raise RuntimeError("saved model streaming requires a real caller actor context")
             if isinstance(actor, ModelInvocationMeta):
                 actor = ActorContext(
-                    tenant_id=UUID(actor.tenant_id),
-                    workspace_id=UUID(actor.workspace_id) if actor.workspace_id else None,
+                    tenant_id=TenantId(UUID(actor.tenant_id)),
+                    workspace_id=(
+                        WorkspaceId(UUID(actor.workspace_id)) if actor.workspace_id else None
+                    ),
                     principal_id=UUID(actor.principal_id),
                 )
             if actor.principal_id.int == 0:

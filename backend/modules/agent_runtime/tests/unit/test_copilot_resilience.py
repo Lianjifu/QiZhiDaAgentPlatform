@@ -44,9 +44,9 @@ from qzdap.modules.agent_runtime.domain.errors import (
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_agent_runtime.session.approval import arguments_digest
 from qzdap_kernel.errors import ValidationError
+from qzdap_kernel.ids import AgentId, TenantId, UserId, WorkspaceId
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 from qzdap_schema.dtos.turn import ApprovalRequiredChunk
-from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 
 
 def _owners() -> tuple[TenantId, WorkspaceId, UserId, AgentId]:

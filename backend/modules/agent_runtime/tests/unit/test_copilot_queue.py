@@ -26,7 +26,7 @@ from qzdap.modules.agent_runtime.application.copilot import CopilotSessionServic
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_agent_runtime.session.queue import QueueDecision, QueueOutcome
-from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
 
 class _FakeLLM:

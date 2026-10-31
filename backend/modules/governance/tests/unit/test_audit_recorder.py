@@ -13,7 +13,7 @@ from qzdap.modules.governance.application.audit_recorder import (
     AuditRecorder,
     build_default_topics,
 )
-from qzdap_schema.ids import TenantId
+from qzdap_kernel.ids import TenantId
 
 TID = TenantId(UUID("00000000-0000-0000-0000-000000000001"))
 

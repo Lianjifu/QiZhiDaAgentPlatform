@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from qzdap_agent_runtime.gateway.facade import ChannelDescriptor
 from qzdap_agent_runtime.gateway.identity import ServiceAccount
-from qzdap_schema.ids import ChannelId
+from qzdap_kernel.ids import ChannelId
 
 if TYPE_CHECKING:
     from uuid import UUID

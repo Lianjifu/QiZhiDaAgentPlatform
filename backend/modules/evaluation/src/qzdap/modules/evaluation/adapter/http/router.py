@@ -85,7 +85,7 @@ def build_router() -> APIRouter:
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ) -> DatasetListResponse:
-        from qzdap_schema.ids import TenantId, WorkspaceId
+        from qzdap_kernel.ids import TenantId, WorkspaceId
 
         rows = await svc.list_datasets.execute(  # type: ignore[union-attr]
             tenant_id=TenantId(x_tenant_id),
@@ -107,7 +107,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: EvaluationService = Depends(evaluation_service_dependency),
     ) -> DatasetResponse:
-        from qzdap_schema.ids import EvalDatasetId, TenantId
+        from qzdap_kernel.ids import EvalDatasetId, TenantId
 
         try:
             dataset = await svc.get_dataset.execute(  # type: ignore[union-attr]
@@ -127,7 +127,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: EvaluationService = Depends(evaluation_service_dependency),
     ) -> CaseListResponse:
-        from qzdap_schema.ids import EvalDatasetId, TenantId
+        from qzdap_kernel.ids import EvalDatasetId, TenantId
 
         rows = await svc.list_cases.execute(  # type: ignore[union-attr]
             tenant_id=TenantId(x_tenant_id),
@@ -153,7 +153,7 @@ def build_router() -> APIRouter:
         x_user_id: UUID = Header(..., alias="X-User-Id"),
         svc: EvaluationService = Depends(evaluation_service_dependency),
     ) -> RunResponse:
-        from qzdap_schema.ids import (
+        from qzdap_kernel.ids import (
             AgentTemplateId,
             AgentVersionId,
             EvalDatasetId,
@@ -189,7 +189,7 @@ def build_router() -> APIRouter:
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ) -> RunListResponse:
-        from qzdap_schema.ids import (
+        from qzdap_kernel.ids import (
             AgentTemplateId,
             AgentVersionId,
             TenantId,
@@ -218,7 +218,7 @@ def build_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         svc: EvaluationService = Depends(evaluation_service_dependency),
     ) -> RunResponse:
-        from qzdap_schema.ids import EvalRunId, TenantId
+        from qzdap_kernel.ids import EvalRunId, TenantId
 
         try:
             run = await svc.get_run.execute(  # type: ignore[union-attr]

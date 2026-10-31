@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from qzdap_schema.ids import TenantId, ToolCallId, ToolId, WorkspaceId
+from qzdap_kernel.ids import TenantId, ToolCallId, ToolId, WorkspaceId
 
 if TYPE_CHECKING:
     from qzdap.modules.tool.domain.events import (

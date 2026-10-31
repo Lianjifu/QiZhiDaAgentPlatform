@@ -25,7 +25,7 @@ from qzdap.modules.evaluation.application.ports import (
     SubAgentPort,
 )
 from qzdap_kernel.errors import AppError
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentId,
     AgentTemplateId,
     TenantId,
@@ -61,7 +61,7 @@ class RealSubAgentPort(SubAgentPort):
         # round-trip through ``AgentVersionId`` so the lookup is type-safe.
         from uuid import UUID
 
-        from qzdap_schema.ids import AgentVersionId
+        from qzdap_kernel.ids import AgentVersionId
 
         try:
             version_uuid = UUID(agent_version)

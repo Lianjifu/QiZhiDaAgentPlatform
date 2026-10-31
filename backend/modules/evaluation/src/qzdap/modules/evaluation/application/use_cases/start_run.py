@@ -16,7 +16,7 @@ from qzdap.modules.evaluation.domain.errors import (
     EvalRunNotFound,
     IdempotencyKeyConflict,
 )
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentTemplateId,
     AgentVersionId,
     EvalDatasetId,

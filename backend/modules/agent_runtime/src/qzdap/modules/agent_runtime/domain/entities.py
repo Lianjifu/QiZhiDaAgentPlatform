@@ -22,7 +22,7 @@ from qzdap.modules.agent_runtime.domain.events import (
     TurnStarted,
 )
 from qzdap_agent_runtime.session.state import SessionStatus
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentId,
     SessionId,
     TenantId,

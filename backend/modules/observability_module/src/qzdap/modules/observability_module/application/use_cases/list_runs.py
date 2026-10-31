@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from qzdap.modules.observability_module.domain.entities import RunRecord
 from qzdap.modules.observability_module.domain.value_objects import RunType
-from qzdap_schema.ids import TenantId, WorkspaceId
+from qzdap_kernel.ids import TenantId, WorkspaceId
 
 if TYPE_CHECKING:
     from qzdap.modules.observability_module.application.services import (

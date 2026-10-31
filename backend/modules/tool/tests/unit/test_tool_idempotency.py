@@ -34,7 +34,7 @@ from qzdap.modules.tool.domain.errors import (
     ToolIdempotencyConflict,
     ToolRateLimited,
 )
-from qzdap_schema.ids import TenantId, ToolId, WorkspaceId
+from qzdap_kernel.ids import TenantId, ToolId, WorkspaceId
 
 _TENANT = TenantId(uuid4())
 _WORKSPACE = WorkspaceId(uuid4())

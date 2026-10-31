@@ -1,10 +1,9 @@
 [project]
 name = "qzdap-schema"
 version = "0.1.0"
-description = "Cross-module IDs and DTOs shared between libs and modules"
+description = "Cross-module DTOs shared between libs and modules (branded IDs live in qzdap-kernel)"
 requires-python = ">=3.12"
 dependencies = [
-    "qzdap-kernel",
     "pydantic>=2.9",
 ]
 

@@ -6,6 +6,10 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from qzdap_kernel.ids import (
+    TenantId,
+    WorkspaceId,
+)
 from qzdap_schema.dtos import (
     DoneChunk,
     MessageChunk,
@@ -13,10 +17,6 @@ from qzdap_schema.dtos import (
     UsageChunk,
 )
 from qzdap_schema.dtos.turn import ContextCompactedChunk
-from qzdap_schema.ids import (
-    TenantId,
-    WorkspaceId,
-)
 
 
 def test_branded_ids_are_distinct() -> None:

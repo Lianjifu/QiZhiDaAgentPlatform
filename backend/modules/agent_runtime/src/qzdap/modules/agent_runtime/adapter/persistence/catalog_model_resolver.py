@@ -24,8 +24,8 @@ from qzdap.modules.agent_runtime.application.ports.catalog_model_resolver import
 
 # 跨模块 ORM 读: admin_models 由 model 模块建表
 from qzdap.modules.model.adapter.persistence.models import CatalogModelORM
+from qzdap_kernel.ids import ModelId
 from qzdap_persistence.session_factory import SessionFactory
-from qzdap_schema.ids import ModelId
 
 _log = logging.getLogger(__name__)
 

@@ -13,7 +13,7 @@ from qzdap.modules.evaluation.domain.value_objects import (
     EvalDatasetStatus,
     EvalRunStatus,
 )
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     EvalDatasetId,
     TenantId,
     UserId,
@@ -102,10 +102,10 @@ def test_run_queue_starts_in_queued_state() -> None:
         tenant_id=_TENANT,
         workspace_id=_WORKSPACE,
         dataset_id=EvalDatasetId(uuid4()),
-        template_id=__import__("qzdap_schema.ids", fromlist=["AgentTemplateId"]).AgentTemplateId(
+        template_id=__import__("qzdap_kernel.ids", fromlist=["AgentTemplateId"]).AgentTemplateId(
             uuid4()
         ),
-        version_id=__import__("qzdap_schema.ids", fromlist=["AgentVersionId"]).AgentVersionId(
+        version_id=__import__("qzdap_kernel.ids", fromlist=["AgentVersionId"]).AgentVersionId(
             uuid4()
         ),
         case_count=10,
@@ -119,7 +119,7 @@ def test_run_queue_starts_in_queued_state() -> None:
 
 
 def test_run_mark_running_then_computed() -> None:
-    from qzdap_schema.ids import AgentTemplateId, AgentVersionId
+    from qzdap_kernel.ids import AgentTemplateId, AgentVersionId
 
     run = EvalRun.queue(
         tenant_id=_TENANT,
@@ -148,7 +148,7 @@ def test_run_mark_running_then_computed() -> None:
 
 
 def test_run_mark_completed_any_failure_makes_failed() -> None:
-    from qzdap_schema.ids import AgentTemplateId, AgentVersionId
+    from qzdap_kernel.ids import AgentTemplateId, AgentVersionId
 
     run = EvalRun.queue(
         tenant_id=_TENANT,
@@ -172,7 +172,7 @@ def test_run_mark_completed_any_failure_makes_failed() -> None:
 
 
 def test_run_mark_completed_below_threshold_is_failed() -> None:
-    from qzdap_schema.ids import AgentTemplateId, AgentVersionId
+    from qzdap_kernel.ids import AgentTemplateId, AgentVersionId
 
     run = EvalRun.queue(
         tenant_id=_TENANT,
@@ -196,7 +196,7 @@ def test_run_mark_completed_below_threshold_is_failed() -> None:
 
 
 def test_run_mark_errored() -> None:
-    from qzdap_schema.ids import AgentTemplateId, AgentVersionId
+    from qzdap_kernel.ids import AgentTemplateId, AgentVersionId
 
     run = EvalRun.queue(
         tenant_id=_TENANT,

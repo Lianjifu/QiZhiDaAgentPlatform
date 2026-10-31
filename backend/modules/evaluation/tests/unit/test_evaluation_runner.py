@@ -18,7 +18,7 @@ from _evaluation_unit_in_memory import (  # type: ignore[import-not-found]
 from qzdap.modules.evaluation.application.runner import EvalRunner
 from qzdap.modules.evaluation.application.services import EvaluationService
 from qzdap.modules.evaluation.domain.value_objects import EvalRunStatus
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentTemplateId,
     AgentVersionId,
     EvalRunId,

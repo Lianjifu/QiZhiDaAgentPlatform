@@ -66,6 +66,7 @@ from qzdap_agent_runtime.context.persistence import ContextManifestStore
 from qzdap_agent_runtime.context.tokens import estimate_tokens as estimate_text_tokens
 from qzdap_agent_runtime.context.types import AssembledContext, ManifestEntry
 from qzdap_agent_runtime.memory.policy import MemoryPolicy, PolicyBinding
+from qzdap_kernel.ids import ModelId, TenantId, WorkspaceId
 from qzdap_observability.metrics import record_new_call
 from qzdap_observability.tracing import get_tracer
 from qzdap_schema.dtos.turn import (
@@ -87,7 +88,6 @@ from qzdap_schema.dtos.turn import (
     UsageChunk,
     WorkflowInvocationChunk,
 )
-from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
 
 _tracer = get_tracer("qzdap.agent_runtime")
@@ -229,8 +229,8 @@ class SessionGraphRunner:
         # ⚠️ **actor 只建一次** ✓ —— 摘要调用与主对话调用**同一个身份** ✓
         # （摘要也是一次模型调用 ✗ —— 用别人的身份调模型不行 ✗✗）。
         actor = ActorContext(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
+            tenant_id=TenantId(tenant_id),
+            workspace_id=WorkspaceId(workspace_id) if workspace_id is not None else None,
             principal_id=owner_id,
         )
 
@@ -997,7 +997,7 @@ class SessionGraphRunner:
             approval_correlation_id,
             arguments_digest,
         )
-        from qzdap_schema.ids import TenantId, UserId
+        from qzdap_kernel.ids import TenantId, UserId
 
         svc = self._approval_factory
         # ⚠️ **幂等** ✓（Session 方案 S-31 ✓）—— 同一个工具调用**复用同一个

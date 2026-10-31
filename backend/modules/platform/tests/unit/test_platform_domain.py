@@ -21,25 +21,25 @@ from qzdap.modules.platform.domain.value_objects import (
 
 
 def _tenant_id():
-    from qzdap_schema.ids import TenantId
+    from qzdap_kernel.ids import TenantId
 
     return TenantId(uuid4())
 
 
 def _plan_id():
-    from qzdap_schema.ids import PlanId
+    from qzdap_kernel.ids import PlanId
 
     return PlanId(uuid4())
 
 
 def _user_id():
-    from qzdap_schema.ids import UserId
+    from qzdap_kernel.ids import UserId
 
     return UserId(uuid4())
 
 
 def _workspace_id():
-    from qzdap_schema.ids import WorkspaceId
+    from qzdap_kernel.ids import WorkspaceId
 
     return WorkspaceId(uuid4())
 

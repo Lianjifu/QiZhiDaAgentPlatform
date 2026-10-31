@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 
 from qzdap.modules.model.application.services import ModelService
 from qzdap.modules.model.domain.entities import HealthEvent, Model, RouteRule
-from qzdap_schema.ids import ModelId
+from qzdap_kernel.ids import ModelId
 
 TENANT = uuid4()
 WORKSPACE = uuid4()

@@ -3145,14 +3145,10 @@ version = "0.1.0"
 source = { editable = "libs/schema" }
 dependencies = [
     { name = "pydantic" },
-    { name = "qzdap-kernel" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "pydantic", specifier = ">=2.9" },
-    { name = "qzdap-kernel", editable = "libs/kernel" },
-]
+requires-dist = [{ name = "pydantic", specifier = ">=2.9" }]
 
 [[package]]
 name = "qzdap-self-evolution"

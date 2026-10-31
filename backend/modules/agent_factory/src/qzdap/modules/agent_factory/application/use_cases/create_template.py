@@ -17,7 +17,7 @@ from qzdap.modules.agent_factory.application.ports import (
 )
 from qzdap.modules.agent_factory.domain.entities import AgentTemplate
 from qzdap.modules.agent_factory.domain.events import AgentTemplateCreated
-from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
 logger = logging.getLogger(__name__)
 

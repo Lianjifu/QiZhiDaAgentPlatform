@@ -37,7 +37,7 @@ from qzdap_agent_runtime.gateway.facade import Gateway
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_agent_runtime.gateway.types import ChannelType
 from qzdap_agent_runtime.gateway.web import WebChatNormalizer, WebIdentityVerifier
-from qzdap_schema.ids import AgentId, TenantId, WorkspaceId
+from qzdap_kernel.ids import AgentId, TenantId, WorkspaceId
 
 # ── App + dependency override ──────────────────────────────────────────────
 

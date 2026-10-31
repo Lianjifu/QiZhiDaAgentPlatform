@@ -50,15 +50,15 @@ from qzdap_agent_runtime.session.turn_runner import (
 )
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_kernel.errors import AppError, ConflictError, ValidationError
-from qzdap_schema.dtos.errors import ErrorCode
-from qzdap_schema.dtos.turn import TurnChunk
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentId,
     ModelId,
     TenantId,
     UserId,
     WorkspaceId,
 )
+from qzdap_schema.dtos.errors import ErrorCode
+from qzdap_schema.dtos.turn import TurnChunk
 
 _log = logging.getLogger(__name__)
 
@@ -504,9 +504,9 @@ class CopilotSessionService:
             approval_service=approval_service,
         )
         if approval_service is not None:
-            from qzdap_schema.ids import ApprovalId
-            from qzdap_schema.ids import TenantId as TId
-            from qzdap_schema.ids import UserId as UId
+            from qzdap_kernel.ids import ApprovalId
+            from qzdap_kernel.ids import TenantId as TId
+            from qzdap_kernel.ids import UserId as UId
 
             try:
                 if approved:
@@ -589,8 +589,8 @@ class CopilotSessionService:
         if approval_service is None:
             # 没有审批服务 = 没有审批记录可比对（测试替身 / 未接治理域）✓
             return
-        from qzdap_schema.ids import ApprovalId
-        from qzdap_schema.ids import TenantId as TId
+        from qzdap_kernel.ids import ApprovalId
+        from qzdap_kernel.ids import TenantId as TId
 
         approval = await approval_service.get(
             tenant_id=TId(tenant_id), approval_id=ApprovalId(approval_id)

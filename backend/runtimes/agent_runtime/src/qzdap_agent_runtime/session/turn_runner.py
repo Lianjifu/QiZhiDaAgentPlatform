@@ -46,6 +46,7 @@ from qzdap_agent_runtime.session.queue import (
     TurnQueuePort,
     wait_for_turn_slot,
 )
+from qzdap_kernel.ids import ModelId
 from qzdap_schema.dtos.errors import project_error_message
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
@@ -54,7 +55,6 @@ from qzdap_schema.dtos.turn import (
     QueuedChunk,
     UsageChunk,
 )
-from qzdap_schema.ids import ModelId
 
 _log = logging.getLogger(__name__)
 

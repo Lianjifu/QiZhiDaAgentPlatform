@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from qzdap.modules.evaluation.domain.entities import EvalCase, EvalScoreRecord
-from qzdap_schema.ids import EvalCaseId, EvalRunId
+from qzdap_kernel.ids import EvalCaseId, EvalRunId
 
 
 @dataclass(slots=True, frozen=True)

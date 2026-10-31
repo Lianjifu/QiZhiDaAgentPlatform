@@ -19,7 +19,7 @@ from qzdap.modules.agent_factory.application.ports import (
 )
 from qzdap.modules.evaluation.application.ports import EvalRunRepository
 from qzdap.modules.evaluation.domain.value_objects import EvalRunStatus
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     AgentTemplateId,
     AgentVersionId,
     TenantId,

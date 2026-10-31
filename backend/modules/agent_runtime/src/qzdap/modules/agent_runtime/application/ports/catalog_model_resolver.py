@@ -16,7 +16,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from qzdap_schema.ids import ModelId
+from qzdap_kernel.ids import ModelId
 
 
 class CatalogModelResolver(ABC):

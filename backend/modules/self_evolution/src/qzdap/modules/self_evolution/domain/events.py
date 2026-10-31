@@ -11,7 +11,7 @@ from qzdap.modules.self_evolution.domain.value_objects import (
     EvolveStatus,
 )
 from qzdap_kernel.events import DomainEvent
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     EvolveCandidateId,
     TenantId,
     UserId,

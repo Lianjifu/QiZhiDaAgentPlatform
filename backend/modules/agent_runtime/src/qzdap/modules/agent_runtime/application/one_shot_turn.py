@@ -21,7 +21,7 @@ from qzdap.modules.agent_runtime.application.use_cases.create_session import (
 from qzdap_agent_runtime.gateway.normalizer import resolve_idempotency_key
 from qzdap_agent_runtime.gateway.types import ChannelType
 from qzdap_agent_runtime.session.completion import TurnCompletion, drain_to_completion
-from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
+from qzdap_kernel.ids import AgentId, TenantId, UserId, WorkspaceId
 
 
 @dataclass(frozen=True, slots=True)

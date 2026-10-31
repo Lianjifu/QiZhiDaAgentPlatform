@@ -16,7 +16,7 @@ from qzdap.modules.governance.domain.value_objects import (
     PolicyEffect,
 )
 from qzdap_kernel.events import DomainEvent
-from qzdap_schema.ids import (
+from qzdap_kernel.ids import (
     ApprovalId,
     AuditLogId,
     PolicyId,
