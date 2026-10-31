@@ -64,11 +64,22 @@ class ApprovalExpired(PolicyError, ConflictError):
     status = 409
 
 
+class DataSubjectFailed(PolicyError, ValidationError):
+    """**数据主体请求没做完** ✓（C9 ✓）—— 某个 scope 失败了 ✓。
+
+    ⚠️ **不是「没找到」** ✓ —— 是「**做了但没做完**」✓ → 422 ✓。
+    """
+
+    code = "DATA_SUBJECT_FAILED"
+    status = 422
+
+
 __all__ = [
     "ApprovalAlreadyDecided",
     "ApprovalExpired",
     "ApprovalNotFound",
     "ApproverMustDiffer",
+    "DataSubjectFailed",
     "InvalidApproval",
     "InvalidPolicy",
     "PolicyAlreadyExists",

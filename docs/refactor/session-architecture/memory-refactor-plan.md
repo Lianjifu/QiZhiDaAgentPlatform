@@ -42,7 +42,7 @@ Memory 域在代码里实际承担 **10 项能力**。它们不是三个子件�
 | **C6** | **策略绑定**（agent ↔ 记忆策略 / L3 条目） | **B** 写 / **A** 读 | B:B2　A:A3 | `admin_agents.memory_policy` | **完全不消费** | `/policies/{label}/agents`、`/l3/{id}/agents` | 🔴 管理端能看，运行时读不到 |
 | **C7** | **使用统计与趋势** | **共享**（A 写 / B 读） | 共享:S2 | `hits` / `hits_trend` / `usage_history` / `hit_rate` | **不更新** | `/api/admin/memory/trend` | 🔴 全是静态值 |
 | **C8** | **管理目录 CRUD** | **B** | B:B1+B2 | 全部五张表 | — | **18** 个端点 | ✅ 完整 |
-| **C9** | **数据治理**（删除 / 导出） | **共享**（横跨两面） | 共享:S2 | 全部 | — | 治理域 `data_subject` | ⚠️ 记忆表未纳入删除范围 |
+| **C9** | **数据治理**（删除 / 导出） | **共享**（横跨两面） | 共享:S2 | 全部 | — | 治理域 `data_subject` | ✅ **已纳入** ✓（2026-10-31 ✓ —— 记忆域 `scope="memory"` ✓ —— L2 + 向量 + 会话缓冲 ✓） |
 | **C10** | **降级与健康** | **A** | A:A1（贯穿各层） | — | 写入侧有、读取侧无 | — | ⚠️ 只覆盖一半 |
 
 > **⚠️ 两套「L」不要混**（本层最容易读错的地方）：
@@ -1263,7 +1263,7 @@ ALTER TABLE admin_memory_policies
 | **没接线就明确失败** | ✅ `publish_policy` 在没有发布端时抛 `MEMORY_POLICY_PUBLISHER_MISSING` ✓（**不假装发布成功** ✗✗）；工作区级作用域被拒（`MEMORY_SCOPE_UNSUPPORTED` ✓ —— L3 已退役 ✓ —— 决策 #1 ✓） |
 | 测试 | 模块侧 9 条 ✓（共用闸门 ✓ / 去重 ✓ / 版本 ✓ / 编辑拒重 ✓ / 发布走端口 ✓ / 没接线失败 ✓ / 工作区级被拒 ✓ / 发布的形状 = 运行时解析的形状 ✓）+ agent 侧 4 条 ✓（只改绑了的 ✓ / 发布即生效 ✓ / 跨租户不碰 ✓ / 引用落位 ✓） |
 
-⚠️ **C9 治理 provider（M-39）仍未做** ✓ —— **不是漏了** ✓：治理域**没有 `data_subject` 接口** ✓（`grep` 零命中 ✓）→ **没有调用方** ✓ → 先造一个 provider 就是**「建而不切」** ✗✗ → 归「未接管」✓。
+✅ **C9 治理 provider（M-39）已达成** ✓（2026-10-31）—— **治理域的 `data_subject` 接口已建** ✓（契约在**契约层** ✓ —— `qzdap_agent_runtime/governance/data_subject.py` ✓ —— 治理域与记忆域**不互相 import** ✓）—— 治理域的 `DataSubjectService` **按 scope 分发** ✓（各域实现一个 scope ✓ —— 决策 #8 ✓），**记忆域的 `scope="memory"`** ✓ 删 **L2 行 + 向量 + 会话缓冲** ✓ —— 「删干净」✓（向量不留残留副本 ✓）。端点 `POST /v1/data-subject/{delete,export}` ✓（管理员 ✓）+ composition 接线 ✓（请求级 ✓）—— **有调用方** ✓（端点就是 ✓ —— 不是「建而不切」✓）。
 
 ### Stage 7：清理与封口
 

@@ -82,6 +82,10 @@ class BufferPort(Protocol):
         """**冲掉一个会话的缓冲** ✓（返回**冲掉几条** ✓ —— 「冲了但其实没东西」要看得见 ✓）。"""
         ...
 
+    async def delete_user(self, *, workspace_id: UUID, user_id: UUID) -> int:
+        """**删掉某个用户的缓冲行** ✓（数据治理的删除范围 ✓ —— C9 ✓）。"""
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class SessionBufferView:

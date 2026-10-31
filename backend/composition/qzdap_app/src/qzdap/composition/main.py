@@ -2,23 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Annotated
-
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from qzdap.composition.container import Container
 from qzdap.composition.lifespan import lifespan
 from qzdap.composition.settings import get_settings
-from qzdap_auth.dependencies import (
-    AuthenticatedPrincipal,
-    require_authenticated,
-    require_role,
-)
 from qzdap_http.cors import build_cors_config
 from qzdap_http.health import health_router, liveness_router, readiness_router
 from qzdap_http.middleware import build_default_middleware_chain
 from qzdap_http.rate_limit import RateLimitPolicy
+from qzdap_kernel.principal import Principal
 from qzdap_persistence.tenant_guard import install_tenant_loader
 from qzdap_vault.actor import ActorContext
 
@@ -144,6 +138,7 @@ def create_app() -> FastAPI:
     # Governance module — /v1/policies + /v1/approvals
     from qzdap.modules.governance.adapter.http.factory import (
         make_approval_service,
+        make_data_subject_service,
         make_policy_evaluator,
         make_policy_service,
     )
@@ -157,29 +152,54 @@ def create_app() -> FastAPI:
 
     app.include_router(governance_router)
 
-    def _actor_from_principal(p: AuthenticatedPrincipal) -> ActorContext:
+    def _actor_from_principal(p: Principal) -> ActorContext:
         return ActorContext(
             tenant_id=p.tenant_id,
             workspace_id=p.workspace_id,
-            principal_id=p.principal.id,
-            roles=frozenset(p.principal.roles),
+            principal_id=p.id,
+            roles=frozenset(p.roles),
         )
 
-    async def _resolve_actor(
-        p: Annotated[AuthenticatedPrincipal, Depends(require_authenticated)],
-    ) -> ActorContext:
-        return _actor_from_principal(p)
+    # ⚠️ **从中间件绑定的 principal 取** ✓（`request.state.principal` ✓）——
+    # **不能**用 `Depends(require_authenticated)` ✗✗：那个依赖的参数是
+    # `AuthenticatedPrincipal`（一个 dataclass ✓）→ **FastAPI 会把它当成
+    # 请求体模型** ✗✗ → 每个请求都 422（body 缺 principal / raw_token ✓）
+    # → 整个治理域的 `/v1/*` 端点**全是坏的** ✗✗（先前遗留 ✓）。
+    async def _resolve_actor(request: Request) -> ActorContext:
+        principal = getattr(request.state, "principal", None)
+        if principal is None:
+            raise HTTPException(status_code=401, detail="not authenticated")
+        return _actor_from_principal(principal)
 
-    async def _resolve_admin(
-        p: Annotated[AuthenticatedPrincipal, Depends(require_role("admin"))],
-    ) -> ActorContext:
-        return _actor_from_principal(p)
+    async def _resolve_admin(request: Request) -> ActorContext:
+        principal = getattr(request.state, "principal", None)
+        if principal is None:
+            raise HTTPException(status_code=401, detail="not authenticated")
+        if not principal.has_role("admin"):
+            raise HTTPException(status_code=403, detail="role admin required")
+        return _actor_from_principal(principal)
 
     app.dependency_overrides[_require_actor] = _resolve_actor
     app.dependency_overrides[_require_admin] = _resolve_admin
     app.dependency_overrides[make_policy_service] = lambda: container.policy_service()
     app.dependency_overrides[make_approval_service] = lambda: container.approval_service()
     app.dependency_overrides[make_policy_evaluator] = lambda: container.policy_evaluator()
+
+    async def _data_subject_service(request: Request):
+        """**数据主体请求**的服务 ✓（C9 ✓）—— 请求级 ✓（各域的 scope 要开着自己的会话 ✓）。"""
+        factory = getattr(request.app.state, "data_subject_service_factory", None)
+        if factory is None:
+            raise HTTPException(status_code=503, detail="data subject factory not wired")
+        async with container.session_factory().session() as session:
+            svc = factory.for_session(session)
+            try:
+                yield svc
+            except Exception:
+                await session.rollback()
+                raise
+            await session.commit()
+
+    app.dependency_overrides[make_data_subject_service] = _data_subject_service
 
     # A4 self_evolution module — /v1/evolve/candidates/*
     from qzdap.modules.self_evolution.adapter.http.factory import (

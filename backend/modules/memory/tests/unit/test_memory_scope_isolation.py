@@ -141,6 +141,13 @@ class InMemoryCatalog(MemoryCatalogRepository):
             items = [item for item in items if item.user_id == user_id]
         return items
 
+    async def delete_l2(self, ids: list[UUID]) -> int:
+        """**删掉这些 L2 行** ✓（数据治理 ✓ —— C9 ✓）。"""
+        victims = [item for item in ids if item in self.l2]
+        for item in victims:
+            del self.l2[item]
+        return len(victims)
+
     async def update_l2(self, item: L2Fact) -> None:
         self.l2[item.id] = item
 

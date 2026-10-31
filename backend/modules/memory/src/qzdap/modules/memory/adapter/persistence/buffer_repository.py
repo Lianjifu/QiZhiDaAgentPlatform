@@ -81,6 +81,20 @@ class SqlMemoryBufferRepository:
             delete(SessionMemoryBufferORM).where(SessionMemoryBufferORM.id.in_(row_ids))
         )
 
+    async def delete_user(self, *, workspace_id: UUID, user_id: UUID) -> int:
+        """**删掉某个用户的缓冲行** ✓（数据治理的删除范围 ✓ —— C9 ✓）。
+
+        ⚠️ **会话缓冲也是那个人的数据** ✓ —— 「删干净」要连它一起删 ✓
+        （不然内容还在库里 ✗✗）。
+        """
+        stmt = (
+            delete(SessionMemoryBufferORM)
+            .where(SessionMemoryBufferORM.workspace_id == workspace_id)
+            .where(SessionMemoryBufferORM.user_id == user_id)
+        )
+        result = await self._s.execute(stmt)
+        return int(result.rowcount or 0)
+
     # ── 管理面（L1 表退役后的唯一来源 ✓ —— M-46 ✓）──────────────────
 
     async def list_workspace_views(self, *, workspace_id: UUID) -> list[SessionBufferView]:

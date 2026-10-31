@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from qzdap.modules.memory.adapter.persistence.models import (
@@ -115,6 +115,24 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
             stmt = stmt.where(MemoryL2ORM.user_id == user_id)
         result = await self._s.execute(stmt)
         return [_l2(row) for row in result.scalars().all() if not _cross_tenant(row)]
+
+    async def delete_l2(self, ids: list[UUID]) -> int:
+        """**删掉这些 L2 行** ✓（数据治理 ✓ —— C9 ✓）。
+
+        ⚠️ **只删本租户的** ✓ —— 跨租户的行**不动** ✓（`_cross_tenant` ✓）。
+        """
+        if not ids:
+            return 0
+        victims = []
+        for item in ids:
+            row = await self._s.get(MemoryL2ORM, item)
+            if row is not None:
+                victims.append(row)
+        deletable = [row.id for row in victims if not _cross_tenant(row)]
+        if not deletable:
+            return 0
+        await self._s.execute(delete(MemoryL2ORM).where(MemoryL2ORM.id.in_(deletable)))
+        return len(deletable)
 
     async def update_l2(self, item: L2Fact) -> None:
         row = await self._s.get(MemoryL2ORM, item.id)

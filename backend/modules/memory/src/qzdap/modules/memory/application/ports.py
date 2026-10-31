@@ -65,6 +65,11 @@ class MemoryCatalogRepository(ABC):
     async def update_l2(self, item: L2Fact) -> None: ...
 
     @abstractmethod
+    async def delete_l2(self, ids: list[UUID]) -> int:
+        """**删掉这些 L2 行** ✓（数据治理的删除范围 ✓ —— C9 ✓）→ 返回删了几行 ✓。"""
+        ...
+
+    @abstractmethod
     async def find_l2_by_hash(
         self,
         workspace_id: UUID,

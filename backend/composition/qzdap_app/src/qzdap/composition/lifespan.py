@@ -1065,6 +1065,39 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.memory_runtime_service_factory = _MemoryRuntimeFactory()
     app.state.memory_admin_service_factory = _MemoryAdminFactory()
 
+    class _DataSubjectFactory:
+        """**数据主体请求**的工厂 ✓（C9 ✓ —— 决策 #8 ✓）。
+
+        ⚠️ **治理域只认 scope** ✓ —— 它**不认识**记忆表 ✗✗ → 记忆域自己
+        实现一个 scope ✓（``scope = "memory"`` ✓）—— 这里只负责**注册** ✓。
+        """
+
+        def for_session(self, session):  # type: ignore[no-untyped-def]
+            from qzdap.modules.governance.application.data_subject import (
+                DataSubjectService,
+            )
+            from qzdap.modules.memory.adapter.persistence.buffer_repository import (
+                SqlMemoryBufferRepository,
+            )
+            from qzdap.modules.memory.application.governance import (
+                MemoryDataSubjectScope,
+            )
+
+            return DataSubjectService(
+                scopes=[
+                    MemoryDataSubjectScope(
+                        catalog=SqlMemoryCatalogRepository(session),
+                        vectors=memory_vectors,
+                        buffer=SqlMemoryBufferRepository(session),
+                    )
+                ]
+            )
+
+        def __call__(self, session):  # type: ignore[no-untyped-def]
+            return self.for_session(session)
+
+    app.state.data_subject_service_factory = _DataSubjectFactory()
+
     # ── per-request knowledge factory ───────────────────────────────────
     from qzdap.modules.knowledge.adapter.persistence.repositories import (
         SqlKnowledgeCatalogRepository,

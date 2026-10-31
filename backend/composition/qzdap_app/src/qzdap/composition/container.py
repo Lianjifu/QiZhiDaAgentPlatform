@@ -336,7 +336,7 @@ class Container:
         )
 
         return AuditRecorder(
-            audit_port=SqlAuditLogAdapter(self.session_factory().maker()),
+            audit_port=SqlAuditLogAdapter(self.session_factory().maker),
             clock=self.clock(),
             topics=build_default_topics(),
         )
@@ -381,7 +381,7 @@ class Container:
         from qzdap.modules.governance.application.policy_service import PolicyService
 
         return PolicyService(
-            repo=SqlPolicyRepository(self.session_factory().maker()),
+            repo=SqlPolicyRepository(self.session_factory().maker),
             clock=self.clock(),
             ids=self.id_generator(),
             publisher=self.messaging_event_publisher(),
@@ -396,7 +396,7 @@ class Container:
         )
 
         return ApprovalService(
-            repo=SqlApprovalRepository(self.session_factory().maker()),
+            repo=SqlApprovalRepository(self.session_factory().maker),
             clock=self.clock(),
             ids=self.id_generator(),
             publisher=self.messaging_event_publisher(),
@@ -433,7 +433,7 @@ class Container:
             )
 
         return EvolutionCandidateService(
-            repo=SqlEvolutionCandidateRepository(self.session_factory().maker()),
+            repo=SqlEvolutionCandidateRepository(self.session_factory().maker),
             clock=self.clock(),
             ids=self.id_generator(),
             apply_guard=guard,  # type: ignore[arg-type]

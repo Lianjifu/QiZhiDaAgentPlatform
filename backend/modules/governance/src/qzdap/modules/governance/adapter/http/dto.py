@@ -83,11 +83,30 @@ class ApprovalDecisionRequest(_BaseModel):
     reason: str = Field(default="", max_length=1024)
 
 
+class DataSubjectRequestBody(_BaseModel):
+    """**一次数据主体请求** ✓（C9 ✓）。
+
+    ⚠️ **工作区可选** ✓ —— 有的域按租户删（✓）有的按工作区删（✓）。
+    """
+
+    user_id: UUID
+    workspace_id: UUID | None = None
+
+
+class DataSubjectResponse(_BaseModel):
+    """**执行结果** ✓（逐个 scope 的 ✓）。"""
+
+    scopes: list[str]
+    results: dict[str, Any]
+
+
 __all__ = [
     "ApprovalDecisionRequest",
     "ApprovalListResponse",
     "ApprovalResponse",
     "CreatePolicyRequest",
+    "DataSubjectRequestBody",
+    "DataSubjectResponse",
     "PolicyListResponse",
     "PolicyResponse",
     "UpdatePolicyRequest",

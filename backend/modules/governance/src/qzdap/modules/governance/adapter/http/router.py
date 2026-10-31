@@ -23,12 +23,15 @@ from qzdap.modules.governance.adapter.http.dto import (
     ApprovalListResponse,
     ApprovalResponse,
     CreatePolicyRequest,
+    DataSubjectRequestBody,
+    DataSubjectResponse,
     PolicyListResponse,
     PolicyResponse,
     UpdatePolicyRequest,
 )
 from qzdap.modules.governance.adapter.http.factory import (
     make_approval_service,
+    make_data_subject_service,
     make_policy_service,
 )
 from qzdap.modules.governance.adapter.http.mappers import (
@@ -36,7 +39,9 @@ from qzdap.modules.governance.adapter.http.mappers import (
     policy_to_response,
 )
 from qzdap.modules.governance.application.approval_service import ApprovalService
+from qzdap.modules.governance.application.data_subject import DataSubjectService
 from qzdap.modules.governance.application.policy_service import PolicyService
+from qzdap_agent_runtime.governance.data_subject import DataSubjectRequest
 from qzdap_schema.ids import ApprovalId, PolicyId
 from qzdap_vault.actor import ActorContext
 
@@ -217,3 +222,44 @@ async def deny(
 
 
 __all__ = ["router"]
+
+
+# ── /v1/data-subject ──────────────────────────────────────────────────────
+#
+# ⚠️ **治理域只认 scope** ✓ —— 它**不认识**记忆表 ✗✗ → 每个域实现一个
+# scope ✓（决策 #8 ✓）—— 这里只负责**分发与汇总** ✓。
+
+
+@router.post("/v1/data-subject/delete", response_model=DataSubjectResponse)
+async def delete_data_subject(
+    body: DataSubjectRequestBody,
+    actor: AdminDep,
+    svc: Annotated[DataSubjectService, Depends(make_data_subject_service)],
+) -> DataSubjectResponse:
+    """**删除某个用户的全部数据** ✓（逐个 scope ✓）。
+
+    ⚠️ **要管理员权限** ✓ —— 删数据是不可逆的 ✓。
+    """
+    request = DataSubjectRequest(
+        tenant_id=actor.tenant_id,
+        user_id=body.user_id,
+        workspace_id=body.workspace_id or actor.workspace_id,
+    )
+    results = await svc.delete(request)
+    return DataSubjectResponse(scopes=list(svc.scopes), results=results)
+
+
+@router.post("/v1/data-subject/export", response_model=DataSubjectResponse)
+async def export_data_subject(
+    body: DataSubjectRequestBody,
+    actor: AdminDep,
+    svc: Annotated[DataSubjectService, Depends(make_data_subject_service)],
+) -> DataSubjectResponse:
+    """**导出某个用户的全部数据** ✓（逐个 scope ✓）。"""
+    request = DataSubjectRequest(
+        tenant_id=actor.tenant_id,
+        user_id=body.user_id,
+        workspace_id=body.workspace_id or actor.workspace_id,
+    )
+    results = await svc.export(request)
+    return DataSubjectResponse(scopes=list(svc.scopes), results=results)
