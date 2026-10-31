@@ -507,10 +507,10 @@ def record_legacy_call(entry: str) -> None:
 
 | 状态 | 条目数 | 说明 |
 |---|---|---|
-| 未开始 | 4 | **X3**（`agent_sessions.graph_state` 仍在写 ✗）· **X4**（旧表 `agent_turns` / `agent_session_messages` —— 迁数据 ✓ 切读 ✓ 停旧写 ✓ **但 DROP 未做** ✗）· ~~**X13**~~（`admin_memory_l1` ✓ —— **已清理** ✓ —— M-46 ✓）· ~~**X15**~~（`admin_memory_l3` ✓ —— **已清理** ✓ —— M-47 ✓ —— 数据已迁 knowledge ✓） |
-| 已弃用 | 2 | **X16**（`MemoryService` 已拆成两个服务类 ✓ —— 绕过脱敏那半归 **M-42** ⏳）· **X18**（`copilot.py` 的 turn 编排**已迁出** ✓ —— **薄壳**（幂等 accept + claim + 转发 ≈60 行 ✓）待删 ✓ —— 删除判据改为**引用关系可证** ✓ + 新路径流量 ≥95% ✓） |
+| 未开始 | 1 | **X4**（旧表 `agent_turns` / `agent_session_messages` —— 迁数据 ✓ 切读 ✓ 停旧写 ✓ **但 DROP 未做** ✗ —— 门禁：只读窗口 ≥7 天 + 备份恢复演练 ✓ → 归 **S-36** ✓） |
+| 已弃用 | 1 | **X18**（`copilot.py` 的 turn 编排**已迁出** ✓ —— **薄壳**（幂等 accept + claim + 转发 ≈60 行 ✓）待删 ✓ —— 删除判据改为**引用关系可证** ✓ + 新路径流量 ≥95% ✓） |
 | 待清理 | 0 | —— ⚠️ **X19 已于 2026-10-31 核对后改为「已清理」** ✓（迁移 0048 的 DROP 早已落地 ✓ —— 扫描规则**收窄到 `modules/` 并启用** ✓） |
-| 已清理 | 28 | **G1–G9**（9 条 ✓ —— Gateway Stage 1/2/3/5 + Session Stage 5b ✓）· **G11**（202 降级路径 ✓ —— 改重放 ✓）· **G12**（各模块的自由字符串错误码 ✓）· **R1–R4**（4 条 ✓ —— Router Stage 1/2 + Session Stage 3a/5b ✓）· **X1**（**未接线的 runtime 整包** ✓ —— Agent Stage 7 拆空 ✓ —— 生产包零 `InMemory*` ✓）· **X2**（第二套 turn 实现 ✓）· **X5**（占位图 ✓ —— 文件已删 ✓）· **X6**（`wait_status` 列 ✓）· **X7**（审批异常吞噬 ✓）· **X8 / X9 / X10**（旧上下文三件 ✓ —— Context Stage 5 ✓）· **X11**（`_remember` ✓ —— Memory Stage 7 ✓）· **X12**（新 runtime 的反转记忆写入 ✓ —— 文件已删 ✓）· **X17**（**旧路径的手写推理循环** ✓ —— 已删 ✓ —— 生产路径跑 `AgentLoopRunner` ✓）· **X19**（死表 ✓）· **X20**（同步 `PostgresSaver` 工厂 ✓） |
+| 已清理 | 32 | **G1–G9**（9 条 ✓ —— Gateway Stage 1/2/3/5 + Session Stage 5b ✓）· **G11**（202 降级路径 ✓ —— 改重放 ✓）· **G12**（各模块的自由字符串错误码 ✓）· **R1–R4**（4 条 ✓ —— Router Stage 1/2 + Session Stage 3a/5b ✓）· **X1**（**未接线的 runtime 整包** ✓ —— Agent Stage 7 拆空 ✓ —— 生产包零 `InMemory*` ✓）· **X2**（第二套 turn 实现 ✓）· **X3**（`graph_state` 混装列 ✓）· **X5**（占位图 ✓ —— 文件已删 ✓）· **X6**（`wait_status` 列 ✓）· **X7**（审批异常吞噬 ✓）· **X8 / X9 / X10**（旧上下文三件 ✓ —— Context Stage 5 ✓）· **X11**（`_remember` ✓ —— Memory Stage 7 ✓）· **X12**（新 runtime 的反转记忆写入 ✓ —— 文件已删 ✓）· **X13**（`admin_memory_l1` ✓ —— 决策 #5 ✓）· **X15**（L3 与 knowledge 职责重叠 ✓ —— 决策 #1 ✓）· **X16**（`MemoryService` 运行时/管理面混装 ✓ —— 拆成两个平面 ✓）· **X17**（**旧路径的手写推理循环** ✓ —— 已删 ✓ —— 生产路径跑 `AgentLoopRunner` ✓）· **X19**（死表 ✓）· **X20**（同步 `PostgresSaver` 工厂 ✓） |
 | **已修复** | 2 | X14（跨用户泄漏）、**G10**（审批恢复路径丢幂等键）—— 判据是测试不是指标 |
 
 > **条目数**：36 条（2026-10-29 新增 **G12** = 错误码收敛）。
@@ -524,13 +524,12 @@ def record_legacy_call(entry: str) -> None:
 
 | 方案 | 条目 | 编号 |
 |---|---|---|
-| Gateway | 12 | G1–G12（G7 / G8 / **G12** 已清理；**G9 未接管** —— 等 Session Stage 5b 的原子切换） |
+| Gateway | 12 | G1–G12（**全部「已清理」** ✓ —— **G9** 与 **X2** 已随 Session Stage 5b 的原子切换完成 ✓（2026-10-30）✓） |
 | Router | 4 | R1–R4（**全部「已清理」** ✓ —— R2/R4 归 Router Stage 1/2 ✓；R1 归 Session Stage 5b ✓；R3 的 owner 是 Session ✓ 已清理 ✓） |
 | Session（跨层） | 6 | X2、X3、X4、X6、X7、X18 |
 | Context（跨层） | 3 | X8、X9、X10 |
 | Memory（跨层） | 7 | X11、X12、X13、X14、X15、X16、X19 |
-| Agent Loop（跨层） | 3 | X1（整包 ✓ —— Stage 7 拆空 ✓）、X5、X17 |
-| 全部层共同 | 1 | **X1（未接线的 `backend/runtimes/agent_runtime/` 整包）** |
+| Agent Loop（跨层） | 4 | X1（整包 ✓ —— Stage 7 拆空 ✓）、X5、X17、X20（同步 `PostgresSaver` 工厂 ✓） |
 
 ### 5.3 最高风险项：X1
 
@@ -553,7 +552,7 @@ def record_legacy_call(entry: str) -> None:
 | G2 | `gateway-refactor-plan.md` §9.2、Stage 2 | Gateway Stage 2 —— ✅ **已执行**（2026-10-29） |
 | G3 | `gateway-refactor-plan.md` §9.2；`router-refactor-plan.md` §7.2 | Gateway Stage 2 —— ✅ **已执行**（2026-10-29；Router Stage 2 的「按渠道解析会话」部分仍未做） |
 | G4、G5、G6 | `gateway-refactor-plan.md` §9.2、Stage 3 | Gateway Stage 3 —— ✅ **已执行**（2026-10-29） |
-| G7、G8、G9 | `gateway-refactor-plan.md` §9.4、Stage 4 | Gateway Stage 5 —— G7 / G8 ✅ **已执行**（2026-10-29）；**G9 未接管**（等 Session Stage 5b 的原子切换） |
+| G7、G8、G9 | `gateway-refactor-plan.md` §9.4、Stage 4 | Gateway Stage 5 —— G7 / G8 ✅ **已执行**（2026-10-29）；**G9 ✅ 已清理**（2026-10-30：随 Session Stage 5b 的原子切换删除 `dispatch_subscriber.py` ✓） |
 | G11 | `gateway-refactor-plan.md` §4.5、§10 Stage 4b | Gateway Stage 4b —— ✅ **已执行**（2026-10-29：202 降级路径删除，改重放事件流） |
 | G7、G8 | `gateway-refactor-plan.md` §9.4、§10 Stage 5 | Gateway Stage 5 —— ✅ **已执行**（2026-10-29：整个 `/v1/sessions*` 删除） |
 | R1 | `router-refactor-plan.md` §7.2、§7.4 | Router Stage 2（**行为替换**；文件删除归 Gateway G9）—— ✅ **已清理**（2026-10-30：Session Stage 5b —— IM 会话按「渠道 + 聊天」粘住 ✓） |

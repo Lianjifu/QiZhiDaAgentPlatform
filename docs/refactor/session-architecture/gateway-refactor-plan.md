@@ -1216,11 +1216,11 @@ composition
 |---|---|
 | 删 `/v1/sessions*` 的 turn 部分 | ✅ **整段删**（不只是 turn 部分 —— P-11 确认无仓外消费者，兼容保留期归零，偏差 G-39） |
 | **配合** Session Stage 5b：删第二套 turn 实现 | ⚠️ **本层不删**（台账 X2 的唯一 owner 是 Session）。本阶段只做「确认无残留调用方」，删除动作在 Session Stage 5b（与本层的「切 IM 入口」同 PR）—— 否则会与 Session 的删除 PR 互相冲突 |
-| 删 `dispatch_subscriber.py` | ⚠️ **文件删除归本层（台账 G9）**，但**必须与「切 IM 入口」+ Session Stage 5b（删 `use_cases/*`）同一个 PR** → **本轮未接管** |
+| 删 `dispatch_subscriber.py` | ⚠️ **文件删除归本层（台账 G9）**，但**必须与「切 IM 入口」+ Session Stage 5b（删 `use_cases/*`）同一个 PR** → **本轮未接管** ✅ **后续已达成**（2026-10-30 —— Session Stage 5b 同 PR 删除 ✓ —— 台账 G9 / X2 已清理 ✓） |
 | 删 `agent_sessions.metadata.recent_request_ids` 残留列 | ✅ 迁移 0051（它是 **JSONB 里的键**，不是一列 —— 偏差 G-43） |
 | 删孤儿索引 / 废弃常量 | ✅ `session_events` 的 `turn_id` 单列索引（与主键完全重复 —— 偏差 G-44） |
 | 全仓扫描「第二实现」 | ✅ `backend/scripts/check_no_legacy_impl.sh` + **进 CI**（偏差 G-41 / G-42） |
-| 更新 `cleanup-ledger.md` 状态 | ✅ G7 / G8 → **已清理**；G9 → **未接管**（附理由与归属） |
+| 更新 `cleanup-ledger.md` 状态 | ✅ G7 / G8 → **已清理**；G9 → **本轮未接管**（附理由与归属）✅ **后续已达成**（2026-10-30 —— Session Stage 5b 同 PR ✓） |
 | 更新 `docs/copilot-chat-module-architecture.md` | ✅ 现状文档已同步 |
 
 **旧代码减少**：§9.4 删除清单**归零**（除被 Session 阻塞的两项）。

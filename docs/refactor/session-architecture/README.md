@@ -16,9 +16,9 @@
 |---|---|---|---|
 | 1 | [`session-lifecycle-sequence.md`](session-lifecycle-sequence.md) | **权威基线**：会话完整生命周期的泳道划分与时序。所有层方案的共同上游契约 | **已定稿** |
 | 2 | [`cleanup-ledger.md`](cleanup-ledger.md) | **全局收敛机制**：旧实现台账（弃用标记 → 调用打点 → 指标归零 → 删除 → CI 扫描脚本 → 阶段门禁） | **生效中** |
-| 3 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | Gateway 泳道：Channel Gateway / Auth Identity / Message Normalizer / Idempotency Guard ＋ 入口级限流 | **已定稿（v1.12）· Stage 0–3 + Stage 4a 两段 + Stage 4b + Stage 5（部分）已实施**（幂等守卫 / 鉴权收口 / 归一化收口 / 门面接管 + 出站 sink + web 入口接管 / 无感重放 / **旧 `/v1/sessions*` 整段删除 + 扫描脚本进 CI + 架构测试**；**Stage 0 的 G-02/G-02b 补齐** —— 错误码收敛进 `ErrorCode` 枚举 + `ERROR_PROJECTION` 投影表，台账 **G12 已清理**；**G9 与 X2 仍未接管** —— 必须与 Session Stage 5b 原子切换） |（幂等守卫 / 鉴权收口 / 归一化收口 / 门面接管 + 出站 sink + web 入口接管 / 无感重放 / **旧 `/v1/sessions*` 整段删除 + 扫描脚本进 CI + 架构测试**；**G9 与 X2 仍未接管** —— 必须与 Session Stage 5b 原子切换） |
-| 4 | [`router-refactor-plan.md`](router-refactor-plan.md) | Router 泳道：Strategy（选 agent）+ Session Routing（选会话 + 有序保证） | **已定稿（v1.5）· Stage 0 + Stage 1 + Stage 2 的 key 派生已实施**（契约层 `router/` + 五条规则链 + `RouteDecision` 留痕 + **web 建会话改走 Strategy → 台账 R2 已清理** + **哈希版会话 key 派生 → 台账 R4 已清理**；⚠️ **粘性规则缺输入** —— 依赖 Session Stage 1 的 `lookup` / `resolve_or_create` 端口（代码里不存在）→ Stage 2 主体与 Stage 3 仍被阻塞） |
-| 5 | [`session-refactor-plan.md`](session-refactor-plan.md) | Session 泳道：Manager（生命周期）+ State（状态机）+ Thread（多轮线程）+ 唯一 turn 实现 | **已定稿（v1.3）· Stage 0–3b + 5a + 5b + 6a 已实施**（唯一 turn 实现 + **IM 切入口 + 删第二套 turn 实现**（台账 **X2 / G9 / R1 已清理** ✓）+ `wait_status` 整列退役（**X6** ✓）） |
+| 3 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | Gateway 泳道：Channel Gateway / Auth Identity / Message Normalizer / Idempotency Guard ＋ 入口级限流 | **已定稿（v1.12）· Stage 0–3 + Stage 4a 两段 + Stage 4b + Stage 5 已实施**（幂等守卫 / 鉴权收口 / 归一化收口 / 门面接管 + 出站 sink + web 入口接管 / 无感重放 / **旧 `/v1/sessions*` 整段删除 + 扫描脚本进 CI + 架构测试**；**Stage 0 的 G-02/G-02b 补齐** —— 错误码收敛进 `ErrorCode` 枚举 + `ERROR_PROJECTION` 投影表，台账 **G12 已清理**；**G9 与 X2 已随 Session Stage 5b 的原子切换完成 ✓（2026-10-30）✓** —— 台账 Gateway 域 **G1–G12 全「已清理」** ✓） |
+| 4 | [`router-refactor-plan.md`](router-refactor-plan.md) | Router 泳道：Strategy（选 agent）+ Session Routing（选会话 + 有序保证） | **已定稿（v1.6）· Stage 0–3 已实施**（契约层 `router/` + 五条规则链 + `RouteDecision` 留痕 + **web 建会话改走 Strategy → 台账 R2 已清理** + **哈希版会话 key 派生 → 台账 R4 已清理** + **IM 也走规则链 ✓** + **同会话 FIFO 排队 ✓**（`session/queue.py` + `PostgresTurnQueue` ✓ —— 序号分配 / 入队 / 放行 / 兜底 / 上限 / 超时 ✓）—— 台账 **R1–R4 全「已清理」** ✓） |
+| 5 | [`session-refactor-plan.md`](session-refactor-plan.md) | Session 泳道：Manager（生命周期）+ State（状态机）+ Thread（多轮线程）+ 唯一 turn 实现 | **已定稿（v1.3）· Stage 0–3b + 5a + 5b + 6a/6b/6c/6d 已实施**（唯一 turn 实现 + **IM 切入口 + 删第二套 turn 实现**（台账 **X2 / G9 / R1 已清理** ✓）+ `wait_status` 整列退役（**X6** ✓）+ `graph_state` 整列退役（**X3** ✓）+ **旧表迁数据 + 切读 + 停旧写** ✓（**X4 只剩 DROP** ✗ —— 等只读窗口 ≥7 天 + 备份恢复演练 ✓）） |
 | 6 | [`context-refactor-plan.md`](context-refactor-plan.md) | Context 泳道：Builder（拼装）+ Compressor（压缩）+ Persistence（manifest 落库） | **已定稿（v1.2）** |
 | 7 | [`memory-refactor-plan.md`](memory-refactor-plan.md) | Memory 泳道：Retrieval（检索）+ Writer（沉淀）+ STM/LTM 分层 | **已定稿（v1.4）** |
 | 8 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | ⑦ Agent Loop（大脑）· ⑧ Agent Router（**只选专家**：模型 / 工具 / 知识都来自 agent 配置，**不做 Model Router**）· ⑨ Execution Runtime（Agent / Model Runtime / Tool Runtime）。技术栈：LangGraph 1.x + LangChain + Deep Agents | **已定稿（v1.2）** |
@@ -123,12 +123,10 @@ Session Stage 0(迁移 0046 / saver / 表 DDL 唯一 owner)  →  Session Stage 
         └─→  Memory  Stage 3（Writer 重写）
 
 Session Stage 1(resolve_or_create + lookup)  →  Router Stage 2(会话映射 + 粘性查找)
-Router Stage 0(迁移 0045 ✅)  →  Router Stage 1(策略链 ✅ 已实施 —— web 建会话改走 Strategy / R2 已清理)
-                              ↑ ⚠️ Stage 2（会话映射 + 粘性查找）**被 Session Stage 1 的 `lookup` 端口阻塞** ——
-                                粘性规则已实现但拿不到输入（router 方案 §13.2 的 D1）
-Gateway Stage 0(迁移 0044)  →  Gateway Stage 1/2/3  →  Gateway Stage 4a(接管)  →  Gateway Stage 4b(无感重放 ✅)  →  Gateway Stage 5(清理 ✅ 部分)
-                              ↑ ⚠️ Stage 5 的「删 dispatch_subscriber + 删第二套 turn 实现」**未接管** ——
-                                必须与 Session Stage 5b 同一个 PR（台账 §3.4 的原子切换）
+Router Stage 0(迁移 0045 ✅)  →  Router Stage 1(策略链 ✅)  →  Router Stage 2(会话映射 + 粘性查找 ✅)  →  Router Stage 3(FIFO ✅)
+                              ↑ ⚠️ Stage 2 曾被 Session Stage 1 的 `lookup` 端口阻塞 —— **已解锁 ✓**（2026-10-31，Router §13.6 ✓）
+Gateway Stage 0(迁移 0044)  →  Gateway Stage 1/2/3  →  Gateway Stage 4a(接管)  →  Gateway Stage 4b(无感重放 ✅)  →  Gateway Stage 5(清理 ✅)
+                              ↑ Stage 5 的「删 dispatch_subscriber + 删第二套 turn 实现」**已达成 ✓**（2026-10-30，Session Stage 5b 同 PR ✓ —— 台账 G9 / X2 ✓）
                               ↑ Stage 4a 是豁免 E1：不等 Session 台账清零
 Context Stage 0(迁移 0047，依赖 0046)  →  Context Stage 1/2
 Memory  Stage 0(迁移 0048)  →  Memory  Stage 1(作用域过滤，安全修复，可独立先行)

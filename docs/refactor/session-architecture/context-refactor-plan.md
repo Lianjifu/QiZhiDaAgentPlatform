@@ -850,7 +850,7 @@ UPDATE agent_sessions s
 | # | 事项 | 门禁 | 归属 |
 |---|---|---|---|
 | **Stage 4 接线** | Agent Loop 改调 `context/builder.py` + `memory/writer.py` | ✅ **已达成**（2026-10-30）—— 装配那一半随 **Agent A-26** 接上 ✓；**压缩那一半随 Context Stage 4 接上** ✓（旧的 `compact.py` 已无调用方 ✓，实测 `X9` = 0 ✓） | Context 层（Stage 4 ✓ 已达成） |
-| **C-22 降级标记到前端** | `recall_degraded` 走 `ResultEvent.flags` | ⚠️ **`ResultEvent.flags` 契约还没实现** ✗（Gateway 层 §9.0 只在方案里 ✓）—— Context 侧**只产出 `degraded_flags`** ✓，没有可投递的通道 ✗ | **Gateway 层** |
+| **C-22 降级标记到前端** | `recall_degraded` 走 `ResultEvent.flags` | ✅ **已达成**（2026-10-31）—— `ResultEvent.flags` 契约已落地 ✓（Gateway §9.0 ✓ —— 内部事件与对外 chunk **同一个词汇** ✓）+ `ChunkEnvelope.flags` ✓ → **降级终于有可投递的通道** ✓（Context 产出 → 运行时 → 事件流 → SSE ✓） | — |
 | **前端消费降级标记** | 读 `context_compacted.degraded` 与 `ResultEvent.flags` | ⚠️ 前端目前**零消费** `flags` ✓（§5.3.1 ✓）→ 独立工作项 ✓ | 前端 |
 | **Stage 5 清理** | 删 `compact.py` / `_load_messages` / `budget.py` / `metadata['rolling_summary']` 残留 | ✅ **已达成**（2026-10-30）—— X8 / X9 / X10 已清理 ✓；扫描规则已启用 ✓；⚠️ **`budget.py`（384 行）未删** ✓ → **归 Agent Stage 7** ✓（`nodes.py` 还 import 它 ✓ —— 死代码 ✓） | 本层（Stage 5 ✓ 已达成 · `budget.py` 归 Agent） |
 | **X9 / X8 的扫描规则启用** | `compact.py` / `_load_messages` 两条规则 | 旧实现删掉后才开 ✓（X10 的规则**已开** ✓ —— 2026-10-30） | 本层（Stage 5） |
