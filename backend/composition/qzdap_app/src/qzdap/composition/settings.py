@@ -47,7 +47,8 @@ class Settings(BaseSettings):
     redis_max_connections: int = 50
 
     # auth
-    jwt_secret: str = "dev-secret-not-for-production-use-only"
+    # ⚠️ **本地默认值** ✓ —— 生产必须用环境变量覆盖 ✓（启动时校验 ✓）。
+    jwt_secret: str = "dev-secret-not-for-production-use-only"  # noqa: S105
     jwt_algorithm: str = "HS256"
     jwt_issuer: str = "qzdap-dev"
     jwt_audience: str = "qzdap-api"
@@ -65,12 +66,12 @@ class Settings(BaseSettings):
     demo_tenant_display_name: str = "Demo Tenant"
     demo_admin_email: str = "admin@acme.com"
     demo_user_email: str = "user@acme.com"
-    demo_password: str = "demo-password-change-me"
+    demo_password: str = "demo-password-change-me"  # noqa: S105 —— demo 栈的默认值 ✓
 
     dev_tenant_slug: str = "dev"
     dev_tenant_display_name: str = "Dev Tenant"
     dev_admin_email: str = "admin@dev.qzdap.dev"
-    dev_admin_password: str = "dev-admin-password-change-me"
+    dev_admin_password: str = "dev-admin-password-change-me"  # noqa: S105
 
     # ── LLM ──────────────────────────────────────────────────────────────
     # 历史: 之前这里有 llm_provider / llm_api_key / llm_base_url /
@@ -100,9 +101,9 @@ class Settings(BaseSettings):
 
     # sandbox_runtime (gVisor sidecar)
     sandbox_runtime_url: str = "http://127.0.0.1:9158"
-    sandbox_runtime_secret: str = "dev-sandbox-runtime-secret-change-me"
+    sandbox_runtime_secret: str = "dev-sandbox-runtime-secret-change-me"  # noqa: S105
     sandbox_default_image: str = "qzdap/sandbox-python:latest"
-    skill_artifact_root: str = "/tmp/qzdap-skill-artifacts"
+    skill_artifact_root: str = "/tmp/qzdap-skill-artifacts"  # noqa: S108 —— 本地产物目录 ✓
 
     # Agent 内置文件工具 (bash / read_file / write_file / edit_file / ls /
     # glob / grep) 看到的工作区根目录。每个 workspace 一个子目录:
@@ -180,7 +181,7 @@ class Settings(BaseSettings):
     embedding_provider: Literal["openai", "http", "noop"] = "noop"
 
     # P7 knowledge
-    knowledge_storage_root: str = "/tmp/qzdap-knowledge-assets"
+    knowledge_storage_root: str = "/tmp/qzdap-knowledge-assets"  # noqa: S108
     knowledge_default_chunk_size: int = 800
     knowledge_default_chunk_overlap: int = 80
 

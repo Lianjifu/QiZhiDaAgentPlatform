@@ -10,8 +10,6 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from qzdap_schema.ids import ApprovalId, TenantId, UserId
-
 from qzdap.modules.governance.application.ports import (
     ApprovalRepository,
     ClockPort,
@@ -27,6 +25,7 @@ from qzdap.modules.governance.domain.errors import (
 )
 from qzdap.modules.governance.domain.events import ApprovalDecided
 from qzdap.modules.governance.domain.value_objects import ApprovalStatus
+from qzdap_schema.ids import ApprovalId, TenantId, UserId
 
 
 class ApprovalService:
@@ -129,9 +128,7 @@ class ApprovalService:
                 "denier must differ from requester",
                 code="APPROVER_MUST_DIFFER",
             )
-        decided = approval.deny(
-            approver_id=approver_id, reason=reason, now=self._clock.now()
-        )
+        decided = approval.deny(approver_id=approver_id, reason=reason, now=self._clock.now())
         await self._repo.update(decided)
         await self._publish_decision(decided, approver_id=approver_id)
         return decided
@@ -147,9 +144,7 @@ class ApprovalService:
             return None
         expired = approval.expire(now=now)
         await self._repo.update(expired)
-        await self._publish_decision(
-            expired, approver_id=expired.requester_id, force_actor=True
-        )
+        await self._publish_decision(expired, approver_id=expired.requester_id, force_actor=True)
         return expired
 
     async def expire_due(self, *, now: datetime, limit: int = 100) -> int:
@@ -161,23 +156,17 @@ class ApprovalService:
         """
         expired = 0
         for approval in await self._repo.list_expired_pending(now=now, limit=limit):
-            result = await self.expire_if_due(
-                tenant_id=approval.tenant_id, approval_id=approval.id
-            )
+            result = await self.expire_if_due(tenant_id=approval.tenant_id, approval_id=approval.id)
             if result is not None:
                 expired += 1
         return expired
 
-    async def list_pending(
-        self, *, tenant_id: TenantId, limit: int = 200
-    ) -> list[Approval]:
+    async def list_pending(self, *, tenant_id: TenantId, limit: int = 200) -> list[Approval]:
         return await self._repo.list_pending(
             tenant_id=tenant_id, now=self._clock.now(), limit=limit
         )
 
-    async def list_all(
-        self, *, tenant_id: TenantId, limit: int = 200
-    ) -> list[Approval]:
+    async def list_all(self, *, tenant_id: TenantId, limit: int = 200) -> list[Approval]:
         """Return every approval for the tenant regardless of status.
 
         Backs ``GET /v1/approvals?pending_only=false`` — used by admin

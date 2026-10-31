@@ -184,9 +184,7 @@ async def test_registry_chat_wire(protocol):
             assert "secret-key" not in str(request.url)
             assert body["systemInstruction"] == {"parts": [{"text": "Be concise"}]}
             assert body["contents"][1]["role"] == "model"
-            assert body["contents"][1]["parts"][0]["functionCall"]["args"] == {
-                "city": "Paris"
-            }
+            assert body["contents"][1]["parts"][0]["functionCall"]["args"] == {"city": "Paris"}
             assert body["contents"][2]["parts"][0]["functionResponse"] == {
                 "id": "call_a",
                 "name": "weather",
@@ -197,10 +195,7 @@ async def test_registry_chat_wire(protocol):
         else:
             assert request.headers["api-key"] == "secret-key"
             assert "authorization" not in request.headers
-            assert (
-                request.url.path
-                == "/api/openai/deployments/test-model/chat/completions"
-            )
+            assert request.url.path == "/api/openai/deployments/test-model/chat/completions"
             assert request.url.params["api-version"] == "2024-10-21"
         await client.aclose()
         assert not http.is_closed
@@ -253,9 +248,7 @@ def test_factory_rejects_unknown_or_missing_configuration(kwargs):
 
 
 def sse(events):
-    return "".join(
-        f"event: {event}\r\ndata:{json.dumps(data)}\r\n\r\n" for event, data in events
-    )
+    return "".join(f"event: {event}\r\ndata:{json.dumps(data)}\r\n\r\n" for event, data in events)
 
 
 OPENAI_EVENTS = [
@@ -289,11 +282,7 @@ OPENAI_EVENTS = [
             "model": "test-model",
             "choices": [
                 {
-                    "delta": {
-                        "tool_calls": [
-                            {"index": 1, "function": {"arguments": '"Paris"}'}}
-                        ]
-                    },
+                    "delta": {"tool_calls": [{"index": 1, "function": {"arguments": '"Paris"}'}}]},
                     "finish_reason": "tool_calls",
                 }
             ],
@@ -406,9 +395,7 @@ GOOGLE_EVENTS = [
 @pytest.mark.parametrize("protocol", ["openai", "anthropic", "google", "azure"])
 @pytest.mark.asyncio
 async def test_stream_tools_usage_and_native_finish(protocol):
-    events = {"anthropic": ANTHROPIC_EVENTS, "google": GOOGLE_EVENTS}.get(
-        protocol, OPENAI_EVENTS
-    )
+    events = {"anthropic": ANTHROPIC_EVENTS, "google": GOOGLE_EVENTS}.get(protocol, OPENAI_EVENTS)
 
     def handler(request):
         body = json.loads(request.content)
@@ -418,18 +405,13 @@ async def test_stream_tools_usage_and_native_finish(protocol):
             assert "stream" not in body
         else:
             assert body["stream"] is True
-        return httpx.Response(
-            200, text=sse(events)
-        )  # Native streams end at EOF, not [DONE].
+        return httpx.Response(200, text=sse(events))  # Native streams end at EOF, not [DONE].
 
     client, http = make_client(protocol, handler)
     async with http:
         chunks = [chunk async for chunk in client.stream(REQUEST)]
     assert "".join(chunk.delta for chunk in chunks) == "Sun"
-    assert (
-        next(chunk.finish_reason for chunk in chunks if chunk.finish_reason)
-        == "tool_calls"
-    )
+    assert next(chunk.finish_reason for chunk in chunks if chunk.finish_reason) == "tool_calls"
     assert chunks[-1].usage.input_tokens == 10
     assert chunks[-1].usage.output_tokens == 4
     assert chunks[-1].usage.cache_read_tokens == 3
@@ -459,9 +441,7 @@ async def test_errors_do_not_expose_secrets(protocol, operation, failure):
             return (
                 httpx.Response(200, json={"error": {"message": secret}})
                 if operation == "chat"
-                else httpx.Response(
-                    200, text=sse([("error", {"error": {"message": secret}})])
-                )
+                else httpx.Response(200, text=sse([("error", {"error": {"message": secret}})]))
             )
         return httpx.Response(200, text="not json")
 
@@ -560,8 +540,7 @@ async def test_google_signature_replayed_and_tool_result_string():
     client, http = make_client(
         "google",
         lambda r: (
-            captured.append(json.loads(r.content))
-            or httpx.Response(200, json=GOOGLE_RESPONSE)
+            captured.append(json.loads(r.content)) or httpx.Response(200, json=GOOGLE_RESPONSE)
         ),
     )
     async with http:
@@ -598,9 +577,7 @@ async def test_native_tool_choice_conversion(protocol, choice):
     )
     async with http:
         await client.chat(
-            ChatRequest(
-                "m", [ChatMessage("user", "hi")], tools=[TOOL], tool_choice=choice
-            )
+            ChatRequest("m", [ChatMessage("user", "hi")], tools=[TOOL], tool_choice=choice)
         )
     body = captured[0]
     if protocol == "anthropic":
@@ -660,21 +637,11 @@ async def test_anthropic_parallel_tools_and_zero_argument_stream():
         ("content_block_stop", {"type": "content_block_stop", "index": 4}),
         ("message_stop", {"type": "message_stop"}),
     ]
-    client, http = make_client(
-        "anthropic", lambda _: httpx.Response(200, text=sse(events))
-    )
+    client, http = make_client("anthropic", lambda _: httpx.Response(200, text=sse(events)))
     async with http:
-        calls = [
-            call
-            async for chunk in client.stream(REQUEST)
-            for call in chunk.tool_calls or []
-        ]
+        calls = [call async for chunk in client.stream(REQUEST) for call in chunk.tool_calls or []]
     assert (
-        json.loads(
-            "".join(
-                c["function"].get("arguments", "") for c in calls if c["index"] == 0
-            )
-        )
+        json.loads("".join(c["function"].get("arguments", "") for c in calls if c["index"] == 0))
         == {}
     )
     assert json.loads(
@@ -689,25 +656,15 @@ async def test_google_multiple_stream_calls_get_distinct_synthetic_ids():
             "message",
             {
                 "candidates": [
-                    {
-                        "content": {
-                            "parts": [{"functionCall": {"name": "weather", "args": {}}}]
-                        }
-                    }
+                    {"content": {"parts": [{"functionCall": {"name": "weather", "args": {}}}]}}
                 ]
             },
         )
         for _ in range(2)
     ]
-    client, http = make_client(
-        "google", lambda _: httpx.Response(200, text=sse(events))
-    )
+    client, http = make_client("google", lambda _: httpx.Response(200, text=sse(events)))
     async with http:
-        calls = [
-            call
-            async for chunk in client.stream(REQUEST)
-            for call in chunk.tool_calls or []
-        ]
+        calls = [call async for chunk in client.stream(REQUEST) for call in chunk.tool_calls or []]
     assert [c["index"] for c in calls] == [0, 1]
     assert len({c["id"] for c in calls}) == 2
 
@@ -717,10 +674,7 @@ async def test_google_multiple_stream_calls_get_distinct_synthetic_ids():
 async def test_embeddings_and_azure_openai_root(protocol):
     def handler(request):
         if protocol == "azure":
-            assert (
-                request.url.path
-                == "/openai/deployments/text-embedding-3-small/embeddings"
-            )
+            assert request.url.path == "/openai/deployments/text-embedding-3-small/embeddings"
             assert request.headers["api-key"] == "secret-key"
         else:
             assert request.url.path == "/v1/embeddings"

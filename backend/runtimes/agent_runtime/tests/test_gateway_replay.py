@@ -12,7 +12,6 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 import pytest
-from qzdap_schema.dtos.turn import MessageChunk
 
 from qzdap_agent_runtime.gateway.facade import Gateway
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
@@ -23,6 +22,7 @@ from qzdap_agent_runtime.gateway.replay import (
 )
 from qzdap_agent_runtime.gateway.types import ChannelType
 from qzdap_agent_runtime.gateway.web import WebChatNormalizer, WebIdentityVerifier
+from qzdap_schema.dtos.turn import MessageChunk
 
 
 class _Store:
@@ -44,7 +44,7 @@ class _Store:
 
 
 def _gateway(store=None) -> Gateway:  # type: ignore[no-untyped-def]
-    class _Store_:
+    class _Store:
         async def claim(self, *args, **kwargs):  # type: ignore[no-untyped-def]
             raise AssertionError("重放路径不碰幂等守卫")
 
@@ -61,7 +61,7 @@ def _gateway(store=None) -> Gateway:  # type: ignore[no-untyped-def]
         channels=None,
         identity=WebIdentityVerifier(),
         normalizers={ChannelType.WEB: WebChatNormalizer()},
-        idempotency=IdempotencyGuard(_Store_()),  # type: ignore[arg-type]
+        idempotency=IdempotencyGuard(_Store()),  # type: ignore[arg-type]
         events=store,
     )
 
@@ -121,9 +121,7 @@ async def test_the_replay_reads_the_events_after_the_given_seq() -> None:
 
 @pytest.mark.asyncio
 async def test_a_turn_that_is_still_running_is_not_finished() -> None:
-    result = await _gateway(_Store([], status="running")).replay(
-        uuid4(), tenant_id=uuid4()
-    )
+    result = await _gateway(_Store([], status="running")).replay(uuid4(), tenant_id=uuid4())
     assert result.events == []
     assert result.is_finished is False
 

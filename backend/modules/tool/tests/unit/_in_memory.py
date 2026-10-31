@@ -84,20 +84,15 @@ class CollectingEventPublisher(EventPublisher):
         workspace_id: UUID | None,
         trace_id: str | None = None,
     ) -> None:
-        self.published.append(
-            (event, {"tenant_id": tenant_id, "workspace_id": workspace_id})
-        )
+        self.published.append((event, {"tenant_id": tenant_id, "workspace_id": workspace_id}))
 
 
 class FakeCustomInvoker(CustomInvokerPort):
     def __init__(
         self,
-        registry: dict[str, Callable[..., Awaitable[dict[str, Any]]]]
-        | None = None,
+        registry: dict[str, Callable[..., Awaitable[dict[str, Any]]]] | None = None,
     ) -> None:
-        self._registry: dict[
-            str, Callable[..., Awaitable[dict[str, Any]]]
-        ] = dict(registry or {})
+        self._registry: dict[str, Callable[..., Awaitable[dict[str, Any]]]] = dict(registry or {})
         # Last call arguments received by invoke(); lets tests assert that
         # internal routing keys (`__operation_id`, `__foo`) are stripped.
         self.last_args: dict[str, Any] | None = None
@@ -174,9 +169,7 @@ class FakeOpenAPIRuntime(OpenAPIRuntime):
             import httpx
 
             resp = httpx.Response(self.raise_status, json={"error": "boom"})
-            raise httpx.HTTPStatusError(
-                "boom", request=httpx.Request("GET", "x"), response=resp
-            )
+            raise httpx.HTTPStatusError("boom", request=httpx.Request("GET", "x"), response=resp)
         return self.response
 
 
@@ -190,9 +183,7 @@ class FakeMCPRuntime(MCPRuntime):
     async def list_tools(
         self, *, server_url: str, auth: AuthConfig | None, timeout: float = 10.0
     ) -> list[dict]:
-        self.list_calls.append(
-            {"server_url": server_url, "auth": auth, "timeout": timeout}
-        )
+        self.list_calls.append({"server_url": server_url, "auth": auth, "timeout": timeout})
         return list(self.tools)
 
     async def call_tool(

@@ -20,7 +20,6 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from qzdap_persistence.base import Base, TenantScopedMixin, make_composite_index
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
@@ -34,22 +33,18 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from qzdap_persistence.base import Base, TenantScopedMixin, make_composite_index
+
 
 class RunRecordORM(TenantScopedMixin, Base):
     __tablename__ = "run_records"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     run_type: Mapped[str] = mapped_column(String(16), nullable=False)
     source_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
     actor_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(
         String(16),
@@ -84,9 +79,7 @@ class RunRecordORM(TenantScopedMixin, Base):
 class CostRecordORM(TenantScopedMixin, Base):
     __tablename__ = "cost_records"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     run_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey("run_records.id", ondelete="RESTRICT"),
@@ -95,12 +88,8 @@ class CostRecordORM(TenantScopedMixin, Base):
     cost_type: Mapped[str] = mapped_column(String(16), nullable=False)
     amount_usd: Mapped[Any] = mapped_column(Numeric(12, 6), nullable=False)
     quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    unit: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default=text("'call'")
-    )
-    currency: Mapped[str] = mapped_column(
-        String(8), nullable=False, server_default=text("'USD'")
-    )
+    unit: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'call'"))
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, server_default=text("'USD'"))
     model_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
@@ -111,8 +100,7 @@ class CostRecordORM(TenantScopedMixin, Base):
 
     __table_args__ = (
         CheckConstraint(
-            "cost_type IN ('llm_input','llm_output','tool','skill','memory',"
-            "'knowledge','channel')",
+            "cost_type IN ('llm_input','llm_output','tool','skill','memory','knowledge','channel')",
             name="cost_type_enum",
         ),
         CheckConstraint("amount_usd >= 0", name="amount_nonneg"),

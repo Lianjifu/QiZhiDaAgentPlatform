@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from qzdap_kernel.errors import AppError
 
+from qzdap_kernel.errors import AppError
 from qzdap_schema.dtos import ErrorCode
 from qzdap_schema.dtos.errors import (
     ERROR_PROJECTION,
@@ -193,9 +193,7 @@ def test_the_projection_is_keyed_by_enum_members_only() -> None:
 
 def test_project_error_accepts_a_plain_string_code() -> None:
     """按字符串查也要能用 —— 错误码在运行时就是字符串（`AppError.code`）。"""
-    assert project_error("TENANT_DENIED", "http") == project_error(
-        ErrorCode.TENANT_DENIED, "http"
-    )
+    assert project_error("TENANT_DENIED", "http") == project_error(ErrorCode.TENANT_DENIED, "http")
 
 
 def test_an_unknown_code_falls_back_instead_of_leaking_the_raw_code() -> None:

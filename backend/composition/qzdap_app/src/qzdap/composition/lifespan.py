@@ -13,13 +13,14 @@ from __future__ import annotations
 
 import asyncio
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from logging import getLogger
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI
+
 from qzdap.modules.memory.domain.entities import EMBEDDING_DIM
 
 if TYPE_CHECKING:
@@ -38,9 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ── logging ──────────────────────────────────────────────────────────
     from qzdap_observability.logging import configure_logging
 
-    configure_logging(
-        level=container.settings.log_level, json=container.settings.log_json
-    )
+    configure_logging(level=container.settings.log_level, json=container.settings.log_json)
 
     # ── tracing ──────────────────────────────────────────────────────────
     if container.settings.otlp_endpoint:
@@ -169,9 +168,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
 
         sessions = SqlSessionRepository(db_session)
-        create_session = CreateSessionUseCase(
-            sessions, AgentRuntimeEventPublisher(container.bus())
-        )
+        create_session = CreateSessionUseCase(sessions, AgentRuntimeEventPublisher(container.bus()))
         return DelegateRuntime(
             sessions=sessions,
             catalog=_AgentCatalogFactory().for_session(db_session),
@@ -281,9 +278,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from qzdap_agent_runtime.router.strategy import RuleChainStrategy
 
             return RuleChainStrategy(
-                catalog=CatalogRoutingAdapter(
-                    self._catalog_factory.for_session(session)
-                ),
+                catalog=CatalogRoutingAdapter(self._catalog_factory.for_session(session)),
                 users=IdentityUserDirectory(SqlUserRepository(session)),
             )
 
@@ -314,9 +309,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
             knowledge_factory = getattr(app.state, "knowledge_service_factory", None)
-            memory_factory = getattr(
-                app.state, "memory_runtime_service_factory", None
-            )
+            memory_factory = getattr(app.state, "memory_runtime_service_factory", None)
             skill_factory = getattr(app.state, "skill_factory", None)
             knowledge_port = (
                 KnowledgeServiceAdapter(knowledge_factory.for_session(session))
@@ -348,7 +341,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             approval = None
             try:
                 approval = container.approval_service()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 approval = None
             graph = SessionGraphRunner(
                 llm=llm,
@@ -407,9 +400,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 graph=graph,
                 # 幂等守卫自持事务 —— claim 必须在轮次开始前落库, 否则并发
                 # 的第二个请求看不到它, 两轮都会起.
-                idempotency=IdempotencyGuard(
-                    PostgresIdempotencyStore(container.session_factory())
-                ),
+                idempotency=IdempotencyGuard(PostgresIdempotencyStore(container.session_factory())),
                 # ⚠️ **排队** ✓（Router Stage 3 ✓）—— 序号分配 ✓ + 放行判定 ✓。
                 sequence=sequence,
                 queue=queue,
@@ -458,9 +449,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         code="EVAL_VERSION_MISSING",
                         status=422,
                     )
-                agent = replace(
-                    agent.apply_patch(version["snapshot"]), version=agent_version
-                )
+                agent = replace(agent.apply_patch(version["snapshot"]), version=agent_version)
             copilot = _CopilotFactory().for_session(evaluation_session)
             graph = copilot._graph
             turn_id = uuid4()
@@ -633,10 +622,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # 间隔 (s). 短间隔保证 dev 可观察; 生产可调.
         interval = int(os.environ.get("QZDAP_HEALTH_SAMPLER_INTERVAL", "60"))
         # 模块引用在闭包内做 (避免 lifespan 启动前 import)
+        from sqlalchemy import select
+
         from qzdap.modules.model.adapter.persistence.models import (
             ProviderORM,
         )
-        from sqlalchemy import select
 
         try:
             while True:
@@ -650,9 +640,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         for prov in providers:
                             try:
                                 # 用 _ModelFactory 拿全配置 ModelService
-                                async with (
-                                    container.session_factory().session() as p_session
-                                ):
+                                async with container.session_factory().session() as p_session:
                                     factory = _ModelFactory()
                                     svc = factory.for_session(p_session)
                                     await svc.health_check(prov.id)
@@ -719,6 +707,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # ── per-request tool factory ─────────────────────────────────────
     import httpx as _httpx
+
     from qzdap.modules.tool.adapter.adapters import (
         CustomInvokerRegistry,
         MCPRuntimeAdapter,
@@ -766,14 +755,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     http_client = _httpx.AsyncClient(timeout=30.0)
     secrets_resolver = container.secrets_resolver()
-    openapi_rt = OpenAPIRuntimeAdapter(
-        http=http_client, secrets_resolver=secrets_resolver
-    )
+    openapi_rt = OpenAPIRuntimeAdapter(http=http_client, secrets_resolver=secrets_resolver)
     mcp_rt = MCPRuntimeAdapter(http=http_client, secrets_resolver=secrets_resolver)
 
-    custom_invoker = CustomInvokerRegistry(
-        workspace_root=container.settings.workspace_root
-    )
+    custom_invoker = CustomInvokerRegistry(workspace_root=container.settings.workspace_root)
     bind_settings_for_tools(container.settings)
     bind_audit_recorder(ToolAuditRecorder(session_factory=container.session_factory()))
     custom_invoker.register("echo", built_in_invoke_echo)
@@ -935,9 +920,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         model_service=model_service,
                     )
                 ),
-                resolver=RuntimeModelResolver(
-                    getattr(app.state, "catalog_model_resolver", None)
-                ),
+                resolver=RuntimeModelResolver(getattr(app.state, "catalog_model_resolver", None)),
                 # ⚠️ **工具执行只有一份** ✓（旧的 `execute_tool` ✓ —— 它包着
                 # `modules/tool` 的 `InvokeToolUseCase` ✓ 唯一权威 ✓）。
                 tool_runtime=ModuleToolRuntime(
@@ -970,9 +953,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.skill_factory = _SkillFactory()
 
-    policy_guard = (
-        container.policy_guard() if container.settings.policy_enabled else None
-    )
+    policy_guard = container.policy_guard() if container.settings.policy_enabled else None
 
     # ── per-request memory factory ──────────────────────────────────────
     from qzdap.modules.memory.adapter.persistence.repositories import (
@@ -1008,9 +989,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     memory_vector_queue = InMemoryVectorWriteQueue()
     memory_vector_worker = VectorizeWorker(
         queue=memory_vector_queue,
-        store=MemoryVectorizeAdapter(
-            embedding=memory_embedding, vectors=memory_vectors
-        ),
+        store=MemoryVectorizeAdapter(embedding=memory_embedding, vectors=memory_vectors),
         backfill=MemoryVectorBackfill(container.session_factory()),
     )
     app.state.memory_vector_queue = memory_vector_queue
@@ -1160,9 +1139,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 publisher=self._publisher,
                 scoring_threshold=(container.settings.agent_factory_eval_score_min),
                 concurrency=container.settings.evaluation_runner_concurrency,
-                case_timeout_seconds=(
-                    container.settings.evaluation_case_default_timeout_seconds
-                ),
+                case_timeout_seconds=(container.settings.evaluation_case_default_timeout_seconds),
             )
             return EvaluationService.from_parts(
                 dataset_repository=ds_repo,
@@ -1271,9 +1248,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Catalog knowledge is created via /api/admin/knowledge; signed office
     # knowledge packs are no longer seeded into RAG packages.
     if container.settings.platform_seed_office_knowledge_packs:
-        _log.info(
-            "office knowledge pack seed skipped (knowledge catalog replaces packs)"
-        )
+        _log.info("office knowledge pack seed skipped (knowledge catalog replaces packs)")
     if container.settings.platform_seed_office_plan_packs:
         _log.info("office plan pack seed skipped (workflow catalog replaces packs)")
 
@@ -1475,7 +1450,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ── redis client (for /readyz) ───────────────────────────────────────
     try:
         app.state.redis = container.redis_client()
-    except Exception:  # noqa: BLE001
+    except Exception:
         _log.warning("redis client not attached; /readyz will report redis=skipped")
 
     # ── Session 生命周期（Session Stage 0/1）─────────────────────────────
@@ -1524,6 +1499,7 @@ def _start_memory_vector_worker(app: Any) -> Callable[[], Awaitable[None]]:
     """
     worker = getattr(app.state, "memory_vector_worker", None)
     if worker is None:
+
         async def _noop() -> None:
             return None
 
@@ -1539,10 +1515,8 @@ def _start_memory_vector_worker(app: Any) -> Callable[[], Awaitable[None]]:
 
     async def _stop() -> None:
         task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
 
     return _stop
 
@@ -1579,7 +1553,7 @@ async def _refine_memory_buffers(app: Any, container: Container) -> None:
             # 「淘汰器与 sweeper 一起调度」✓）—— **策略第一次有执行者** ✓。
             evicted = await service.evict(now=now)
             await session.commit()
-    except Exception:  # noqa: BLE001
+    except Exception:
         _log.exception("memory buffer refinement failed; will retry next tick")
         return
     if report.total:
@@ -1620,7 +1594,7 @@ async def _start_session_sweeper(
                 report = await sweeper.sweep(now=datetime.now(UTC))
             except asyncio.CancelledError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _log.exception("session sweep failed; will retry next tick")
                 continue
             if report.total:
@@ -1635,10 +1609,8 @@ async def _start_session_sweeper(
 
     async def _stop() -> None:
         task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
 
     return _stop
 
@@ -1669,10 +1641,8 @@ async def _start_outbox_worker(
     # ⚠️ **可注入**（repo / dispatcher）—— 接线层要能**离线**测 ✓
     # （「接了但没跑」是静默的 ✗✗）。
     worker = OutboxWorker(
-        repo=repo
-        or PostgresOutboxRepository(container.session_factory()),
-        dispatcher=dispatcher
-        or ChannelOutboxDispatcher(sink=container.channel_result_sink()),
+        repo=repo or PostgresOutboxRepository(container.session_factory()),
+        dispatcher=dispatcher or ChannelOutboxDispatcher(sink=container.channel_result_sink()),
     )
 
     async def _loop() -> None:
@@ -1682,7 +1652,7 @@ async def _start_outbox_worker(
                 processed = await worker.tick()
             except asyncio.CancelledError:
                 raise
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _log.exception("outbox tick failed; will retry next tick")
                 continue
             if processed:
@@ -1693,10 +1663,8 @@ async def _start_outbox_worker(
 
     async def _stop() -> None:
         task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
 
     return _stop
 
@@ -1732,7 +1700,7 @@ async def _seed_default_plans(container: Container) -> None:
             if seeded > 0:
                 await session.commit()
                 _log.info("seeded %d default plans", seeded)
-    except Exception:  # noqa: BLE001
+    except Exception:
         _log.exception("seed_default_plans failed; continuing boot")
 
 
@@ -1744,6 +1712,8 @@ async def _seed_builtin_eval_datasets(app: FastAPI, container: Container) -> Non
     by the time HTTP requests land.
     """
     from uuid import uuid4
+
+    from sqlalchemy import select
 
     from qzdap.modules.evaluation.adapter.persistence.mappers import (
         case_to_orm,
@@ -1762,7 +1732,6 @@ async def _seed_builtin_eval_datasets(app: FastAPI, container: Container) -> Non
         builtin_golden_cases,
     )
     from qzdap_schema.ids import TenantId, UserId, WorkspaceId
-    from sqlalchemy import select
 
     factory = getattr(app.state, "evaluation_service_factory", None)
     if factory is None:
@@ -1787,7 +1756,7 @@ async def _seed_builtin_eval_datasets(app: FastAPI, container: Container) -> Non
     tenant_stmt = select(TenantScopedMixin.tenant_id).limit(500)
     try:
         tenant_rows = (await sf.execute(tenant_stmt)).all()
-    except Exception:  # noqa: BLE001
+    except Exception:
         tenant_rows = []
 
     seeded = 0
@@ -1875,9 +1844,7 @@ async def ensure_default_resources(container: Container) -> None:
     try:
         async with sf.session() as session:
             result = await seed_identity(session, container.hasher(), profile)
-            await seed_builtin_tools(
-                session, result["tenant_id"], result["workspace_id"]
-            )
+            await seed_builtin_tools(session, result["tenant_id"], result["workspace_id"])
             # 演示内容 (智能体/技能/工作流/知识库) —— 内部按 profile.label
             # 判断, dev 那套直接跳过.
             await seed_demo_content(
@@ -1886,5 +1853,5 @@ async def ensure_default_resources(container: Container) -> None:
                 tenant_id=result["tenant_id"],
                 workspace_id=result["workspace_id"],
             )
-    except Exception:  # noqa: BLE001
+    except Exception:
         _log.exception("ensure_default_resources failed; continuing boot")

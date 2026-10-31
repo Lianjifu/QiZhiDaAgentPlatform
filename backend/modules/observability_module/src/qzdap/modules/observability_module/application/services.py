@@ -15,13 +15,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    TenantId,
-    WorkspaceId,
-)
-
 from qzdap.modules.observability_module.application.ports import (
     CostRecordRepository,
     EvalRunQueryPort,
@@ -32,6 +25,12 @@ from qzdap.modules.observability_module.application.pricing import PricingCatalo
 from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunType,
+)
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    TenantId,
+    WorkspaceId,
 )
 
 # Aggregator row shape: list[dict[str, Any]] returned from repo.sum_*.
@@ -59,9 +58,7 @@ class ObservabilityService:
 
     # Cache the use-case callables (closures) so HTTP handlers can call
     # ``svc.list_runs(...)`` without re-importing.
-    _use_cases: dict[str, Callable[..., Awaitable[Any]]] = field(
-        default_factory=dict, repr=False
-    )
+    _use_cases: dict[str, Callable[..., Awaitable[Any]]] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         from qzdap.modules.observability_module.application.use_cases import (

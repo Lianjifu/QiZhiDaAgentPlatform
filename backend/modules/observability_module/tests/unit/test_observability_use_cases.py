@@ -9,8 +9,6 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from qzdap_kernel.errors import BusinessRuleError
-from qzdap_schema.ids import TenantId, WorkspaceId
 
 from qzdap.modules.observability_module.application.pricing import (
     DEFAULT_LLM_PRICING,
@@ -30,6 +28,8 @@ from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunType,
 )
+from qzdap_kernel.errors import BusinessRuleError
+from qzdap_schema.ids import TenantId, WorkspaceId
 
 from ._in_memory import (
     FakeEvalRunQueryPort,
@@ -254,9 +254,7 @@ def test_aggregate_by_model(service: ObservabilityService) -> None:
 
 def test_aggregate_rejects_invalid_group_by(service: ObservabilityService) -> None:
     with pytest.raises(BusinessRuleError):
-        asyncio.run(
-            service.aggregate_costs(tenant_id=TenantId(uuid4()), group_by="nonsense")
-        )
+        asyncio.run(service.aggregate_costs(tenant_id=TenantId(uuid4()), group_by="nonsense"))
 
 
 # ── get_quality_score ─────────────────────────────────────────────────────
@@ -279,15 +277,9 @@ def test_quality_score_returns_aggregate(service: ObservabilityService) -> None:
     tpl = uuid4()
     ver = uuid4()
     completed = datetime.now(UTC)
-    fake_run = SimpleNamespace(
-        id=uuid4(), mean_score=0.85, completed_at=completed, sample_count=12
-    )
-    service.eval_query = FakeEvalRunQueryPort(
-        runs={(str(tid), str(tpl), str(ver)): fake_run}
-    )
-    score = asyncio.run(
-        service.get_quality_score(tenant_id=tid, template_id=tpl, version_id=ver)
-    )
+    fake_run = SimpleNamespace(id=uuid4(), mean_score=0.85, completed_at=completed, sample_count=12)
+    service.eval_query = FakeEvalRunQueryPort(runs={(str(tid), str(tpl), str(ver)): fake_run})
+    score = asyncio.run(service.get_quality_score(tenant_id=tid, template_id=tpl, version_id=ver))
     assert isinstance(score, QualityScore)
     assert score.mean_score == 0.85
     assert score.sample_count == 12

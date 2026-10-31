@@ -140,9 +140,7 @@ class TurnQueuePort(Protocol):
         """**当前排队的轮次数** ✓（N 条上限的判据 ✓）。"""
         ...
 
-    async def queue_position(
-        self, *, tenant_id: UUID, session_id: UUID, ingress_seq: int
-    ) -> int:
+    async def queue_position(self, *, tenant_id: UUID, session_id: UUID, ingress_seq: int) -> int:
         """**我排在第几个** ✓（1 = 下一个 ✓）。"""
         ...
 
@@ -185,17 +183,13 @@ async def wait_for_turn_slot(
         )
         waited = int((monotonic() - started) * 1000)
         if decision.outcome is QueueOutcome.RELEASED:
-            record_router_queue_wait(
-                tenant_id=str(tenant_id), waited_s=waited / 1000
-            )
+            record_router_queue_wait(tenant_id=str(tenant_id), waited_s=waited / 1000)
             return
         if cancelled is not None and await cancelled():
             raise QueueCancelled("用户在排队期间取消了这一轮")
         if monotonic() - started >= max_wait_seconds:
             record_router_concurrency_rejected(reason="queue_timeout")
-            raise QueueTimeoutError(
-                f"session {session_id} queue wait exceeded {max_wait_seconds}s"
-            )
+            raise QueueTimeoutError(f"session {session_id} queue wait exceeded {max_wait_seconds}s")
         yield QueueDecision(
             outcome=QueueOutcome.WAITING,
             position=decision.position,

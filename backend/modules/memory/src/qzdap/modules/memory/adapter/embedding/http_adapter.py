@@ -47,9 +47,7 @@ class HttpEmbeddingAdapter(EmbeddingPort):
         if not texts:
             return []
         if len(texts) > self.max_batch:
-            raise ValueError(
-                f"batch too large: {len(texts)} > max_batch={self.max_batch}"
-            )
+            raise ValueError(f"batch too large: {len(texts)} > max_batch={self.max_batch}")
 
         client = self._ensure_client()
         resp = await client.post(
@@ -61,8 +59,7 @@ class HttpEmbeddingAdapter(EmbeddingPort):
         embeddings: list[list[float]] = body["embeddings"]
         if len(embeddings) != len(texts):
             raise RuntimeError(
-                f"embedding_runtime returned {len(embeddings)} vectors for "
-                f"{len(texts)} inputs"
+                f"embedding_runtime returned {len(embeddings)} vectors for {len(texts)} inputs"
             )
         return embeddings
 

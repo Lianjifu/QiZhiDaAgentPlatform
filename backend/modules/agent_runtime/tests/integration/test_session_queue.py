@@ -85,9 +85,7 @@ async def queue_ctx():
             await conn.execute(text(statement.replace("{schema}", schema)))
         await conn.commit()
 
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
+    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     from qzdap_persistence.session_factory import SessionFactory
 
     factory = SessionFactory(engine)
@@ -225,9 +223,7 @@ async def test_the_next_turn_is_released_after_the_previous_one_finished(queue_c
             ingress_seq=2,
             status="queued",
         )
-        await _advance_snapshot(
-            session, session_id=session_id, tenant_id=tenant, value=1
-        )
+        await _advance_snapshot(session, session_id=session_id, tenant_id=tenant, value=1)
         queue = PostgresTurnQueue(session)
         decision = await queue.try_release(
             tenant_id=tenant,
@@ -310,9 +306,7 @@ async def test_the_queue_depth_and_position_are_reported(queue_ctx) -> None:  # 
                 status="queued",
             )
         queue = PostgresTurnQueue(session)
-        assert await queue.queue_depth(
-            tenant_id=tenant, session_id=session_id
-        ) == 3
-        assert await queue.queue_position(
-            tenant_id=tenant, session_id=session_id, ingress_seq=2
-        ) == 2
+        assert await queue.queue_depth(tenant_id=tenant, session_id=session_id) == 3
+        assert (
+            await queue.queue_position(tenant_id=tenant, session_id=session_id, ingress_seq=2) == 2
+        )

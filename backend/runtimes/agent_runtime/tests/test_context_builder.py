@@ -108,9 +108,7 @@ class TestAgentPrompts:
                 "user": "对用户说中文",
             },
         )
-        system_text = "\n\n".join(
-            m["content"] for m in ctx.messages if m["role"] == "system"
-        )
+        system_text = "\n\n".join(m["content"] for m in ctx.messages if m["role"] == "system")
         for fragment in (
             "你是小智",
             "严谨",
@@ -173,9 +171,7 @@ class TestRecallParameters:
             if e.source == "memory"
         ]
         assert hit_segments
-        assert all(
-            len(segment) <= 400 + 20 for segment in hit_segments
-        )  # 分数前缀 + 截断 ✓
+        assert all(len(segment) <= 400 + 20 for segment in hit_segments)  # 分数前缀 + 截断 ✓
 
 
 class TestDegraded:
@@ -199,13 +195,9 @@ class TestManifest:
     @pytest.mark.asyncio
     async def test_entries_carry_ref_id_and_score(self) -> None:
         memory = _Memory([{"id": "m1", "content": "记忆", "score": 0.42}])
-        knowledge = _Knowledge(
-            [{"metadata": {"asset_id": "a1"}, "content": "知识", "score": 0.7}]
-        )
+        knowledge = _Knowledge([{"metadata": {"asset_id": "a1"}, "content": "知识", "score": 0.7}])
         builder = ContextBuilder(memory_port=memory, knowledge_port=knowledge)
-        ctx = await _build(
-            builder, agent_version="v7", agent_prompts={"soul": "你是小智"}
-        )
+        ctx = await _build(builder, agent_version="v7", agent_prompts={"soul": "你是小智"})
         entries = {(e.source, e.ref_id): e for e in ctx.manifest.entries}
         assert entries[("memory", "m1")].score == pytest.approx(0.42)
         assert entries[("knowledge", "a1")].score == pytest.approx(0.7)
@@ -249,15 +241,12 @@ class TestPorts:
         from qzdap.modules.agent_runtime.adapter.memory.memory_service_adapter import (
             MemoryServiceAdapter,
         )
-
         from qzdap_agent_runtime.context import (
             KnowledgeSearchPort,
             MemoryRecallPort,
         )
 
-        assert isinstance(
-            MemoryServiceAdapter.__new__(MemoryServiceAdapter), MemoryRecallPort
-        )
+        assert isinstance(MemoryServiceAdapter.__new__(MemoryServiceAdapter), MemoryRecallPort)
         assert isinstance(
             KnowledgeServiceAdapter.__new__(KnowledgeServiceAdapter),
             KnowledgeSearchPort,

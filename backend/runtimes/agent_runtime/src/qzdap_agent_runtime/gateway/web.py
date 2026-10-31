@@ -64,9 +64,7 @@ class WebIdentityVerifier:
                 reason_code=REASON_CREDENTIALS_MISSING,
                 trace_id=request.trace_id,
             )
-        workspace_id = request.workspace_id or _uuid_or_none(
-            headers.get(HEADER_WORKSPACE)
-        )
+        workspace_id = request.workspace_id or _uuid_or_none(headers.get(HEADER_WORKSPACE))
         from_principal = request.actor_id is not None
         return Identity(
             actor=ActorContext(
@@ -78,9 +76,7 @@ class WebIdentityVerifier:
             ),
             trust=TrustLevel.JWT if from_principal else TrustLevel.INTERNAL,
             auth_method=AuthMethod.JWT if from_principal else AuthMethod.INTERNAL,
-            auth_evidence=(
-                f"principal:{actor_id}" if from_principal else f"headers:{actor_id}"
-            ),
+            auth_evidence=(f"principal:{actor_id}" if from_principal else f"headers:{actor_id}"),
         )
 
 

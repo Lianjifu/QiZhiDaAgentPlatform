@@ -26,12 +26,13 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import text
+
 from qzdap_agent_runtime.session.queue import QueueDecision, QueueOutcome
 from qzdap_observability.metrics import (
     record_router_queue_depth,
     record_router_seq_snapshot_drift,
 )
-from sqlalchemy import text
 
 #: **快路径 + 兜底路径** ✓ 的放行 SQL ✓。
 #:
@@ -197,9 +198,7 @@ class PostgresTurnQueue:
         record_router_queue_depth(tenant_id=str(tenant_id), depth=depth)
         return depth
 
-    async def queue_position(
-        self, *, tenant_id: UUID, session_id: UUID, ingress_seq: int
-    ) -> int:
+    async def queue_position(self, *, tenant_id: UUID, session_id: UUID, ingress_seq: int) -> int:
         """**我排在第几个** ✓（1 = 下一个 ✓）。"""
         result = await self._s.execute(
             _POSITION_SQL,
@@ -211,9 +210,7 @@ class PostgresTurnQueue:
         )
         return int(result.scalar_one_or_none() or 0) + 1
 
-    async def _snapshot_drift(
-        self, *, tenant_id: UUID, session_id: UUID, ingress_seq: int
-    ) -> bool:
+    async def _snapshot_drift(self, *, tenant_id: UUID, session_id: UUID, ingress_seq: int) -> bool:
         """**快照落后了吗** ✓（快路径不成立但权威值已过 ✓）。"""
         result = await self._s.execute(
             _SNAPSHOT_DRIFT_SQL,

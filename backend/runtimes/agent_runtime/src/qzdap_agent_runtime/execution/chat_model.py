@@ -24,6 +24,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.messages.tool import ToolCallChunk
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from pydantic import ConfigDict
+
 from qzdap_llm.client import ChatMessage, ChatRequest
 from qzdap_schema.ids import ModelId
 
@@ -105,9 +106,7 @@ class QZDAPChatModel(BaseChatModel):
         async for chunk in stream:
             message: AIMessageChunk = AIMessageChunk(content=chunk.delta or "")
             if chunk.tool_calls:
-                message.tool_call_chunks = [
-                    _to_tool_call_chunk(raw) for raw in chunk.tool_calls
-                ]
+                message.tool_call_chunks = [_to_tool_call_chunk(raw) for raw in chunk.tool_calls]
             if chunk.usage is not None:
                 message.usage_metadata = {
                     "input_tokens": chunk.usage.input_tokens,
@@ -129,9 +128,7 @@ class QZDAPChatModel(BaseChatModel):
         说话」✓）。
         """
         _ = (messages, stop, run_manager, kwargs)
-        raise NotImplementedError(
-            "QZDAPChatModel 只支持异步流式（平台的 LLM 客户端是异步的）"
-        )
+        raise NotImplementedError("QZDAPChatModel 只支持异步流式（平台的 LLM 客户端是异步的）")
 
     async def _agenerate(
         self,
@@ -147,9 +144,7 @@ class QZDAPChatModel(BaseChatModel):
         """
         parts: list[str] = []
         usage: dict[str, Any] | None = None
-        async for chunk in self._astream(
-            messages, stop=stop, run_manager=run_manager, **kwargs
-        ):
+        async for chunk in self._astream(messages, stop=stop, run_manager=run_manager, **kwargs):
             message = chunk.message
             if isinstance(message.content, str):
                 parts.append(message.content)
@@ -160,9 +155,7 @@ class QZDAPChatModel(BaseChatModel):
                 usage = dict(chunk_usage)
         return ChatResult(
             generations=[
-                ChatGeneration(
-                    message=AIMessage(content="".join(parts), usage_metadata=usage)
-                )
+                ChatGeneration(message=AIMessage(content="".join(parts), usage_metadata=usage))
             ],
             llm_output={"model_name": self.model_name},
         )
@@ -180,9 +173,7 @@ class QZDAPChatModel(BaseChatModel):
         报错** ✓（不是空实现 ✗✗ —— 那样会「调用成功但没有回答」✗）。
         """
         _ = (messages, stop, run_manager, kwargs)
-        raise NotImplementedError(
-            "QZDAPChatModel 只支持异步调用（平台的 LLM 客户端是异步的）"
-        )
+        raise NotImplementedError("QZDAPChatModel 只支持异步调用（平台的 LLM 客户端是异步的）")
 
 
 def _to_chat_message(message: BaseMessage) -> ChatMessage:
@@ -191,11 +182,7 @@ def _to_chat_message(message: BaseMessage) -> ChatMessage:
     content = getattr(message, "content", "") or ""
     if not isinstance(content, str):
         # 多模态内容块 —— 本平台只吃字符串 ✓（取文本部分 ✓）。
-        parts = [
-            str(part.get("text") or "")
-            for part in content
-            if isinstance(part, dict)
-        ]
+        parts = [str(part.get("text") or "") for part in content if isinstance(part, dict)]
         content = "".join(parts)
     return ChatMessage(role=role, content=content)  # type: ignore[arg-type]
 

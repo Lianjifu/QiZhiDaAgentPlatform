@@ -34,8 +34,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
-from qzdap_schema.dtos.errors import ErrorCode
-
 from qzdap_agent_runtime.gateway.idempotency import (
     SENTINEL_WORKSPACE_ID,
     IdempotencyGuard,
@@ -54,6 +52,7 @@ from qzdap_agent_runtime.gateway.normalizer import (
     NormalizerContext,
 )
 from qzdap_agent_runtime.gateway.replay import EventStore, ReplayResult
+from qzdap_schema.dtos.errors import ErrorCode
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -136,9 +135,7 @@ def scope_for(message: InboundMessage) -> InboxScope:
     return InboxScope(
         tenant_id=message.actor.tenant_id,
         workspace_id=message.actor.workspace_id or SENTINEL_WORKSPACE_ID,
-        channel_id=(
-            str(message.channel_id) if message.channel_id else str(message.channel_type)
-        ),
+        channel_id=(str(message.channel_id) if message.channel_id else str(message.channel_type)),
     )
 
 
@@ -190,9 +187,7 @@ class Gateway:
                 body=raw.body,
                 secret=descriptor.secret if descriptor else b"",
                 tolerance_seconds=(
-                    tolerance_seconds
-                    if tolerance_seconds is not None
-                    else self._tolerance
+                    tolerance_seconds if tolerance_seconds is not None else self._tolerance
                 ),
                 tenant_id=descriptor.tenant_id if descriptor else None,
                 workspace_id=descriptor.workspace_id if descriptor else None,
@@ -244,9 +239,7 @@ class Gateway:
             trace_id=message.trace_id,
         )
 
-    async def complete(
-        self, decision: IdempotencyDecision, *, turn_id: UUID | None = None
-    ) -> None:
+    async def complete(self, decision: IdempotencyDecision, *, turn_id: UUID | None = None) -> None:
         """这一轮跑完了 —— 键被消费。"""
         await self._idempotency.complete(decision, turn_id=turn_id)
 
@@ -256,9 +249,7 @@ class Gateway:
 
     # ── 重放（Stage 4b）────────────────────────────────────────────────
 
-    async def replay(
-        self, turn_id: UUID, *, tenant_id: UUID, after_seq: int = 0
-    ) -> ReplayResult:
+    async def replay(self, turn_id: UUID, *, tenant_id: UUID, after_seq: int = 0) -> ReplayResult:
         """重放上一轮的事件流 —— **重复请求的正确行为**（§4.5）。
 
         ``after_seq`` 是客户端带回来的 ``Last-Event-ID``：只重放它**之后**的
@@ -269,9 +260,7 @@ class Gateway:
         """
         if self._events is None:
             return ReplayResult(turn_id=turn_id, status=None, events=[])
-        events = await self._events.get_events(
-            turn_id, tenant_id=tenant_id, after_seq=after_seq
-        )
+        events = await self._events.get_events(turn_id, tenant_id=tenant_id, after_seq=after_seq)
         status = await self._events.get_turn_status(turn_id, tenant_id=tenant_id)
         return ReplayResult(turn_id=turn_id, status=status, events=events)
 

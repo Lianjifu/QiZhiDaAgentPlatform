@@ -62,10 +62,7 @@ def scan_trust_dir(
             ) from exc
         expected_id = public_key_id(key)
         # Filename: <key_id>.pub.pem → stem = "<key_id>.pub" → strip the suffix
-        if path.stem.endswith(".pub"):
-            stem_id = path.stem[: -len(".pub")]
-        else:
-            stem_id = path.stem
+        stem_id = path.stem[: -len(".pub")] if path.stem.endswith(".pub") else path.stem
         if stem_id != expected_id:
             raise signer_untrusted_exc(
                 f"{label} trust store key {path.name!r} filename does not match "
@@ -74,8 +71,7 @@ def scan_trust_dir(
         keys[expected_id] = key
     if not keys:
         raise signer_untrusted_exc(
-            f"{label} trust dir {trust_dir} is empty — refusing to run with "
-            f"zero trusted keys"
+            f"{label} trust dir {trust_dir} is empty — refusing to run with zero trusted keys"
         )
     return keys
 

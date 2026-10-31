@@ -45,9 +45,7 @@ class AuthConfigType(StrEnum):
 @dataclass(slots=True, frozen=True)
 class AuthConfig:
     type: AuthConfigType
-    secrets_ref: str | None = (
-        None  # P5 secrets table reference; raw secrets never stored here
-    )
+    secrets_ref: str | None = None  # P5 secrets table reference; raw secrets never stored here
 
     @classmethod
     def none(cls) -> AuthConfig:
@@ -100,10 +98,7 @@ class Tool:
     ) -> Tool:
         if not name or len(name) > 128:
             raise ValueError(f"invalid name: {name!r} (must be non-empty, <=128 chars)")
-        if (
-            rate_limit_per_minute is not None
-            and not 1 <= rate_limit_per_minute <= 100_000
-        ):
+        if rate_limit_per_minute is not None and not 1 <= rate_limit_per_minute <= 100_000:
             raise ValueError("rate_limit_per_minute must be between 1 and 100000")
         return cls(
             id=id,
@@ -135,15 +130,10 @@ class Tool:
         enabled: bool | None = None,
     ) -> Tool:
         """Return a new Tool with selected fields replaced. Version bumps +1."""
-        if (
-            rate_limit_per_minute is not None
-            and not 1 <= rate_limit_per_minute <= 100_000
-        ):
+        if rate_limit_per_minute is not None and not 1 <= rate_limit_per_minute <= 100_000:
             raise ValueError("rate_limit_per_minute must be between 1 and 100000")
         new_spec = dict(self.spec) if spec is None else dict(spec)
-        new_ops = (
-            self.spec_operations if spec_operations is None else list(spec_operations)
-        )
+        new_ops = self.spec_operations if spec_operations is None else list(spec_operations)
         if clear_auth:
             new_auth: AuthConfig | None = None
         elif auth_config is not None:
@@ -177,9 +167,7 @@ class Tool:
         return self.update(enabled=False)
 
     @staticmethod
-    def extract_operations(
-        *, protocol: ToolProtocol, spec: dict
-    ) -> list[SpecOperation]:
+    def extract_operations(*, protocol: ToolProtocol, spec: dict) -> list[SpecOperation]:
         """Pre-extract operation tables from a registration spec.
 
         Raises `InvalidToolSpec` on malformed input so the use case can map

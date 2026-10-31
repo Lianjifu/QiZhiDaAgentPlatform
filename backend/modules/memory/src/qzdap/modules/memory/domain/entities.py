@@ -270,9 +270,7 @@ class RetentionPolicy:
     @classmethod
     def defaults(cls, *, tenant_id: UUID, workspace_id: UUID) -> list[Self]:
         now = _utcnow()
-        specs: list[
-            tuple[MemoryLayer, str, str, int, int, int, EvictionStrategy, float]
-        ] = [
+        specs: list[tuple[MemoryLayer, str, str, int, int, int, EvictionStrategy, float]] = [
             ("l1", "短期记忆", "会话上下文窗口", 60, 50, 8, "fifo", 0.94),
             ("l2", "长期记忆", "用户偏好与事实", 60 * 24 * 90, 200, 32, "lru", 0.88),
             ("l3", "知识记忆", "团队级共享知识", 60 * 24 * 365, 500, 128, "lru", 0.92),

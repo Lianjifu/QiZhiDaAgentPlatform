@@ -2,10 +2,11 @@
 
 from uuid import UUID
 
-from qzdap_persistence.base import Base, TenantScopedMixin
 from sqlalchemy import Integer, LargeBinary, String
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
+
+from qzdap_persistence.base import Base, TenantScopedMixin
 
 
 class CopilotAttachmentORM(TenantScopedMixin, Base):

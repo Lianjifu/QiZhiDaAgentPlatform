@@ -48,9 +48,7 @@ def test_workspace_must_have_tenant() -> None:
 
 def test_user_email_validation() -> None:
     with pytest.raises(ValueError, match="invalid email"):
-        User.create(
-            id=uuid4(), tenant_id=uuid4(), email="not-an-email", display_name="X"
-        )
+        User.create(id=uuid4(), tenant_id=uuid4(), email="not-an-email", display_name="X")
     u = User.create(id=uuid4(), tenant_id=uuid4(), email="hi@x.com", display_name="Hi")
     assert u.email == "hi@x.com"
     assert u.raise_registered_event().user_id == u.id
@@ -89,6 +87,4 @@ def test_error_codes() -> None:
 
 def test_workspace_create_validates_slug() -> None:
     with pytest.raises(ValueError):
-        Workspace.create(
-            id=uuid4(), tenant_id=uuid4(), slug="bad slug!", display_name="x"
-        )
+        Workspace.create(id=uuid4(), tenant_id=uuid4(), slug="bad slug!", display_name="x")

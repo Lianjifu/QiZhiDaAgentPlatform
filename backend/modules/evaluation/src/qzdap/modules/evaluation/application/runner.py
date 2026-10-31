@@ -23,8 +23,6 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from qzdap_kernel.errors import AppError
-
 from qzdap.modules.evaluation.application.ports import (
     EvalRunRepository,
     SubAgentPort,
@@ -37,6 +35,7 @@ from qzdap.modules.evaluation.domain.events import (
     EvalRunStarted,
 )
 from qzdap.modules.evaluation.domain.value_objects import EvalRunStatus
+from qzdap_kernel.errors import AppError
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +70,7 @@ class EvalRunner:
             )
             return
 
-        cases = await self.dataset_repo.list_cases(
-            tenant_id=tenant_id, dataset_id=run.dataset_id
-        )
+        cases = await self.dataset_repo.list_cases(tenant_id=tenant_id, dataset_id=run.dataset_id)
         if not cases:
             await self._mark_errored(run, error_message="dataset has no cases")
             return
@@ -134,7 +131,7 @@ class EvalRunner:
                         int((time.monotonic() - t0) * 1000),
                         f"{exc.__class__.__name__}: {exc}",
                     )
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     return (
                         case,
                         0.0,
@@ -149,7 +146,7 @@ class EvalRunner:
 
         try:
             raw = await asyncio.gather(*(_one(c) for c in cases))
-        except Exception as exc:  # noqa: BLE001 - total runner failure
+        except Exception as exc:
             await self._mark_errored(running, error_message=f"runner crashed: {exc}")
             return
 

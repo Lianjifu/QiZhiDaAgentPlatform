@@ -7,14 +7,13 @@ import json
 from collections.abc import AsyncIterator
 from uuid import UUID
 
+from qzdap.modules.agent_runtime.adapter.http.sse import sse_stream
 from qzdap_schema.dtos.turn import (
     DoneChunk,
     ErrorChunk,
     MessageChunk,
     UsageChunk,
 )
-
-from qzdap.modules.agent_runtime.adapter.http.sse import sse_stream
 
 
 async def _gen() -> AsyncIterator:
@@ -104,9 +103,7 @@ async def test_sse_stream_keepalive_does_not_break_the_frontend_parser() -> None
     async for piece in sse_stream(slow(), keepalive_seconds=0.01):
         out += piece
     for block in out.decode("utf-8").split("\n\n"):
-        data_lines = [
-            line for line in block.split("\n") if line.startswith("data:")
-        ]
+        data_lines = [line for line in block.split("\n") if line.startswith("data:")]
         if not data_lines:
             continue
         if block.startswith("event: end"):

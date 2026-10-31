@@ -17,7 +17,6 @@ import socket
 import uuid
 from collections.abc import AsyncIterator
 
-import qzdap_persistence.pgvector  # noqa: F401
 import pytest
 import pytest_asyncio
 from sqlalchemy import event, text
@@ -29,6 +28,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
+import qzdap_persistence.pgvector  # noqa: F401
 from qzdap.modules.governance.adapter.persistence import (
     models as gov_models,  # noqa: F401
 )

@@ -19,9 +19,8 @@ from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.router.types import UserAttributes, UserDirectoryPort
-
 from qzdap.modules.identity.application.ports import UserRepository
+from qzdap_agent_runtime.router.types import UserAttributes, UserDirectoryPort
 
 
 def _as_str_tuple(raw: Any) -> tuple[str, ...]:
@@ -45,17 +44,13 @@ class IdentityUserDirectory(UserDirectoryPort):
     def __init__(self, users: UserRepository) -> None:
         self._users = users
 
-    async def get_user_attributes(
-        self, *, tenant_id: UUID, user_id: UUID
-    ) -> UserAttributes:
+    async def get_user_attributes(self, *, tenant_id: UUID, user_id: UUID) -> UserAttributes:
         user = await self._users.get(user_id)
         if user is None or user.tenant_id != tenant_id:
             return UserAttributes()
         metadata = user.metadata or {}
         return UserAttributes(
-            departments=_as_str_tuple(
-                metadata.get("departments") or metadata.get("department")
-            ),
+            departments=_as_str_tuple(metadata.get("departments") or metadata.get("department")),
             tags=_as_str_tuple(metadata.get("tags")),
             roles=frozenset(_as_str_tuple(metadata.get("roles"))),
         )

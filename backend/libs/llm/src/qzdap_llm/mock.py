@@ -22,17 +22,36 @@ from qzdap_llm.client import (
 )
 from qzdap_llm.config import LLMConfig
 
-
 # ---------------------------------------------------------------------------
 # Round-7 触发词: 命中后通过 synthetic_chunks 注入 plan / artifact /
 # workflow 事件, 让前端在 mock 模式下也能跑 UI 流程
 # ---------------------------------------------------------------------------
 
 _TRIGGERS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"做.*?计划|做.*?规划|拆解成|分步|step\s*by\s*step|分阶段|做.*?方案|给我.*?计划|列.*?计划|列.*?步骤|怎么.*?做|如何.*?做"), "plan"),
-    (re.compile(r"生成(一份|个|一篇)?(报告|文档|说明书|手册|方案|计划书|需求|纪要|模板)|写(一份|个|一篇)?(报告|文档|说明书|手册|模板)|(报告|文档|说明书|手册|计划书|纪要|模板)"), "artifact"),
-    (re.compile(r"跑(一下|个)?(命令|脚本|shell|bash)?|执行(命令|脚本)|^\s*ls\s*$|^\s*pwd\s*$|^\s*whoami\s*$|^\s*echo\s|^\s*grep\s"), "workflow"),
-    (re.compile(r"你.*?(可以|能)做.*?什么|你.*?能做.*?(什么|哪些)|能(力|做什么)|介绍.*?能力|help|你能.*?帮|有什么.*?功能|what\s+can\s+you"), "capability"),
+    (
+        re.compile(
+            r"做.*?计划|做.*?规划|拆解成|分步|step\s*by\s*step|分阶段|做.*?方案|给我.*?计划|列.*?计划|列.*?步骤|怎么.*?做|如何.*?做"
+        ),
+        "plan",
+    ),
+    (
+        re.compile(
+            r"生成(一份|个|一篇)?(报告|文档|说明书|手册|方案|计划书|需求|纪要|模板)|写(一份|个|一篇)?(报告|文档|说明书|手册|模板)|(报告|文档|说明书|手册|计划书|纪要|模板)"
+        ),
+        "artifact",
+    ),
+    (
+        re.compile(
+            r"跑(一下|个)?(命令|脚本|shell|bash)?|执行(命令|脚本)|^\s*ls\s*$|^\s*pwd\s*$|^\s*whoami\s*$|^\s*echo\s|^\s*grep\s"
+        ),
+        "workflow",
+    ),
+    (
+        re.compile(
+            r"你.*?(可以|能)做.*?什么|你.*?能做.*?(什么|哪些)|能(力|做什么)|介绍.*?能力|help|你能.*?帮|有什么.*?功能|what\s+can\s+you"
+        ),
+        "capability",
+    ),
 ]
 
 _CAPABILITY_INTRO = """我是 QZDAP 企业助手, 通常能帮你做下面这些事:
@@ -48,16 +67,50 @@ _CAPABILITY_INTRO = """我是 QZDAP 企业助手, 通常能帮你做下面这些
 
 _PLAN_TEMPLATES = [
     [
-        {"id": "s1", "title": "梳理需求与边界", "description": "读取用户输入, 列出关键约束与产出标准", "kind": "ask"},
-        {"id": "s2", "title": "检索相关知识", "description": "在知识库中查最相关的 5 条文档", "kind": "tool", "tool_name": "knowledge_search"},
+        {
+            "id": "s1",
+            "title": "梳理需求与边界",
+            "description": "读取用户输入, 列出关键约束与产出标准",
+            "kind": "ask",
+        },
+        {
+            "id": "s2",
+            "title": "检索相关知识",
+            "description": "在知识库中查最相关的 5 条文档",
+            "kind": "tool",
+            "tool_name": "knowledge_search",
+        },
         {"id": "s3", "title": "起草正文", "description": "用模型生成主文档", "kind": "subagent"},
-        {"id": "s4", "title": "导出 Markdown", "description": "保存为 session_artifacts, 暴露下载端点", "kind": "tool", "tool_name": "write_markdown"},
+        {
+            "id": "s4",
+            "title": "导出 Markdown",
+            "description": "保存为 session_artifacts, 暴露下载端点",
+            "kind": "tool",
+            "tool_name": "write_markdown",
+        },
     ],
     [
         {"id": "s1", "title": "明确输入输出", "description": "列出范围与角色", "kind": "ask"},
-        {"id": "s2", "title": "拆解任务", "description": "把目标分成 3-5 个原子步骤", "kind": "subagent"},
-        {"id": "s3", "title": "调用工具执行", "description": "对每个原子步骤调一个工具", "kind": "tool", "tool_name": "shell"},
-        {"id": "s4", "title": "回写结果", "description": "汇总步骤结果, 反馈给用户", "kind": "tool", "tool_name": "write_markdown"},
+        {
+            "id": "s2",
+            "title": "拆解任务",
+            "description": "把目标分成 3-5 个原子步骤",
+            "kind": "subagent",
+        },
+        {
+            "id": "s3",
+            "title": "调用工具执行",
+            "description": "对每个原子步骤调一个工具",
+            "kind": "tool",
+            "tool_name": "shell",
+        },
+        {
+            "id": "s4",
+            "title": "回写结果",
+            "description": "汇总步骤结果, 反馈给用户",
+            "kind": "tool",
+            "tool_name": "write_markdown",
+        },
     ],
 ]
 
@@ -93,7 +146,8 @@ class MockLLMClient(LLMClient):
     def __init__(self, config: LLMConfig | None = None) -> None:
         self._cfg = config or LLMConfig()
         # 触发生成的产物落本地 (前端通过 download_path 拉取); 单进程内足够.
-        self._artifact_dir = Path("/tmp/qzdap-mock-artifacts")
+        # 本地 mock 的产物目录 ✓ —— 不是密钥 ✓
+        self._artifact_dir = Path("/tmp/qzdap-mock-artifacts")  # noqa: S108
         self._artifact_dir.mkdir(parents=True, exist_ok=True)
 
     async def chat(self, req: ChatRequest) -> ChatResponse:
@@ -113,7 +167,8 @@ class MockLLMClient(LLMClient):
         words = content.split(" ")
         # 不让句子被切得太碎, 每块 2~4 个词
         import random
-        rng = random.Random(content)
+
+        rng = random.Random(content)  # noqa: S311 —— mock 输出要可复现 ✓ 不是安全用途 ✓
         groups: list[str] = []
         i = 0
         while i < len(words):
@@ -176,9 +231,7 @@ class MockLLMClient(LLMClient):
                     }
                 )
             elif kind == "artifact":
-                name_value, mime, body = _ARTIFACT_TEMPLATES[
-                    hash(text) % len(_ARTIFACT_TEMPLATES)
-                ]
+                name_value, mime, body = _ARTIFACT_TEMPLATES[hash(text) % len(_ARTIFACT_TEMPLATES)]
                 artifact_id = str(uuid.uuid4())
                 # 落本地, 暴露给前端 blob 端点
                 file_path = self._artifact_dir / f"{artifact_id}.md"
@@ -340,23 +393,37 @@ def _mock_response_text(messages: list[ChatMessage], mock_latency_ms: int = 200)
         return "你好, 我是 QZDAP 企业助手, 有什么可以帮你的?"
 
     # 1) 能力问询 → 完整 markdown 介绍, 后面跟 demo chunks
-    if re.search(r"你.*?(可以|能)做.*?什么|你.*?能做.*?(什么|哪些)|能(力|做什么)|介绍.*?能力|help|你能.*?帮|有什么.*?功能|what\s+can\s+you", body, re.IGNORECASE):
+    if re.search(
+        r"你.*?(可以|能)做.*?什么|你.*?能做.*?(什么|哪些)|能(力|做什么)|介绍.*?能力|help|你能.*?帮|有什么.*?功能|what\s+can\s+you",
+        body,
+        re.IGNORECASE,
+    ):
         return _CAPABILITY_INTRO
 
     # 2) 计划类触发
-    if re.search(r"做.*?计划|做.*?规划|拆解成|分步|step\s*by\s*step|分阶段|做.*?方案|给我.*?计划|列.*?计划|列.*?步骤|怎么.*?做|如何.*?做", body):
-        return f"好的, 我先给你列个计划, 跑下来大概 4 步, 你可以先看一下再决定要不要继续。"
+    if re.search(
+        r"做.*?计划|做.*?规划|拆解成|分步|step\s*by\s*step|分阶段|做.*?方案|给我.*?计划|列.*?计划|列.*?步骤|怎么.*?做|如何.*?做",
+        body,
+    ):
+        return "好的, 我先给你列个计划, 跑下来大概 4 步, 你可以先看一下再决定要不要继续。"
 
     # 3) 产物类触发
-    if re.search(r"生成(一份|个|一篇)?(报告|文档|说明书|手册|方案|计划书|需求|纪要|模板)|写(一份|个|一篇)?(报告|文档|说明书|手册|模板)|(报告|文档|说明书|手册|计划书|纪要|模板)", body):
-        return f"行, 给你起草一份, 我会同时把结果存为产物, 你可以直接预览或下载。"
+    if re.search(
+        r"生成(一份|个|一篇)?(报告|文档|说明书|手册|方案|计划书|需求|纪要|模板)|写(一份|个|一篇)?(报告|文档|说明书|手册|模板)|(报告|文档|说明书|手册|计划书|纪要|模板)",
+        body,
+    ):
+        return "行, 给你起草一份, 我会同时把结果存为产物, 你可以直接预览或下载。"
 
     # 4) 工作流 / 命令类触发
-    if re.search(r"跑(一下|个)?(命令|脚本|shell|bash)?|执行(命令|脚本)|^\s*ls\s*$|^\s*pwd\s*$|^\s*whoami\s*$|^\s*echo\s|^\s*grep\s", body):
+    if re.search(
+        r"跑(一下|个)?(命令|脚本|shell|bash)?|执行(命令|脚本)|^\s*ls\s*$|^\s*pwd\s*$|^\s*whoami\s*$|^\s*echo\s|^\s*grep\s",
+        body,
+    ):
         return "好, 跑一下:"
 
     # 5) 默认: 简短自然回应, 不再 echo
     if len(body) <= 8:
-        return f"好的, 关于「{body}」, 我可以帮你做计划、生成文档、查知识库, 或者跑命令。说具体一点?"
+        return (
+            f"好的, 关于「{body}」, 我可以帮你做计划、生成文档、查知识库, 或者跑命令。说具体一点?"
+        )
     return f"收到, 这条问题我需要更多信息。先给一个简短的回应: 你说的是「{body[:80]}{'...' if len(body) > 80 else ''}」。"
-

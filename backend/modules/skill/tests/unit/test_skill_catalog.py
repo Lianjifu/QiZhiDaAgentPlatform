@@ -120,7 +120,7 @@ async def test_bulk_retire_hides_from_catalog() -> None:
     )
     skill_id = created["id"]
     await svc.bulk(ids=[skill_id], action="publish", actor="管理员")
-    assert (await svc.list_catalog(workspace_id=WORKSPACE, user_id=USER))
+    assert await svc.list_catalog(workspace_id=WORKSPACE, user_id=USER)
     await svc.bulk(ids=[skill_id], action="retire", actor="管理员")
     assert await svc.list_catalog(workspace_id=WORKSPACE, user_id=USER) == []
 

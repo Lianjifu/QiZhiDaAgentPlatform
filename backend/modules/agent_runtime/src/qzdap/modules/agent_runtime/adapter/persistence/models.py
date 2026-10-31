@@ -11,7 +11,6 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from qzdap_persistence.base import Base, TenantScopedMixin, make_composite_index
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -27,26 +26,20 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from qzdap_persistence.base import Base, TenantScopedMixin, make_composite_index
+
 
 class SessionORM(TenantScopedMixin, Base):
     __tablename__ = "agent_sessions"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
-    owner_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
-    agent_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
+    owner_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
+    agent_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     agent_version: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="open", server_default=text("'open'")
     )
-    closed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_: Mapped[dict] = mapped_column(
         "metadata",
         JSONB,
@@ -70,15 +63,9 @@ class SessionORM(TenantScopedMixin, Base):
     current_revision: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    current_turn_id: Mapped[UUID | None] = mapped_column(
-        PgUUID(as_uuid=True), nullable=True
-    )
-    agent_version_pinned: Mapped[str | None] = mapped_column(
-        String(64), nullable=True
-    )
-    channel_session_key: Mapped[str | None] = mapped_column(
-        String(512), nullable=True, index=True
-    )
+    current_turn_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
+    agent_version_pinned: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    channel_session_key: Mapped[str | None] = mapped_column(String(512), nullable=True, index=True)
     # 会话内的两个序列的**计数器**（Session 方案 §5.2）——
     #   next_ingress_seq：轮次序（DDL 归 Router，迁移 0045）；
     #   next_message_seq：消息序（DDL 归 Session，迁移 0052）。
@@ -113,9 +100,7 @@ class SessionTurnORM(TenantScopedMixin, Base):
 
     __tablename__ = "session_turns"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     session_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey("agent_sessions.id", ondelete="CASCADE"),
@@ -135,9 +120,7 @@ class SessionTurnORM(TenantScopedMixin, Base):
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-    finished_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     agent_version: Mapped[str] = mapped_column(String(64), nullable=False)
     model_version: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -188,12 +171,8 @@ class SessionMessageORM(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    metadata_: Mapped[dict | None] = mapped_column(
-        "metadata_", JSONB, nullable=True
-    )
-    session_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    metadata_: Mapped[dict | None] = mapped_column("metadata_", JSONB, nullable=True)
+    session_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     session_seq: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
@@ -229,9 +208,7 @@ class SessionEventORM(Base):
     delivery_attempts: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    delivered_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

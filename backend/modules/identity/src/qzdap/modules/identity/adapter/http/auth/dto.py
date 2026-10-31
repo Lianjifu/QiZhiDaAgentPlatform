@@ -21,6 +21,6 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     access_token: str
-    token_type: Literal["Bearer"] = "Bearer"
+    token_type: Literal["Bearer"] = "Bearer"  # noqa: S105 —— 协议字段 ✓ 不是口令 ✓
     expires_at: int
     user: UserResponse

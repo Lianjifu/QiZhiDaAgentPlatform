@@ -17,7 +17,6 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from qzdap_persistence.base import Base, TenantScopedMixin
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -36,6 +35,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from qzdap_persistence.base import Base, TenantScopedMixin
+
 
 class PlanORM(Base):
     """Global catalog row — one per ``code``."""
@@ -45,9 +46,7 @@ class PlanORM(Base):
     id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True)
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     display_name: Mapped[str] = mapped_column(String(256), nullable=False)
-    description: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=text("''")
-    )
+    description: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
     limits: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
@@ -57,12 +56,8 @@ class PlanORM(Base):
     price_monthly_usd: Mapped[Any] = mapped_column(
         Numeric(10, 2), nullable=False, server_default=text("0")
     )
-    status: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default=text("'active'")
-    )
-    sort_order: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'active'"))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -86,27 +81,19 @@ class PlanORM(Base):
 class SubscriptionORM(TenantScopedMixin, Base):
     __tablename__ = "subscriptions"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     plan_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey("plans.id", ondelete="RESTRICT"),
         nullable=False,
     )
     plan_code: Mapped[str] = mapped_column(String(64), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default=text("'active'")
-    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'active'"))
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    ends_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    auto_renew: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("true")
-    )
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    auto_renew: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     updated_by: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
@@ -127,9 +114,7 @@ class SubscriptionORM(TenantScopedMixin, Base):
 class TenantSettingORM(TenantScopedMixin, Base):
     __tablename__ = "tenant_settings"
 
-    workspace_id: Mapped[UUID | None] = mapped_column(
-        PgUUID(as_uuid=True), nullable=True
-    )
+    workspace_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
     key: Mapped[str] = mapped_column(String(128), nullable=False)
     value: Mapped[Any] = mapped_column(JSONB, nullable=False)
     updated_by: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)

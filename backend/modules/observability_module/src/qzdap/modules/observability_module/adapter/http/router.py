@@ -67,23 +67,22 @@ def build_router() -> APIRouter:
         response_model=RunRecordListResponse,
     )
     async def list_runs(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ObservabilityService = Depends(observability_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ObservabilityService = Depends(observability_service_dependency),
         run_type: str | None = Query(None),
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ) -> RunRecordListResponse:
-        from qzdap_schema.ids import TenantId, WorkspaceId
-
         from qzdap.modules.observability_module.domain.value_objects import RunType
+        from qzdap_schema.ids import TenantId, WorkspaceId
 
         rt_enum: RunType | None = None
         if run_type is not None:
             try:
                 rt_enum = RunType(run_type)
             except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc))
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         rows = await svc.list_runs(
             tenant_id=TenantId(x_tenant_id),
@@ -102,26 +101,25 @@ def build_router() -> APIRouter:
         response_model=CostRecordListResponse | CostAggregateResponse,
     )
     async def list_or_aggregate_costs(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ObservabilityService = Depends(observability_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ObservabilityService = Depends(observability_service_dependency),
         cost_type: str | None = Query(None),
         group_by: Literal["cost_type", "workspace", "model"] | None = Query(None),
-        since: datetime | None = Query(None),  # noqa: B008 — FastAPI idiom
-        until: datetime | None = Query(None),  # noqa: B008 — FastAPI idiom
+        since: datetime | None = Query(None),
+        until: datetime | None = Query(None),
         limit: int = Query(200, ge=1, le=500),
         offset: int = Query(0, ge=0),
     ):
-        from qzdap_schema.ids import TenantId, WorkspaceId
-
         from qzdap.modules.observability_module.domain.value_objects import CostType
+        from qzdap_schema.ids import TenantId, WorkspaceId
 
         ct_enum: CostType | None = None
         if cost_type is not None:
             try:
                 ct_enum = CostType(cost_type)
             except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc))
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         if group_by is not None:
             rows = await svc.aggregate_costs(
@@ -166,8 +164,8 @@ def build_router() -> APIRouter:
     async def get_quality_score(
         template_id: UUID,
         version_id: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: ObservabilityService = Depends(observability_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: ObservabilityService = Depends(observability_service_dependency),
     ) -> QualityScoreResponse:
         from qzdap_schema.ids import (
             AgentTemplateId,

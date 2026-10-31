@@ -28,9 +28,7 @@ class ChannelMessage(BaseModel):
     tenant_id: str
     workspace_id: str
     channel_id: str
-    channel_type: (
-        str  # "web" | "api" | "webhook" | "feishu" | "wecom" | "dingtalk" | ...
-    )
+    channel_type: str  # "web" | "api" | "webhook" | "feishu" | "wecom" | "dingtalk" | ...
 
     # 外部会话与用户维度
     external_chat_id: str

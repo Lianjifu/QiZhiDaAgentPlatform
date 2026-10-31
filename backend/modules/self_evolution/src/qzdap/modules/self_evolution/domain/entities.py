@@ -16,13 +16,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Self
 from uuid import UUID, uuid4
 
-from qzdap_schema.ids import (
-    EvolveCandidateId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.self_evolution.domain.errors import (
     EvolveCandidateAlreadyDecided,
     InvalidEvolveCandidate,
@@ -31,6 +24,12 @@ from qzdap.modules.self_evolution.domain.errors import (
 from qzdap.modules.self_evolution.domain.value_objects import (
     EvolveKind,
     EvolveStatus,
+)
+from qzdap_schema.ids import (
+    EvolveCandidateId,
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 

@@ -63,7 +63,10 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
         ),
         sa.UniqueConstraint(
-            "tenant_id", "workspace_id", "model_id", "period",
+            "tenant_id",
+            "workspace_id",
+            "model_id",
+            "period",
             name="uq_model_quotas_tenant_ws_model_period",
         ),
         sa.CheckConstraint(

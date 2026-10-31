@@ -107,6 +107,8 @@ async def seed_identity(
     已经有同名租户时**复用**它而不是新建 —— 免得重复跑种子脚本把库里
     塞满同名租户.
     """
+    from sqlalchemy import select
+
     from qzdap.modules.identity.adapter.persistence.models import (
         TenantORM,
         UserWorkspaceORM,
@@ -118,7 +120,6 @@ async def seed_identity(
         SqlWorkspaceRepository,
     )
     from qzdap.modules.identity.domain import Tenant, User, Workspace
-    from sqlalchemy import select
 
     existing_tenant = (
         await session.execute(
@@ -128,15 +129,19 @@ async def seed_identity(
     if existing_tenant is not None:
         tenant_id = existing_tenant.id
         workspace_id = (
-            await session.execute(
-                select(WorkspaceORM.id)
-                .where(
-                    WorkspaceORM.tenant_id == tenant_id,
-                    WorkspaceORM.status == "active",
+            (
+                await session.execute(
+                    select(WorkspaceORM.id)
+                    .where(
+                        WorkspaceORM.tenant_id == tenant_id,
+                        WorkspaceORM.status == "active",
+                    )
+                    .limit(1)
                 )
-                .limit(1)
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         created_tenant = False
     else:
         tenant_id = profile.tenant_id
@@ -203,9 +208,7 @@ async def seed_identity(
                 seeded_memberships.append(email)
     if seeded_logins:
         await session.commit()
-        _log.info(
-            "seeded %s login accounts", profile.label, extra={"emails": seeded_logins}
-        )
+        _log.info("seeded %s login accounts", profile.label, extra={"emails": seeded_logins})
     if seeded_memberships:
         await session.commit()
         _log.info(
@@ -231,16 +234,15 @@ async def seed_builtin_tools(
     内置工具是**平台参考数据**（每个租户都要一份, 才能让模型调得到）,
     不是演示内容, 所以 demo 和 dev 两套种子都会注册它.
     """
+    from sqlalchemy import select
+
     from qzdap.modules.tool.adapter.persistence.models import ToolORM
     from qzdap.modules.tool.application.tool_catalog import BUILTIN_TOOL_SPECS
-    from sqlalchemy import select
 
     existing = {
         str(name)
         for (name,) in (
-            await session.execute(
-                select(ToolORM.name).where(ToolORM.tenant_id == tenant_id)
-            )
+            await session.execute(select(ToolORM.name).where(ToolORM.tenant_id == tenant_id))
         ).all()
     }
     added: list[str] = []
@@ -266,9 +268,7 @@ async def seed_builtin_tools(
         added.append(name)
     if added:
         await session.commit()
-        _log.info(
-            "seeded built-in tools", extra={"tenant_id": str(tenant_id), "count": len(added)}
-        )
+        _log.info("seeded built-in tools", extra={"tenant_id": str(tenant_id), "count": len(added)})
     return added
 
 
@@ -320,10 +320,7 @@ DEMO_AGENT_SPECS: tuple[dict[str, Any], ...] = (
                 "要求：先给一段可直接复制的答复，再列出引用的资料要点；"
                 "知识库覆盖不到、或者涉及退款与合同条款时，标注需要人工确认。"
             ),
-            "user": (
-                "- 客户反馈导出功能偶发失败，帮我起草一段回复\n"
-                "- 把这份工单整理成一页 FAQ"
-            ),
+            "user": ("- 客户反馈导出功能偶发失败，帮我起草一段回复\n- 把这份工单整理成一页 FAQ"),
         },
     },
     {
@@ -342,8 +339,7 @@ DEMO_AGENT_SPECS: tuple[dict[str, Any], ...] = (
                 "不要编造没有的数据。"
             ),
             "user": (
-                "- 算一下上月各渠道的毛利率并排出好坏\n"
-                "- 本周转化率突然掉了，帮我定位可能的原因"
+                "- 算一下上月各渠道的毛利率并排出好坏\n- 本周转化率突然掉了，帮我定位可能的原因"
             ),
         },
     },
@@ -362,10 +358,7 @@ DEMO_AGENT_SPECS: tuple[dict[str, Any], ...] = (
                 "要求：一版一个角度；不编造用户证言或数据；"
                 "同时给出标题、正文和行动号召三段。"
             ),
-            "user": (
-                "- 给新款企业版写一段发布公告\n"
-                "- 把这段介绍改写成适合公众号推文和短信的版本"
-            ),
+            "user": ("- 给新款企业版写一段发布公告\n- 把这段介绍改写成适合公众号推文和短信的版本"),
         },
     },
     {
@@ -383,10 +376,7 @@ DEMO_AGENT_SPECS: tuple[dict[str, Any], ...] = (
                 "要求：先给一句话答案，再给步骤；平台做不到的事直说，"
                 "不要含糊过去。"
             ),
-            "user": (
-                "- 企智搭能接哪些类型的知识库？\n"
-                "- 我想把每周的数据周报自动化，帮我拆成步骤"
-            ),
+            "user": ("- 企智搭能接哪些类型的知识库？\n- 我想把每周的数据周报自动化，帮我拆成步骤"),
         },
     },
 )
@@ -420,9 +410,7 @@ async def seed_demo_agents(
     from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
 
     repo = SqlCatalogAgentRepository(session)
-    service = AgentCatalogService(
-        repo, user_state=SqlCatalogAgentUserStateRepository(session)
-    )
+    service = AgentCatalogService(repo, user_state=SqlCatalogAgentUserStateRepository(session))
     existing = {agent.name for agent in await repo.list_for_workspace(workspace_id)}
 
     created: list[str] = []
@@ -461,11 +449,21 @@ DEMO_SKILL_SPECS: tuple[dict[str, Any], ...] = (
         "tags": ["会议", "纪要"],
         "visibleScope": ["公开"],
         "inputSchema": [
-            {"name": "transcript", "type": "string", "required": True, "description": "会议转写全文"},
+            {
+                "name": "transcript",
+                "type": "string",
+                "required": True,
+                "description": "会议转写全文",
+            },
             {"name": "attendees", "type": "string", "required": False, "description": "参会人名单"},
         ],
         "outputSchema": [
-            {"name": "minutes", "type": "string", "required": True, "description": "结构化会议纪要"},
+            {
+                "name": "minutes",
+                "type": "string",
+                "required": True,
+                "description": "结构化会议纪要",
+            },
         ],
     },
     {
@@ -480,7 +478,12 @@ DEMO_SKILL_SPECS: tuple[dict[str, Any], ...] = (
             {"name": "claim", "type": "string", "required": True, "description": "报销单明细"},
         ],
         "outputSchema": [
-            {"name": "verdict", "type": "string", "required": True, "description": "核算结论与超标项"},
+            {
+                "name": "verdict",
+                "type": "string",
+                "required": True,
+                "description": "核算结论与超标项",
+            },
         ],
     },
     {
@@ -495,7 +498,12 @@ DEMO_SKILL_SPECS: tuple[dict[str, Any], ...] = (
             {"name": "tickets", "type": "string", "required": True, "description": "工单列表"},
         ],
         "outputSchema": [
-            {"name": "clusters", "type": "string", "required": True, "description": "聚类结果与优先级"},
+            {
+                "name": "clusters",
+                "type": "string",
+                "required": True,
+                "description": "聚类结果与优先级",
+            },
         ],
     },
 )
@@ -677,9 +685,7 @@ async def seed_demo_workflows(
     for spec in DEMO_WORKFLOW_SPECS:
         if spec["name"] in existing:
             continue
-        bound = [
-            agent_ids[name] for name in spec.get("boundAgentNames", []) if name in agent_ids
-        ]
+        bound = [agent_ids[name] for name in spec.get("boundAgentNames", []) if name in agent_ids]
         await service.create(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -889,6 +895,8 @@ async def seed_demo_conversations(
     if profile.label != "demo" or workspace_id is None:
         return []
 
+    from sqlalchemy import select
+
     from qzdap.modules.agent_runtime.adapter.persistence.catalog_repositories import (
         SqlCatalogAgentRepository,
     )
@@ -896,16 +904,15 @@ async def seed_demo_conversations(
         SessionORM,
         SessionTurnORM,
     )
-    from qzdap.modules.agent_runtime.adapter.persistence.session_messages import (
-        PostgresSessionMessageStore,
-    )
     from qzdap.modules.agent_runtime.adapter.persistence.repositories import (
         SqlSessionRepository,
+    )
+    from qzdap.modules.agent_runtime.adapter.persistence.session_messages import (
+        PostgresSessionMessageStore,
     )
     from qzdap.modules.agent_runtime.domain.entities import Session
     from qzdap.modules.identity.adapter.persistence.models import UserORM
     from qzdap_schema.ids import AgentId, SessionId, TenantId, UserId, WorkspaceId
-    from sqlalchemy import select
 
     agent_repo = SqlCatalogAgentRepository(session)
     agents = {agent.name: agent for agent in await agent_repo.list_for_workspace(workspace_id)}
@@ -954,9 +961,7 @@ async def seed_demo_conversations(
             continue
 
         messages = spec["messages"]
-        first_reply = next(
-            (m[-1] for m in messages if m[0] == "assistant"), ""
-        )
+        first_reply = next((m[-1] for m in messages if m[0] == "assistant"), "")
         conversation = Session.create(
             id=SessionId(uuid4()),
             tenant_id=TenantId(tenant_id),
@@ -1292,9 +1297,7 @@ async def seed_demo_content(
     }
 
 
-def _children_first(
-    tables: list[str], child_to_parent: dict[str, set[str]]
-) -> list[str]:
+def _children_first(tables: list[str], child_to_parent: dict[str, set[str]]) -> list[str]:
     """按外键依赖排删除顺序 —— **子表先删**, 父表后删.
 
     ``child_to_parent[child]`` 是 child 引用的父表. 删的时候反过来:
@@ -1347,6 +1350,8 @@ async def prune_demo_data(session: Any) -> dict[str, Any]:
 
     只在**显式跑 dev 种子脚本**时调用, 不会在启动时自动删数据.
     """
+    from sqlalchemy import bindparam, delete, select, text
+
     from qzdap.modules.identity.adapter.persistence.models import (
         APIKeyORM,
         TenantORM,
@@ -1355,22 +1360,17 @@ async def prune_demo_data(session: Any) -> dict[str, Any]:
         UserWorkspaceORM,
         WorkspaceORM,
     )
-    from sqlalchemy import bindparam, delete, select, text
 
     demo_tenant_ids = [
         row
         for (row,) in (
-            await session.execute(
-                select(TenantORM.id).where(TenantORM.slug == "demo")
-            )
+            await session.execute(select(TenantORM.id).where(TenantORM.slug == "demo"))
         ).all()
     ]
     demo_user_ids = [
         row
         for (row,) in (
-            await session.execute(
-                select(UserORM.id).where(UserORM.email.like("%@acme.com"))
-            )
+            await session.execute(select(UserORM.id).where(UserORM.email.like("%@acme.com")))
         ).all()
     ]
     if not demo_tenant_ids and not demo_user_ids:
@@ -1418,7 +1418,7 @@ async def prune_demo_data(session: Any) -> dict[str, Any]:
             if not table.replace("_", "").isalnum():
                 continue
             result = await session.execute(
-                text(f'DELETE FROM "{table}" WHERE tenant_id IN :ids').bindparams(
+                text(f'DELETE FROM "{table}" WHERE tenant_id IN :ids').bindparams(  # noqa: S608 —— 表名来自 information_schema ✓ 且只允许标识符字符 ✓
                     bindparam("ids", expanding=True)
                 ),
                 {"ids": list(demo_tenant_ids)},
@@ -1433,22 +1433,16 @@ async def prune_demo_data(session: Any) -> dict[str, Any]:
         await session.execute(
             delete(UserSessionORM).where(UserSessionORM.user_id.in_(demo_user_ids))
         )
-        await session.execute(
-            delete(APIKeyORM).where(APIKeyORM.owner_user_id.in_(demo_user_ids))
-        )
+        await session.execute(delete(APIKeyORM).where(APIKeyORM.owner_user_id.in_(demo_user_ids)))
         await session.execute(delete(UserORM).where(UserORM.id.in_(demo_user_ids)))
     if demo_tenant_ids:
         await session.execute(
-            delete(UserWorkspaceORM).where(
-                UserWorkspaceORM.tenant_id.in_(demo_tenant_ids)
-            )
+            delete(UserWorkspaceORM).where(UserWorkspaceORM.tenant_id.in_(demo_tenant_ids))
         )
         await session.execute(
             delete(WorkspaceORM).where(WorkspaceORM.tenant_id.in_(demo_tenant_ids))
         )
-        await session.execute(
-            delete(TenantORM).where(TenantORM.id.in_(demo_tenant_ids))
-        )
+        await session.execute(delete(TenantORM).where(TenantORM.id.in_(demo_tenant_ids)))
     await session.commit()
     _log.info(
         "pruned demo data from dev database",

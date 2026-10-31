@@ -33,7 +33,11 @@ class JobService:
         if image not in self._settings.image_whitelist():
             raise JobRejected("SANDBOX_IMAGE_DENIED", f"image {image} is not allowed")
         command = payload.get("command")
-        if not isinstance(command, list) or not command or not all(isinstance(x, str) for x in command):
+        if (
+            not isinstance(command, list)
+            or not command
+            or not all(isinstance(x, str) for x in command)
+        ):
             raise JobRejected("SANDBOX_BAD_COMMAND", "command must be a non-empty string list")
         timeout_ms = int(payload.get("timeout_ms") or 30_000)
         if timeout_ms < 1 or timeout_ms > self._settings.sandbox_max_timeout_ms:

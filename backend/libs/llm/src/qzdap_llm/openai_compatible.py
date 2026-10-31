@@ -20,15 +20,11 @@ from qzdap_llm.transport import HTTPProviderClient, ProviderTransportError
 class OpenAICompatibleClient(HTTPProviderClient):
     name = "openai_compatible"
 
-    def __init__(
-        self, config: LLMConfig, *, http: httpx.AsyncClient | None = None
-    ) -> None:
+    def __init__(self, config: LLMConfig, *, http: httpx.AsyncClient | None = None) -> None:
         self._cfg = config
         super().__init__(
             base_url=config.base_url,
-            headers={"Authorization": f"Bearer {config.api_key}"}
-            if config.api_key
-            else {},
+            headers={"Authorization": f"Bearer {config.api_key}"} if config.api_key else {},
             timeout_seconds=config.timeout_seconds,
             http=http,
         )
@@ -37,18 +33,14 @@ class OpenAICompatibleClient(HTTPProviderClient):
         return "chat/completions"
 
     async def chat(self, req: ChatRequest) -> ChatResponse:
-        data = await self._post(
-            self._chat_path(req.model), _build_payload(req, stream=False)
-        )
+        data = await self._post(self._chat_path(req.model), _build_payload(req, stream=False))
         try:
             return _parse_chat_response(data)
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
 
     async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
-        events = self._events(
-            self._chat_path(req.model), _build_payload(req, stream=True)
-        )
+        events = self._events(self._chat_path(req.model), _build_payload(req, stream=True))
         try:
             async for _, data in events:
                 try:
@@ -61,9 +53,7 @@ class OpenAICompatibleClient(HTTPProviderClient):
             await events.aclose()
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        data = await self._post(
-            "embeddings", {"input": texts, "model": self._cfg.embedding_model}
-        )
+        data = await self._post("embeddings", {"input": texts, "model": self._cfg.embedding_model})
         try:
             return [item["embedding"] for item in data["data"]]
         except (KeyError, TypeError):
@@ -134,11 +124,7 @@ def _parse_usage(data: dict) -> Usage:
 def _parse_stream_chunk(data: dict) -> LLMChunk | None:
     usage = _parse_usage(data["usage"]) if data.get("usage") is not None else None
     if not data.get("choices"):
-        return (
-            LLMChunk(model=data.get("model", ""), delta="", usage=usage)
-            if usage
-            else None
-        )
+        return LLMChunk(model=data.get("model", ""), delta="", usage=usage) if usage else None
     choice = data["choices"][0]
     delta = choice.get("delta") or {}
     return LLMChunk(

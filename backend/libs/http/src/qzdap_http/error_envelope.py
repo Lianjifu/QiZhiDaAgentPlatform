@@ -31,7 +31,7 @@ async def error_envelope_middleware(
         env.message = project_error_message(env.code, env.message, "http")
         _log.warning("app.error", code=env.code, message=env.message, status=env.status)
         return _json_response(env.to_dict(), env.status)
-    except Exception:  # noqa: BLE001
+    except Exception:
         _log.exception("unhandled.exception")
         env = InternalError("internal error", code="INTERNAL_ERROR").to_envelope(
             trace_id=current_trace_id()

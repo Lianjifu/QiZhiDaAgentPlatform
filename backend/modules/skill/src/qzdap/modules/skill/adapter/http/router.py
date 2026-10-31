@@ -20,8 +20,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
-from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap.modules.skill.application.services import SkillService
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 
 
 def _owner_id(request: Request, fallback: UUID) -> UUID:
@@ -74,13 +74,9 @@ def build_router() -> APIRouter:
             urlparse(server_url).scheme not in {"http", "https"}
             or not urlparse(server_url).hostname
         ):
-            raise HTTPException(
-                status_code=422, detail="valid HTTP serverUrl is required"
-            )
+            raise HTTPException(status_code=422, detail="valid HTTP serverUrl is required")
         try:
-            tools = await runtime.discover(
-                server_url=server_url, headers=body.get("headers") or {}
-            )
+            tools = await runtime.discover(server_url=server_url, headers=body.get("headers") or {})
         except Exception as exc:
             raise HTTPException(
                 status_code=502,
@@ -90,12 +86,12 @@ def build_router() -> APIRouter:
 
     @router.get("/api/admin/skills")
     async def list_admin_skills(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         type: str = Query(default="all"),
         status: str = Query(default="all"),
         q: str = Query(default=""),
         sort: str = Query(default="updated"),
-        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+        svc: SkillService = Depends(skill_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_admin(
             workspace_id=x_workspace_id,
@@ -112,20 +108,18 @@ def build_router() -> APIRouter:
     )
     async def create_admin_skill(
         body: dict[str, Any],
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: SkillService = Depends(skill_dependency),
     ) -> dict[str, Any]:
-        return await svc.create(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
-        )
+        return await svc.create(tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body)
 
     @router.post("/api/admin/skills/bulk")
     async def bulk_admin_skills(
         body: dict[str, Any],
         request: Request,
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: SkillService = Depends(skill_dependency),
     ) -> dict[str, int]:
         actor = str(_owner_id(request, x_user_id))
         return await svc.bulk(
@@ -137,7 +131,7 @@ def build_router() -> APIRouter:
     @router.get("/api/admin/skills/{skill_id}")
     async def get_admin_skill(
         skill_id: UUID,
-        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+        svc: SkillService = Depends(skill_dependency),
     ) -> dict[str, Any]:
         return await svc.get_admin(skill_id)
 
@@ -146,8 +140,8 @@ def build_router() -> APIRouter:
         skill_id: UUID,
         body: dict[str, Any],
         request: Request,
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: SkillService = Depends(skill_dependency),
     ) -> dict[str, Any]:
         actor = str(_owner_id(request, x_user_id))
         return await svc.update(skill_id=skill_id, body=body, actor=actor)
@@ -155,16 +149,16 @@ def build_router() -> APIRouter:
     @router.delete("/api/admin/skills/{skill_id}")
     async def delete_admin_skill(
         skill_id: UUID,
-        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+        svc: SkillService = Depends(skill_dependency),
     ) -> dict[str, Any]:
         return await svc.delete(skill_id)
 
     @router.get("/api/catalog/skills")
     async def list_catalog_skills(
         request: Request,
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: SkillService = Depends(skill_dependency),
     ) -> list[dict[str, Any]]:
         user_id = _owner_id(request, x_user_id)
         return await svc.list_catalog(workspace_id=x_workspace_id, user_id=user_id)
@@ -173,8 +167,8 @@ def build_router() -> APIRouter:
     async def get_catalog_skill(
         skill_id: UUID,
         request: Request,
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: SkillService = Depends(skill_dependency),
     ) -> dict[str, Any]:
         user_id = _owner_id(request, x_user_id)
         return await svc.get_catalog(skill_id=skill_id, user_id=user_id)
@@ -184,20 +178,18 @@ def build_router() -> APIRouter:
         skill_id: UUID,
         body: dict[str, Any],
         request: Request,
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: SkillService = Depends(skill_dependency),
     ) -> dict[str, Any]:
         user_id = _owner_id(request, x_user_id)
-        return await svc.set_favorite(
-            skill_id=skill_id, user_id=user_id, on=bool(body.get("on"))
-        )
+        return await svc.set_favorite(skill_id=skill_id, user_id=user_id, on=bool(body.get("on")))
 
     @router.post("/api/catalog/skills/{skill_id}/record-use")
     async def record_catalog_use(
         skill_id: UUID,
         request: Request,
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: SkillService = Depends(skill_dependency),
     ) -> dict[str, Any]:
         user_id = _owner_id(request, x_user_id)
         return await svc.record_use(skill_id=skill_id, user_id=user_id)
@@ -207,8 +199,8 @@ def build_router() -> APIRouter:
     async def dev_invoke_skill(
         name: str,
         body: dict[str, Any],
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: SkillService = Depends(skill_dependency),
     ) -> dict[str, Any]:
         """Dev hook: 跳过 agent runtime,直调 SkillService.invoke_in_sandbox。
 
@@ -234,9 +226,9 @@ def build_router() -> APIRouter:
     @router.get("/api/user/skills")
     async def list_user_skills_alias(
         request: Request,
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: SkillService = Depends(skill_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: SkillService = Depends(skill_dependency),
     ) -> list[dict[str, Any]]:
         user_id = _owner_id(request, x_user_id)
         return await svc.list_catalog(workspace_id=x_workspace_id, user_id=user_id)

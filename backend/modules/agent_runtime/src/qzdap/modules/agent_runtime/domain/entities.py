@@ -13,6 +13,14 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Self
 
+from qzdap.modules.agent_runtime.domain.errors import SessionClosedError
+from qzdap.modules.agent_runtime.domain.events import (
+    SessionClosed,
+    SessionOpened,
+    TurnCompleted,
+    TurnFailed,
+    TurnStarted,
+)
 from qzdap_agent_runtime.session.state import SessionStatus
 from qzdap_schema.ids import (
     AgentId,
@@ -21,15 +29,6 @@ from qzdap_schema.ids import (
     TurnId,
     UserId,
     WorkspaceId,
-)
-
-from qzdap.modules.agent_runtime.domain.errors import SessionClosedError
-from qzdap.modules.agent_runtime.domain.events import (
-    SessionClosed,
-    SessionOpened,
-    TurnCompleted,
-    TurnFailed,
-    TurnStarted,
 )
 
 # ⚠️ **会话状态是唯一的一份** —— 定义在契约层（Session 方案 §4.1），

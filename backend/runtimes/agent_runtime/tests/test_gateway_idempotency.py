@@ -27,9 +27,7 @@ from qzdap_agent_runtime.gateway.types import (
 
 
 def _scope() -> InboxScope:
-    return InboxScope.for_web(
-        tenant_id=uuid4(), workspace_id=uuid4(), channel=ChannelType.WEB
-    )
+    return InboxScope.for_web(tenant_id=uuid4(), workspace_id=uuid4(), channel=ChannelType.WEB)
 
 
 class _RecordingStore:
@@ -39,9 +37,7 @@ class _RecordingStore:
         self.completed: list[UUID] = []
         self.released: list[UUID] = []
 
-    async def claim(
-        self, scope, key, *, payload_hash="", external_message_id=None, trace_id=""
-    ):
+    async def claim(self, scope, key, *, payload_hash="", external_message_id=None, trace_id=""):
         self.claimed.append(key.value)
         return IdempotencyDecision(
             outcome="new", key_strength=key.strength, row_id=uuid4(), status="claimed"
@@ -65,9 +61,7 @@ def test_client_request_key_is_strong_with_24h_ttl() -> None:
     assert key.strength == "strong"
     assert key.source is KeySource.CLIENT_REQUEST_ID
     assert key.expires_at - datetime.now(UTC) <= CLIENT_REQUEST_TTL
-    assert key.expires_at - datetime.now(UTC) > CLIENT_REQUEST_TTL - timedelta(
-        minutes=1
-    )
+    assert key.expires_at - datetime.now(UTC) > CLIENT_REQUEST_TTL - timedelta(minutes=1)
 
 
 def test_platform_message_key_is_strong_with_7d_ttl() -> None:
@@ -79,12 +73,8 @@ def test_platform_message_key_is_strong_with_7d_ttl() -> None:
 
 def test_payload_fingerprint_is_weak_and_never_suppresses() -> None:
     now = datetime.now(UTC)
-    a = payload_fingerprint_key(
-        channel="web", chat_id="s1", user_id="u1", text="好的", now=now
-    )
-    b = payload_fingerprint_key(
-        channel="web", chat_id="s1", user_id="u1", text="好的", now=now
-    )
+    a = payload_fingerprint_key(channel="web", chat_id="s1", user_id="u1", text="好的", now=now)
+    b = payload_fingerprint_key(channel="web", chat_id="s1", user_id="u1", text="好的", now=now)
     assert a.strength == "weak"
     assert a.source is KeySource.PAYLOAD_FINGERPRINT
     assert a.value == b.value
@@ -93,9 +83,7 @@ def test_payload_fingerprint_is_weak_and_never_suppresses() -> None:
 
 def test_payload_fingerprint_changes_across_time_buckets() -> None:
     now = datetime.now(UTC)
-    a = payload_fingerprint_key(
-        channel="web", chat_id="s1", user_id="u1", text="好的", now=now
-    )
+    a = payload_fingerprint_key(channel="web", chat_id="s1", user_id="u1", text="好的", now=now)
     b = payload_fingerprint_key(
         channel="web",
         chat_id="s1",
@@ -135,9 +123,7 @@ def test_overlong_keys_are_hashed_not_truncated() -> None:
 
 
 def test_scope_uses_the_sentinel_workspace_when_missing() -> None:
-    scope = InboxScope.for_web(
-        tenant_id=uuid4(), workspace_id=None, channel=ChannelType.WEB
-    )
+    scope = InboxScope.for_web(tenant_id=uuid4(), workspace_id=None, channel=ChannelType.WEB)
     assert scope.workspace_id.int == 0
     assert scope.channel_id == "web"
 

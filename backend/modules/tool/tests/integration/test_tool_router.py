@@ -526,9 +526,7 @@ async def test_update_with_strict_negative_test(client_ctx) -> None:
 
 async def test_delete_unknown_returns_404(client_ctx) -> None:
     client, _ctx = client_ctx
-    resp = await client.delete(
-        "/v1/tools/00000000-0000-0000-0000-0000000000aa", headers=_hdrs()
-    )
+    resp = await client.delete("/v1/tools/00000000-0000-0000-0000-0000000000aa", headers=_hdrs())
     assert resp.status_code == 404
 
 
@@ -594,9 +592,7 @@ async def test_invoke_extra_field_rejected(client_ctx) -> None:
 async def test_batch_invoke_empty_list_returns_422(client_ctx) -> None:
     # BatchInvokeRequest requires min_length=1.
     client, _ctx = client_ctx
-    resp = await client.post(
-        "/v1/tools/batch_invoke", headers=_hdrs(), json={"calls": []}
-    )
+    resp = await client.post("/v1/tools/batch_invoke", headers=_hdrs(), json={"calls": []})
     assert resp.status_code == 422
 
 
@@ -644,9 +640,7 @@ async def test_batch_invoke_at_max_length_ok(client_ctx) -> None:
     resp = await client.post(
         "/v1/tools/batch_invoke",
         headers=_hdrs(),
-        json={
-            "calls": [{"tool_name": "echo", "arguments": {"i": i}} for i in range(50)]
-        },
+        json={"calls": [{"tool_name": "echo", "arguments": {"i": i}} for i in range(50)]},
     )
     assert resp.status_code == 207
     items = resp.json()["items"]

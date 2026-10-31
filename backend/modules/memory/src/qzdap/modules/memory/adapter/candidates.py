@@ -13,14 +13,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_agent_runtime.memory.retrieval import Candidate
-
 from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
     MemoryCatalogRepository,
     VectorSearchPort,
 )
 from qzdap.modules.memory.domain.entities import L2Fact, L3Entry
+from qzdap_agent_runtime.memory.retrieval import Candidate
 
 
 def keyword_score(needle: str, hay: str) -> float:
@@ -99,8 +98,7 @@ class LexicalCandidateAdapter:
             workspace_id, keyword=needle, limit=limit
         )
         candidates = [
-            _l2_candidate(fact, keyword_score(needle, fact.recall_text().lower()))
-            for fact in facts
+            _l2_candidate(fact, keyword_score(needle, fact.recall_text().lower())) for fact in facts
         ]
         candidates += [
             _l3_candidate(entry, keyword_score(needle, entry.recall_text().lower()))

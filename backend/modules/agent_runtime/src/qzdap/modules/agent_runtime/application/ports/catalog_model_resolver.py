@@ -10,6 +10,7 @@ ModelService.stream() 只接 ModelId (UUID). 这个 resolver 把二者桥起来:
 
 失败时返回 None — 由调用方决定是回退到 env 默认 LLM 还是 raise AGENT_MODEL_UNRESOLVED.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

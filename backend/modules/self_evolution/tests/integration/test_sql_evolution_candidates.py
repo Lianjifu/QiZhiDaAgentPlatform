@@ -148,14 +148,10 @@ async def test_list_by_status_returns_matching_only(
     await repo.add(b)
     await repo.update(a.approve(approver_id=USER_ADMIN))  # type: ignore[arg-type]
 
-    approved = await repo.list_by_status(
-        tenant_id=TENANT, status=EvolveStatus.APPROVED, limit=10
-    )
+    approved = await repo.list_by_status(tenant_id=TENANT, status=EvolveStatus.APPROVED, limit=10)
     assert {c.id for c in approved} == {a.id}
 
-    pending = await repo.list_by_status(
-        tenant_id=TENANT, status=EvolveStatus.PENDING, limit=10
-    )
+    pending = await repo.list_by_status(tenant_id=TENANT, status=EvolveStatus.PENDING, limit=10)
     assert {c.id for c in pending} == {b.id}
 
 

@@ -9,14 +9,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from qzdap_agent_runtime.memory.eviction import (
-    EvictionCandidate,
-    EvictionPort,
-)
-
 from qzdap.modules.memory.application.ports import (
     MemoryCatalogRepository,
     VectorSearchPort,
+)
+from qzdap_agent_runtime.memory.eviction import (
+    EvictionCandidate,
+    EvictionPort,
 )
 
 
@@ -32,9 +31,7 @@ class SqlEvictionStore(EvictionPort):
         self._catalog = catalog
         self._vectors = vectors
 
-    async def list_candidates(
-        self, *, workspace_id: UUID, layer: str
-    ) -> list[EvictionCandidate]:
+    async def list_candidates(self, *, workspace_id: UUID, layer: str) -> list[EvictionCandidate]:
         """**活着的条目** ✓（只有 L2 有淘汰策略 ✓ —— L3 已退役 ✓）。"""
         if layer != "l2":
             return []
@@ -51,9 +48,7 @@ class SqlEvictionStore(EvictionPort):
             if str(fact.status) == "confirmed"
         ]
 
-    async def retire(
-        self, *, workspace_id: UUID, item_ids: tuple[UUID, ...]
-    ) -> None:
+    async def retire(self, *, workspace_id: UUID, item_ids: tuple[UUID, ...]) -> None:
         """**置 retired** ✓（不物理删 ✓ —— 审计留痕 ✓）。"""
         now = datetime.now(UTC)
         for item_id in item_ids:

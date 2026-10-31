@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from langchain_core.tools import BaseTool
+
 from qzdap_agent_runtime.agent_loop.expert import (
     ExpertAssembler,
     decision_payload,
@@ -29,9 +30,7 @@ WORKSPACE = uuid4()
 SESSION_AGENT = uuid4()
 EXPERT = uuid4()
 
-_ACTOR = ActorContext(
-    actor_id="user-1", tenant_id=str(TENANT), workspace_id=str(WORKSPACE)
-)
+_ACTOR = ActorContext(actor_id="user-1", tenant_id=str(TENANT), workspace_id=str(WORKSPACE))
 
 
 class _Router:
@@ -158,9 +157,7 @@ class TestExpertAssembler:
         bindings = _Bindings(
             [
                 ToolBinding(name="echo", kind="tool", risk="low"),
-                ToolBinding(
-                    name="write_file", kind="tool", risk="high", side_effect=True
-                ),
+                ToolBinding(name="write_file", kind="tool", risk="high", side_effect=True),
             ]
         )
         assembler = ExpertAssembler(

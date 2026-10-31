@@ -11,16 +11,16 @@ from uuid import UUID, uuid4
 
 import pytest
 from _ar_unit_in_memory import make_copilot
+
+from qzdap.modules.agent_runtime.domain import SessionStatus
+from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
+from qzdap.modules.agent_runtime.domain.errors import SessionNotFound
 from qzdap_schema.ids import (
     AgentId,
     TenantId,
     UserId,
     WorkspaceId,
 )
-
-from qzdap.modules.agent_runtime.domain import SessionStatus
-from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
-from qzdap.modules.agent_runtime.domain.errors import SessionNotFound
 
 
 def _make_owners() -> tuple[TenantId, WorkspaceId, UserId, AgentId]:
@@ -50,9 +50,7 @@ async def test_create_session_persists_and_emits_event() -> None:
     agent = _agent(tid, wid, aid)
     svc, deps = make_copilot(agent=agent)
 
-    detail = await svc.create_session(
-        tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
-    )
+    detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
     sid = UUID(detail["id"])
     fetched = await deps["sessions"].get(sid)
     assert fetched is not None
@@ -68,9 +66,7 @@ async def test_create_session_persists_and_emits_event() -> None:
 async def test_close_session_marks_closed_and_emits_event() -> None:
     tid, wid, uid, aid = _make_owners()
     svc, deps = make_copilot(agent=_agent(tid, wid, aid))
-    detail = await svc.create_session(
-        tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
-    )
+    detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
     sid = UUID(detail["id"])
 
     await svc.close_session(tenant_id=tid, session_id=sid)
@@ -86,16 +82,12 @@ async def test_close_session_is_idempotent() -> None:
     """重复关会话**不报错**、**不多发事件** ✓（客户端重试不该 500）。"""
     tid, wid, uid, aid = _make_owners()
     svc, deps = make_copilot(agent=_agent(tid, wid, aid))
-    detail = await svc.create_session(
-        tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
-    )
+    detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
     sid = UUID(detail["id"])
 
     await svc.close_session(tenant_id=tid, session_id=sid)
     await svc.close_session(tenant_id=tid, session_id=sid)
-    closed_events = [
-        e for e in deps["events"].events if type(e).__name__ == "SessionClosed"
-    ]
+    closed_events = [e for e in deps["events"].events if type(e).__name__ == "SessionClosed"]
     assert len(closed_events) == 1
 
 
@@ -103,9 +95,7 @@ async def test_close_session_is_idempotent() -> None:
 async def test_get_session_returns_not_found_for_other_tenant() -> None:
     tid, wid, uid, aid = _make_owners()
     svc, _ = make_copilot(agent=_agent(tid, wid, aid))
-    detail = await svc.create_session(
-        tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
-    )
+    detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
     other_tenant = TenantId(uuid4())
     with pytest.raises(SessionNotFound):
         await svc.get_session(tenant_id=other_tenant, session_id=UUID(detail["id"]))

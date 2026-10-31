@@ -10,6 +10,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
+from qzdap.modules.observability_module.domain.entities import (
+    CostRecord,
+    RunRecord,
+)
+from qzdap.modules.observability_module.domain.value_objects import (
+    CostType,
+    RunType,
+)
 from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
@@ -19,24 +27,13 @@ from qzdap_schema.ids import (
     WorkspaceId,
 )
 
-from qzdap.modules.observability_module.domain.entities import (
-    CostRecord,
-    RunRecord,
-)
-from qzdap.modules.observability_module.domain.value_objects import (
-    CostType,
-    RunType,
-)
-
 # ── Repositories ─────────────────────────────────────────────────────────
 
 
 @runtime_checkable
 class RunRecordRepository(Protocol):
     async def add(self, record: RunRecord) -> RunRecord: ...
-    async def get(
-        self, *, tenant_id: TenantId, run_id: RunRecordId
-    ) -> RunRecord | None: ...
+    async def get(self, *, tenant_id: TenantId, run_id: RunRecordId) -> RunRecord | None: ...
     async def list_records(
         self,
         *,
@@ -51,9 +48,7 @@ class RunRecordRepository(Protocol):
 @runtime_checkable
 class CostRecordRepository(Protocol):
     async def add(self, record: CostRecord) -> CostRecord: ...
-    async def get(
-        self, *, tenant_id: TenantId, cost_id: CostRecordId
-    ) -> CostRecord | None: ...
+    async def get(self, *, tenant_id: TenantId, cost_id: CostRecordId) -> CostRecord | None: ...
     async def list_records(
         self,
         *,

@@ -122,9 +122,7 @@ async def resolve_ref_env() -> int:
 
     # Snapshot keys to avoid mutation-during-iteration issues if a
     # resolver somehow writes to os.environ.
-    for ref_key in [
-        k for k in os.environ if k.startswith("QZDAP_") and k.endswith(_REF_SUFFIX)
-    ]:
+    for ref_key in [k for k in os.environ if k.startswith("QZDAP_") and k.endswith(_REF_SUFFIX)]:
         ref = os.environ[ref_key]
         bare_key = ref_key[: -len(_REF_SUFFIX)]
 
@@ -150,9 +148,7 @@ async def resolve_ref_env() -> int:
         try:
             payload = await resolver.resolve(ref, actor=_BOOT_ACTOR)
         except (SecretNotFound, SecretAccessDenied, InvalidSecretRef) as exc:
-            raise RuntimeError(
-                f"boot: failed to resolve {ref_key}={ref!r}: {exc}"
-            ) from exc
+            raise RuntimeError(f"boot: failed to resolve {ref_key}={ref!r}: {exc}") from exc
         os.environ[bare_key] = _extract_value(payload)
         resolved += 1
 
@@ -186,7 +182,7 @@ def resolve_ref_env_sync() -> int:
         try:
             asyncio.set_event_loop(new_loop)
             holder.append(new_loop.run_until_complete(resolve_ref_env()))
-        except BaseException as e:  # pragma: no cover - propagated below  # noqa: BLE001
+        except BaseException as e:  # pragma: no cover - propagated below
             exc.append(e)
         finally:
             new_loop.close()

@@ -11,14 +11,13 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
-from qzdap_schema.ids import TenantId, UserId, WorkspaceId
-
 from qzdap.modules.agent_factory.application.ports import (
     AgentFactoryEventPublisher,
     AgentTemplateRepository,
 )
 from qzdap.modules.agent_factory.domain.entities import AgentTemplate
 from qzdap.modules.agent_factory.domain.events import AgentTemplateCreated
+from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
 logger = logging.getLogger(__name__)
 

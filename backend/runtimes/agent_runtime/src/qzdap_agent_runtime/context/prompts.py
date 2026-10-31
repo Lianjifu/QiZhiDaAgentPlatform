@@ -51,8 +51,9 @@ def render_memory_hits(hits: list[dict[str, Any]]) -> str:
     ⚠️ 内容取 ``content``，没有就取 ``value`` ✓（旧路径同 ✓）。
     """
     lines = [
-        f"- ({float(item.get('score') or 0):.2f}) "
-        f"{item.get('content') or item.get('value') or ''}"[:HIT_MAX_CHARS]
+        f"- ({float(item.get('score') or 0):.2f}) {item.get('content') or item.get('value') or ''}"[
+            :HIT_MAX_CHARS
+        ]
         for item in hits
     ]
     return "\n".join(lines)
@@ -61,9 +62,7 @@ def render_memory_hits(hits: list[dict[str, Any]]) -> str:
 def render_knowledge_hits(hits: list[dict[str, Any]]) -> str:
     """知识命中 → system 段落文本 ✓（同样复刻旧路径的三件事 ✓）。"""
     lines = [
-        f"- ({float(item.get('score') or 0):.2f}) {item.get('content') or ''}"[
-            :HIT_MAX_CHARS
-        ]
+        f"- ({float(item.get('score') or 0):.2f}) {item.get('content') or ''}"[:HIT_MAX_CHARS]
         for item in hits
     ]
     return "\n".join(lines)

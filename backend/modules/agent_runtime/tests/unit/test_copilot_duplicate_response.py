@@ -23,6 +23,10 @@ from _ar_unit_in_memory import (
 )
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
+from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 from qzdap_agent_runtime.gateway.facade import Gateway
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_agent_runtime.gateway.replay import StoredEvent, event_digest
@@ -30,10 +34,6 @@ from qzdap_agent_runtime.gateway.types import ChannelType
 from qzdap_agent_runtime.gateway.web import WebChatNormalizer, WebIdentityVerifier
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
-
-from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
-from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
-from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 
 
 class _Catalog:

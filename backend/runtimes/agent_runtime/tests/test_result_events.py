@@ -17,7 +17,6 @@ from qzdap_agent_runtime.result import (
     UsageEvent,
 )
 
-
 # ---------------------------------------------------------------------------
 # 11 种 event 构造 + kind 字面值
 # ---------------------------------------------------------------------------
@@ -25,9 +24,7 @@ from qzdap_agent_runtime.result import (
 
 class TestElevenEventKinds:
     def test_message_event(self) -> None:
-        e = MessageEvent(
-            turn_id="t-1", seq=1, event_id="e-1", delta="hi", role="assistant"
-        )
+        e = MessageEvent(turn_id="t-1", seq=1, event_id="e-1", delta="hi", role="assistant")
         assert e.kind == "message"
         assert e.retriable is False  # _EventBase 默认
 
@@ -186,50 +183,98 @@ def test_result_event_union_includes_all_11() -> None:
     events: list[ResultEvent] = [
         MessageEvent(turn_id="t", seq=0, event_id="e", delta=""),
         ToolCallEvent(
-            turn_id="t", seq=0, event_id="e",
-            tool_name="x", tool_call_id="tc", arguments={},
+            turn_id="t",
+            seq=0,
+            event_id="e",
+            tool_name="x",
+            tool_call_id="tc",
+            arguments={},
         ),
         ToolResultEvent(
-            turn_id="t", seq=0, event_id="e",
-            tool_call_id="tc", output={}, is_error=False, latency_ms=0,
+            turn_id="t",
+            seq=0,
+            event_id="e",
+            tool_call_id="tc",
+            output={},
+            is_error=False,
+            latency_ms=0,
         ),
         SkillInvocationEvent(
-            turn_id="t", seq=0, event_id="e",
-            invocation_id="i", skill="s", status="started",
+            turn_id="t",
+            seq=0,
+            event_id="e",
+            invocation_id="i",
+            skill="s",
+            status="started",
         ),
         MemoryWriteEvent(
-            turn_id="t", seq=0, event_id="e",
-            layer="l1", source_turn_id="s", preview="",
+            turn_id="t",
+            seq=0,
+            event_id="e",
+            layer="l1",
+            source_turn_id="s",
+            preview="",
         ),
         KnowledgeSearchEvent(
-            turn_id="t", seq=0, event_id="e",
-            query_hash="h", hits=[], citations=[], degraded=False,
+            turn_id="t",
+            seq=0,
+            event_id="e",
+            query_hash="h",
+            hits=[],
+            citations=[],
+            degraded=False,
         ),
         ContextCompactedEvent(
-            turn_id="t", seq=0, event_id="e",
-            tokens_before=0, tokens_after=0, removed_ids=[],
+            turn_id="t",
+            seq=0,
+            event_id="e",
+            tokens_before=0,
+            tokens_after=0,
+            removed_ids=[],
         ),
         ApprovalRequiredEvent(
-            turn_id="t", seq=0, event_id="e",
-            approval_id="a", tool_call_id="tc", tool="",
-            args_preview="", reason="", expires_at="2026-10-15T10:15:00Z",
+            turn_id="t",
+            seq=0,
+            event_id="e",
+            approval_id="a",
+            tool_call_id="tc",
+            tool="",
+            args_preview="",
+            reason="",
+            expires_at="2026-10-15T10:15:00Z",
         ),
         UsageEvent(
-            turn_id="t", seq=0, event_id="e",
-            input_tokens=0, output_tokens=0, cache_tokens=0,
-            cost_usd=None, cost_unknown=True,
-            tenant_id="t", workspace_id="w", user_id="u",
-            agent_id="a", agent_version="v", model_version="m",
+            turn_id="t",
+            seq=0,
+            event_id="e",
+            input_tokens=0,
+            output_tokens=0,
+            cache_tokens=0,
+            cost_usd=None,
+            cost_unknown=True,
+            tenant_id="t",
+            workspace_id="w",
+            user_id="u",
+            agent_id="a",
+            agent_version="v",
+            model_version="m",
             retry_count=0,
         ),
         DoneEvent(
-            turn_id="t", seq=0, event_id="e",
-            final_message="", status="succeeded",
-            agent_version="v", model_version="m",
+            turn_id="t",
+            seq=0,
+            event_id="e",
+            final_message="",
+            status="succeeded",
+            agent_version="v",
+            model_version="m",
         ),
         ErrorEvent(
-            turn_id="t", seq=0, event_id="e",
-            error_code="INTERNAL_ERROR", safe_message="",
+            turn_id="t",
+            seq=0,
+            event_id="e",
+            error_code="INTERNAL_ERROR",
+            safe_message="",
         ),
     ]
     assert len(events) == 11

@@ -99,18 +99,16 @@ class Container:
         # Forbidding the dev default stops the prod path from silently
         # degrading to NoOp / NoOp-vetter / in-process bus.
         backend_checks: tuple[tuple[str, str, frozenset[str]], ...] = (
-            ("QZDAP_SKILL_SIGNING_MODE", settings.skill_signing_mode,
-             frozenset({"disabled"})),
-            ("QZDAP_KNOWLEDGE_SIGNING_MODE", settings.knowledge_signing_mode,
-             frozenset({"disabled"})),
-            ("QZDAP_PLAN_SIGNING_MODE", settings.plan_signing_mode,
-             frozenset({"disabled"})),
-            ("QZDAP_EMBEDDING_PROVIDER", settings.embedding_provider,
-             frozenset({"noop"})),
-            ("QZDAP_VAULT_MODE", settings.vault_mode,
-             frozenset({"env", "noop"})),
-            ("QZDAP_EVENT_BUS", settings.event_bus,
-             frozenset({"inprocess"})),
+            ("QZDAP_SKILL_SIGNING_MODE", settings.skill_signing_mode, frozenset({"disabled"})),
+            (
+                "QZDAP_KNOWLEDGE_SIGNING_MODE",
+                settings.knowledge_signing_mode,
+                frozenset({"disabled"}),
+            ),
+            ("QZDAP_PLAN_SIGNING_MODE", settings.plan_signing_mode, frozenset({"disabled"})),
+            ("QZDAP_EMBEDDING_PROVIDER", settings.embedding_provider, frozenset({"noop"})),
+            ("QZDAP_VAULT_MODE", settings.vault_mode, frozenset({"env", "noop"})),
+            ("QZDAP_EVENT_BUS", settings.event_bus, frozenset({"inprocess"})),
         )
         backend_offenders: list[str] = []
         for name, value, forbidden in backend_checks:
@@ -459,12 +457,11 @@ class Container:
         """
         provider = self.settings.embedding_provider
         if provider == "openai":
-            from qzdap.modules.memory.adapter.embedding.openai_adapter import (
-                OpenAIEmbeddingAdapter,
-            )
-
             from qzdap.composition.unavailable_providers import (
                 ProviderUnavailable,
+            )
+            from qzdap.modules.memory.adapter.embedding.openai_adapter import (
+                OpenAIEmbeddingAdapter,
             )
 
             api_key = self.settings.openai_api_key.strip()
@@ -594,7 +591,9 @@ class Container:
                         client_factory=client_factory,
                     )
                     try:
-                        async with aclosing(svc.stream(actor=actor, model_id=model_id, req=req)) as stream:
+                        async with aclosing(
+                            svc.stream(actor=actor, model_id=model_id, req=req)
+                        ) as stream:
                             async for chunk in stream:
                                 yield chunk
                         await session.commit()
@@ -617,7 +616,7 @@ class Container:
                 from qzdap_schema.ids import ModelId
 
                 chain = [ModelId(primary_model_id)]
-                for fid in (fallback_model_ids or []):
+                for fid in fallback_model_ids or []:
                     chain.append(ModelId(fid))
                 async with session_factory.session() as session:
                     svc = ModelService(
@@ -663,9 +662,7 @@ class Container:
                     )
                     try:
                         async with aclosing(
-                            svc.stream_with_route(
-                                actor=actor, route_id=ModelId(route_id), req=req
-                            )
+                            svc.stream_with_route(actor=actor, route_id=ModelId(route_id), req=req)
                         ) as stream:
                             async for chunk in stream:
                                 yield chunk
@@ -736,6 +733,7 @@ class Container:
         and read ``outbound_config`` from the channel row when sending.
         """
         import httpx
+
         from qzdap.modules.channel.adapter.outbound import (
             DingTalkOutboundAdapter,
             FeishuOutboundAdapter,
@@ -847,9 +845,7 @@ class Container:
             identity=HmacWebhookVerifier(clock=self.clock()),
             normalizers=self.channel_inbound_registry(),
             # 幂等守卫自持事务 —— claim 必须在本轮开始前落库。
-            idempotency=IdempotencyGuard(
-                PostgresIdempotencyStore(self.session_factory())
-            ),
+            idempotency=IdempotencyGuard(PostgresIdempotencyStore(self.session_factory())),
             capabilities=capabilities_for,
         )
 
@@ -875,9 +871,7 @@ class Container:
             channels=None,
             identity=WebIdentityVerifier(),
             normalizers={ChannelType.WEB: WebChatNormalizer()},
-            idempotency=IdempotencyGuard(
-                PostgresIdempotencyStore(self.session_factory())
-            ),
+            idempotency=IdempotencyGuard(PostgresIdempotencyStore(self.session_factory())),
             capabilities=capabilities_for,
             # 重放的落点（Stage 4b）—— 重复命中后按 seq 读回上一轮的事件流。
             events=self.session_journal(),

@@ -19,7 +19,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
-from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap.modules.evaluation.adapter.http.dto import (
     CaseListResponse,
     DatasetListResponse,
@@ -40,6 +39,7 @@ from qzdap.modules.evaluation.domain.errors import (
     EvaluationError,
     IdempotencyKeyConflict,
 )
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 
 
 async def evaluation_service_dependency(
@@ -79,9 +79,9 @@ def build_router() -> APIRouter:
         response_model=DatasetListResponse,
     )
     async def list_datasets(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: EvaluationService = Depends(evaluation_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: EvaluationService = Depends(evaluation_service_dependency),
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ) -> DatasetListResponse:
@@ -104,8 +104,8 @@ def build_router() -> APIRouter:
     )
     async def get_dataset(
         did: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: EvaluationService = Depends(evaluation_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: EvaluationService = Depends(evaluation_service_dependency),
     ) -> DatasetResponse:
         from qzdap_schema.ids import EvalDatasetId, TenantId
 
@@ -114,8 +114,8 @@ def build_router() -> APIRouter:
                 tenant_id=TenantId(x_tenant_id),
                 dataset_id=EvalDatasetId(did),
             )
-        except Exception as exc:  # noqa: BLE001
-            raise _domain_error_to_http(exc)
+        except Exception as exc:
+            raise _domain_error_to_http(exc) from exc
         return dataset_to_dto(dataset)
 
     @router.get(
@@ -124,8 +124,8 @@ def build_router() -> APIRouter:
     )
     async def list_cases(
         did: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: EvaluationService = Depends(evaluation_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: EvaluationService = Depends(evaluation_service_dependency),
     ) -> CaseListResponse:
         from qzdap_schema.ids import EvalDatasetId, TenantId
 
@@ -148,10 +148,10 @@ def build_router() -> APIRouter:
     )
     async def start_run(
         body: StartRunRequest,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(..., alias="X-User-Id"),  # noqa: B008
-        svc: EvaluationService = Depends(evaluation_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(..., alias="X-User-Id"),
+        svc: EvaluationService = Depends(evaluation_service_dependency),
     ) -> RunResponse:
         from qzdap_schema.ids import (
             AgentTemplateId,
@@ -172,8 +172,8 @@ def build_router() -> APIRouter:
                 triggered_by=UserId(x_user_id),
                 idempotency_key=body.idempotency_key,
             )
-        except Exception as exc:  # noqa: BLE001
-            raise _domain_error_to_http(exc)
+        except Exception as exc:
+            raise _domain_error_to_http(exc) from exc
         return run_to_dto(run)
 
     @router.get(
@@ -181,11 +181,11 @@ def build_router() -> APIRouter:
         response_model=RunListResponse,
     )
     async def list_runs(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: EvaluationService = Depends(evaluation_service_dependency),  # noqa: B008
-        template_id: UUID | None = Query(default=None),  # noqa: B008
-        version_id: UUID | None = Query(default=None),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: EvaluationService = Depends(evaluation_service_dependency),
+        template_id: UUID | None = Query(default=None),
+        version_id: UUID | None = Query(default=None),
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ) -> RunListResponse:
@@ -215,8 +215,8 @@ def build_router() -> APIRouter:
     )
     async def get_run(
         rid: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: EvaluationService = Depends(evaluation_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: EvaluationService = Depends(evaluation_service_dependency),
     ) -> RunResponse:
         from qzdap_schema.ids import EvalRunId, TenantId
 
@@ -225,8 +225,8 @@ def build_router() -> APIRouter:
                 tenant_id=TenantId(x_tenant_id),
                 run_id=EvalRunId(rid),
             )
-        except Exception as exc:  # noqa: BLE001
-            raise _domain_error_to_http(exc)
+        except Exception as exc:
+            raise _domain_error_to_http(exc) from exc
         return run_to_dto(run)
 
     return router

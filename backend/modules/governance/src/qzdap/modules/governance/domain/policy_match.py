@@ -15,10 +15,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from qzdap_vault.actor import ActorContext
-
 from qzdap.modules.governance.domain.entities import PolicyRule
 from qzdap.modules.governance.domain.value_objects import PolicySubject
+from qzdap_vault.actor import ActorContext
 
 
 @dataclass(slots=True, frozen=True)

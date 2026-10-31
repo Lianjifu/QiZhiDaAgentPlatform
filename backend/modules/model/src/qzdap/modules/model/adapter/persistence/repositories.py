@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +18,7 @@ from qzdap.modules.model.application.ports import (
     RouteRepository,
 )
 from qzdap.modules.model.domain.entities import HealthEvent, Model, Provider, RouteRule
+from qzdap_persistence.tenant_guard import current_tenant_id
 
 
 def _cross_tenant(row: object) -> bool:
@@ -138,9 +138,7 @@ class SqlProviderRepository(ProviderRepository):
             select(ProviderORM).where(ProviderORM.workspace_id == workspace_id)
         )
         return [
-            _provider_to_domain(row)
-            for row in result.scalars().all()
-            if not _cross_tenant(row)
+            _provider_to_domain(row) for row in result.scalars().all() if not _cross_tenant(row)
         ]
 
     async def update(self, provider: Provider) -> None:
@@ -175,11 +173,7 @@ class SqlModelRepository(ModelRepository):
         result = await self._s.execute(
             select(CatalogModelORM).where(CatalogModelORM.workspace_id == workspace_id)
         )
-        return [
-            _model_to_domain(row)
-            for row in result.scalars().all()
-            if not _cross_tenant(row)
-        ]
+        return [_model_to_domain(row) for row in result.scalars().all() if not _cross_tenant(row)]
 
     async def get_by_upstream_name(
         self, *, workspace_id: UUID, upstream_model: str
@@ -337,9 +331,7 @@ class SqlHealthRepository(HealthRepository):
             )
         )
 
-    async def list_for_workspace(
-        self, workspace_id: UUID, limit: int = 50
-    ) -> list[HealthEvent]:
+    async def list_for_workspace(self, workspace_id: UUID, limit: int = 50) -> list[HealthEvent]:
         result = await self._s.execute(
             select(HealthEventORM)
             .where(HealthEventORM.workspace_id == workspace_id)

@@ -24,15 +24,6 @@ import logging
 from dataclasses import dataclass
 from uuid import uuid4
 
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    ReleaseId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.agent_factory.application.ports import (
     AgentFactoryEventPublisher,
     AgentTemplateRepository,
@@ -50,6 +41,14 @@ from qzdap.modules.agent_factory.domain.errors import (
 )
 from qzdap.modules.agent_factory.domain.events import AgentReleased
 from qzdap.modules.agent_factory.domain.value_objects import AgentVersionStatus
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    ReleaseId,
+    TenantId,
+    UserId,
+    WorkspaceId,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,26 +92,17 @@ class ReleaseAgentVersionUseCase:
             )
 
         # ── 2. load entities ────────────────────────────────────────────
-        template = await self.template_repository.get(
-            tenant_id=tenant_id, template_id=template_id
-        )
+        template = await self.template_repository.get(tenant_id=tenant_id, template_id=template_id)
         if template is None:
-            raise AgentTemplateNotFound(
-                f"agent template {template_id} not found in tenant"
-            )
-        version = await self.version_repository.get(
-            tenant_id=tenant_id, version_id=version_id
-        )
+            raise AgentTemplateNotFound(f"agent template {template_id} not found in tenant")
+        version = await self.version_repository.get(tenant_id=tenant_id, version_id=version_id)
         if version is None:
-            raise AgentVersionNotFound(
-                f"agent version {version_id} not found in tenant"
-            )
+            raise AgentVersionNotFound(f"agent version {version_id} not found in tenant")
 
         # ── 3. status must be PUBLISHED ─────────────────────────────────
         if version.status is not AgentVersionStatus.PUBLISHED:
             raise EvalGateFailed(
-                f"version {version.version_tag} is not published "
-                f"(status={version.status.value!r})",
+                f"version {version.version_tag} is not published (status={version.status.value!r})",
                 code="EVAL_GATE_FAILED",
                 status=422,
             )
@@ -173,9 +163,7 @@ class ReleaseAgentVersionUseCase:
                     )
                 )
             except Exception:  # pragma: no cover - defensive
-                logger.exception(
-                    "publish AgentReleased failed for %s", saved_release.id
-                )
+                logger.exception("publish AgentReleased failed for %s", saved_release.id)
 
         return saved_release
 

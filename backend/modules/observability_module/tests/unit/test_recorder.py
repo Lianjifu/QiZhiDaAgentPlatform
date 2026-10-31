@@ -9,7 +9,6 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from qzdap_schema.ids import TenantId, WorkspaceId
 
 from qzdap.modules.observability_module.application.pricing import (
     DEFAULT_LLM_PRICING,
@@ -23,6 +22,7 @@ from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunType,
 )
+from qzdap_schema.ids import TenantId, WorkspaceId
 
 from ._in_memory import (
     InMemoryCostRecordRepository,
@@ -375,9 +375,7 @@ def test_handle_falls_back_workspace_id(recorder: ObservabilityRecorder) -> None
 
     # No workspace_id in envelope.
     async def go() -> None:
-        await recorder.handle(
-            _envelope("ToolCompleted", {"tenant_id": tid, "tool_name": "echo"})
-        )
+        await recorder.handle(_envelope("ToolCompleted", {"tenant_id": tid, "tool_name": "echo"}))
 
     asyncio.run(go())
     runs = list(recorder.run_repo._store.values())

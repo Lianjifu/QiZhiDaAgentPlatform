@@ -65,4 +65,3 @@ async def test_the_sweeper_interval_is_never_zero(
         assert container.calls <= 2, f"清扫器在忙循环：{container.calls} 次"
     finally:
         await stop()
-

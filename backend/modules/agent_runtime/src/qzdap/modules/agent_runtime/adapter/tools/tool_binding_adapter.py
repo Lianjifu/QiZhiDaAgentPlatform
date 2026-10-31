@@ -18,13 +18,12 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.ports import ToolBinding, ToolBindingPort
-
 from qzdap.modules.agent_runtime.application.ports import (
     AgentBindingReader,
     SkillPort,
     ToolPort,
 )
+from qzdap_agent_runtime.ports import ToolBinding, ToolBindingPort
 
 #: **skill 的 inputSchema → JSON Schema** ✓（skill 那边是一张**字段表** ✓，
 #: 不是 JSON Schema ✓ —— 这里转一下 ✓）。
@@ -126,7 +125,7 @@ class ToolBindingAdapter(ToolBindingPort):
             return {}
         try:
             rows = await self._tools.list_tools()
-        except Exception:  # noqa: BLE001 — 目录取不到就当没有工具 ✓
+        except Exception:
             return {}
         return {str(row.get("name")): row for row in rows if row.get("name")}
 
@@ -135,7 +134,7 @@ class ToolBindingAdapter(ToolBindingPort):
             return {}
         try:
             rows = await self._skills.list_executable()
-        except Exception:  # noqa: BLE001 — 同上 ✓
+        except Exception:
             return {}
         return {str(row.get("name")): row for row in rows if row.get("name")}
 
@@ -199,11 +198,7 @@ def _skill_parameters(input_schema: Any) -> dict[str, Any]:
             continue
         properties[name] = {
             "type": _JSON_TYPES.get(str(field.get("type") or "string"), "string"),
-            **(
-                {"description": str(field["description"])}
-                if field.get("description")
-                else {}
-            ),
+            **({"description": str(field["description"])} if field.get("description") else {}),
         }
         if field.get("required"):
             required.append(name)

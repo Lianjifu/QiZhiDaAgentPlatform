@@ -5,13 +5,6 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 import pytest
-from qzdap_schema.ids import (
-    AgentId,
-    SessionId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
 
 from qzdap.modules.agent_runtime.domain import (
     Session,
@@ -20,6 +13,13 @@ from qzdap.modules.agent_runtime.domain import (
     TurnStatus,
 )
 from qzdap.modules.agent_runtime.domain.errors import SessionClosedError
+from qzdap_schema.ids import (
+    AgentId,
+    SessionId,
+    TenantId,
+    UserId,
+    WorkspaceId,
+)
 
 
 def _make_session(**overrides: object) -> Session:

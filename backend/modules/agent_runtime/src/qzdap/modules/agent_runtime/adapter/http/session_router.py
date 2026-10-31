@@ -14,6 +14,13 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from opentelemetry import trace as _trace
+
+from qzdap.modules.agent_runtime.adapter.http.dto import (
+    InteractiveAnswerRequest,
+)
+from qzdap.modules.agent_runtime.adapter.http.sse import sse_replay, sse_stream
+from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+from qzdap.modules.agent_runtime.domain.errors import DuplicateRequestError
 from qzdap_agent_runtime.gateway.channels import capabilities_for
 from qzdap_agent_runtime.gateway.types import ChannelType, RawIngress
 from qzdap_agent_runtime.router.strategy import Strategy
@@ -22,13 +29,6 @@ from qzdap_kernel.contextvars import current_trace_id
 from qzdap_observability.metrics import record_new_call
 from qzdap_observability.tracing import get_tracer
 from qzdap_schema.dtos.errors import ErrorCode
-
-from qzdap.modules.agent_runtime.adapter.http.dto import (
-    InteractiveAnswerRequest,
-)
-from qzdap.modules.agent_runtime.adapter.http.sse import sse_replay, sse_stream
-from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
-from qzdap.modules.agent_runtime.domain.errors import DuplicateRequestError
 
 _tracer = get_tracer("qzdap.agent_runtime")
 
@@ -95,13 +95,12 @@ async def copilot_dependency(request: Request) -> CopilotSessionService:
         tenant_raw = request.headers.get("x-tenant-id")
         workspace_raw = request.headers.get("x-workspace-id")
         if tenant_raw and workspace_raw:
-            from qzdap_schema.ids import TenantId, UserId, WorkspaceId
-
             from qzdap.modules.agent_runtime.adapter.sandbox import (
                 SandboxRuntimeAdapter,
             )
             from qzdap.modules.agent_runtime.adapter.skills import SkillServiceAdapter
             from qzdap.modules.agent_runtime.adapter.tools import ToolServiceAdapter
+            from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
             tenant_id = TenantId(UUID(tenant_raw))
             workspace_id = WorkspaceId(UUID(workspace_raw))
@@ -160,7 +159,7 @@ async def copilot_dependency(request: Request) -> CopilotSessionService:
 
 async def routing_strategy_dependency(
     request: Request,
-    svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+    svc: CopilotSessionService = Depends(copilot_dependency),
 ) -> Strategy:
     """Router 的策略 —— **请求作用域**，与 copilot 共用同一个 DB 会话。
 
@@ -189,9 +188,9 @@ def build_session_router() -> APIRouter:
     async def list_sessions(
         request: Request,
         search: str = Query(default=""),
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_sessions(
             tenant_id=x_tenant_id,
@@ -203,11 +202,11 @@ def build_session_router() -> APIRouter:
     async def create_session(
         body: dict[str, Any],
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
-        strategy: Strategy = Depends(routing_strategy_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
+        strategy: Strategy = Depends(routing_strategy_dependency),
     ) -> dict[str, Any]:
         """建会话 —— **agent 由 Router 的规则链选出**（不再直取 agentId）。
 
@@ -221,9 +220,7 @@ def build_session_router() -> APIRouter:
             try:
                 explicit_id = UUID(str(explicit))
             except ValueError as exc:
-                raise HTTPException(
-                    status_code=400, detail="agentId is not a valid uuid"
-                ) from exc
+                raise HTTPException(status_code=400, detail="agentId is not a valid uuid") from exc
         try:
             decision = await strategy.decide(
                 RoutingRequest(
@@ -257,16 +254,16 @@ def build_session_router() -> APIRouter:
     @router.get("/api/sessions/{session_id}")
     async def get_session(
         session_id: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> dict[str, Any]:
         return await svc.get_session(tenant_id=x_tenant_id, session_id=session_id)
 
     @router.delete("/api/sessions/{session_id}")
     async def delete_session(
         session_id: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> Response:
         await svc.close_session(tenant_id=x_tenant_id, session_id=session_id)
         return Response(status_code=204)
@@ -280,10 +277,10 @@ def build_session_router() -> APIRouter:
         request: Request,
         q: str = Query(default=""),
         status: str = Query(default="all"),
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_tasks(
             tenant_id=x_tenant_id,
@@ -297,8 +294,8 @@ def build_session_router() -> APIRouter:
     async def update_task(
         task_id: UUID,
         body: dict[str, Any],
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> dict[str, Any]:
         action = str(body.get("action") or "")
         if action == "complete":
@@ -317,10 +314,10 @@ def build_session_router() -> APIRouter:
         session_id: UUID,
         body: dict[str, Any],
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> Response:  # 重复请求走 202 降级路径（不是流）
         content = str(body.get("content") or body.get("message") or "").strip()
         if not content:
@@ -354,9 +351,7 @@ def build_session_router() -> APIRouter:
 
                 route_id_uuid = ModelId(UUID(str(route_id_raw)))
             except (ValueError, TypeError, AttributeError) as exc:
-                logging.getLogger(__name__).warning(
-                    "phase12_route_id_parse_failed: %s", exc
-                )
+                logging.getLogger(__name__).warning("phase12_route_id_parse_failed: %s", exc)
         # ①②③ —— **web 入口也走同一个门面**（§10 Stage 4a）。
         # 身份与幂等键因此只有**一个**来源：认证中间件的 principal（兜底租户头）
         # + Gateway 的键阶梯（§4.2）。
@@ -427,10 +422,10 @@ def build_session_router() -> APIRouter:
         session_id: UUID,
         body: dict[str, Any],
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> dict[str, Any]:
         """用户对一轮回答的反馈 —— 写进平台的反馈池 (feedback.list).
 
@@ -443,9 +438,7 @@ def build_session_router() -> APIRouter:
         )
         rating = int(body.get("rating") or 0)
         if rating not in (1, 5):
-            raise HTTPException(
-                status_code=422, detail="rating must be 1 (踩) or 5 (赞)"
-            )
+            raise HTTPException(status_code=422, detail="rating must be 1 (踩) or 5 (赞)")
         comment = str(body.get("comment") or "")[:2000]
         topic = str(body.get("topic") or "对话质量")[:64]
         tags = [str(item)[:32] for item in (body.get("tags") or [])][:8]
@@ -499,10 +492,10 @@ def build_session_router() -> APIRouter:
     async def cancel_turn(
         session_id: UUID,
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> dict[str, Any]:
         """请求停止当前轮次.
 
@@ -519,10 +512,10 @@ def build_session_router() -> APIRouter:
         session_id: UUID,
         approval_id: UUID,
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> StreamingResponse:
         return await _resume(
             svc,
@@ -540,10 +533,10 @@ def build_session_router() -> APIRouter:
         session_id: UUID,
         approval_id: UUID,
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> StreamingResponse:
         return await _resume(
             svc,
@@ -564,10 +557,10 @@ def build_session_router() -> APIRouter:
         session_id: UUID,
         body: InteractiveAnswerRequest,
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> dict[str, Any]:
         """Record user's answer to a frontend-coupled stub tool.
 
@@ -605,10 +598,10 @@ def build_session_router() -> APIRouter:
         session_id: UUID,
         plan_id: UUID,
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> dict[str, Any]:
         """批准 plan — 决策落库到 session.metadata, 并写一行审计."""
         await svc.decide_plan(
@@ -631,10 +624,10 @@ def build_session_router() -> APIRouter:
         session_id: UUID,
         plan_id: UUID,
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: CopilotSessionService = Depends(copilot_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: CopilotSessionService = Depends(copilot_dependency),
     ) -> dict[str, Any]:
         """拒绝 plan — 决策落库到 session.metadata, 并写一行审计."""
         await svc.decide_plan(
@@ -675,7 +668,7 @@ def build_session_router() -> APIRouter:
                 detail="artifact content is only available in mock (test) mode",
             )
         # 防 path traversal: artifact_id 是 UUID
-        root = Path("/tmp/qzdap-mock-artifacts").resolve()
+        root = Path("/tmp/qzdap-mock-artifacts").resolve()  # noqa: S108, ASYNC240 —— mock 产物目录 ✓
         target = (root / f"{artifact_id}.md").resolve()
         if not str(target).startswith(str(root)) or not target.exists():
             raise HTTPException(status_code=404, detail="artifact not found")
@@ -710,7 +703,7 @@ async def _resume(
         if container is not None:
             try:
                 approval_service = container.approval_service()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 approval_service = None
     else:
         approval_service = factory
@@ -804,9 +797,7 @@ async def _sse_bytes_response(
                 yield piece
         except asyncio.CancelledError:
             # 客户端断开 —— 记一笔, 别让 APM 里看起来像正常结束.
-            span.set_status(
-                _trace.Status(_trace.StatusCode.ERROR, "client disconnected")
-            )
+            span.set_status(_trace.Status(_trace.StatusCode.ERROR, "client disconnected"))
             raise
         except Exception as exc:
             span.set_status(_trace.Status(_trace.StatusCode.ERROR))
@@ -863,9 +854,7 @@ async def _replay_duplicate(
         # 轮次还没拿到 id → 这一轮**还在跑**（键还没被消费）。
         return _duplicate_conflict(exc)
 
-    result = await gateway.replay(
-        turn_id, tenant_id=tenant_id, after_seq=_last_event_id(request)
-    )
+    result = await gateway.replay(turn_id, tenant_id=tenant_id, after_seq=_last_event_id(request))
     if not result.events and not result.is_finished:
         return _duplicate_conflict(exc)
 

@@ -10,9 +10,8 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.router.types import AgentCatalogPort, RoutingAgent
-
 from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
+from qzdap_agent_runtime.router.types import AgentCatalogPort, RoutingAgent
 
 
 def _str_tuple(raw: Any) -> tuple[str, ...]:
@@ -31,9 +30,7 @@ class CatalogRoutingAdapter(AgentCatalogPort):
     def __init__(self, catalog: AgentCatalogService) -> None:
         self._catalog = catalog
 
-    async def list_agents(
-        self, *, tenant_id: UUID, workspace_id: UUID
-    ) -> tuple[RoutingAgent, ...]:
+    async def list_agents(self, *, tenant_id: UUID, workspace_id: UUID) -> tuple[RoutingAgent, ...]:
         rows = await self._catalog.list_admin(workspace_id=workspace_id)
         agents: list[RoutingAgent] = []
         for row in rows:

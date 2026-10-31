@@ -50,9 +50,7 @@ def canonical_payload(payload: Mapping[str, Any]) -> bytes:
     endings.  Every pack vetter MUST call this helper before signing /
     verifying so SDKs of different versions agree byte-for-byte.
     """
-    return json.dumps(dict(payload), sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    return json.dumps(dict(payload), sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
 def payload_digest(payload: Mapping[str, Any]) -> str:
@@ -94,18 +92,14 @@ def load_public_key_pem(pem: bytes) -> Ed25519PublicKey:
     return key
 
 
-def private_key_to_pem(
-    key: Ed25519PrivateKey, *, password: bytes | None = None
-) -> bytes:
+def private_key_to_pem(key: Ed25519PrivateKey, *, password: bytes | None = None) -> bytes:
     encryption: BestAvailableEncryption | NoEncryption = (
         BestAvailableEncryption(password) if password else NoEncryption()
     )
     return key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, encryption)
 
 
-def load_private_key_pem(
-    pem: bytes, *, password: bytes | None = None
-) -> Ed25519PrivateKey:
+def load_private_key_pem(pem: bytes, *, password: bytes | None = None) -> Ed25519PrivateKey:
     key = load_pem_private_key(pem, password=password)
     if not isinstance(key, Ed25519PrivateKey):
         raise TypeError(f"expected Ed25519 private key, got {type(key).__name__}")

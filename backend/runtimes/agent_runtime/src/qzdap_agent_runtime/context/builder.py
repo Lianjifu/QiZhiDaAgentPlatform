@@ -249,7 +249,7 @@ class ContextBuilder:
                 # ⚠️ **策略绑定** ✓（§7.1 ✓）—— 作用域 + 显式绑定的条目 ✓。
                 policy=memory_policy,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             # ⚠️ **失败必须可见** ✓（旧路径静默吞掉 ✗✗）。
             degraded["recall_degraded"] = True
             return []
@@ -273,7 +273,7 @@ class ContextBuilder:
                 top_k=KNOWLEDGE_TOP_K,
                 package_ids=package_ids,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             degraded["recall_degraded"] = True
             return []
 

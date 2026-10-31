@@ -5,9 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from qzdap_schema.ids import TenantId, UserId
-
 from qzdap.modules.platform.domain.entities import TenantSetting
+from qzdap_schema.ids import TenantId, UserId
 
 if TYPE_CHECKING:
     from qzdap.modules.platform.application.services import PlatformService

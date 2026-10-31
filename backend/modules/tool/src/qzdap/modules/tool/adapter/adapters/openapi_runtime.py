@@ -20,11 +20,11 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
+
+from qzdap.modules.tool.domain import AuthConfig, AuthConfigType, SpecOperation
 from qzdap_vault.actor import ActorContext
 from qzdap_vault.errors import VaultError
 from qzdap_vault.resolver import VaultSecretsResolver as SecretsResolver
-
-from qzdap.modules.tool.domain import AuthConfig, AuthConfigType, SpecOperation
 
 # Adapter from the qzdap_vault Protocol to the legacy Callable-style resolver
 # that the OpenAPI/MCP runtimes already accept.  Resolves ``secrets_ref``
@@ -79,9 +79,7 @@ class OpenAPIRuntimeAdapter:
     ) -> None:
         self._http = http
         self._secrets = (
-            _adapter(secrets_resolver)
-            if secrets_resolver is not None
-            else _no_op_secrets_resolver
+            _adapter(secrets_resolver) if secrets_resolver is not None else _no_op_secrets_resolver
         )
 
     async def invoke(
@@ -98,18 +96,14 @@ class OpenAPIRuntimeAdapter:
         query_params = arguments.get("query") or {}
         body: Any = arguments.get("body")
         if body is None:
-            extra = {
-                k: v for k, v in arguments.items() if k not in {"path", "query", "body"}
-            }
+            extra = {k: v for k, v in arguments.items() if k not in {"path", "query", "body"}}
             if extra:
                 body = extra
 
         url = _inject_path(base_url.rstrip("/") + operation.path, path_params)
         headers: dict[str, str] = {"Accept": "application/json"}
         if auth is not None:
-            ctx = actor or ActorContext.anonymous(
-                tenant_id=__import__("uuid").UUID(int=0)
-            )
+            ctx = actor or ActorContext.anonymous(tenant_id=__import__("uuid").UUID(int=0))
             headers.update(await self._inject_auth(auth, ctx))
 
         method = operation.method.upper()
@@ -132,9 +126,7 @@ class OpenAPIRuntimeAdapter:
             return {}
         return resp.json()
 
-    async def _inject_auth(
-        self, auth: AuthConfig, actor: ActorContext
-    ) -> dict[str, str]:
+    async def _inject_auth(self, auth: AuthConfig, actor: ActorContext) -> dict[str, str]:
         headers: dict[str, str] = {}
         if auth.type is AuthConfigType.NONE or not auth.secrets_ref:
             return headers

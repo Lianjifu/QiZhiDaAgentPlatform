@@ -36,9 +36,7 @@ PROVIDER_REGISTRY = MappingProxyType(
         for spec in (
             ProviderSpec("openai", "openai", "https://api.openai.com/v1"),
             ProviderSpec("anthropic", "anthropic", "https://api.anthropic.com"),
-            ProviderSpec(
-                "google", "google", "https://generativelanguage.googleapis.com/v1beta"
-            ),
+            ProviderSpec("google", "google", "https://generativelanguage.googleapis.com/v1beta"),
             ProviderSpec("deepseek", "openai", "https://api.deepseek.com"),
             ProviderSpec("glm", "openai", "https://open.bigmodel.cn/api/paas/v4"),
             ProviderSpec("kimi", "openai", "https://api.moonshot.ai/v1"),
@@ -46,9 +44,7 @@ PROVIDER_REGISTRY = MappingProxyType(
             ProviderSpec("minimax", "openai", "https://api.minimax.io/v1"),
             ProviderSpec("openai-compatible", "openai", requires_base_url=True),
             ProviderSpec("anthropic-compatible", "anthropic", requires_base_url=True),
-            ProviderSpec(
-                "azure", "azure", requires_base_url=True, requires_api_version=True
-            ),
+            ProviderSpec("azure", "azure", requires_base_url=True, requires_api_version=True),
         )
     }
 )

@@ -97,9 +97,7 @@ class _FakeOutbox:
     async def mark_delivered(self, turn_id: str, seq: int) -> None:
         self.delivered.append((turn_id, seq))
 
-    async def mark_failed(
-        self, turn_id: str, seq: int, attempts: int, last_error: str
-    ) -> None:
+    async def mark_failed(self, turn_id: str, seq: int, attempts: int, last_error: str) -> None:
         self.failed.append((turn_id, seq, attempts, last_error))
 
 
@@ -237,9 +235,7 @@ async def test_the_dispatcher_rejects_an_unknown_channel() -> None:
 async def test_a_sink_failure_becomes_a_dispatch_error() -> None:
     """sink 失败 → DispatchError ✓（worker 才能记 FAILED / 进死信 ✓）。"""
     adapter = _FakeOutboundAdapter("web", fail=True)
-    dispatcher = ChannelOutboxDispatcher(
-        sink=ChannelResultSink(outbound_registry={"web": adapter})
-    )
+    dispatcher = ChannelOutboxDispatcher(sink=ChannelResultSink(outbound_registry={"web": adapter}))
     with pytest.raises(DispatchError):
         await dispatcher.dispatch(
             OutboxEvent(

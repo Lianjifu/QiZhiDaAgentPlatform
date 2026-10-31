@@ -137,20 +137,12 @@ class HashicorpVaultSecretsResolver(VaultSecretsResolver):
         import os
 
         hvac = _load_hvac()
-        url = (
-            self.url or os.environ.get("QZDAP_VAULT_URL") or os.environ.get("VAULT_ADDR")
-        )
-        token = (
-            self.token
-            or os.environ.get("QZDAP_VAULT_TOKEN")
-            or os.environ.get("VAULT_TOKEN")
-        )
+        url = self.url or os.environ.get("QZDAP_VAULT_URL") or os.environ.get("VAULT_ADDR")
+        token = self.token or os.environ.get("QZDAP_VAULT_TOKEN") or os.environ.get("VAULT_TOKEN")
         if not url:
             raise SecretNotFound("vault resolver: VAULT_ADDR / QZDAP_VAULT_URL not set")
         if not token:
-            raise SecretNotFound(
-                "vault resolver: VAULT_TOKEN / QZDAP_VAULT_TOKEN not set"
-            )
+            raise SecretNotFound("vault resolver: VAULT_TOKEN / QZDAP_VAULT_TOKEN not set")
         ns = self.namespace or os.environ.get("VAULT_NAMESPACE")
         client = hvac.Client(url=url, token=token, namespace=ns)
         self._client = client
@@ -174,9 +166,7 @@ class HashicorpVaultSecretsResolver(VaultSecretsResolver):
             mount = parts[0] or default_mount
             rest = "/".join(parts[2:])
             if not rest:
-                raise InvalidSecretRef(
-                    f"vault ref missing path after 'data': {address!r}"
-                )
+                raise InvalidSecretRef(f"vault ref missing path after 'data': {address!r}")
             return mount, rest
         return default_mount, address
 
@@ -194,12 +184,8 @@ class HashicorpVaultSecretsResolver(VaultSecretsResolver):
             if name in {"InvalidPath", "VaultNotFound"} or "InvalidPath" in name:
                 raise SecretNotFound(f"vault: no secret at {mount}/{path}") from exc
             if name in {"Forbidden", "PermissionDenied"} or "Forbidden" in name:
-                raise SecretAccessDenied(
-                    f"vault: token denied for {mount}/{path}"
-                ) from exc
-            raise SecretNotFound(
-                f"vault read failed for {mount}/{path}: {exc}"
-            ) from exc
+                raise SecretAccessDenied(f"vault: token denied for {mount}/{path}") from exc
+            raise SecretNotFound(f"vault read failed for {mount}/{path}: {exc}") from exc
 
         data = (resp or {}).get("data") or {}
         if "data" in data and isinstance(data["data"], dict):

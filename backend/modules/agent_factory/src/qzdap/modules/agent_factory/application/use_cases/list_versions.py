@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from qzdap_schema.ids import AgentTemplateId, TenantId
-
 from qzdap.modules.agent_factory.application.ports import AgentVersionRepository
 from qzdap.modules.agent_factory.domain.entities import AgentVersion
+from qzdap_schema.ids import AgentTemplateId, TenantId
 
 
 @dataclass(slots=True)

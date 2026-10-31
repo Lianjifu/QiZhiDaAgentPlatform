@@ -1,7 +1,6 @@
 """Text attachment upload and explicit, scoped turn context resolution."""
 
 # FastAPI dependency declarations intentionally use Depends/File defaults.
-# ruff: noqa: B008
 
 import hashlib
 import re
@@ -86,9 +85,7 @@ async def require_attachment_session(session, request, session_id):
     return item
 
 
-async def resolve_attachment_context(
-    session, request, session_id, content, attachment_ids=None
-):
+async def resolve_attachment_context(session, request, session_id, content, attachment_ids=None):
     ids = list(dict.fromkeys((attachment_ids or []) + REF.findall(content)))
     if not ids:
         return content
@@ -115,9 +112,7 @@ async def resolve_attachment_context(
             raise HTTPException(404, "attachment not found in this session")
         total += row.size_bytes
         if total > MAX_CONTEXT_BYTES:
-            raise HTTPException(
-                413, "attachment context exceeds 64 KiB; upload a smaller excerpt"
-            )
+            raise HTTPException(413, "attachment context exceeds 64 KiB; upload a smaller excerpt")
         sections.append(
             f'\n<user_attachment id="{row.id}">\n{row.content.decode("utf-8-sig")}\n</user_attachment>'
         )
@@ -139,9 +134,7 @@ def build_attachment_router():
         session: AsyncSession = Depends(attachment_session),
     ):
         current = await require_attachment_session(session, request, session_id)
-        content_type = (
-            (file.content_type or "application/octet-stream").split(";")[0].lower()
-        )
+        content_type = (file.content_type or "application/octet-stream").split(";")[0].lower()
         if content_type not in TEXT_TYPES:
             raise HTTPException(
                 415,
@@ -158,11 +151,7 @@ def build_attachment_router():
             raise HTTPException(415, "attachment must contain UTF-8 text") from exc
         if b"\x00" in content:
             raise HTTPException(415, "binary attachment is unsupported")
-        name = (
-            str(file.filename or "attachment.txt")
-            .replace("\\", "/")
-            .rsplit("/", 1)[-1][:255]
-        )
+        name = str(file.filename or "attachment.txt").replace("\\", "/").rsplit("/", 1)[-1][:255]
         row = CopilotAttachmentORM(
             id=uuid4(),
             tenant_id=current.tenant_id,

@@ -158,9 +158,7 @@ def _descriptor(**overrides) -> ChannelDescriptor:  # type: ignore[no-untyped-de
         "tenant_id": _TENANT,
         "workspace_id": None,
         "secret": b"s3cret",
-        "service_account": ServiceAccount(
-            user_id=_ACTOR, agent_id=uuid4(), agent_version="v1"
-        ),
+        "service_account": ServiceAccount(user_id=_ACTOR, agent_id=uuid4(), agent_version="v1"),
     }
     base.update(overrides)
     return ChannelDescriptor(**base)
@@ -198,7 +196,9 @@ async def test_accept_runs_channel_lookup_before_verification() -> None:
 async def test_accept_produces_the_standard_inbound_message() -> None:
     verifier = _Verifier(actor=ActorContext(tenant_id=_TENANT, workspace_id=None, actor_id=_ACTOR))
     normalizer = _Normalizer()
-    gateway, _ = _gateway(directory=_Directory(_descriptor()), verifier=verifier, normalizer=normalizer)
+    gateway, _ = _gateway(
+        directory=_Directory(_descriptor()), verifier=verifier, normalizer=normalizer
+    )
 
     accepted = await gateway.accept(_raw())
 
@@ -249,9 +249,7 @@ async def test_accept_reports_a_missing_normalizer() -> None:
 async def test_claim_uses_the_scope_derived_from_the_message() -> None:
     """④ 的 claim —— 作用域由标准入站消息推导（IM 用渠道行 id，web 用渠道类型）。"""
     verifier = _Verifier(actor=ActorContext(tenant_id=_TENANT, workspace_id=None, actor_id=_ACTOR))
-    gateway, store = _gateway(
-        directory=_Directory(_descriptor()), verifier=verifier
-    )
+    gateway, store = _gateway(directory=_Directory(_descriptor()), verifier=verifier)
     accepted = await gateway.accept(_raw())
 
     decision = await gateway.claim(accepted.message)

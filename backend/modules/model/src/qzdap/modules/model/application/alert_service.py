@@ -21,6 +21,7 @@ redis SETEX, 留给后续 Phase).
     额外 SQL.
   - 不改 schema: cooldown 进程内存, 重启后清空 (acceptable for now).
 """
+
 from __future__ import annotations
 
 import logging
@@ -124,9 +125,7 @@ class AlertService:
         if last is not None:
             elapsed = now_mono - last.last_fired_at
             if elapsed < self._cooldown:
-                return AlertDecision(
-                    "down", count, sample_msg, self._cooldown - elapsed
-                )
+                return AlertDecision("down", count, sample_msg, self._cooldown - elapsed)
         # 记 cooldown
         self._cooldowns[key] = _Cooldown(last_fired_at=now_mono)
         # 触发告警 (logging 钩, 上层可挂 otel/filebeat)

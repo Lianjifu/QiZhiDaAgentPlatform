@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 import asyncio
-import pytest
 
 from qzdap_agent_runtime.outbox import (
+    MAX_DELIVERY_ATTEMPTS,
     DispatchError,
     InMemoryOutboxRepository,
-    MAX_DELIVERY_ATTEMPTS,
     OutboxDispatcher,
     OutboxEvent,
     OutboxRepository,
     OutboxWorker,
     compute_retry_delay,
 )
-
 
 # ---------------------------------------------------------------------------
 # compute_retry_delay
@@ -83,7 +81,9 @@ class TestInMemoryOutboxRepository:
         events = asyncio.run(repo.list_pending(limit=10))
         # 必须按 (turn_id, seq) 升序
         assert [(e.turn_id, e.seq) for e in events] == [
-            ("t-1", 1), ("t-1", 2), ("t-2", 1),
+            ("t-1", 1),
+            ("t-1", 2),
+            ("t-2", 1),
         ]
 
     def test_list_pending_excludes_delivered(self) -> None:

@@ -7,16 +7,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    EvalRunId,
-    ReleaseId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.agent_factory.adapter.persistence.models import (
     AgentTemplateORM,
     AgentVersionORM,
@@ -31,6 +21,15 @@ from qzdap.modules.agent_factory.domain.value_objects import (
     AgentTemplateStatus,
     AgentVersionStatus,
     ReleaseStatus,
+)
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    EvalRunId,
+    ReleaseId,
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 

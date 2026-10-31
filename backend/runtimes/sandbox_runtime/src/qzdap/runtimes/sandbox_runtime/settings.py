@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     )
 
     sandbox_executor: Literal["gvisor", "stub"] = "gvisor"
-    sandbox_runtime_secret: str = "dev-sandbox-runtime-secret-change-me"
+    # ⚠️ **本地默认值** ✓ —— 生产必须用环境变量覆盖 ✓（启动时会校验 ✓）。
+    sandbox_runtime_secret: str = "dev-sandbox-runtime-secret-change-me"  # noqa: S105
     sandbox_images: str = DEFAULT_IMAGE
     sandbox_default_image: str = DEFAULT_IMAGE
     sandbox_docker_socket: str = "/var/run/docker.sock"

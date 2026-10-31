@@ -11,13 +11,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.memory.vectorize import (
-    VectorWriteRequest,
-)
-
 from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
     VectorSearchPort,
+)
+from qzdap_agent_runtime.memory.vectorize import (
+    VectorWriteRequest,
 )
 
 
@@ -84,9 +83,9 @@ class MemoryVectorBackfill:
         )
 
         async with self._session_factory() as session:
-            rows = await SqlMemoryCatalogRepository(
-                session
-            ).list_l2_updated_since(since, limit=max(1, limit))
+            rows = await SqlMemoryCatalogRepository(session).list_l2_updated_since(
+                since, limit=max(1, limit)
+            )
         return [
             VectorWriteRequest(
                 tenant_id=row.tenant_id,

@@ -95,9 +95,7 @@ TURN_TRANSITIONS: Mapping[TurnStatus, frozenset[TurnStatus]] = {
             TurnStatus.CANCELLED,
         }
     ),
-    TurnStatus.WAITING: frozenset(
-        {TurnStatus.RUNNING, TurnStatus.FAILED, TurnStatus.CANCELLED}
-    ),
+    TurnStatus.WAITING: frozenset({TurnStatus.RUNNING, TurnStatus.FAILED, TurnStatus.CANCELLED}),
     TurnStatus.SUCCEEDED: frozenset(),
     TurnStatus.FAILED: frozenset(),
     TurnStatus.CANCELLED: frozenset(),
@@ -107,9 +105,7 @@ TURN_TRANSITIONS: Mapping[TurnStatus, frozenset[TurnStatus]] = {
 TERMINAL_SESSION_STATUSES = frozenset({SessionStatus.CLOSED, SessionStatus.CANCELLED})
 
 #: 轮次的终态 ✓。
-TERMINAL_TURN_STATUSES = frozenset(
-    {TurnStatus.SUCCEEDED, TurnStatus.FAILED, TurnStatus.CANCELLED}
-)
+TERMINAL_TURN_STATUSES = frozenset({TurnStatus.SUCCEEDED, TurnStatus.FAILED, TurnStatus.CANCELLED})
 
 
 class IllegalTransitionError(RuntimeError):

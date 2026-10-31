@@ -27,10 +27,6 @@ from time import monotonic
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.session.completion import TurnFailedError
-from qzdap_kernel.errors import AppError
-from qzdap_schema.ids import AgentId
-
 from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
 from qzdap.modules.agent_runtime.application.one_shot_turn import OneShotTurnService
 from qzdap.modules.agent_runtime.application.ports import SessionRepository
@@ -38,6 +34,9 @@ from qzdap.modules.agent_runtime.application.use_cases.create_session import (
     CreateSessionUseCase,
 )
 from qzdap.modules.agent_runtime.domain.catalog_errors import CatalogAgentNotFound
+from qzdap_agent_runtime.session.completion import TurnFailedError
+from qzdap_kernel.errors import AppError
+from qzdap_schema.ids import AgentId
 
 _log = logging.getLogger(__name__)
 
@@ -77,7 +76,7 @@ class DelegateSubagentUseCase:
         self,
         *,
         runtime_factory: Callable[[Any], DelegateRuntime],
-        session_factory,             # container.session_factory()
+        session_factory,  # container.session_factory()
         max_delegation_depth: int = MAX_DELEGATION_DEPTH,
     ) -> None:
         self._runtime_factory = runtime_factory
@@ -103,17 +102,23 @@ class DelegateSubagentUseCase:
             parent = await runtime.sessions.get(parent_session_id)
             if parent is None:
                 return _fail(
-                    started, target_agent_id, "PARENT_SESSION_NOT_FOUND",
+                    started,
+                    target_agent_id,
+                    "PARENT_SESSION_NOT_FOUND",
                     f"parent session {parent_session_id} not found",
                 )
             if parent.tenant_id != tenant_id:
                 return _fail(
-                    started, target_agent_id, "CROSS_TENANT",
+                    started,
+                    target_agent_id,
+                    "CROSS_TENANT",
                     "parent session tenant mismatch",
                 )
             if parent.workspace_id != workspace_id:
                 return _fail(
-                    started, target_agent_id, "CROSS_WORKSPACE",
+                    started,
+                    target_agent_id,
+                    "CROSS_WORKSPACE",
                     "parent session workspace mismatch",
                 )
 
@@ -121,7 +126,9 @@ class DelegateSubagentUseCase:
             parent_depth = int(parent_meta.get("delegation_depth") or 0)
             if parent_depth >= self._max_depth:
                 return _fail(
-                    started, target_agent_id, "DELEGATION_DEPTH_EXCEEDED",
+                    started,
+                    target_agent_id,
+                    "DELEGATION_DEPTH_EXCEEDED",
                     (
                         f"delegation depth exceeded "
                         f"(parent depth={parent_depth}, max={self._max_depth})"
@@ -132,12 +139,16 @@ class DelegateSubagentUseCase:
                 target = await runtime.catalog.get_published(UUID(target_agent_id))
             except (CatalogAgentNotFound, ValueError):
                 return _fail(
-                    started, target_agent_id, "AGENT_NOT_FOUND",
+                    started,
+                    target_agent_id,
+                    "AGENT_NOT_FOUND",
                     f"agent {target_agent_id} not found",
                 )
             if target.tenant_id != tenant_id:
                 return _fail(
-                    started, target_agent_id, "CROSS_TENANT",
+                    started,
+                    target_agent_id,
+                    "CROSS_TENANT",
                     "target agent tenant mismatch",
                 )
 
@@ -185,11 +196,14 @@ class DelegateSubagentUseCase:
         except TurnFailedError as exc:
             _log.warning(
                 "delegate_to_agent sub-agent turn failed agent=%s code=%s",
-                target_agent_id, exc.code,
+                target_agent_id,
+                exc.code,
             )
             return DelegateSubagentResult(
-                ok=False, sub_session_id=str(sub_session.id),
-                agent_id=target_agent_id, final_response=None,
+                ok=False,
+                sub_session_id=str(sub_session.id),
+                agent_id=target_agent_id,
+                final_response=None,
                 status="failed",
                 duration_ms=int((monotonic() - started) * 1000),
                 delegation_depth=depth,
@@ -199,11 +213,14 @@ class DelegateSubagentUseCase:
         except AppError as exc:
             _log.warning(
                 "delegate_to_agent sub-agent AppError agent=%s err=%s",
-                target_agent_id, exc,
+                target_agent_id,
+                exc,
             )
             return DelegateSubagentResult(
-                ok=False, sub_session_id=str(sub_session.id),
-                agent_id=target_agent_id, final_response=None,
+                ok=False,
+                sub_session_id=str(sub_session.id),
+                agent_id=target_agent_id,
+                final_response=None,
                 status="failed",
                 duration_ms=int((monotonic() - started) * 1000),
                 delegation_depth=depth,
@@ -212,11 +229,14 @@ class DelegateSubagentUseCase:
             )
         except Exception as exc:
             _log.exception(
-                "delegate_to_agent sub-agent crashed agent=%s", target_agent_id,
+                "delegate_to_agent sub-agent crashed agent=%s",
+                target_agent_id,
             )
             return DelegateSubagentResult(
-                ok=False, sub_session_id=str(sub_session.id),
-                agent_id=target_agent_id, final_response=None,
+                ok=False,
+                sub_session_id=str(sub_session.id),
+                agent_id=target_agent_id,
+                final_response=None,
                 status="failed",
                 duration_ms=int((monotonic() - started) * 1000),
                 delegation_depth=depth,
@@ -231,19 +251,21 @@ class DelegateSubagentUseCase:
         return f"{task}\n\n上下文:\n{ctx_lines}"
 
 
-def _fail(
-    started: float, agent_id: str, code: str, msg: str
-) -> DelegateSubagentResult:
+def _fail(started: float, agent_id: str, code: str, msg: str) -> DelegateSubagentResult:
     return DelegateSubagentResult(
-        ok=False, sub_session_id=None, agent_id=agent_id,
-        final_response=None, status="failed",
+        ok=False,
+        sub_session_id=None,
+        agent_id=agent_id,
+        final_response=None,
+        status="failed",
         duration_ms=int((monotonic() - started) * 1000),
-        error_code=code, error=msg,
+        error_code=code,
+        error=msg,
     )
 
 
 __all__ = [
+    "MAX_DELEGATION_DEPTH",
     "DelegateSubagentResult",
     "DelegateSubagentUseCase",
-    "MAX_DELEGATION_DEPTH",
 ]

@@ -10,16 +10,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_schema.ids import (
-    ApprovalId,
-    AuditLogId,
-    DecisionEventId,
-    PolicyId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.governance.adapter.persistence.models import (
     ApprovalORM,
     AuditLogORM,
@@ -36,6 +26,15 @@ from qzdap.modules.governance.domain.value_objects import (
     ApprovalStatus,
     PolicyEffect,
     PolicySubject,
+)
+from qzdap_schema.ids import (
+    ApprovalId,
+    AuditLogId,
+    DecisionEventId,
+    PolicyId,
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 

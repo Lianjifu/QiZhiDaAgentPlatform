@@ -18,6 +18,8 @@ import logging
 from typing import Any
 from uuid import UUID, uuid4
 
+from sqlalchemy import text
+
 from qzdap_agent_runtime.gateway.idempotency import (
     InboxScope,
 )
@@ -25,7 +27,6 @@ from qzdap_agent_runtime.gateway.types import (
     IdempotencyDecision,
     IdempotencyKey,
 )
-from sqlalchemy import text
 
 _log = logging.getLogger(__name__)
 
@@ -215,9 +216,7 @@ class PostgresIdempotencyStore:
                 expires_at=inserted.expires_at,
             )
 
-    async def mark_completed(
-        self, row_id: UUID, *, turn_id: UUID | None = None
-    ) -> None:
+    async def mark_completed(self, row_id: UUID, *, turn_id: UUID | None = None) -> None:
         async with self._sf.session() as session, session.begin():
             await session.execute(_COMPLETE_SQL, {"id": row_id, "turn_id": turn_id})
 

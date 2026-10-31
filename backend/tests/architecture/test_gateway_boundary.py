@@ -87,11 +87,7 @@ def test_no_framework_imports_in_runtime_and_application_layers(rel_dir: str) ->
 
 def test_the_known_exemptions_are_still_needed() -> None:
     """豁免表**不许有陈旧条目** —— 旧实现删了就必须把豁免删掉。"""
-    stale = [
-        rel
-        for rel in KNOWN_EXEMPTIONS
-        if not (_backend_root() / rel).exists()
-    ]
+    stale = [rel for rel in KNOWN_EXEMPTIONS if not (_backend_root() / rel).exists()]
     assert not stale, "豁免表里有已经不存在的文件（请移除豁免）：\n" + "\n".join(stale)
 
 

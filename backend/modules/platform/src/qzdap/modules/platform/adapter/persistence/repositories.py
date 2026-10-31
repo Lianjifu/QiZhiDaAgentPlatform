@@ -17,12 +17,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from qzdap_schema.ids import (
-    PlanId,
-    SubscriptionId,
-    TenantId,
-    WorkspaceId,
-)
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,6 +45,12 @@ from qzdap.modules.platform.domain.entities import (
     TenantSetting,
 )
 from qzdap.modules.platform.domain.errors import PlanAlreadyExists
+from qzdap_schema.ids import (
+    PlanId,
+    SubscriptionId,
+    TenantId,
+    WorkspaceId,
+)
 
 # ── PlanRepository ────────────────────────────────────────────────────────
 

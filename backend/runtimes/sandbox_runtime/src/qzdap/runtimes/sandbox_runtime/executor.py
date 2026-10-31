@@ -223,7 +223,7 @@ class GvisorExecutor:
                 "ReadonlyRootfs": True,
                 "CapDrop": ["ALL"],
                 "SecurityOpt": ["no-new-privileges"],
-                "Tmpfs": {"/tmp": "rw,nosuid,nodev,size=64m"},
+                "Tmpfs": {"/tmp": "rw,nosuid,nodev,size=64m"},  # noqa: S108 —— 容器内 tmpfs ✓
                 "Binds": [f"{work}:/work:rw"],
                 "Privileged": False,
             },

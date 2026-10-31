@@ -5,13 +5,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from qzdap_messaging.domain_event import EventEnvelope
-
 from qzdap.modules.evaluation.domain.events import (
     EvalRunCompleted,
     EvalRunFailed,
     EvalRunStarted,
 )
+from qzdap_messaging.domain_event import EventEnvelope
 
 logger = logging.getLogger(__name__)
 

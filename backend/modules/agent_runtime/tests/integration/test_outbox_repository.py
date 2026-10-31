@@ -17,13 +17,13 @@ import uuid
 from uuid import UUID, uuid4
 
 import pytest
-from qzdap_agent_runtime.outbox import IM_REPLY_EVENT_TYPE
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from qzdap.modules.agent_runtime.adapter.persistence.outbox_repository import (
     PostgresOutboxRepository,
 )
+from qzdap_agent_runtime.outbox import IM_REPLY_EVENT_TYPE
 
 _DDL = [
     """
@@ -95,9 +95,7 @@ async def repo_ctx():
             await conn.execute(text(statement.replace("{schema}", schema)))
         await conn.commit()
 
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
+    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     from qzdap_persistence.session_factory import SessionFactory
 
     factory = SessionFactory(engine)

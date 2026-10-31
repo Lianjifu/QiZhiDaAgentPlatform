@@ -24,8 +24,6 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from qzdap_auth.workspace_guard_dep import _require_active_workspace
-from qzdap_kernel.errors import BusinessRuleError
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import ValidationError
 
@@ -60,6 +58,8 @@ from qzdap.modules.agent_factory.domain.errors import (
     AgentVersionNotFound,
     AgentVersionTagConflict,
 )
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
+from qzdap_kernel.errors import BusinessRuleError
 
 
 async def agent_factory_service_dependency(
@@ -162,10 +162,10 @@ def build_router() -> APIRouter:
     async def create_template(
         body: CreateTemplateRequest,
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(..., alias="X-User-Id"),  # noqa: B008
-        svc: AgentFactoryService = Depends(agent_factory_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(..., alias="X-User-Id"),
+        svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> TemplateResponse:
         from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
@@ -188,9 +188,9 @@ def build_router() -> APIRouter:
                 created_by=UserId(x_user_id),
             )
         except (ValueError, ValidationError) as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-        except Exception as exc:  # noqa: BLE001
-            raise _domain_error_to_http(exc)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception as exc:
+            raise _domain_error_to_http(exc) from exc
         return template_to_dto(template)
 
     @router.get(
@@ -198,9 +198,9 @@ def build_router() -> APIRouter:
         response_model=TemplateListResponse,
     )
     async def list_templates(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: AgentFactoryService = Depends(agent_factory_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: AgentFactoryService = Depends(agent_factory_service_dependency),
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ) -> TemplateListResponse:
@@ -223,8 +223,8 @@ def build_router() -> APIRouter:
     )
     async def get_template(
         aid: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: AgentFactoryService = Depends(agent_factory_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> TemplateResponse:
         from qzdap_schema.ids import AgentTemplateId, TenantId
 
@@ -233,8 +233,8 @@ def build_router() -> APIRouter:
                 tenant_id=TenantId(x_tenant_id),
                 template_id=AgentTemplateId(aid),
             )
-        except Exception as exc:  # noqa: BLE001
-            raise _domain_error_to_http(exc)
+        except Exception as exc:
+            raise _domain_error_to_http(exc) from exc
         return template_to_dto(template)
 
     @router.patch(
@@ -244,27 +244,26 @@ def build_router() -> APIRouter:
     async def update_template(
         aid: UUID,
         body: UpdateTemplateRequest,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: AgentFactoryService = Depends(agent_factory_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> TemplateResponse:
-        from qzdap_schema.ids import AgentTemplateId, TenantId
-
         from qzdap.modules.agent_factory.domain.value_objects import AgentTemplateStatus
+        from qzdap_schema.ids import AgentTemplateId, TenantId
 
         if body.status is None:
             raise HTTPException(status_code=422, detail="status is required")
         try:
             new_status = AgentTemplateStatus(body.status)
         except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
             template = await svc.update_template.execute(  # type: ignore[union-attr]
                 tenant_id=TenantId(x_tenant_id),
                 template_id=AgentTemplateId(aid),
                 status=new_status,
             )
-        except Exception as exc:  # noqa: BLE001
-            raise _domain_error_to_http(exc)
+        except Exception as exc:
+            raise _domain_error_to_http(exc) from exc
         return template_to_dto(template)
 
     # ── versions ────────────────────────────────────────────────────────
@@ -274,8 +273,8 @@ def build_router() -> APIRouter:
         response_model=list[dict[str, Any]],
     )
     async def list_model_options(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         request: Request = ...,  # type: ignore[assignment]
     ) -> list[dict[str, Any]]:
         """Phase 2: 给 agent 创建/编辑表单提供「模型」下拉数据.
@@ -295,7 +294,7 @@ def build_router() -> APIRouter:
         if resolver is None:
             return []
         try:
-            sf = resolver._sf  # noqa: SLF001 — 同 package 内访问
+            sf = resolver._sf
             async with sf.session() as session:
                 result = await session.execute(
                     select(
@@ -306,11 +305,13 @@ def build_router() -> APIRouter:
                         CatalogModelORM.context_window,
                         CatalogModelORM.status,
                         CatalogModelORM.tier,
-                    ).where(
+                    )
+                    .where(
                         CatalogModelORM.tenant_id == x_tenant_id,
                         CatalogModelORM.workspace_id == x_workspace_id,
                         CatalogModelORM.status == "active",
-                    ).order_by(CatalogModelORM.name.asc())
+                    )
+                    .order_by(CatalogModelORM.name.asc())
                 )
                 rows = result.all()
             return [
@@ -333,8 +334,8 @@ def build_router() -> APIRouter:
         response_model=list[dict[str, Any]],
     )
     async def list_route_options(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         request: Request = ...,  # type: ignore[assignment]
     ) -> list[dict[str, Any]]:
         """Phase 15: 给 agent 创建/编辑表单提供「策略路由」下拉数据.
@@ -355,7 +356,7 @@ def build_router() -> APIRouter:
         if resolver is None:
             return []
         try:
-            sf = resolver._sf  # noqa: SLF001 — 同 package 内访问
+            sf = resolver._sf
             async with sf.session() as session:
                 result = await session.execute(
                     select(
@@ -368,11 +369,13 @@ def build_router() -> APIRouter:
                         RouteORM.fallback_model_ids,
                         RouteORM.description,
                         RouteORM.enabled,
-                    ).where(
+                    )
+                    .where(
                         RouteORM.tenant_id == x_tenant_id,
                         RouteORM.workspace_id == x_workspace_id,
                         RouteORM.enabled.is_(True),
-                    ).order_by(RouteORM.priority.desc(), RouteORM.name.asc())
+                    )
+                    .order_by(RouteORM.priority.desc(), RouteORM.name.asc())
                 )
                 rows = result.all()
             return [
@@ -383,9 +386,7 @@ def build_router() -> APIRouter:
                     "task": r.task,
                     "priority": int(r.priority),
                     "primary_model_id": str(r.primary_model_id),
-                    "fallback_model_ids": [
-                        str(mid) for mid in (r.fallback_model_ids or [])
-                    ],
+                    "fallback_model_ids": [str(mid) for mid in (r.fallback_model_ids or [])],
                     "description": r.description,
                     "enabled": bool(r.enabled),
                 }
@@ -404,10 +405,10 @@ def build_router() -> APIRouter:
         aid: UUID,
         body: CreateVersionRequest,
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(..., alias="X-User-Id"),  # noqa: B008
-        svc: AgentFactoryService = Depends(agent_factory_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(..., alias="X-User-Id"),
+        svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> VersionResponse:
         from qzdap_schema.ids import AgentTemplateId, TenantId, UserId, WorkspaceId
 
@@ -448,9 +449,9 @@ def build_router() -> APIRouter:
                 created_by=UserId(x_user_id),
             )
         except (ValueError, ValidationError) as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-        except Exception as exc:  # noqa: BLE001
-            raise _domain_error_to_http(exc)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception as exc:
+            raise _domain_error_to_http(exc) from exc
         return version_to_dto(version)
 
     @router.get(
@@ -459,8 +460,8 @@ def build_router() -> APIRouter:
     )
     async def list_versions(
         aid: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: AgentFactoryService = Depends(agent_factory_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: AgentFactoryService = Depends(agent_factory_service_dependency),
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ) -> VersionListResponse:
@@ -484,8 +485,8 @@ def build_router() -> APIRouter:
     async def get_version(
         aid: UUID,
         vid: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: AgentFactoryService = Depends(agent_factory_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> VersionResponse:
         from qzdap_schema.ids import AgentVersionId, TenantId
 
@@ -494,8 +495,8 @@ def build_router() -> APIRouter:
                 tenant_id=TenantId(x_tenant_id),
                 version_id=AgentVersionId(vid),
             )
-        except Exception as exc:  # noqa: BLE001
-            raise _domain_error_to_http(exc)
+        except Exception as exc:
+            raise _domain_error_to_http(exc) from exc
         return version_to_dto(version)
 
     @router.patch(
@@ -506,8 +507,8 @@ def build_router() -> APIRouter:
         aid: UUID,
         vid: UUID,
         body: UpdateVersionNotesRequest,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: AgentFactoryService = Depends(agent_factory_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> VersionResponse:
         from qzdap_schema.ids import AgentVersionId, TenantId
 
@@ -518,9 +519,9 @@ def build_router() -> APIRouter:
                 release_notes=body.release_notes,
             )
         except (ValueError, ValidationError) as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
-        except Exception as exc:  # noqa: BLE001
-            raise _domain_error_to_http(exc)
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception as exc:
+            raise _domain_error_to_http(exc) from exc
         return version_to_dto(version)
 
     @router.post(
@@ -530,8 +531,8 @@ def build_router() -> APIRouter:
     async def publish_version(
         aid: UUID,
         vid: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: AgentFactoryService = Depends(agent_factory_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> VersionResponse:
         from qzdap_schema.ids import AgentVersionId, TenantId
 
@@ -540,8 +541,8 @@ def build_router() -> APIRouter:
                 tenant_id=TenantId(x_tenant_id),
                 version_id=AgentVersionId(vid),
             )
-        except Exception as exc:  # noqa: BLE001
-            raise _domain_error_to_http(exc)
+        except Exception as exc:
+            raise _domain_error_to_http(exc) from exc
         return version_to_dto(version)
 
     @router.post(
@@ -553,10 +554,10 @@ def build_router() -> APIRouter:
         aid: UUID,
         vid: UUID,
         body: ReleaseVersionRequest | None = None,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(..., alias="X-User-Id"),  # noqa: B008
-        svc: AgentFactoryService = Depends(agent_factory_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(..., alias="X-User-Id"),
+        svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> ReleaseResponse:
         from qzdap_schema.ids import (
             AgentTemplateId,
@@ -576,8 +577,8 @@ def build_router() -> APIRouter:
                 released_by=UserId(x_user_id),
                 notes=notes,
             )
-        except Exception as exc:  # noqa: BLE001
-            raise _domain_error_to_http(exc)
+        except Exception as exc:
+            raise _domain_error_to_http(exc) from exc
         return release_to_dto(release)
 
     @router.post(
@@ -587,8 +588,8 @@ def build_router() -> APIRouter:
     async def retire_version(
         aid: UUID,
         vid: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: AgentFactoryService = Depends(agent_factory_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: AgentFactoryService = Depends(agent_factory_service_dependency),
     ) -> VersionResponse:
         from qzdap_schema.ids import AgentVersionId, TenantId
 
@@ -597,8 +598,8 @@ def build_router() -> APIRouter:
                 tenant_id=TenantId(x_tenant_id),
                 version_id=AgentVersionId(vid),
             )
-        except Exception as exc:  # noqa: BLE001
-            raise _domain_error_to_http(exc)
+        except Exception as exc:
+            raise _domain_error_to_http(exc) from exc
         return version_to_dto(version)
 
     @router.get(
@@ -608,8 +609,8 @@ def build_router() -> APIRouter:
     async def list_releases(
         aid: UUID,
         vid: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: AgentFactoryService = Depends(agent_factory_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: AgentFactoryService = Depends(agent_factory_service_dependency),
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
     ) -> ReleaseListResponse:

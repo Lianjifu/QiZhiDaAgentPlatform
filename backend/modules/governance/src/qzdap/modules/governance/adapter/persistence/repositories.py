@@ -149,9 +149,7 @@ class SqlApprovalRepository(ApprovalRepository):
                 .where(ApprovalORM.tenant_id == UUID(str(approval.tenant_id)))
                 .values(
                     status=approval.status.value,
-                    approver_id=UUID(str(approval.approver_id))
-                    if approval.approver_id
-                    else None,
+                    approver_id=UUID(str(approval.approver_id)) if approval.approver_id else None,
                     decided_at=approval.decided_at,
                     payload=dict(approval.payload),
                 )
@@ -191,7 +189,6 @@ class SqlApprovalRepository(ApprovalRepository):
             rows = (await session.execute(stmt)).scalars().all()
             return [approval_to_domain(r) for r in rows]
 
-
     async def get_by_correlation_id(
         self, *, tenant_id: UUID, correlation_id: UUID
     ) -> Approval | None:
@@ -204,9 +201,7 @@ class SqlApprovalRepository(ApprovalRepository):
             row = (await session.execute(stmt)).scalars().first()
             return approval_to_domain(row) if row is not None else None
 
-    async def list_expired_pending(
-        self, *, now: datetime, limit: int = 100
-    ) -> list[Approval]:
+    async def list_expired_pending(self, *, now: datetime, limit: int = 100) -> list[Approval]:
         """**已过期但还没决策**的审批 ✓（清扫用 ✓ —— 跨租户 ✓）。"""
         async with self._sf() as session:
             stmt = (

@@ -5,8 +5,8 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from qzdap_kernel.errors import ForbiddenError
 
+from qzdap_kernel.errors import ForbiddenError
 from qzdap_persistence.base import Base, make_composite_index
 from qzdap_persistence.tenant_guard import (
     assert_tenant_scope,

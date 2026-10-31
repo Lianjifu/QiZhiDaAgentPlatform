@@ -11,13 +11,6 @@ from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
-from qzdap_schema.ids import (
-    ApprovalId,
-    PolicyId,
-    TenantId,
-    UserId,
-)
-
 from qzdap.modules.governance.domain.entities import (
     Approval,
     AuditLogEntry,
@@ -25,15 +18,19 @@ from qzdap.modules.governance.domain.entities import (
     PolicyRule,
 )
 from qzdap.modules.governance.domain.value_objects import ApprovalStatus
+from qzdap_schema.ids import (
+    ApprovalId,
+    PolicyId,
+    TenantId,
+    UserId,
+)
 
 
 @runtime_checkable
 class PolicyRepository(Protocol):
     async def add(self, rule: PolicyRule) -> None: ...
 
-    async def get(
-        self, *, tenant_id: TenantId, rule_id: PolicyId
-    ) -> PolicyRule | None: ...
+    async def get(self, *, tenant_id: TenantId, rule_id: PolicyId) -> PolicyRule | None: ...
 
     async def list_records(
         self,
@@ -58,9 +55,7 @@ class PolicyRepository(Protocol):
 class ApprovalRepository(Protocol):
     async def add(self, approval: Approval) -> None: ...
 
-    async def get(
-        self, *, tenant_id: TenantId, approval_id: ApprovalId
-    ) -> Approval | None: ...
+    async def get(self, *, tenant_id: TenantId, approval_id: ApprovalId) -> Approval | None: ...
 
     async def update(self, approval: Approval) -> None: ...
 
@@ -82,9 +77,7 @@ class ApprovalRepository(Protocol):
         """**按关联 id 找审批** ✓（幂等复用 ✓ —— 该列有索引 ✓）。"""
         ...
 
-    async def list_expired_pending(
-        self, *, now: datetime, limit: int = 100
-    ) -> list[Approval]:
+    async def list_expired_pending(self, *, now: datetime, limit: int = 100) -> list[Approval]:
         """**已过期但还没决策**的审批 ✓（清扫用 ✓ —— 跨租户 ✓）。
 
         ⚠️ **跨租户** ✓ —— 它是**维护任务** ✓（租户过滤在请求上下文里生效 ✓

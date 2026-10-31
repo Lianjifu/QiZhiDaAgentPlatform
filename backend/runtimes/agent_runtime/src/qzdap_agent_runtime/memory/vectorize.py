@@ -17,11 +17,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from qzdap_observability.metrics import record_memory_vector_enqueue
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,9 +82,7 @@ class InMemoryVectorWriteQueue:
     """
 
     def __init__(self, *, maxsize: int = 1000) -> None:
-        self._queue: asyncio.Queue[VectorWriteRequest] = asyncio.Queue(
-            maxsize=maxsize
-        )
+        self._queue: asyncio.Queue[VectorWriteRequest] = asyncio.Queue(maxsize=maxsize)
         self._maxsize = maxsize
         self.dropped = 0
 
@@ -154,7 +155,7 @@ class VectorizeWorker:
             try:
                 await self._store.upsert(request)
                 return True
-            except Exception:  # noqa: BLE001
+            except Exception:
                 if attempt + 1 >= self._max_attempts:
                     # ⚠️ **补不上就留给兜底补写** ✓（不无限重试 ✗✗）。
                     return False
@@ -173,9 +174,7 @@ class VectorizeWorker:
             self._queue.enqueue(request)
         return len(requests)
 
-    async def run(
-        self, *, interval_s: float = 30.0, backfill_every: int = 20
-    ) -> None:
+    async def run(self, *, interval_s: float = 30.0, backfill_every: int = 20) -> None:
         """**后台循环** ✓（由组合根起停 ✓ —— 与 sweeper 同类 ✓）。
 
         ⚠️ **每 ``backfill_every`` 轮做一次兜底补写** ✓ —— 丢掉的向量
@@ -190,9 +189,9 @@ class VectorizeWorker:
                     await self.backfill_once()
             except asyncio.CancelledError:
                 raise
-            except Exception:  # noqa: BLE001
-                # ⚠️ **worker 崩了不能带崩进程** ✓ —— 下一轮继续 ✓。
-                pass
+            except Exception:
+                # ⚠️ **worker 崩了不能带崩进程** ✓ —— 下一轮继续 ✓（但要留痕 ✓）。
+                _log.warning("memory_vector_worker_iteration_failed", exc_info=True)
             await asyncio.sleep(interval_s)
 
 

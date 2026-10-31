@@ -160,9 +160,7 @@ class AnthropicClient(HTTPProviderClient):
                         if block["type"] == "tool_use":
                             index = len(tool_indices)
                             tool_indices[data["index"]] = index
-                            arguments = (
-                                json.dumps(block["input"]) if block.get("input") else ""
-                            )
+                            arguments = json.dumps(block["input"]) if block.get("input") else ""
                             if arguments:
                                 tool_has_arguments.add(data["index"])
                             yield LLMChunk(
@@ -195,18 +193,13 @@ class AnthropicClient(HTTPProviderClient):
                                 tool_calls=[
                                     {
                                         "index": tool_indices[data["index"]],
-                                        "function": {
-                                            "arguments": delta["partial_json"]
-                                        },
+                                        "function": {"arguments": delta["partial_json"]},
                                     }
                                 ],
                             )
                     elif kind == "content_block_stop":
                         block_index = data["index"]
-                        if (
-                            block_index in tool_indices
-                            and block_index not in tool_has_arguments
-                        ):
+                        if block_index in tool_indices and block_index not in tool_has_arguments:
                             yield LLMChunk(
                                 model,
                                 "",

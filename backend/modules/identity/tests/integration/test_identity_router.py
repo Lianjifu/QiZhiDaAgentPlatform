@@ -72,19 +72,19 @@ def _build_app(
     class _Container:
         def session_factory(self) -> Any:
             class _NullSession:
-                async def rollback(self_inner) -> None:
+                async def rollback(self) -> None:
                     return None
 
-                async def commit(self_inner) -> None:
+                async def commit(self) -> None:
                     return None
 
             class _Null:
                 def session(self):
                     class _CM:
-                        async def __aenter__(self_inner):
+                        async def __aenter__(self):
                             return _NullSession()
 
-                        async def __aexit__(self_inner, *a):
+                        async def __aexit__(self, *a):
                             return None
 
                     return _CM()
@@ -93,9 +93,7 @@ def _build_app(
 
     app = FastAPI()
     app.state.container = _Container()
-    app.state.identity_factory = type(
-        "F", (), {"for_session": staticmethod(factory_for_session)}
-    )
+    app.state.identity_factory = type("F", (), {"for_session": staticmethod(factory_for_session)})
     app.add_middleware(_ErrorEnvelopeMiddleware)
     app.include_router(build_router())
     return app, tenants, users
@@ -248,9 +246,7 @@ def test_login_returns_user() -> None:
     so the frontend can avoid the second /users/me round-trip."""
     hasher = FakeHasher()
     app, tenants, users = _build_app(hasher=hasher)
-    tenant_id, user_id = _seed(
-        tenants, users, hashed_password=hasher.hash("demo123456")
-    )
+    tenant_id, user_id = _seed(tenants, users, hashed_password=hasher.hash("demo123456"))
     client = TestClient(app)
     resp = client.post(
         "/v1/identity/login",
@@ -270,9 +266,7 @@ def test_login_returns_user() -> None:
 def test_login_with_bad_password_returns_401() -> None:
     hasher = FakeHasher()
     app, tenants, users = _build_app(hasher=hasher)
-    _tenant_id, _user_id = _seed(
-        tenants, users, hashed_password=hasher.hash("right")
-    )
+    _tenant_id, _user_id = _seed(tenants, users, hashed_password=hasher.hash("right"))
     client = TestClient(app)
     resp = client.post(
         "/v1/identity/login",
@@ -287,9 +281,7 @@ def test_login_missing_tenant_id_field_returns_200() -> None:
     required — verify the request shape is {email, password} only."""
     hasher = FakeHasher()
     app, tenants, users = _build_app(hasher=hasher)
-    _tenant_id, _user_id = _seed(
-        tenants, users, hashed_password=hasher.hash("demo123456")
-    )
+    _tenant_id, _user_id = _seed(tenants, users, hashed_password=hasher.hash("demo123456"))
     client = TestClient(app)
     resp = client.post(
         "/v1/identity/login",

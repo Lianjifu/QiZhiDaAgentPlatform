@@ -10,14 +10,14 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from qzdap.modules.tool.domain import Tool, ToolProtocol
-from qzdap_agent_runtime.ports import ActorContext, ToolInvocation
-from qzdap_schema.ids import TenantId, ToolId, UserId, WorkspaceId
 
 from qzdap.modules.agent_runtime.adapter.tools import (
     ToolBindingAdapter,
     ToolServiceAdapter,
 )
+from qzdap.modules.tool.domain import Tool, ToolProtocol
+from qzdap_agent_runtime.ports import ActorContext, ToolInvocation
+from qzdap_schema.ids import TenantId, ToolId, UserId, WorkspaceId
 
 _TENANT = TenantId(uuid4())
 _WORKSPACE = WorkspaceId(uuid4())
@@ -133,9 +133,7 @@ class TestListToolsSchema:
         rows = await adapter.list_tools()
         assert len(rows) == 1
         parameters = rows[0]["parameters"]
-        assert parameters["properties"]["query"]["properties"]["limit"] == {
-            "type": "integer"
-        }
+        assert parameters["properties"]["query"]["properties"]["limit"] == {"type": "integer"}
         assert rows[0]["protocol"] == "openapi"
 
     @pytest.mark.asyncio
@@ -220,9 +218,7 @@ class TestBindingAdapter:
     @pytest.mark.asyncio
     async def test_the_mcp_tools_are_marked(self) -> None:
         adapter = ToolBindingAdapter(
-            tools=_FakeToolPort(
-                [{"name": "remote", "protocol": "mcp", "risk": "medium"}]
-            ),
+            tools=_FakeToolPort([{"name": "remote", "protocol": "mcp", "risk": "medium"}]),
             agents=_FakeAgentReader(("remote",)),
         )
         bindings = await adapter.bindings(
@@ -274,9 +270,7 @@ class TestBindingAdapter:
     @pytest.mark.asyncio
     async def test_the_high_risk_tools_are_side_effects(self) -> None:
         adapter = ToolBindingAdapter(
-            tools=_FakeToolPort(
-                [{"name": "bash", "risk": "high", "needConfirm": False}]
-            ),
+            tools=_FakeToolPort([{"name": "bash", "risk": "high", "needConfirm": False}]),
             agents=_FakeAgentReader(("bash",)),
         )
         bindings = await adapter.bindings(
@@ -340,9 +334,7 @@ class TestToolRuntimeAdapter:
         runtime = self._runtime(service)
         result = await runtime.invoke(
             ToolInvocation(tool_name="echo", arguments={"text": "hi"}),
-            actor=ActorContext(
-                actor_id="", tenant_id=str(_TENANT), workspace_id=str(_WORKSPACE)
-            ),
+            actor=ActorContext(actor_id="", tenant_id=str(_TENANT), workspace_id=str(_WORKSPACE)),
         )
         assert result.ok is False
         assert result.error_code == "TOOL_ACTOR_MISSING"

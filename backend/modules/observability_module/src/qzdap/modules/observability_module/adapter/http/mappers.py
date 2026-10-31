@@ -54,9 +54,7 @@ def quality_score_to_dto(score: QualityScore) -> QualityScoreResponse:
     return QualityScoreResponse(
         template_id=str(score.template_id),
         version_id=str(score.version_id),
-        latest_eval_run_id=(
-            str(score.latest_eval_run_id) if score.latest_eval_run_id else None
-        ),
+        latest_eval_run_id=(str(score.latest_eval_run_id) if score.latest_eval_run_id else None),
         mean_score=score.mean_score,
         sample_count=score.sample_count,
         completed_at=(score.completed_at.isoformat() if score.completed_at else None),

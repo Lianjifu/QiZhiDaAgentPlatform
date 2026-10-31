@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from qzdap.modules.memory.application.ports import VectorHit, VectorSearchPort
 from qzdap_vector.pg_vector import PgVectorStore
 from qzdap_vector.store import VectorItem
-
-from qzdap.modules.memory.application.ports import VectorHit, VectorSearchPort
 
 
 class PgMemoryVectorAdapter(VectorSearchPort):

@@ -21,26 +21,26 @@ class ChannelError(AppError):
     """Base for every channel-domain failure."""
 
 
-class ChannelNotFound(ChannelError, NotFoundError):  # noqa: N818
+class ChannelNotFound(ChannelError, NotFoundError):
     code = ErrorCode.CHANNEL_NOT_FOUND.value
 
 
-class ChannelDisabled(ChannelError, ForbiddenError):  # noqa: N818
+class ChannelDisabled(ChannelError, ForbiddenError):
     code = ErrorCode.CHANNEL_DISABLED.value
     status = 403
 
 
-class WebhookSignatureInvalid(ChannelError, AuthenticationError):  # noqa: N818
+class WebhookSignatureInvalid(ChannelError, AuthenticationError):
     code = ErrorCode.WEBHOOK_SIGNATURE_INVALID.value
     status = 401
 
 
-class WebhookTimestampSkew(ChannelError, AuthenticationError):  # noqa: N818
+class WebhookTimestampSkew(ChannelError, AuthenticationError):
     code = ErrorCode.WEBHOOK_TIMESTAMP_SKEW.value
     status = 401
 
 
-class ChannelServiceAccountMissing(ChannelError, AppError):  # noqa: N818
+class ChannelServiceAccountMissing(ChannelError, AppError):
     """渠道没登记服务账号 —— 产不出标准入站消息（③ 需要身份）。
 
     这是**渠道配置问题**，不是请求问题：调用方改不了，只有管理员能给渠道登记
@@ -51,7 +51,7 @@ class ChannelServiceAccountMissing(ChannelError, AppError):  # noqa: N818
     status = 503
 
 
-class ChannelDeliveryFailed(ChannelError, AppError):  # noqa: N818
+class ChannelDeliveryFailed(ChannelError, AppError):
     code = ErrorCode.CHANNEL_DELIVERY_FAILED.value
     status = 502
 

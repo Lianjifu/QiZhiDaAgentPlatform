@@ -89,7 +89,7 @@ def _resolve_consumer_name(explicit: str) -> str:
         host = socket.gethostname()
         if host:
             return host
-    except Exception:  # noqa: BLE001 - hostname lookup is best-effort
+    except Exception:
         logger.debug("socket.gethostname() failed; falling back to uuid")
     return f"host-{uuid.uuid4().hex[:8]}"
 
@@ -257,7 +257,7 @@ class RedisStreamBus(EventBus):
                 continue
             try:
                 await self._r.xgroup_create(k, self._group, id="0", mkstream=True)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 if not _is_busy_group(exc):
                     logger.warning("xgroup_create failed for %s: %s", k, exc)
             out[k] = ">"
@@ -400,34 +400,21 @@ def _envelope_from_fields(fields: dict[bytes | str, bytes | str]) -> EventEnvelo
         s = _s(v)
         return s if s else ""
 
-    tenant_id = UUID(
-        _s(fields[b"tenant_id" if b"tenant_id" in fields else "tenant_id"])
-    )
+    tenant_id = UUID(_s(fields[b"tenant_id" if b"tenant_id" in fields else "tenant_id"]))
     return EventEnvelope(
         event_id=UUID(_s(fields[b"event_id" if b"event_id" in fields else "event_id"])),
-        event_name=_s(
-            fields[b"event_name" if b"event_name" in fields else "event_name"]
-        ),
+        event_name=_s(fields[b"event_name" if b"event_name" in fields else "event_name"]),
         tenant_id=tenant_id,
         workspace_id=UUID(
             _s(fields[b"workspace_id" if b"workspace_id" in fields else "workspace_id"])
         )
         if _u(fields[b"workspace_id" if b"workspace_id" in fields else "workspace_id"])
         else None,
-        trace_id=_u(fields[b"trace_id" if b"trace_id" in fields else "trace_id"])
-        or None,
+        trace_id=_u(fields[b"trace_id" if b"trace_id" in fields else "trace_id"]) or None,
         occurred_at_ms=int(
-            _s(
-                fields[
-                    b"occurred_at_ms"
-                    if b"occurred_at_ms" in fields
-                    else "occurred_at_ms"
-                ]
-            )
+            _s(fields[b"occurred_at_ms" if b"occurred_at_ms" in fields else "occurred_at_ms"])
         ),
-        payload=json.loads(
-            _s(fields[b"payload" if b"payload" in fields else "payload"])
-        ),
+        payload=json.loads(_s(fields[b"payload" if b"payload" in fields else "payload"])),
         metadata=json.loads(_s(fields.get(b"metadata", fields.get("metadata", "{}")))),
     )
 

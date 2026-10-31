@@ -3,6 +3,7 @@
 测试 subscriber 实际通过 in-process bus 接收 envelope, 改 catalog 行的
 status / version / audit_events. 用真实的 PostgreSQL (per-test schema 隔离).
 """
+
 from __future__ import annotations
 
 import os
@@ -38,9 +39,7 @@ async def catalog_db_session():
         transaction = await connection.begin()
         await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         await connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
-        await connection.run_sync(
-            lambda conn: CatalogAgentORM.__table__.create(conn)
-        )
+        await connection.run_sync(lambda conn: CatalogAgentORM.__table__.create(conn))
 
         @asynccontextmanager
         async def session():
@@ -83,9 +82,7 @@ def _envelope_obj(
     )
 
 
-async def _seed_catalog_agent(
-    session_factory, *, template_id: UUID | None = None
-) -> UUID:
+async def _seed_catalog_agent(session_factory, *, template_id: UUID | None = None) -> UUID:
     """直接 INSERT 一条 catalog row, 返回 agent.id."""
     aid = template_id or uuid4()
     async with session_factory() as db:
@@ -101,9 +98,7 @@ async def _seed_catalog_agent(
         from dataclasses import replace
         from datetime import UTC, datetime
 
-        agent = replace(
-            agent, status="draft", version="draft", updated_at=datetime.now(UTC)
-        )
+        agent = replace(agent, status="draft", version="draft", updated_at=datetime.now(UTC))
         await SqlCatalogAgentRepository(db).add(agent)
         await db.commit()
     return aid
@@ -166,7 +161,9 @@ async def test_release_event_garbage_envelope_returns_silently(catalog_db_sessio
         # payload 是 None
         await handler(SimpleNamespace(event_name="agent_factory.version.released", payload=None))
         # event_name 不匹配
-        await handler(SimpleNamespace(event_name="something.else", payload={"template_id": str(uuid4())}))
+        await handler(
+            SimpleNamespace(event_name="something.else", payload={"template_id": str(uuid4())})
+        )
         await db.commit()
 
 

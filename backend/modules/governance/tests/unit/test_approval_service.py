@@ -11,7 +11,6 @@ from _governance_unit_in_memory import (
     RecordingPublisher,
     SequenceIds,
 )
-from qzdap_schema.ids import TenantId, UserId
 
 from qzdap.modules.governance.application.approval_service import ApprovalService
 from qzdap.modules.governance.domain.entities import Approval
@@ -21,6 +20,7 @@ from qzdap.modules.governance.domain.errors import (
     ApproverMustDiffer,
 )
 from qzdap.modules.governance.domain.value_objects import ApprovalStatus
+from qzdap_schema.ids import TenantId, UserId
 
 TID = TenantId(UUID("00000000-0000-0000-0000-000000000001"))
 USER_A = UserId(UUID("00000000-0000-0000-0000-00000000000a"))
@@ -225,9 +225,7 @@ async def test_list_all_returns_every_status_in_newest_first_order():
     clock.advance(seconds=60)
     await svc.approve(tenant_id=TID, approval_id=a.id, approver_id=USER_B)
     clock.advance(seconds=60)
-    await svc.deny(
-        tenant_id=TID, approval_id=b.id, approver_id=USER_B, reason="nope"
-    )
+    await svc.deny(tenant_id=TID, approval_id=b.id, approver_id=USER_B, reason="nope")
 
     rows = await svc.list_all(tenant_id=TID, limit=10)
     statuses = [r.status for r in rows]

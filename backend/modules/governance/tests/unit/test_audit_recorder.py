@@ -7,13 +7,13 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from _governance_unit_in_memory import FixedClock, InMemoryAuditLog
-from qzdap_schema.ids import TenantId
 
 from qzdap.modules.governance.adapter.subscribers import audit_subscriber
 from qzdap.modules.governance.application.audit_recorder import (
     AuditRecorder,
     build_default_topics,
 )
+from qzdap_schema.ids import TenantId
 
 TID = TenantId(UUID("00000000-0000-0000-0000-000000000001"))
 
@@ -57,9 +57,7 @@ async def test_handle_records_event():
 async def test_handle_drops_payload_missing_tenant():
     audit = InMemoryAuditLog()
     rec = AuditRecorder(audit_port=audit, clock=FixedClock(), topics=())
-    await rec.handle(
-        _Envelope(event_name="x", tenant_id=TID, payload={"event_name": "x"})
-    )
+    await rec.handle(_Envelope(event_name="x", tenant_id=TID, payload={"event_name": "x"}))
     assert len(audit.rows) == 0
 
 
@@ -127,9 +125,7 @@ async def test_install_subscribes_to_all_default_topics():
 
 async def test_install_attaches_cache_invalidator_for_policy_changes():
     audit = InMemoryAuditLog()
-    rec = AuditRecorder(
-        audit_port=audit, clock=FixedClock(), topics=build_default_topics()
-    )
+    rec = AuditRecorder(audit_port=audit, clock=FixedClock(), topics=build_default_topics())
     invalidated: list[UUID] = []
 
     def _invalidate(tenant_id) -> None:

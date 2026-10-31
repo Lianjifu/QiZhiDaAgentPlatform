@@ -1,4 +1,5 @@
 from uuid import UUID
+
 from test_model_admin import seeded
 from test_model_catalog import WORKSPACE
 
@@ -27,9 +28,7 @@ async def test_import_saved_provider_persists_exact_model_rows():
     )
     assert result["created"] == 1
     imported = next(
-        m
-        for m in await svc.list_models(workspace_id=WORKSPACE)
-        if m["name"] == "imported"
+        m for m in await svc.list_models(workspace_id=WORKSPACE) if m["name"] == "imported"
     )
     assert imported["status"] == "draft"
     assert imported["upstreamModel"] == "gpt-4o"

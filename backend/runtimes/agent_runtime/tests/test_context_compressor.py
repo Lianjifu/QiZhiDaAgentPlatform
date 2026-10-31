@@ -86,7 +86,7 @@ class TestStructuredSummary:
         """系统提示**不进摘要** ✓ —— 它是永不降级的那部分 ✓。"""
         summary = _Summary()
         compressor = ContextCompressor(summary_model=summary)
-        messages = [{"role": "system", "content": "系统提示"}] + _messages(40)
+        messages = [{"role": "system", "content": "系统提示"}, *_messages(40)]
         await compressor.compact(messages=messages, target_tokens=500)
         assert "系统提示" not in summary.prompts[0]
 
@@ -117,9 +117,7 @@ class TestDegradationOrder:
         """仍超限 → **明确错误** ✓（决策 #5 ✓ —— 不静默截断 ✗✗）。"""
         compressor = ContextCompressor(summary_model=_Summary(fail=True))
         with pytest.raises(ContextTooLargeError) as excinfo:
-            await compressor.compact(
-                messages=_messages(200, size=500), target_tokens=10
-            )
+            await compressor.compact(messages=_messages(200, size=500), target_tokens=10)
         assert excinfo.value.code == "CONTEXT_TOO_LARGE"
 
     @pytest.mark.asyncio
@@ -146,18 +144,13 @@ class TestRemovedIds:
     async def test_removed_ids_use_stable_sequences(self) -> None:
         """被移除的消息按**稳定序号**报 ✓（``session_seq`` ✓ —— 缺陷 3 ✓）。"""
         compressor = ContextCompressor(summary_model=_Summary())
-        messages = [
-            {"role": "user", "content": "字" * 50, "session_seq": i}
-            for i in range(1, 41)
-        ]
+        messages = [{"role": "user", "content": "字" * 50, "session_seq": i} for i in range(1, 41)]
         result = await compressor.compact(messages=messages, target_tokens=500)
         assert result.removed_ids
         assert all(rid.startswith("session_seq:") for rid in result.removed_ids)
         # 留下的最近消息不应出现在被移除列表里 ✓
         kept_seqs = {
-            m.get("session_seq")
-            for m in result.messages
-            if m.get("session_seq") is not None
+            m.get("session_seq") for m in result.messages if m.get("session_seq") is not None
         }
         assert not kept_seqs & {int(rid.split(":")[1]) for rid in result.removed_ids}
 

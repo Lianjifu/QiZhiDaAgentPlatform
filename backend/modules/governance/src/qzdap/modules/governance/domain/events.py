@@ -11,6 +11,10 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap.modules.governance.domain.value_objects import (
+    ApprovalStatus,
+    PolicyEffect,
+)
 from qzdap_kernel.events import DomainEvent
 from qzdap_schema.ids import (
     ApprovalId,
@@ -18,11 +22,6 @@ from qzdap_schema.ids import (
     PolicyId,
     TenantId,
     UserId,
-)
-
-from qzdap.modules.governance.domain.value_objects import (
-    ApprovalStatus,
-    PolicyEffect,
 )
 
 

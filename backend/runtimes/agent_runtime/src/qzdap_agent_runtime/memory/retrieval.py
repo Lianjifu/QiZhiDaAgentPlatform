@@ -247,7 +247,7 @@ class RetrievalPipeline:
                     limit=limit,
                     session_id=session_id,
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # ⚠️ **C10 读取侧降级** ✓ —— 向量库 / embedding 不可用 → 纯词法 ✓
                 degraded = True
                 degraded_reason = "vector_unavailable"
@@ -293,9 +293,7 @@ class RetrievalPipeline:
 
         # ── ⑥ 阈值 + top-k ✓ ─────────────────────────────────────────
         # ⚠️ **绑定的条目绕过阈值** ✓（§7.1 ✓）—— 其余照常过滤 ✓。
-        passed = [
-            c for c in deduped if c.pinned or c.score >= self._threshold
-        ]
+        passed = [c for c in deduped if c.pinned or c.score >= self._threshold]
         # ⚠️ **绑定的排前面** ✓ —— 管理端显式指定的东西优先 ✓。
         passed.sort(key=lambda c: (c.pinned, c.score), reverse=True)
         selected = passed[: max(1, top_k)]
@@ -346,11 +344,7 @@ class RetrievalPipeline:
                 user_id=user_id,
                 ids=wanted,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             # ⚠️ **绑定取不到不拖垮召回** ✓ —— 降级成「没绑到」✓。
             return []
-        return [
-            replace(candidate, pinned=True)
-            for candidate in found
-            if candidate.content
-        ]
+        return [replace(candidate, pinned=True) for candidate in found if candidate.content]

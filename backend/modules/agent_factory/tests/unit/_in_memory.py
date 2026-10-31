@@ -5,15 +5,6 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    EvalRunId,
-    ReleaseId,
-    TenantId,
-    WorkspaceId,
-)
-
 from qzdap.modules.agent_factory.application.ports import (
     AgentFactoryEventPublisher,
     AgentTemplateRepository,
@@ -26,6 +17,14 @@ from qzdap.modules.agent_factory.domain.entities import (
     AgentTemplate,
     AgentVersion,
     Release,
+)
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    EvalRunId,
+    ReleaseId,
+    TenantId,
+    WorkspaceId,
 )
 
 
@@ -41,9 +40,7 @@ class InMemoryAgentTemplateRepository(AgentTemplateRepository):
     ) -> AgentTemplate | None:
         return self._by_id.get((tenant_id, template_id))
 
-    async def get_by_name(
-        self, *, tenant_id: TenantId, name: str
-    ) -> AgentTemplate | None:
+    async def get_by_name(self, *, tenant_id: TenantId, name: str) -> AgentTemplate | None:
         tid = self._by_name.get((tenant_id, name))
         return self._by_id.get((tenant_id, tid)) if tid else None
 
@@ -82,9 +79,7 @@ class InMemoryAgentVersionRepository(AgentVersionRepository):
         self._by_id: dict[tuple[UUID, UUID], AgentVersion] = {}
         self._by_tag: dict[tuple[UUID, UUID, str], UUID] = {}
 
-    async def get(
-        self, *, tenant_id: TenantId, version_id: AgentVersionId
-    ) -> AgentVersion | None:
+    async def get(self, *, tenant_id: TenantId, version_id: AgentVersionId) -> AgentVersion | None:
         return self._by_id.get((tenant_id, version_id))
 
     async def get_by_tag(
@@ -115,9 +110,7 @@ class InMemoryAgentVersionRepository(AgentVersionRepository):
 
     async def add(self, version: AgentVersion) -> AgentVersion:
         self._by_id[(version.tenant_id, version.id)] = version
-        self._by_tag[(version.tenant_id, version.template_id, version.version_tag)] = (
-            version.id
-        )
+        self._by_tag[(version.tenant_id, version.template_id, version.version_tag)] = version.id
         return version
 
     async def update(self, version: AgentVersion) -> AgentVersion:
@@ -129,9 +122,7 @@ class InMemoryReleaseRepository(ReleaseRepository):
     def __init__(self) -> None:
         self._by_id: dict[tuple[UUID, UUID], Release] = {}
 
-    async def get(
-        self, *, tenant_id: TenantId, release_id: ReleaseId
-    ) -> Release | None:
+    async def get(self, *, tenant_id: TenantId, release_id: ReleaseId) -> Release | None:
         return self._by_id.get((tenant_id, release_id))
 
     async def list_for_template(

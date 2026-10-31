@@ -6,16 +6,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from qzdap.modules.self_evolution.domain.value_objects import (
+    EvolveKind,
+    EvolveStatus,
+)
 from qzdap_kernel.events import DomainEvent
 from qzdap_schema.ids import (
     EvolveCandidateId,
     TenantId,
     UserId,
-)
-
-from qzdap.modules.self_evolution.domain.value_objects import (
-    EvolveKind,
-    EvolveStatus,
 )
 
 

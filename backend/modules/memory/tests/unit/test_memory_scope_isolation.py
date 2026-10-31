@@ -17,7 +17,6 @@ from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
 import pytest
-from qzdap_observability.metrics import LEGACY_CALLS_TOTAL
 
 from qzdap.modules.memory.application.ports import (
     MemoryCatalogRepository,
@@ -32,6 +31,7 @@ from qzdap.modules.memory.domain.entities import (
     PromotionEvent,
     RetentionPolicy,
 )
+from qzdap_observability.metrics import LEGACY_CALLS_TOTAL
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
 WORKSPACE = UUID("00000000-0000-0000-0000-000000000002")
@@ -112,9 +112,7 @@ class InMemoryVectors(VectorSearchPort):
             if session_id is not None and payload.get("session_id") != str(session_id):
                 continue
             vn = math.sqrt(sum(value * value for value in vector)) or 1.0
-            score = sum(a * b for a, b in zip(query_embedding, vector, strict=True)) / (
-                qn * vn
-            )
+            score = sum(a * b for a, b in zip(query_embedding, vector, strict=True)) / (qn * vn)
             scored.append(
                 VectorHit(
                     item_id=item_id,
@@ -153,9 +151,7 @@ class InMemoryCatalog(MemoryCatalogRepository):
     async def get_l2(self, item_id: UUID) -> L2Fact | None:
         return self.l2.get(item_id)
 
-    async def list_l2(
-        self, workspace_id: UUID, *, user_id: UUID | None = None
-    ) -> list[L2Fact]:
+    async def list_l2(self, workspace_id: UUID, *, user_id: UUID | None = None) -> list[L2Fact]:
         items = [item for item in self.l2.values() if item.workspace_id == workspace_id]
         if user_id is not None:
             items = [item for item in items if item.user_id == user_id]
@@ -190,9 +186,7 @@ class InMemoryCatalog(MemoryCatalogRepository):
                 return item
         return None
 
-    async def list_l2_updated_since(
-        self, since: datetime, *, limit: int = 100
-    ) -> list[L2Fact]:
+    async def list_l2_updated_since(self, since: datetime, *, limit: int = 100) -> list[L2Fact]:
         """**最近更新过的 L2** ✓（与 SQL 实现同口径 ✓）。"""
         rows = [
             item
@@ -224,10 +218,7 @@ class InMemoryCatalog(MemoryCatalogRepository):
             and item.status != "retired"
             and (user_id is None or item.user_id == user_id)
             and (session_id is None or item.source_session == str(session_id))
-            and any(
-                token in item.key.lower() or token in item.value.lower()
-                for token in tokens
-            )
+            and any(token in item.key.lower() or token in item.value.lower() for token in tokens)
         ]
         return rows[:limit]
 
@@ -245,8 +236,7 @@ class InMemoryCatalog(MemoryCatalogRepository):
             if item.workspace_id == workspace_id
             and item.status == "published"
             and any(
-                token in item.title.lower() or token in item.summary.lower()
-                for token in tokens
+                token in item.title.lower() or token in item.summary.lower() for token in tokens
             )
         ]
         return rows[:limit]
@@ -261,9 +251,7 @@ class InMemoryCatalog(MemoryCatalogRepository):
         """**有策略的工作区** ✓（与 SQL 实现同口径 ✓）。"""
         return list({policy.workspace_id for policy in self.policies.values()})
 
-    async def usage_by_day(
-        self, workspace_id: UUID, *, since: datetime
-    ) -> list[tuple[date, int]]:
+    async def usage_by_day(self, workspace_id: UUID, *, since: datetime) -> list[tuple[date, int]]:
         """**每天被用过的条数** ✓（与 SQL 实现同口径 ✓）。"""
         buckets: dict[date, int] = {}
         for item in self.l2.values():
@@ -284,9 +272,7 @@ class InMemoryCatalog(MemoryCatalogRepository):
     async def list_policies(self, workspace_id: UUID) -> list[RetentionPolicy]:
         return [i for i in self.policies.values() if i.workspace_id == workspace_id]
 
-    async def get_policy_by_label(
-        self, workspace_id: UUID, label: str
-    ) -> RetentionPolicy | None:
+    async def get_policy_by_label(self, workspace_id: UUID, label: str) -> RetentionPolicy | None:
         for item in self.policies.values():
             if item.workspace_id == workspace_id and item.label == label:
                 return item
@@ -296,16 +282,12 @@ class InMemoryCatalog(MemoryCatalogRepository):
 def _svc() -> tuple[MemoryRuntimeService, InMemoryCatalog]:
     catalog = InMemoryCatalog()
     return (
-        MemoryRuntimeService(
-            catalog, embedding=HashEmbedding(), vectors=InMemoryVectors()
-        ),
+        MemoryRuntimeService(catalog, embedding=HashEmbedding(), vectors=InMemoryVectors()),
         catalog,
     )
 
 
-async def _seed(
-    catalog: InMemoryCatalog, owner_id: UUID, content: str, key: str
-) -> None:
+async def _seed(catalog: InMemoryCatalog, owner_id: UUID, content: str, key: str) -> None:
     """往目录里放一条 L2 ✓（**归属 owner_id** ✓ —— 这正是本文件要验的 ✓）。
 
     ⚠️ **直接放行** ✓ —— 旧写入路径已退役 ✓（写路径的测试另有 ✓）。

@@ -23,16 +23,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    EvalRunId,
-    ReleaseId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.agent_factory.domain.value_objects import (
     MAX_ALLOWED_SKILLS,
     MAX_ALLOWED_TOOLS,
@@ -46,6 +36,15 @@ from qzdap.modules.agent_factory.domain.value_objects import (
     AgentVersionStatus,
     ReleaseStatus,
 )
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    EvalRunId,
+    ReleaseId,
+    TenantId,
+    UserId,
+    WorkspaceId,
+)
 
 
 def _utcnow() -> datetime:
@@ -56,8 +55,12 @@ def _utcnow() -> datetime:
 # 来源: modules/model/application/services.py 的 _ALLOWED_STRATEGIES
 _ALLOWED_STRATEGIES: frozenset[str] = frozenset(
     {
-        "fallback", "quality-first", "cost-first", "latency-first",
-        "round-robin", "weighted",  # Phase 21
+        "fallback",
+        "quality-first",
+        "cost-first",
+        "latency-first",
+        "round-robin",
+        "weighted",  # Phase 21
     }
 )
 
@@ -106,9 +109,7 @@ class AgentTemplate:
         if not name or not name.strip():
             raise ValueError("AgentTemplate.name must be non-empty")
         if len(name) > MAX_NAME_LEN:
-            raise ValueError(
-                f"AgentTemplate.name must be <= {MAX_NAME_LEN} chars, got {len(name)}"
-            )
+            raise ValueError(f"AgentTemplate.name must be <= {MAX_NAME_LEN} chars, got {len(name)}")
         if len(description) > MAX_DESCRIPTION_LEN:
             raise ValueError(
                 f"AgentTemplate.description must be <= {MAX_DESCRIPTION_LEN} chars, "
@@ -185,9 +186,7 @@ class AgentVersion:
     route_strategy: str | None
     allowed_tools: tuple[str, ...]
     allowed_skills: tuple[str, ...]
-    knowledge_package_ids: tuple[
-        str, ...
-    ]  # stored as str to avoid UUID NewType in tuple
+    knowledge_package_ids: tuple[str, ...]  # stored as str to avoid UUID NewType in tuple
     plan_dsl_snapshot: dict[str, Any] | None
     max_total_steps: int | None
     release_notes: str
@@ -224,15 +223,11 @@ class AgentVersion:
         if not version_tag or not version_tag.strip():
             raise ValueError("AgentVersion.version_tag must be non-empty")
         if len(version_tag) > MAX_VERSION_TAG_LEN:
-            raise ValueError(
-                f"AgentVersion.version_tag must be <= {MAX_VERSION_TAG_LEN} chars"
-            )
+            raise ValueError(f"AgentVersion.version_tag must be <= {MAX_VERSION_TAG_LEN} chars")
         if not system_prompt:
             raise ValueError("AgentVersion.system_prompt must be non-empty")
         if len(system_prompt) > MAX_PROMPT_LEN:
-            raise ValueError(
-                f"AgentVersion.system_prompt must be <= {MAX_PROMPT_LEN} chars"
-            )
+            raise ValueError(f"AgentVersion.system_prompt must be <= {MAX_PROMPT_LEN} chars")
         # Phase 2: 允许 None (admin_models 没建) 或 UUID. str 兼容旧接口.
         if model_id is not None and not isinstance(model_id, (str, UUID)):
             raise TypeError("AgentVersion.model_id must be str, UUID, or None")
@@ -242,21 +237,15 @@ class AgentVersion:
                 f"AgentVersion.route_strategy must be one of {sorted(_ALLOWED_STRATEGIES)}"
             )
         if len(allowed_tools) > MAX_ALLOWED_TOOLS:
-            raise ValueError(
-                f"AgentVersion.allowed_tools must be <= {MAX_ALLOWED_TOOLS}"
-            )
+            raise ValueError(f"AgentVersion.allowed_tools must be <= {MAX_ALLOWED_TOOLS}")
         if len(allowed_skills) > MAX_ALLOWED_SKILLS:
-            raise ValueError(
-                f"AgentVersion.allowed_skills must be <= {MAX_ALLOWED_SKILLS}"
-            )
+            raise ValueError(f"AgentVersion.allowed_skills must be <= {MAX_ALLOWED_SKILLS}")
         if len(knowledge_package_ids) > MAX_KNOWLEDGE_PACKAGE_IDS:
             raise ValueError(
                 f"AgentVersion.knowledge_package_ids must be <= {MAX_KNOWLEDGE_PACKAGE_IDS}"
             )
         if len(release_notes) > MAX_REVIEW_LEN:
-            raise ValueError(
-                f"AgentVersion.release_notes must be <= {MAX_REVIEW_LEN} chars"
-            )
+            raise ValueError(f"AgentVersion.release_notes must be <= {MAX_REVIEW_LEN} chars")
         ts = now or _utcnow()
         return cls(
             id=version_id or AgentVersionId(uuid4()),
@@ -293,9 +282,7 @@ class AgentVersion:
                 f"cannot edit release_notes on version in status {self.status.value!r}"
             )
         if len(release_notes) > MAX_REVIEW_LEN:
-            raise ValueError(
-                f"AgentVersion.release_notes must be <= {MAX_REVIEW_LEN} chars"
-            )
+            raise ValueError(f"AgentVersion.release_notes must be <= {MAX_REVIEW_LEN} chars")
         ts = now or _utcnow()
         return AgentVersion(
             id=self.id,

@@ -24,9 +24,6 @@ from _self_evolution_unit_in_memory import (
     InMemoryEvolutionCandidateRepository,
     Uuid4IdGenerator,
 )
-from qzdap_http.error_envelope import error_envelope_middleware
-from qzdap_schema.ids import TenantId, UserId, WorkspaceId
-from qzdap_vault.actor import ActorContext
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -44,6 +41,9 @@ from qzdap.modules.self_evolution.adapter.http.router import (
 from qzdap.modules.self_evolution.application.evolution_service import (
     EvolutionCandidateService,
 )
+from qzdap_http.error_envelope import error_envelope_middleware
+from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+from qzdap_vault.actor import ActorContext
 
 # ── Constants ──────────────────────────────────────────────────────────
 
@@ -137,9 +137,7 @@ class _DirectApplyGuardStub:
             ApplyOutcome,
         )
 
-        self.applies.append(
-            (UUID(str(tenant_id)), UUID(str(candidate.id)), candidate.kind.value)
-        )
+        self.applies.append((UUID(str(tenant_id)), UUID(str(candidate.id)), candidate.kind.value))
         return ApplyOutcome(
             candidate_id=candidate.id,
             kind=candidate.kind,
@@ -510,9 +508,7 @@ async def test_apply_uses_injected_guard_not_default_direct() -> None:
         confidence=0.9,
         trigger_reason="post-turn",
     )
-    approved = await svc.approve(
-        tenant_id=TENANT_A, candidate_id=cand.id, approver_id=ADMIN_ID
-    )
+    approved = await svc.approve(tenant_id=TENANT_A, candidate_id=cand.id, approver_id=ADMIN_ID)
     applied, outcome = await svc.apply(tenant_id=TENANT_A, candidate_id=approved.id)
     assert guard.calls == 1
     assert outcome.summary == {"mode": "counted", "calls": 1}

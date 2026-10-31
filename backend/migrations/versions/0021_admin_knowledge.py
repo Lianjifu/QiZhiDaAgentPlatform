@@ -95,7 +95,9 @@ def upgrade() -> None:
         *_timestamps(),
     )
     op.create_index("ix_admin_knowledge_docs_tenant_id", "admin_knowledge_docs", ["tenant_id"])
-    op.create_index("ix_admin_knowledge_docs_workspace_id", "admin_knowledge_docs", ["workspace_id"])
+    op.create_index(
+        "ix_admin_knowledge_docs_workspace_id", "admin_knowledge_docs", ["workspace_id"]
+    )
     op.create_index("ix_admin_knowledge_docs_kb_id", "admin_knowledge_docs", ["kb_id"])
     op.create_index(
         "ix_admin_knowledge_docs_tenant_workspace_kb",
@@ -122,7 +124,9 @@ def upgrade() -> None:
             name="uq_admin_knowledge_sources_tenant_ws_name",
         ),
     )
-    op.create_index("ix_admin_knowledge_sources_tenant_id", "admin_knowledge_sources", ["tenant_id"])
+    op.create_index(
+        "ix_admin_knowledge_sources_tenant_id", "admin_knowledge_sources", ["tenant_id"]
+    )
     op.create_index(
         "ix_admin_knowledge_sources_workspace_id", "admin_knowledge_sources", ["workspace_id"]
     )
@@ -144,7 +148,9 @@ def upgrade() -> None:
         *_timestamps(),
     )
     op.create_index("ix_admin_knowledge_tasks_tenant_id", "admin_knowledge_tasks", ["tenant_id"])
-    op.create_index("ix_admin_knowledge_tasks_workspace_id", "admin_knowledge_tasks", ["workspace_id"])
+    op.create_index(
+        "ix_admin_knowledge_tasks_workspace_id", "admin_knowledge_tasks", ["workspace_id"]
+    )
     op.create_index("ix_admin_knowledge_tasks_kb_id", "admin_knowledge_tasks", ["kb_id"])
 
     op.create_table(

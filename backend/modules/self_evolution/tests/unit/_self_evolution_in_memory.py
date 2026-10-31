@@ -30,17 +30,13 @@ from qzdap.modules.self_evolution.domain.value_objects import (
 
 @dataclass(slots=True)
 class FixedClock(ClockPort):
-    fixed_now: datetime = field(
-        default_factory=lambda: datetime(2026, 1, 1, tzinfo=UTC)
-    )
+    fixed_now: datetime = field(default_factory=lambda: datetime(2026, 1, 1, tzinfo=UTC))
 
     def now(self) -> datetime:
         return self.fixed_now
 
     def advance(self, *, seconds: int = 0, minutes: int = 0, hours: int = 0) -> None:
-        self.fixed_now = self.fixed_now + timedelta(
-            seconds=seconds, minutes=minutes, hours=hours
-        )
+        self.fixed_now = self.fixed_now + timedelta(seconds=seconds, minutes=minutes, hours=hours)
 
 
 @dataclass(slots=True)
@@ -70,9 +66,7 @@ class InMemoryEvolutionCandidateRepository(EvolutionCandidateRepository):
     async def add(self, candidate: EvolveCandidate) -> None:
         self.rows[UUID(str(candidate.id))] = candidate
 
-    async def get(
-        self, *, tenant_id: UUID, candidate_id: UUID
-    ) -> EvolveCandidate | None:
+    async def get(self, *, tenant_id: UUID, candidate_id: UUID) -> EvolveCandidate | None:
         row = self.rows.get(candidate_id)
         if row is None or row.tenant_id != tenant_id:
             return None

@@ -155,13 +155,9 @@ ROUTER_SESSION_KEY_HASH_TOTAL = Counter(
 )
 
 
-def record_http_request(
-    method: str, route: str, status: int, duration_s: float
-) -> None:
+def record_http_request(method: str, route: str, status: int, duration_s: float) -> None:
     HTTP_REQUESTS_TOTAL.labels(method=method, route=route, status=str(status)).inc()
-    HTTP_REQUEST_DURATION.labels(
-        method=method, route=route, status=str(status)
-    ).observe(duration_s)
+    HTTP_REQUEST_DURATION.labels(method=method, route=route, status=str(status)).observe(duration_s)
 
 
 def record_legacy_call(entry: str) -> None:
@@ -224,9 +220,7 @@ def record_memory_vector_enqueue(*, dropped: bool = False) -> None:
     ⚠️ **队列满了被丢** ✓ —— 那是**要看得见**的事件 ✓（补写兜底会捡回来 ✓，
     但一直丢说明队列不够用 ✗✗）。
     """
-    MEMORY_VECTOR_ENQUEUED_TOTAL.labels(
-        outcome="dropped" if dropped else "enqueued"
-    ).inc()
+    MEMORY_VECTOR_ENQUEUED_TOTAL.labels(outcome="dropped" if dropped else "enqueued").inc()
 
 
 def record_memory_eviction(*, reason: str, count: int = 1) -> None:

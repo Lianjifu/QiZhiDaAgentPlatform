@@ -81,9 +81,7 @@ class ResultSink(Protocol):
     台账 §5.3 点名要取用的资产）。
     """
 
-    async def deliver(
-        self, event: ResultEvent, *, target: OutboundTarget
-    ) -> DeliveryOutcome:
+    async def deliver(self, event: ResultEvent, *, target: OutboundTarget) -> DeliveryOutcome:
         """编码并投递一条事件 —— 失败抛异常还是返回 failed 由实现自选。"""
         ...
 

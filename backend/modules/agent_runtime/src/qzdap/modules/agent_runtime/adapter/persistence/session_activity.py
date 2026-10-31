@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_agent_runtime.memory.refine import SessionActivityPort
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +19,7 @@ from qzdap.modules.agent_runtime.adapter.persistence.models import (
     SessionORM,
     SessionTurnORM,
 )
+from qzdap_agent_runtime.memory.refine import SessionActivityPort
 
 
 class PostgresSessionActivity(SessionActivityPort):
@@ -28,9 +28,7 @@ class PostgresSessionActivity(SessionActivityPort):
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
 
-    async def active_session_ids(
-        self, *, session_ids: tuple[UUID, ...]
-    ) -> set[UUID]:
+    async def active_session_ids(self, *, session_ids: tuple[UUID, ...]) -> set[UUID]:
         """**还在跑**的会话 ✓（空的 = 都结束了 ✓）。"""
         if not session_ids:
             return set()

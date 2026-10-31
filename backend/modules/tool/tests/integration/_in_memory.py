@@ -87,20 +87,14 @@ class CollectingEventPublisher(EventPublisher):
         workspace_id: UUID | None,
         trace_id: str | None = None,
     ) -> None:
-        self.published.append(
-            (event, {"tenant_id": tenant_id, "workspace_id": workspace_id})
-        )
+        self.published.append((event, {"tenant_id": tenant_id, "workspace_id": workspace_id}))
 
 
 class FakeCustomInvoker(CustomInvokerPort):
     def __init__(self) -> None:
-        self._registry: dict[
-            str, Callable[..., Awaitable[dict[str, Any]]]
-        ] = {}
+        self._registry: dict[str, Callable[..., Awaitable[dict[str, Any]]]] = {}
 
-    def register(
-        self, name: str, fn: Callable[..., Awaitable[dict[str, Any]]]
-    ) -> None:
+    def register(self, name: str, fn: Callable[..., Awaitable[dict[str, Any]]]) -> None:
         self._registry[name] = fn
 
     async def invoke(

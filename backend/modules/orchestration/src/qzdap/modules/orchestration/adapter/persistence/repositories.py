@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +16,7 @@ from qzdap.modules.orchestration.application.ports import (
     WorkflowUserStateRepository,
 )
 from qzdap.modules.orchestration.domain.entities import FlowRun, FlowVersion, Workflow
+from qzdap_persistence.tenant_guard import current_tenant_id
 
 
 def _cross_tenant(row: object) -> bool:
@@ -43,7 +43,9 @@ def workflow_to_domain(row: WorkflowORM) -> Workflow:
         created_at=row.created_at,
         updated_at=row.updated_at,
         bound_agents=list(row.bound_agents or []),
-        versions=[FlowVersion.from_dict(item) for item in (row.versions or []) if isinstance(item, dict)],
+        versions=[
+            FlowVersion.from_dict(item) for item in (row.versions or []) if isinstance(item, dict)
+        ],
         initial_nodes=list(row.initial_nodes or []),
         initial_edges=list(row.initial_edges or []),
     )

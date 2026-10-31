@@ -23,14 +23,13 @@ from uuid import UUID
 
 from fastapi import Header, HTTPException, Request
 
-
 # HTTP methods that don't mutate state — DB lookup is skipped.
 _READ_ONLY = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
 async def _require_active_workspace(
     request: Request,
-    x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+    x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
 ) -> UUID:
     if request.method in _READ_ONLY:
         return x_workspace_id
@@ -66,8 +65,7 @@ async def _require_active_workspace(
             detail={
                 "code": "E_WORKSPACE_NOT_FOUND",
                 "message": (
-                    f"workspace {x_workspace_id} not found or not active "
-                    f"in tenant {tenant_id}"
+                    f"workspace {x_workspace_id} not found or not active in tenant {tenant_id}"
                 ),
             },
         )

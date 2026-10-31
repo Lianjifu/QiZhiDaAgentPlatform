@@ -9,9 +9,8 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.memory.promotion import KnowledgePromotionPort
-
 from qzdap.modules.knowledge.application.services import KnowledgeService
+from qzdap_agent_runtime.memory.promotion import KnowledgePromotionPort
 
 
 class KnowledgeCandidateAdapter(KnowledgePromotionPort):

@@ -102,7 +102,7 @@ class LLMCaller:
                     workspace_id=workspace_id,
                     upstream_model=model_name,
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # ⚠️ **解析失败不是错误** ✓ —— 回退环境默认模型 ✓（§5.2.1 细节 1 ✓）
                 resolved = None
             return ResolvedModel(

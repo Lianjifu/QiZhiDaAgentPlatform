@@ -28,7 +28,6 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.gateway.replay import StoredEvent
 from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 
@@ -39,6 +38,7 @@ from qzdap.modules.agent_runtime.adapter.persistence.models import (
     SessionEventORM,
     SessionTurnORM,
 )
+from qzdap_agent_runtime.gateway.replay import StoredEvent
 
 _log = logging.getLogger(__name__)
 
@@ -118,9 +118,7 @@ class PostgresSessionJournal:
         async with self._sf.session() as session, session.begin():
             session.add(row)
 
-    async def _retire_zombie(
-        self, *, session_id: UUID, idempotency_key: str
-    ) -> bool:
+    async def _retire_zombie(self, *, session_id: UUID, idempotency_key: str) -> bool:
         """把「同会话、同键、且已经僵了很久」的在飞轮次落到终态。
 
         返回 True = 确实清掉了一行僵尸（可以重试插入）；False = 撞键的是
@@ -185,9 +183,7 @@ class PostgresSessionJournal:
                 {"turn_id": turn_id},
             )
 
-    async def write_pending_approval(
-        self, *, turn_id: UUID, pending: dict[str, Any]
-    ) -> None:
+    async def write_pending_approval(self, *, turn_id: UUID, pending: dict[str, Any]) -> None:
         """轮次挂起等审批 —— **挂起信息落库** ✓（Session 方案 §8 · 决策 #6）。
 
         ⚠️ 同时把轮次状态置 ``waiting`` —— 「这一轮在等审批」这件事
@@ -225,9 +221,7 @@ class PostgresSessionJournal:
                 return None
             return row[0], dict(row[1])
 
-    async def list_waiting_approval_sessions(
-        self, *, tenant_id: UUID
-    ) -> set[UUID]:
+    async def list_waiting_approval_sessions(self, *, tenant_id: UUID) -> set[UUID]:
         """哪些会话**正在等审批** ✓（一次查询，别按会话逐个查 ✗）。
 
         ⚠️ 会话列表 / 任务列表要用它判断「等你确认」—— 那一列
@@ -276,9 +270,7 @@ class PostgresSessionJournal:
                 )
             )
 
-    async def record_agent_decision(
-        self, *, turn_id: UUID, decision: dict[str, Any]
-    ) -> None:
+    async def record_agent_decision(self, *, turn_id: UUID, decision: dict[str, Any]) -> None:
         """**写 `session_turns.agent_decision`** ✓（轮次级快照 ✓ —— 最后一个专家 ✓）。
 
         ⚠️ **只写「用了什么」** ✓（专家 id ✓ / 版本 ✓ / 解析出的模型与工具 ✓）——

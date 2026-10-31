@@ -73,9 +73,7 @@ class MemoryCatalogRepository(ABC):
     async def get_l2(self, item_id: UUID) -> L2Fact | None: ...
 
     @abstractmethod
-    async def list_l2(
-        self, workspace_id: UUID, *, user_id: UUID | None = None
-    ) -> list[L2Fact]: ...
+    async def list_l2(self, workspace_id: UUID, *, user_id: UUID | None = None) -> list[L2Fact]: ...
 
     @abstractmethod
     async def update_l2(self, item: L2Fact) -> None: ...
@@ -104,9 +102,7 @@ class MemoryCatalogRepository(ABC):
     async def list_l3(self, workspace_id: UUID) -> list[L3Entry]: ...
 
     @abstractmethod
-    async def list_l2_updated_since(
-        self, since: datetime, *, limit: int = 100
-    ) -> list[L2Fact]:
+    async def list_l2_updated_since(self, since: datetime, *, limit: int = 100) -> list[L2Fact]:
         """**最近更新过的 L2** ✓（兜底补写的来源 ✓ —— §5.4 ✓）。"""
         ...
 
@@ -153,9 +149,7 @@ class MemoryCatalogRepository(ABC):
         ...
 
     @abstractmethod
-    async def usage_by_day(
-        self, workspace_id: UUID, *, since: datetime
-    ) -> list[tuple[date, int]]:
+    async def usage_by_day(self, workspace_id: UUID, *, since: datetime) -> list[tuple[date, int]]:
         """**每天被用过的条数** ✓（真实使用趋势 ✓ —— C7 ✓）。"""
         ...
 
@@ -166,7 +160,9 @@ class MemoryCatalogRepository(ABC):
     async def list_policies(self, workspace_id: UUID) -> list[RetentionPolicy]: ...
 
     @abstractmethod
-    async def get_policy_by_label(self, workspace_id: UUID, label: str) -> RetentionPolicy | None: ...
+    async def get_policy_by_label(
+        self, workspace_id: UUID, label: str
+    ) -> RetentionPolicy | None: ...
 
 
 __all__ = [

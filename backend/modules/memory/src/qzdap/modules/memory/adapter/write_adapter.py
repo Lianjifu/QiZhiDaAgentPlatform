@@ -12,19 +12,18 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from qzdap_agent_runtime.memory.refine import BufferPort, BufferRow
-from qzdap_agent_runtime.memory.vectorize import (
-    VectorWriteQueuePort,
-    VectorWriteRequest,
-)
-from qzdap_agent_runtime.memory.writer import CONTENT_HASH_VERSION
-
 from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
     MemoryCatalogRepository,
     VectorSearchPort,
 )
 from qzdap.modules.memory.domain.entities import L2Fact
+from qzdap_agent_runtime.memory.refine import BufferPort, BufferRow
+from qzdap_agent_runtime.memory.vectorize import (
+    VectorWriteQueuePort,
+    VectorWriteRequest,
+)
+from qzdap_agent_runtime.memory.writer import CONTENT_HASH_VERSION
 
 
 class MemoryWriteAdapter:
@@ -266,7 +265,7 @@ class MemoryWriteAdapter:
             return
         try:
             [vector] = await self._embedding.embed([request.content])
-        except Exception:  # noqa: BLE001
+        except Exception:
             return
         await self._vectors.upsert(
             tenant_id=tenant_id,

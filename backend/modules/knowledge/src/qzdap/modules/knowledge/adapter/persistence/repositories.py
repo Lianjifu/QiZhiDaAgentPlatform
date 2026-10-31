@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +23,7 @@ from qzdap.modules.knowledge.domain.entities import (
     KnowledgeSource,
     KnowledgeTask,
 )
+from qzdap_persistence.tenant_guard import current_tenant_id
 
 
 def _cross_tenant(row: object) -> bool:
@@ -308,6 +308,8 @@ class SqlKnowledgeCatalogRepository(KnowledgeCatalogRepository):
 
     async def count_chunks(self, kb_id: UUID) -> int:
         result = await self._s.execute(
-            select(func.count()).select_from(KnowledgeChunkORM).where(KnowledgeChunkORM.kb_id == kb_id)
+            select(func.count())
+            .select_from(KnowledgeChunkORM)
+            .where(KnowledgeChunkORM.kb_id == kb_id)
         )
         return int(result.scalar_one() or 0)

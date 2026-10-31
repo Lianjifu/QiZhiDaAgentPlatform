@@ -83,9 +83,7 @@ def test_context_compacted_chunk_carries_degraded() -> None:
     ⚠️ **可选字段** ✓ —— 不传时默认 ``False`` ✓（向后兼容 ✓ ——
     前端目前只按 ``kind`` 提示 ✓）。
     """
-    chunk = ContextCompactedChunk(
-        turn_id=uuid4(), seq=1, tokens_before=100, tokens_after=40
-    )
+    chunk = ContextCompactedChunk(turn_id=uuid4(), seq=1, tokens_before=100, tokens_after=40)
     assert chunk.degraded is False
     assert chunk.model_dump(mode="json")["degraded"] is False
 

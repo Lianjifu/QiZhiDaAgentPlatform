@@ -147,9 +147,7 @@ class Reasoner:
                 # 别把它丢了 ✗✗。
                 # ⚠️ **用量那一段没有正文** ✓（只有 usage ✓）—— **照样要递出去**
                 # ✓（否则这一轮的 token 数永远是 0 ✗✗）。
-                yield AIMessageChunk(
-                    content=chunk.content, usage_metadata=chunk.usage_metadata
-                )
+                yield AIMessageChunk(content=chunk.content, usage_metadata=chunk.usage_metadata)
         assembled = accumulator.finish()
         if assembled:
             # ⚠️ **最后一条带装配好的调用** ✓ —— 调用方读它 ✓（而不是读分片 ✗）。

@@ -16,8 +16,6 @@ from uuid import uuid4
 import pytest
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
-from qzdap_llm.client import ChatRequest, LLMChunk
-from qzdap_schema.ids import ModelId
 
 from qzdap_agent_runtime.agent_router import (
     AgentRouteConfig,
@@ -38,6 +36,8 @@ from qzdap_agent_runtime.ports import (
     ToolInvocationResult,
     ToolRuntimePort,
 )
+from qzdap_llm.client import ChatRequest, LLMChunk
+from qzdap_schema.ids import ModelId
 
 # ---------------------------------------------------------------------------
 # 五个端口的契约测试

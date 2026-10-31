@@ -22,17 +22,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    EvalCaseId,
-    EvalDatasetId,
-    EvalRunId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.evaluation.domain.value_objects import (
     MAX_DESCRIPTION_LEN,
     MAX_INPUT_LEN,
@@ -42,6 +31,16 @@ from qzdap.modules.evaluation.domain.value_objects import (
     EvalDatasetKind,
     EvalDatasetStatus,
     EvalRunStatus,
+)
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    EvalCaseId,
+    EvalDatasetId,
+    EvalRunId,
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 
@@ -85,13 +84,9 @@ class EvalDataset:
         if not name or not name.strip():
             raise ValueError("EvalDataset.name must be non-empty")
         if len(name) > MAX_NAME_LEN:
-            raise ValueError(
-                f"EvalDataset.name must be <= {MAX_NAME_LEN} chars, got {len(name)}"
-            )
+            raise ValueError(f"EvalDataset.name must be <= {MAX_NAME_LEN} chars, got {len(name)}")
         if len(description) > MAX_DESCRIPTION_LEN:
-            raise ValueError(
-                f"EvalDataset.description must be <= {MAX_DESCRIPTION_LEN} chars"
-            )
+            raise ValueError(f"EvalDataset.description must be <= {MAX_DESCRIPTION_LEN} chars")
         if case_count < 0:
             raise ValueError("EvalDataset.case_count must be >= 0")
         ts = now or _utcnow()
@@ -110,9 +105,7 @@ class EvalDataset:
             updated_at=ts,
         )
 
-    def with_status(
-        self, status: EvalDatasetStatus, *, now: datetime | None = None
-    ) -> EvalDataset:
+    def with_status(self, status: EvalDatasetStatus, *, now: datetime | None = None) -> EvalDataset:
         ts = now or _utcnow()
         return EvalDataset(
             id=self.id,
@@ -262,12 +255,8 @@ class EvalRun:
         if self.status is not EvalRunStatus.QUEUED:
             from qzdap.modules.evaluation.domain.errors import EvaluationError
 
-            raise EvaluationError(
-                f"cannot mark running from status={self.status.value!r}"
-            )
-        return _replace(
-            self, status=EvalRunStatus.RUNNING, started_at=ts, updated_at=ts
-        )
+            raise EvaluationError(f"cannot mark running from status={self.status.value!r}")
+        return _replace(self, status=EvalRunStatus.RUNNING, started_at=ts, updated_at=ts)
 
     def mark_completed(
         self,
@@ -282,9 +271,7 @@ class EvalRun:
         # Gate is "passed" iff every case passed AND mean_score >= threshold.
         all_passed = failed_count == 0 and passed_count == self.case_count
         new_status = (
-            EvalRunStatus.PASSED
-            if all_passed and mean_score >= threshold
-            else EvalRunStatus.FAILED
+            EvalRunStatus.PASSED if all_passed and mean_score >= threshold else EvalRunStatus.FAILED
         )
         return _replace(
             self,
@@ -296,9 +283,7 @@ class EvalRun:
             updated_at=ts,
         )
 
-    def mark_errored(
-        self, *, error_message: str, now: datetime | None = None
-    ) -> EvalRun:
+    def mark_errored(self, *, error_message: str, now: datetime | None = None) -> EvalRun:
         ts = now or _utcnow()
         return _replace(
             self,

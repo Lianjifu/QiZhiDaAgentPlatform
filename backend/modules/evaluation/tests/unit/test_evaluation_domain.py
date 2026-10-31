@@ -5,12 +5,6 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from qzdap_schema.ids import (
-    EvalDatasetId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
 
 from qzdap.modules.evaluation.application.scoring import score_case
 from qzdap.modules.evaluation.domain.entities import EvalCase, EvalDataset, EvalRun
@@ -18,6 +12,12 @@ from qzdap.modules.evaluation.domain.value_objects import (
     EvalDatasetKind,
     EvalDatasetStatus,
     EvalRunStatus,
+)
+from qzdap_schema.ids import (
+    EvalDatasetId,
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 _TENANT = TenantId(uuid4())
@@ -102,12 +102,12 @@ def test_run_queue_starts_in_queued_state() -> None:
         tenant_id=_TENANT,
         workspace_id=_WORKSPACE,
         dataset_id=EvalDatasetId(uuid4()),
-        template_id=__import__(
-            "qzdap_schema.ids", fromlist=["AgentTemplateId"]
-        ).AgentTemplateId(uuid4()),
-        version_id=__import__(
-            "qzdap_schema.ids", fromlist=["AgentVersionId"]
-        ).AgentVersionId(uuid4()),
+        template_id=__import__("qzdap_schema.ids", fromlist=["AgentTemplateId"]).AgentTemplateId(
+            uuid4()
+        ),
+        version_id=__import__("qzdap_schema.ids", fromlist=["AgentVersionId"]).AgentVersionId(
+            uuid4()
+        ),
         case_count=10,
         triggered_by=_USER,
         now=_now_iso(),

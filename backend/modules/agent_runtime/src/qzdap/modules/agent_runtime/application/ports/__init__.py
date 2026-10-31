@@ -13,16 +13,15 @@ from collections.abc import AsyncIterator
 from typing import Any, Protocol
 from uuid import UUID
 
+from qzdap.modules.agent_runtime.application.ports.catalog_model_resolver import (
+    CatalogModelResolver as CatalogModelResolver,
+)
+from qzdap.modules.agent_runtime.domain import Session, Turn
 from qzdap_agent_runtime.memory.policy import MemoryPolicy
 from qzdap_kernel.events import DomainEvent
 from qzdap_llm.client import ChatRequest, LLMChunk
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
-
-from qzdap.modules.agent_runtime.application.ports.catalog_model_resolver import (
-    CatalogModelResolver as CatalogModelResolver,
-)
-from qzdap.modules.agent_runtime.domain import Session, Turn
 
 
 class SessionRepository(ABC):
@@ -197,9 +196,7 @@ class SessionJournal(ABC):
         ...
 
     @abstractmethod
-    async def write_pending_approval(
-        self, *, turn_id: UUID, pending: dict[str, Any]
-    ) -> None:
+    async def write_pending_approval(self, *, turn_id: UUID, pending: dict[str, Any]) -> None:
         """轮次挂起等审批 —— **挂起信息落库** ✓（``session_turns.pending_approval``）。
 
         ⚠️ 恢复路径靠它校验「挂起的是哪个工具、参数有没有被改」✓
@@ -406,9 +403,7 @@ class PolicyPort(Protocol):
     """Approval + governance gate. P5; declared here so the use case can
     surface `ApprovalRequiredError` for gated actions."""
 
-    async def evaluate_action(
-        self, *, tenant_id: UUID, action: str, context: dict
-    ) -> bool: ...
+    async def evaluate_action(self, *, tenant_id: UUID, action: str, context: dict) -> bool: ...
 
 
 class AgentBindingReader(Protocol):

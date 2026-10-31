@@ -10,12 +10,12 @@ import asyncio
 from typing import Any
 
 import pytest
+
+from qzdap.composition.lifespan import _start_outbox_worker
 from qzdap.modules.channel.adapter.outbound.channel_outbox_dispatcher import (
     ChannelOutboxDispatcher,
 )
 from qzdap_agent_runtime.outbox import OutboxWorker
-
-from qzdap.composition.lifespan import _start_outbox_worker
 
 
 class _FakeRepo:
@@ -49,9 +49,7 @@ class _FakeRepo:
     async def mark_delivered(self, turn_id: str, seq: int) -> None:
         self.delivered.append((turn_id, seq))
 
-    async def mark_failed(
-        self, turn_id: str, seq: int, attempts: int, last_error: str
-    ) -> None:
+    async def mark_failed(self, turn_id: str, seq: int, attempts: int, last_error: str) -> None:
         return None
 
     async def move_to_dead_letter(

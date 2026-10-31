@@ -12,15 +12,6 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    CostRecordId,
-    RunRecordId,
-    TenantId,
-    WorkspaceId,
-)
-
 from qzdap.modules.observability_module.application.ports import (
     CostRecordRepository,
     EvalRunQueryPort,
@@ -34,6 +25,14 @@ from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunType,
 )
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    CostRecordId,
+    RunRecordId,
+    TenantId,
+    WorkspaceId,
+)
 
 # ── RunRecordRepository ───────────────────────────────────────────────────
 
@@ -46,9 +45,7 @@ class InMemoryRunRecordRepository(RunRecordRepository):
         self._store[record.id] = record
         return record
 
-    async def get(
-        self, *, tenant_id: TenantId, run_id: RunRecordId
-    ) -> RunRecord | None:
+    async def get(self, *, tenant_id: TenantId, run_id: RunRecordId) -> RunRecord | None:
         rec = self._store.get(run_id)
         if rec is not None and rec.tenant_id == tenant_id:
             return rec
@@ -64,9 +61,7 @@ class InMemoryRunRecordRepository(RunRecordRepository):
         offset: int = 0,
     ) -> list[RunRecord]:
         out: list[RunRecord] = []
-        for rec in sorted(
-            self._store.values(), key=lambda r: r.completed_at, reverse=True
-        ):
+        for rec in sorted(self._store.values(), key=lambda r: r.completed_at, reverse=True):
             if rec.tenant_id != tenant_id:
                 continue
             if workspace_id is not None and rec.workspace_id != workspace_id:
@@ -88,9 +83,7 @@ class InMemoryCostRecordRepository(CostRecordRepository):
         self._store[record.id] = record
         return record
 
-    async def get(
-        self, *, tenant_id: TenantId, cost_id: CostRecordId
-    ) -> CostRecord | None:
+    async def get(self, *, tenant_id: TenantId, cost_id: CostRecordId) -> CostRecord | None:
         rec = self._store.get(cost_id)
         if rec is not None and rec.tenant_id == tenant_id:
             return rec
@@ -108,9 +101,7 @@ class InMemoryCostRecordRepository(CostRecordRepository):
         offset: int = 0,
     ) -> list[CostRecord]:
         out: list[CostRecord] = []
-        for rec in sorted(
-            self._store.values(), key=lambda r: r.created_at, reverse=True
-        ):
+        for rec in sorted(self._store.values(), key=lambda r: r.created_at, reverse=True):
             if rec.tenant_id != tenant_id:
                 continue
             if workspace_id is not None and rec.workspace_id != workspace_id:
@@ -155,9 +146,7 @@ class InMemoryCostRecordRepository(CostRecordRepository):
             if until is not None and rec.created_at > until:
                 continue
             buckets[str(rec.workspace_id)] += rec.amount_usd
-        return [
-            {"workspace_id": k, "total_usd": _to_str(v)} for k, v in buckets.items()
-        ]
+        return [{"workspace_id": k, "total_usd": _to_str(v)} for k, v in buckets.items()]
 
     async def sum_by_model(
         self,

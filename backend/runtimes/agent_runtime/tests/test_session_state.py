@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import pytest
+
 from qzdap_agent_runtime.session.state import (
     SESSION_TRANSITIONS,
     TURN_TRANSITIONS,
@@ -35,11 +36,7 @@ def test_the_session_status_covers_every_value_the_table_allows() -> None:
 
 @pytest.mark.parametrize(
     ("source", "target"),
-    [
-        (source, target)
-        for source, targets in SESSION_TRANSITIONS.items()
-        for target in targets
-    ],
+    [(source, target) for source, targets in SESSION_TRANSITIONS.items() for target in targets],
 )
 def test_every_allowed_session_transition_passes(
     source: SessionStatus, target: SessionStatus
@@ -76,15 +73,9 @@ def test_closed_is_terminal_and_there_is_no_revive_transition() -> None:
 
 @pytest.mark.parametrize(
     ("source", "target"),
-    [
-        (source, target)
-        for source, targets in TURN_TRANSITIONS.items()
-        for target in targets
-    ],
+    [(source, target) for source, targets in TURN_TRANSITIONS.items() for target in targets],
 )
-def test_every_allowed_turn_transition_passes(
-    source: TurnStatus, target: TurnStatus
-) -> None:
+def test_every_allowed_turn_transition_passes(source: TurnStatus, target: TurnStatus) -> None:
     assert_turn_transition(source, target)
 
 
@@ -97,9 +88,7 @@ def test_every_allowed_turn_transition_passes(
         if target not in TURN_TRANSITIONS[source]
     ],
 )
-def test_every_illegal_turn_transition_raises(
-    source: TurnStatus, target: TurnStatus
-) -> None:
+def test_every_illegal_turn_transition_raises(source: TurnStatus, target: TurnStatus) -> None:
     with pytest.raises(IllegalTransitionError):
         assert_turn_transition(source, target)
 

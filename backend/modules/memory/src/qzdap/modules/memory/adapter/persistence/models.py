@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from qzdap_persistence.base import Base, TenantScopedMixin
 from sqlalchemy import (
     Boolean,
     DateTime,
@@ -20,13 +19,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from qzdap_persistence.base import Base, TenantScopedMixin
+
 
 class MemoryL1ORM(TenantScopedMixin, Base):
     __tablename__ = "admin_memory_l1"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     user_name: Mapped[str] = mapped_column(
         String(128), nullable=False, default="", server_default=text("''")
     )
@@ -56,20 +55,14 @@ class MemoryL1ORM(TenantScopedMixin, Base):
 class MemoryL2ORM(TenantScopedMixin, Base):
     __tablename__ = "admin_memory_l2"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     user_name: Mapped[str] = mapped_column(
         String(128), nullable=False, default="", server_default=text("''")
     )
     # 归属用户（迁移 0048）。nullable：存量自动沉淀的记忆没有归属，不回填。
-    user_id: Mapped[UUID | None] = mapped_column(
-        PgUUID(as_uuid=True), nullable=True, index=True
-    )
+    user_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True, index=True)
     key: Mapped[str] = mapped_column(String(256), nullable=False)
-    value: Mapped[str] = mapped_column(
-        Text, nullable=False, default="", server_default=text("''")
-    )
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default=text("''"))
     category: Mapped[str] = mapped_column(
         String(32), nullable=False, default="fact", server_default=text("'fact'")
     )
@@ -99,13 +92,9 @@ class MemoryL2ORM(TenantScopedMixin, Base):
         SmallInteger, nullable=False, default=1, server_default=text("1")
     )
     #: 来源轮次 ✓（可追溯 ✓ —— §4.1 ✓）
-    source_turn_id: Mapped[UUID | None] = mapped_column(
-        PgUUID(as_uuid=True), nullable=True
-    )
+    source_turn_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
     #: 最后一次被用到的时刻 ✓（统计 ✓ —— §3.5 ✓）
-    last_used_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     #: 被用过多少次 ✓（统计 ✓ —— §3.5 ✓）
     used_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
@@ -143,9 +132,7 @@ class MemoryL2ORM(TenantScopedMixin, Base):
 class MemoryL3ORM(TenantScopedMixin, Base):
     __tablename__ = "admin_memory_l3"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     team: Mapped[str] = mapped_column(
         String(128), nullable=False, default="", server_default=text("''")
     )
@@ -156,9 +143,7 @@ class MemoryL3ORM(TenantScopedMixin, Base):
     category: Mapped[str] = mapped_column(
         String(64), nullable=False, default="", server_default=text("''")
     )
-    hits: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default=text("0")
-    )
+    hits: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
     contributor: Mapped[str] = mapped_column(
         String(128), nullable=False, default="", server_default=text("''")
     )
@@ -185,14 +170,10 @@ class SessionMemoryBufferORM(TenantScopedMixin, Base):
 
     __tablename__ = "session_memory_buffer"
     __table_args__ = (
-        UniqueConstraint(
-            "session_id", "content_hash", name="uq_session_memory_buffer_hash"
-        ),
+        UniqueConstraint("session_id", "content_hash", name="uq_session_memory_buffer_hash"),
     )
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     session_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
     user_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
     turn_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
@@ -209,9 +190,7 @@ class SessionMemoryBufferORM(TenantScopedMixin, Base):
 class MemoryPromotionORM(TenantScopedMixin, Base):
     __tablename__ = "admin_memory_promotions"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     layer: Mapped[str] = mapped_column(String(16), nullable=False)
     label: Mapped[str] = mapped_column(
         String(512), nullable=False, default="", server_default=text("''")
@@ -237,9 +216,7 @@ class MemoryPromotionORM(TenantScopedMixin, Base):
 class MemoryPolicyORM(TenantScopedMixin, Base):
     __tablename__ = "admin_memory_policies"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     layer: Mapped[str] = mapped_column(String(8), nullable=False)
     label: Mapped[str] = mapped_column(String(64), nullable=False)
     description: Mapped[str] = mapped_column(

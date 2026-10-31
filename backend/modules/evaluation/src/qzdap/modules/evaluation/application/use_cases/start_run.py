@@ -6,16 +6,6 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any
 
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    EvalDatasetId,
-    EvalRunId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.evaluation.application.ports import (
     EvalDatasetRepository,
     EvalRunRepository,
@@ -26,6 +16,19 @@ from qzdap.modules.evaluation.domain.errors import (
     EvalRunNotFound,
     IdempotencyKeyConflict,
 )
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    EvalDatasetId,
+    EvalRunId,
+    TenantId,
+    UserId,
+    WorkspaceId,
+)
+
+#: **后台任务的强引用** ✓ —— fire-and-forget 的 task 不留引用会被 GC 掉 ✓
+#: （运行中的 task 被回收 = 静默消失 ✗✗）。
+_BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
 
 @dataclass(slots=True)
@@ -96,7 +99,10 @@ class StartEvalRunUseCase:
         saved = await self.run_repo.add(run)
 
         # ── fire-and-forget background runner ────────────────────────
-        asyncio.create_task(self.runner.run(tenant_id=tenant_id, run_id=saved.id))
+        # ⚠️ **task 必须留引用** ✓ —— 否则会被 GC 掉 ✓（运行中的 task 被回收 = 静默消失 ✗✗）。
+        task = asyncio.create_task(self.runner.run(tenant_id=tenant_id, run_id=saved.id))
+        _BACKGROUND_TASKS.add(task)
+        task.add_done_callback(_BACKGROUND_TASKS.discard)
 
         return saved
 

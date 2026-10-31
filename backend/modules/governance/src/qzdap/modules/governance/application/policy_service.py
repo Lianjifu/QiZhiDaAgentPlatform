@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from qzdap_schema.ids import PolicyId, TenantId, UserId, WorkspaceId
-
 from qzdap.modules.governance.application.ports import (
     ClockPort,
     IdGeneratorPort,
@@ -25,6 +23,7 @@ from qzdap.modules.governance.domain.events import (
     PolicyUpdated,
 )
 from qzdap.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
+from qzdap_schema.ids import PolicyId, TenantId, UserId, WorkspaceId
 
 
 class PolicyService:

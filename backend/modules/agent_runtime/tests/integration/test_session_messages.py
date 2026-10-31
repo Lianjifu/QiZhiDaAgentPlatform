@@ -133,9 +133,7 @@ async def seq_ctx():
             await conn.execute(text(statement.replace("{schema}", schema)))
         await conn.commit()
 
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
+    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     from qzdap_persistence.session_factory import SessionFactory
 
     factory = SessionFactory(engine)
@@ -193,18 +191,9 @@ async def test_the_two_sequences_are_monotonic_and_start_at_one(seq_ctx) -> None
 
     async with seq_ctx.session() as session:
         sequence = PostgresSessionSequence(session)
-        assert (
-            await sequence.next_ingress_seq(tenant_id=tenant, session_id=session_id)
-            == 1
-        )
-        assert (
-            await sequence.next_ingress_seq(tenant_id=tenant, session_id=session_id)
-            == 2
-        )
-        assert (
-            await sequence.next_message_seq(tenant_id=tenant, session_id=session_id)
-            == 1
-        )
+        assert await sequence.next_ingress_seq(tenant_id=tenant, session_id=session_id) == 1
+        assert await sequence.next_ingress_seq(tenant_id=tenant, session_id=session_id) == 2
+        assert await sequence.next_message_seq(tenant_id=tenant, session_id=session_id) == 1
         await session.commit()
 
 
@@ -253,9 +242,7 @@ async def test_messages_are_written_only_to_the_new_table(seq_ctx) -> None:  # t
         ).all()
         old_rows = (
             await session.execute(
-                text(
-                    "SELECT seq, role, content FROM agent_session_messages ORDER BY seq"
-                )
+                text("SELECT seq, role, content FROM agent_session_messages ORDER BY seq")
             )
         ).all()
 

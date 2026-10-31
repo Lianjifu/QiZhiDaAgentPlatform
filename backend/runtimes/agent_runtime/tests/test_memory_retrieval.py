@@ -19,9 +19,7 @@ from qzdap_agent_runtime.memory.retrieval import (
 class _Port:
     """候选端口替身 ✓ —— 记下调用参数 ✓（过滤有没有下推要看这里 ✓）。"""
 
-    def __init__(
-        self, candidates: list[Candidate] | None = None, *, fail: bool = False
-    ):
+    def __init__(self, candidates: list[Candidate] | None = None, *, fail: bool = False):
         self.candidates = candidates or []
         self.fail = fail
         self.calls: list[dict] = []
@@ -222,9 +220,7 @@ class TestDegradation:
     @pytest.mark.asyncio
     async def test_no_vector_port_is_not_a_degradation(self) -> None:
         """没配向量**不是故障** ✓（只是没有向量这一路 ✓）。"""
-        pipeline = RetrievalPipeline(
-            lexical=_Port([_candidate("l1", 0.9)]), vector=None
-        )
+        pipeline = RetrievalPipeline(lexical=_Port([_candidate("l1", 0.9)]), vector=None)
         outcome = await pipeline.recall(
             tenant_id=uuid4(),
             workspace_id=uuid4(),

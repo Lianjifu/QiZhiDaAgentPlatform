@@ -8,7 +8,6 @@ from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
 import pytest
-from qzdap_kernel.errors import ValidationError
 
 from qzdap.modules.memory.application.admin_service import MemoryAdminService
 from qzdap.modules.memory.application.ports import (
@@ -25,6 +24,7 @@ from qzdap.modules.memory.domain.entities import (
     RetentionPolicy,
 )
 from qzdap.modules.memory.domain.errors import MemoryNotFound
+from qzdap_kernel.errors import ValidationError
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
 WORKSPACE = UUID("00000000-0000-0000-0000-000000000002")
@@ -103,9 +103,7 @@ class InMemoryVectors(VectorSearchPort):
                 # 对齐 pgvector：没有 session payload 的向量**匹配不上** ✓。
                 continue
             vn = math.sqrt(sum(value * value for value in vector)) or 1.0
-            score = sum(a * b for a, b in zip(query_embedding, vector, strict=True)) / (
-                qn * vn
-            )
+            score = sum(a * b for a, b in zip(query_embedding, vector, strict=True)) / (qn * vn)
             scored.append(
                 VectorHit(
                     item_id=item_id,
@@ -144,9 +142,7 @@ class InMemoryCatalog(MemoryCatalogRepository):
     async def get_l2(self, item_id: UUID) -> L2Fact | None:
         return self.l2.get(item_id)
 
-    async def list_l2(
-        self, workspace_id: UUID, *, user_id: UUID | None = None
-    ) -> list[L2Fact]:
+    async def list_l2(self, workspace_id: UUID, *, user_id: UUID | None = None) -> list[L2Fact]:
         items = [item for item in self.l2.values() if item.workspace_id == workspace_id]
         if user_id is not None:
             items = [item for item in items if item.user_id == user_id]
@@ -181,9 +177,7 @@ class InMemoryCatalog(MemoryCatalogRepository):
                 return item
         return None
 
-    async def list_l2_updated_since(
-        self, since: datetime, *, limit: int = 100
-    ) -> list[L2Fact]:
+    async def list_l2_updated_since(self, since: datetime, *, limit: int = 100) -> list[L2Fact]:
         """**最近更新过的 L2** ✓（与 SQL 实现同口径 ✓）。"""
         rows = [
             item
@@ -215,10 +209,7 @@ class InMemoryCatalog(MemoryCatalogRepository):
             and item.status != "retired"
             and (user_id is None or item.user_id == user_id)
             and (session_id is None or item.source_session == str(session_id))
-            and any(
-                token in item.key.lower() or token in item.value.lower()
-                for token in tokens
-            )
+            and any(token in item.key.lower() or token in item.value.lower() for token in tokens)
         ]
         return rows[:limit]
 
@@ -236,8 +227,7 @@ class InMemoryCatalog(MemoryCatalogRepository):
             if item.workspace_id == workspace_id
             and item.status == "published"
             and any(
-                token in item.title.lower() or token in item.summary.lower()
-                for token in tokens
+                token in item.title.lower() or token in item.summary.lower() for token in tokens
             )
         ]
         return rows[:limit]
@@ -252,9 +242,7 @@ class InMemoryCatalog(MemoryCatalogRepository):
         """**有策略的工作区** ✓（与 SQL 实现同口径 ✓）。"""
         return list({policy.workspace_id for policy in self.policies.values()})
 
-    async def usage_by_day(
-        self, workspace_id: UUID, *, since: datetime
-    ) -> list[tuple[date, int]]:
+    async def usage_by_day(self, workspace_id: UUID, *, since: datetime) -> list[tuple[date, int]]:
         """**每天被用过的条数** ✓（与 SQL 实现同口径 ✓）。"""
         buckets: dict[date, int] = {}
         for item in self.l2.values():
@@ -267,23 +255,15 @@ class InMemoryCatalog(MemoryCatalogRepository):
         return sorted(buckets.items())
 
     async def list_promotions(self, workspace_id: UUID) -> list[PromotionEvent]:
-        return [
-            item
-            for item in self.promotions.values()
-            if item.workspace_id == workspace_id
-        ]
+        return [item for item in self.promotions.values() if item.workspace_id == workspace_id]
 
     async def add_policy(self, item: RetentionPolicy) -> None:
         self.policies[item.id] = item
 
     async def list_policies(self, workspace_id: UUID) -> list[RetentionPolicy]:
-        return [
-            item for item in self.policies.values() if item.workspace_id == workspace_id
-        ]
+        return [item for item in self.policies.values() if item.workspace_id == workspace_id]
 
-    async def get_policy_by_label(
-        self, workspace_id: UUID, label: str
-    ) -> RetentionPolicy | None:
+    async def get_policy_by_label(self, workspace_id: UUID, label: str) -> RetentionPolicy | None:
         for item in self.policies.values():
             if item.workspace_id == workspace_id and item.label == label:
                 return item
@@ -317,9 +297,7 @@ def _svc() -> tuple[MemoryRuntimeService, MemoryAdminService, InMemoryCatalog]:
     """
     catalog = InMemoryCatalog()
     return (
-        MemoryRuntimeService(
-            catalog, embedding=HashEmbedding(), vectors=InMemoryVectors()
-        ),
+        MemoryRuntimeService(catalog, embedding=HashEmbedding(), vectors=InMemoryVectors()),
         MemoryAdminService(
             catalog,
             embedding=HashEmbedding(),
@@ -522,14 +500,10 @@ async def test_update_l2_confirms_and_validates_status() -> None:
     )
     facts = await admin.list_l2(workspace_id=WORKSPACE)
     fact_id = UUID(facts[0]["id"])
-    updated = await admin.update_l2(
-        fact_id, workspace_id=WORKSPACE, patch={"status": "confirmed"}
-    )
+    updated = await admin.update_l2(fact_id, workspace_id=WORKSPACE, patch={"status": "confirmed"})
     assert updated["status"] == "confirmed"
     with pytest.raises(ValidationError):
-        await admin.update_l2(
-            fact_id, workspace_id=WORKSPACE, patch={"status": "nonsense"}
-        )
+        await admin.update_l2(fact_id, workspace_id=WORKSPACE, patch={"status": "nonsense"})
 
 
 @pytest.mark.asyncio
@@ -625,14 +599,10 @@ async def test_update_l3_publishes_and_retires() -> None:
         item_id, workspace_id=WORKSPACE, patch={"status": "published"}
     )
     assert published["status"] == "published"
-    retired = await admin.update_l3(
-        item_id, workspace_id=WORKSPACE, patch={"status": "retired"}
-    )
+    retired = await admin.update_l3(item_id, workspace_id=WORKSPACE, patch={"status": "retired"})
     assert retired["status"] == "retired"
     with pytest.raises(ValidationError):
-        await admin.update_l3(
-            item_id, workspace_id=WORKSPACE, patch={"status": "unknown"}
-        )
+        await admin.update_l3(item_id, workspace_id=WORKSPACE, patch={"status": "unknown"})
     with pytest.raises(MemoryNotFound):
         await admin.update_l3(
             item_id,

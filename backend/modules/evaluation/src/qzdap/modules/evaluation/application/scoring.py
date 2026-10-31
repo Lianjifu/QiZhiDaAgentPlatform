@@ -14,9 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from qzdap_schema.ids import EvalCaseId, EvalRunId
-
 from qzdap.modules.evaluation.domain.entities import EvalCase, EvalScoreRecord
+from qzdap_schema.ids import EvalCaseId, EvalRunId
 
 
 @dataclass(slots=True, frozen=True)
@@ -30,9 +29,7 @@ class CaseScore:
     passed: bool
     error: str | None
 
-    def to_record(
-        self, *, run_id: EvalRunId, case: EvalCase, output: str
-    ) -> EvalScoreRecord:
+    def to_record(self, *, run_id: EvalRunId, case: EvalCase, output: str) -> EvalScoreRecord:
         return EvalScoreRecord(
             run_id=run_id,
             case_id=case.id,

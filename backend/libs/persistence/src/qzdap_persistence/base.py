@@ -56,9 +56,7 @@ class TenantScopedMixin(TenantScopedLoader):
 
     @declared_attr
     def created_at(self) -> Mapped[object]:
-        return mapped_column(
-            DateTime(timezone=True), nullable=False, server_default=func.now()
-        )
+        return mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     @declared_attr
     def updated_at(self) -> Mapped[object]:

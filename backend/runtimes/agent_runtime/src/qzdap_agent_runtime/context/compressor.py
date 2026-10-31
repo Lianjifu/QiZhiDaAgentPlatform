@@ -180,9 +180,7 @@ class ContextCompressor:
                 )
 
         # ── 二级：确定性窗口 ✓（§4.2 ✓）───────────────────────────────
-        window_summary, window_removed = self._deterministic_summary(
-            cleaned, existing_summary
-        )
+        window_summary, window_removed = self._deterministic_summary(cleaned, existing_summary)
         window_kept, window_ids = self._fold(cleaned, window_summary)
         tokens_after = estimate_message_tokens(window_kept)
         if tokens_after <= target:
@@ -212,7 +210,7 @@ class ContextCompressor:
         prompt = self._build_summary_prompt(messages, existing_summary)
         try:
             summary = await self._summary.summarize(prompt=prompt)
-        except Exception:  # noqa: BLE001
+        except Exception:
             # ⚠️ 摘要失败 → 二级 ✓（不是继续喂超限上下文 ✗✗）。
             _log.warning("summary model failed — falling back to deterministic window")
             return existing_summary, True
@@ -224,9 +222,7 @@ class ContextCompressor:
         return merged[:SUMMARY_MAX_CHARS], False
 
     @staticmethod
-    def _build_summary_prompt(
-        messages: list[dict[str, Any]], existing_summary: str
-    ) -> str:
+    def _build_summary_prompt(messages: list[dict[str, Any]], existing_summary: str) -> str:
         """摘要输入 —— **按 role 分组** ✓（缺陷 4 ✓），只取**可折叠区** ✓。"""
         groups: dict[str, list[str]] = {"user": [], "assistant": [], "tool": []}
         foldable = ContextCompressor._foldable_region(messages)
@@ -291,9 +287,7 @@ class ContextCompressor:
         digest_parts: list[str] = []
         for message in foldable:
             role = str(message.get("role") or "")
-            text = str(message.get("content") or "").replace("\n", " ")[
-                :DETERMINISTIC_ITEM_CHARS
-            ]
+            text = str(message.get("content") or "").replace("\n", " ")[:DETERMINISTIC_ITEM_CHARS]
             if text:
                 digest_parts.append(f"{role}: {text}")
         if not digest_parts:
@@ -319,9 +313,7 @@ class ContextCompressor:
             role = item.get("role")
             content = str(item.get("content") or "")
             if role == "tool" and (
-                content.startswith("ERROR")
-                or "SKILL_DENIED" in content
-                or len(content) > 4000
+                content.startswith("ERROR") or "SKILL_DENIED" in content or len(content) > 4000
             ):
                 item = {
                     **item,

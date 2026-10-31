@@ -21,6 +21,7 @@ from typing import Final
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+
 from qzdap_kernel.errors import AppError
 
 _NONCE_LEN: Final = 12

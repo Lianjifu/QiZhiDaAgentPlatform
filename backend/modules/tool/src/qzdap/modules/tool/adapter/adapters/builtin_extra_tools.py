@@ -62,7 +62,7 @@ import json
 import logging
 import re as _re
 import subprocess as _subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -76,6 +76,7 @@ _log = logging.getLogger(__name__)
 
 # ─── shared helpers (workspace resolution) ─────────────────────────────
 
+
 async def _ws_dir(workspace_id: UUID | None) -> Path | str:
     """Resolve workspace_dir; returns error string on failure."""
     if workspace_id is None:
@@ -83,9 +84,10 @@ async def _ws_dir(workspace_id: UUID | None) -> Path | str:
     # Import lazily to avoid a circular dep at module load.
     from qzdap.modules.tool.adapter.adapters.custom_invoker import _get_settings
     from qzdap.modules.tool.adapter.adapters.workspace_paths import (
-        resolve_workspace_dir,
         ensure_workspace_dir,
+        resolve_workspace_dir,
     )
+
     settings = _get_settings()
     ws = resolve_workspace_dir(str(workspace_id), workspace_root=settings.workspace_root)
     try:
@@ -101,6 +103,7 @@ def _safe(ws_dir: Path, user_path: str, op: str, *, allow_write: bool = False) -
     from qzdap.modules.tool.adapter.adapters.workspace_paths import (
         is_protected_prefix,
     )
+
     if not isinstance(user_path, str) or not user_path:
         return f"{op}: path must be a non-empty string"
     if user_path.startswith("/") or user_path.startswith("~"):
@@ -124,6 +127,7 @@ def _safe(ws_dir: Path, user_path: str, op: str, *, allow_write: bool = False) -
 # ═════════════════════════════════════════════════════════════════════════
 #  EDIT / DIFF
 # ═════════════════════════════════════════════════════════════════════════
+
 
 async def built_in_invoke_apply_patch(
     arguments: dict[str, Any],
@@ -150,7 +154,12 @@ async def built_in_invoke_apply_patch(
         path = (p.get("path") or "").strip()
         old_text = p.get("old_text")
         new_text = p.get("new_text")
-        if not path or not isinstance(old_text, str) or not old_text or not isinstance(new_text, str):
+        if (
+            not path
+            or not isinstance(old_text, str)
+            or not old_text
+            or not isinstance(new_text, str)
+        ):
             failed.append({"index": i, "path": path, "error": "path/old_text/new_text required"})
             continue
         resolved = _safe(ws, path, "apply_patch", allow_write=True)
@@ -167,7 +176,13 @@ async def built_in_invoke_apply_patch(
             failed.append({"index": i, "path": path, "error": "old_text not found"})
             continue
         if occurrences > 1:
-            failed.append({"index": i, "path": path, "error": f"old_text matched {occurrences} times; need exactly 1"})
+            failed.append(
+                {
+                    "index": i,
+                    "path": path,
+                    "error": f"old_text matched {occurrences} times; need exactly 1",
+                }
+            )
             continue
         try:
             resolved.write_text(original.replace(old_text, new_text, 1), encoding="utf-8")
@@ -176,8 +191,12 @@ async def built_in_invoke_apply_patch(
             continue
         applied.append({"index": i, "path": path, "replacements": 1})
 
-    return {"applied": len(applied), "failed": failed, "total": len(patches),
-            "files_changed": [a["path"] for a in applied]}
+    return {
+        "applied": len(applied),
+        "failed": failed,
+        "total": len(patches),
+        "files_changed": [a["path"] for a in applied],
+    }
 
 
 async def built_in_invoke_diff(
@@ -201,12 +220,16 @@ async def built_in_invoke_diff(
     # text vs text mode
     if isinstance(a_text, str) and isinstance(b_text, str):
         a_lines, b_lines = a_text.splitlines(), b_text.splitlines()
-        diff = "\n".join(difflib.unified_diff(
-            a_lines, b_lines,
-            fromfile=arguments.get("a_label") or "a",
-            tofile=arguments.get("b_label") or "b",
-            n=context_lines, lineterm="",
-        ))
+        diff = "\n".join(
+            difflib.unified_diff(
+                a_lines,
+                b_lines,
+                fromfile=arguments.get("a_label") or "a",
+                tofile=arguments.get("b_label") or "b",
+                n=context_lines,
+                lineterm="",
+            )
+        )
         return {"diff": diff, "lines": len(diff.splitlines()), "identical": diff == ""}
 
     # file vs file mode — need a workspace
@@ -230,15 +253,23 @@ async def built_in_invoke_diff(
         b = b_resolved.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError) as exc:
         return {"error": f"read failed: {exc}"}
-    diff = "\n".join(difflib.unified_diff(
-        a, b, fromfile=a_path, tofile=b_path, n=context_lines, lineterm="",
-    ))
+    diff = "\n".join(
+        difflib.unified_diff(
+            a,
+            b,
+            fromfile=a_path,
+            tofile=b_path,
+            n=context_lines,
+            lineterm="",
+        )
+    )
     return {"diff": diff, "lines": len(diff.splitlines()), "identical": diff == ""}
 
 
 # ═════════════════════════════════════════════════════════════════════════
 #  VIEW
 # ═════════════════════════════════════════════════════════════════════════
+
 
 async def built_in_invoke_image_view(
     arguments: dict[str, Any],
@@ -373,6 +404,7 @@ async def built_in_invoke_pdf_read(
 # ═════════════════════════════════════════════════════════════════════════
 #  QUERY
 # ═════════════════════════════════════════════════════════════════════════
+
 
 async def built_in_invoke_json_query(
     arguments: dict[str, Any],
@@ -602,7 +634,7 @@ async def built_in_invoke_csv_query(
     try:
         with resolved.open("r", encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
-            all_rows = [r for r in reader]
+            all_rows = list(reader)
     except (OSError, UnicodeDecodeError, csv.Error) as exc:
         return {"error": f"csv read failed: {exc}"}
 
@@ -620,8 +652,13 @@ async def built_in_invoke_csv_query(
             truncated = len(all_rows) > limit
             break
 
-    return {"path": path, "rows": matched, "count": len(matched), "total": total,
-            "truncated": truncated}
+    return {
+        "path": path,
+        "rows": matched,
+        "count": len(matched),
+        "total": total,
+        "truncated": truncated,
+    }
 
 
 def _csv_eval_where(expr: str, row: dict[str, str]) -> bool:
@@ -634,7 +671,7 @@ def _csv_eval_where(expr: str, row: dict[str, str]) -> bool:
         return False
     # Build safe namespace
     safe_globals = {"__builtins__": {}}
-    safe_locals = {k: v for k, v in row.items()}
+    safe_locals = dict(row.items())
     # Whitelist functions
     for fn in ("str", "int", "float", "len", "min", "max", "bool"):
         safe_globals[fn] = __builtins__[fn] if hasattr(__builtins__, fn) else None  # type: ignore[index]
@@ -698,8 +735,8 @@ async def _git_run(
     if isinstance(ws, str):
         return {"error": ws}
     try:
-        proc = _subprocess.run(
-            ["git", *args],
+        proc = _subprocess.run(  # noqa: ASYNC221, S603 —— git 工具本来就起子进程 ✓（受控 ✓）
+            ["git", *args],  # noqa: S607 —— git 在 PATH 里 ✓
             cwd=str(ws),
             capture_output=True,
             text=True,
@@ -755,9 +792,11 @@ async def built_in_invoke_code_search(
 
     # Try ast-grep first
     try:
-        proc = _subprocess.run(
-            ["ast-grep", "run", "--pattern", pattern, "--lang", lang, str(resolved_cwd)],
-            capture_output=True, text=True, timeout=15,
+        proc = _subprocess.run(  # noqa: ASYNC221, S603 —— ast-grep 工具 ✓（受控 ✓）
+            ["ast-grep", "run", "--pattern", pattern, "--lang", lang, str(resolved_cwd)],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         if proc.returncode == 0 and proc.stdout.strip():
             lines = proc.stdout.splitlines()[:max_results]
@@ -766,9 +805,19 @@ async def built_in_invoke_code_search(
                 # ast-grep output: "file:line:col\tmatch"
                 parts = ln.split(":", 2)
                 if len(parts) >= 2:
-                    matches.append({"path": parts[0], "line": parts[1], "snippet": parts[2] if len(parts) > 2 else ""})
-            return {"engine": "ast-grep", "matches": matches, "count": len(matches),
-                    "truncated": len(proc.stdout.splitlines()) > max_results}
+                    matches.append(
+                        {
+                            "path": parts[0],
+                            "line": parts[1],
+                            "snippet": parts[2] if len(parts) > 2 else "",
+                        }
+                    )
+            return {
+                "engine": "ast-grep",
+                "matches": matches,
+                "count": len(matches),
+                "truncated": len(proc.stdout.splitlines()) > max_results,
+            }
     except (FileNotFoundError, _subprocess.TimeoutExpired):
         pass
 
@@ -793,7 +842,12 @@ async def built_in_invoke_code_search(
                 break
     except OSError as exc:
         return {"error": f"search failed: {exc}"}
-    return {"engine": "grep-fallback", "matches": matches, "count": len(matches), "truncated": truncated}
+    return {
+        "engine": "grep-fallback",
+        "matches": matches,
+        "count": len(matches),
+        "truncated": truncated,
+    }
 
 
 async def built_in_invoke_convert_format(
@@ -812,7 +866,9 @@ async def built_in_invoke_convert_format(
     if fmt_from == fmt_to:
         return {"error": "from and to are the same format"}
     input_value = arguments.get("input")
-    input_path = (arguments.get("path") or "").strip() if isinstance(arguments.get("path"), str) else ""
+    input_path = (
+        (arguments.get("path") or "").strip() if isinstance(arguments.get("path"), str) else ""
+    )
     if input_path:
         ws = await _ws_dir(workspace_id)
         if isinstance(ws, str):
@@ -845,7 +901,9 @@ async def built_in_invoke_convert_format(
     try:
         if fmt_to == "csv":
             if not isinstance(parsed, list) or not parsed or not isinstance(parsed[0], dict):
-                return {"error": "csv output requires a list of dicts (json input must be array of objects)"}
+                return {
+                    "error": "csv output requires a list of dicts (json input must be array of objects)"
+                }
             buf = io.StringIO()
             writer = csv.DictWriter(buf, fieldnames=list(parsed[0].keys()))
             writer.writeheader()
@@ -864,7 +922,9 @@ async def built_in_invoke_convert_format(
 
 def _yaml_minimal_load(text: str) -> Any:
     """Tiny YAML reader: supports mappings + sequences + scalars. NOT a full YAML impl."""
-    lines = [ln.rstrip() for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    lines = [
+        ln.rstrip() for ln in text.splitlines() if ln.strip() and not ln.lstrip().startswith("#")
+    ]
     if not lines:
         return None
 
@@ -909,7 +969,7 @@ def _yaml_minimal_load(text: str) -> Any:
                     items.append(None)
                     i += 1
                     continue
-                if val.startswith(("- ", "* ")) or ":" in val and "\"" not in val:
+                if val.startswith(("- ", "* ")) or (":" in val and '"' not in val):
                     # nested mapping or sequence under this key
                     if val.endswith(":"):
                         # key on its own line, value on next line(s)
@@ -987,7 +1047,13 @@ def _yaml_scalar(v: Any) -> str:
     if isinstance(v, (int, float)):
         return str(v)
     s = str(v)
-    if any(ch in s for ch in [":", "#", "\n", '"', "'"]) or s in {"true", "false", "null", "yes", "no"}:
+    if any(ch in s for ch in [":", "#", "\n", '"', "'"]) or s in {
+        "true",
+        "false",
+        "null",
+        "yes",
+        "no",
+    }:
         return json.dumps(s, ensure_ascii=False)
     return s
 
@@ -995,6 +1061,7 @@ def _yaml_scalar(v: Any) -> str:
 # ═════════════════════════════════════════════════════════════════════════
 #  EXTENDED
 # ═════════════════════════════════════════════════════════════════════════
+
 
 async def built_in_invoke_fetch_url_with_auth(
     arguments: dict[str, Any],
@@ -1030,24 +1097,29 @@ async def built_in_invoke_fetch_url_with_auth(
         **headers,
     }
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(15.0),
-            follow_redirects=True,
-            headers=req_headers,
-            cookies=httpx.Cookies(cookies),
-        ) as client:
-            async with client.stream("GET", url) as resp:
-                resp.raise_for_status()
-                content_type = resp.headers.get("content-type", "").lower()
-                if not any(ct in content_type for ct in ("text/", "application/json", "application/xml", "application/xhtml")):
-                    return {"error": f"disallowed content-type: {content_type!r}"}
-                buf = bytearray()
-                async for chunk in resp.aiter_bytes(chunk_size=32_768):
-                    buf.extend(chunk)
-                    if len(buf) > 1_048_576:
-                        return {"error": "response exceeded 1 MiB"}
-                charset = resp.encoding or "utf-8"
-                body = buf.decode(charset, errors="replace")
+        async with (
+            httpx.AsyncClient(
+                timeout=httpx.Timeout(15.0),
+                follow_redirects=True,
+                headers=req_headers,
+                cookies=httpx.Cookies(cookies),
+            ) as client,
+            client.stream("GET", url) as resp,
+        ):
+            resp.raise_for_status()
+            content_type = resp.headers.get("content-type", "").lower()
+            if not any(
+                ct in content_type
+                for ct in ("text/", "application/json", "application/xml", "application/xhtml")
+            ):
+                return {"error": f"disallowed content-type: {content_type!r}"}
+            buf = bytearray()
+            async for chunk in resp.aiter_bytes(chunk_size=32_768):
+                buf.extend(chunk)
+                if len(buf) > 1_048_576:
+                    return {"error": "response exceeded 1 MiB"}
+            charset = resp.encoding or "utf-8"
+            body = buf.decode(charset, errors="replace")
     except httpx.HTTPStatusError as exc:
         return {"error": f"HTTP {exc.response.status_code}"}
     except httpx.TimeoutException:
@@ -1055,8 +1127,13 @@ async def built_in_invoke_fetch_url_with_auth(
     except (httpx.RequestError, ValueError) as exc:
         return {"error": str(exc)}
 
-    return {"url": url, "status": resp.status_code, "content_type": content_type,
-            "headers_sent": req_headers, "body": body[:max_chars]}
+    return {
+        "url": url,
+        "status": resp.status_code,
+        "content_type": content_type,
+        "headers_sent": req_headers,
+        "body": body[:max_chars],
+    }
 
 
 async def built_in_invoke_calculator(
@@ -1089,13 +1166,27 @@ def _safe_eval_math(expr: str) -> Any:
 
 
 _ALLOWED_FUNCS = {
-    "abs": abs, "round": round, "min": min, "max": max, "int": int, "float": float,
-    "sqrt": __import__("math").sqrt, "log": __import__("math").log, "log2": __import__("math").log2,
-    "log10": __import__("math").log10, "sin": __import__("math").sin, "cos": __import__("math").cos,
-    "tan": __import__("math").tan, "asin": __import__("math").asin, "acos": __import__("math").acos,
-    "atan": __import__("math").atan, "atan2": __import__("math").atan2,
-    "degrees": __import__("math").degrees, "radians": __import__("math").radians,
-    "ceil": __import__("math").ceil, "floor": __import__("math").floor,
+    "abs": abs,
+    "round": round,
+    "min": min,
+    "max": max,
+    "int": int,
+    "float": float,
+    "sqrt": __import__("math").sqrt,
+    "log": __import__("math").log,
+    "log2": __import__("math").log2,
+    "log10": __import__("math").log10,
+    "sin": __import__("math").sin,
+    "cos": __import__("math").cos,
+    "tan": __import__("math").tan,
+    "asin": __import__("math").asin,
+    "acos": __import__("math").acos,
+    "atan": __import__("math").atan,
+    "atan2": __import__("math").atan2,
+    "degrees": __import__("math").degrees,
+    "radians": __import__("math").radians,
+    "ceil": __import__("math").ceil,
+    "floor": __import__("math").floor,
     "pow": pow,
 }
 
@@ -1108,33 +1199,42 @@ def _math_eval(node: ast.AST) -> Any:
             return node.value
         if isinstance(node.value, str):
             # Allow numeric strings? No — refuse.
-            raise ValueError("string constants not allowed")
+            raise TypeError("string constants not allowed")
         raise ValueError("unsupported constant")
     if isinstance(node, ast.BinOp):
         left = _math_eval(node.left)
         right = _math_eval(node.right)
-        if isinstance(node.op, ast.Add):    return left + right
-        if isinstance(node.op, ast.Sub):    return left - right
-        if isinstance(node.op, ast.Mult):   return left * right
-        if isinstance(node.op, ast.Div):    return left / right
-        if isinstance(node.op, ast.FloorDiv): return left // right
-        if isinstance(node.op, ast.Mod):    return left % right
-        if isinstance(node.op, ast.Pow):    return left ** right
+        if isinstance(node.op, ast.Add):
+            return left + right
+        if isinstance(node.op, ast.Sub):
+            return left - right
+        if isinstance(node.op, ast.Mult):
+            return left * right
+        if isinstance(node.op, ast.Div):
+            return left / right
+        if isinstance(node.op, ast.FloorDiv):
+            return left // right
+        if isinstance(node.op, ast.Mod):
+            return left % right
+        if isinstance(node.op, ast.Pow):
+            return left**right
     if isinstance(node, ast.UnaryOp):
         operand = _math_eval(node.operand)
-        if isinstance(node.op, ast.UAdd):  return +operand
-        if isinstance(node.op, ast.USub):  return -operand
+        if isinstance(node.op, ast.UAdd):
+            return +operand
+        if isinstance(node.op, ast.USub):
+            return -operand
     if isinstance(node, ast.Call):
         if not isinstance(node.func, ast.Name):
-            raise ValueError("only direct function calls allowed")
+            raise TypeError("only direct function calls allowed")
         if node.func.id not in _ALLOWED_FUNCS:
             raise ValueError(f"function not allowed: {node.func.id}")
         args = [_math_eval(a) for a in node.args]
         if node.keywords:
-            raise ValueError("keyword args not allowed")
+            raise TypeError("keyword args not allowed")
         return _ALLOWED_FUNCS[node.func.id](*args)
     if isinstance(node, ast.Name):
-        raise ValueError(f"name not allowed: {node.id}")
+        raise TypeError(f"name not allowed: {node.id}")
     raise ValueError(f"unsupported node: {type(node).__name__}")
 
 
@@ -1198,7 +1298,7 @@ async def built_in_invoke_notify_user(
         "title": title,
         "body": body,
         "level": level,
-        "delivered_at": datetime.now(timezone.utc).isoformat(),
+        "delivered_at": datetime.now(UTC).isoformat(),
         "_pending_frontend_action": "toast",
         "_stub_hint": _STUB_HINT,
     }
@@ -1253,12 +1353,14 @@ async def built_in_invoke_todo_write(
         status = (t.get("status") or "pending").lower()
         if status not in valid_status:
             status = "pending"
-        cleaned.append({
-            "id": (t.get("id") or f"todo-{len(cleaned)}").strip(),
-            "content": content,
-            "status": status,
-            "active_form": (t.get("active_form") or content).strip(),
-        })
+        cleaned.append(
+            {
+                "id": (t.get("id") or f"todo-{len(cleaned)}").strip(),
+                "content": content,
+                "status": status,
+                "active_form": (t.get("active_form") or content).strip(),
+            }
+        )
     if not cleaned:
         return {"error": "todos must contain at least one valid entry"}
     return {
@@ -1361,7 +1463,6 @@ def bind_delegate_subagent_usecase(usecase: Any) -> None:
 
 def _get_delegate_subagent_usecase() -> Any:
     return _delegate_usecase_singleton
-
 
 
 __all__ = [

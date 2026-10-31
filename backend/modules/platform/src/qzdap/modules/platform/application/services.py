@@ -37,9 +37,7 @@ class PlatformService:
     # missing (keeps the platform HTTP surface alive even in tests
     # that don't boot observability).
     cost_repo: CostRecordRepository | None = None
-    _use_cases: dict[str, Callable[..., Awaitable[Any]]] = field(
-        default_factory=dict, repr=False
-    )
+    _use_cases: dict[str, Callable[..., Awaitable[Any]]] = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_parts(
@@ -87,13 +85,9 @@ class PlatformService:
         limit: int = 100,
         offset: int = 0,
     ) -> list[Plan]:
-        return await self._use_cases["list_plans"](
-            status=status, limit=limit, offset=offset
-        )
+        return await self._use_cases["list_plans"](status=status, limit=limit, offset=offset)
 
-    async def get_plan(
-        self, *, plan_id: str | None = None, code: str | None = None
-    ) -> Plan:
+    async def get_plan(self, *, plan_id: str | None = None, code: str | None = None) -> Plan:
         return await self._use_cases["get_plan"](plan_id=plan_id, code=code)
 
     async def get_my_subscription(self, *, tenant_id: object) -> Subscription | None:

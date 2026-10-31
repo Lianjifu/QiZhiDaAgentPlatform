@@ -18,7 +18,6 @@ from _tool_unit_in_memory import (  # type: ignore[import-not-found]
     InMemoryToolCallRepository,
     InMemoryToolRepository,
 )
-from qzdap_schema.ids import TenantId, ToolId, WorkspaceId
 
 from qzdap.modules.tool.application.idempotency import request_hash
 from qzdap.modules.tool.application.ports import ToolExecutionClaim
@@ -35,6 +34,7 @@ from qzdap.modules.tool.domain.errors import (
     ToolIdempotencyConflict,
     ToolRateLimited,
 )
+from qzdap_schema.ids import TenantId, ToolId, WorkspaceId
 
 _TENANT = TenantId(uuid4())
 _WORKSPACE = WorkspaceId(uuid4())
@@ -141,9 +141,7 @@ class TestIdempotency:
             request_hash=request_hash({"text": "hi"}),
             result_ref=str(old.id),
         )
-        use_case = _use_case(
-            tools=tools, calls=calls, custom=custom, executions=executions
-        )
+        use_case = _use_case(tools=tools, calls=calls, custom=custom, executions=executions)
         result = await use_case.execute(
             tenant_id=_TENANT,
             workspace_id=_WORKSPACE,
@@ -202,9 +200,7 @@ class TestIdempotency:
             )
         )
         custom = FakeCustomInvoker({"echo": _echo("hi")})
-        use_case = _use_case(
-            tools=tools, calls=calls, custom=custom, executions=executions
-        )
+        use_case = _use_case(tools=tools, calls=calls, custom=custom, executions=executions)
         with pytest.raises(ToolExecutionInProgress):
             await use_case.execute(
                 tenant_id=_TENANT,
@@ -250,9 +246,7 @@ class TestIdempotency:
         await tools.add(_tool())
         executions = _FakeExecutions()
         custom = FakeCustomInvoker({"echo": _echo("hi")})
-        use_case = _use_case(
-            tools=tools, calls=calls, custom=custom, executions=executions
-        )
+        use_case = _use_case(tools=tools, calls=calls, custom=custom, executions=executions)
         await use_case.execute(
             tenant_id=_TENANT,
             workspace_id=_WORKSPACE,
@@ -281,9 +275,7 @@ class TestRetryAndBreaker:
             return {"ok": True}
 
         custom = FakeCustomInvoker({"flaky": _flaky})
-        use_case = _use_case(
-            tools=tools, calls=calls, custom=custom, max_attempts=3
-        )
+        use_case = _use_case(tools=tools, calls=calls, custom=custom, max_attempts=3)
         result = await use_case.execute(
             tenant_id=_TENANT,
             workspace_id=_WORKSPACE,
@@ -307,9 +299,7 @@ class TestRetryAndBreaker:
             raise TimeoutError("boom")
 
         custom = FakeCustomInvoker({"write": _boom})
-        use_case = _use_case(
-            tools=tools, calls=calls, custom=custom, max_attempts=3
-        )
+        use_case = _use_case(tools=tools, calls=calls, custom=custom, max_attempts=3)
         with pytest.raises(ToolCallTimeout):
             await use_case.execute(
                 tenant_id=_TENANT,

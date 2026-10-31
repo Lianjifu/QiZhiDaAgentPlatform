@@ -26,10 +26,6 @@ from _governance_unit_in_memory import (
     InMemoryPolicyRepository,
     SequenceIds,
 )
-from qzdap_http.error_envelope import error_envelope_middleware
-from qzdap_kernel.errors import ActionDeniedError, ApprovalRequiredError
-from qzdap_schema.ids import TenantId, UserId, WorkspaceId
-from qzdap_vault.actor import ActorContext
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -47,6 +43,10 @@ from qzdap.modules.governance.application.approval_service import ApprovalServic
 from qzdap.modules.governance.application.policy_evaluator import PolicyEvaluator
 from qzdap.modules.governance.application.policy_service import PolicyService
 from qzdap.modules.governance.application.ports import PolicyEventPublisher
+from qzdap_http.error_envelope import error_envelope_middleware
+from qzdap_kernel.errors import ActionDeniedError, ApprovalRequiredError
+from qzdap_schema.ids import TenantId, UserId, WorkspaceId
+from qzdap_vault.actor import ActorContext
 
 # ── Constants ───────────────────────────────────────────────────────────
 
@@ -101,12 +101,8 @@ def _build_test_app() -> tuple[FastAPI, dict]:
     ids = SequenceIds()
 
     publisher = _NoopPublisher()
-    policy_svc = PolicyService(
-        repo=policy_repo, clock=clock, ids=ids, publisher=publisher
-    )
-    approval_svc = ApprovalService(
-        repo=approval_repo, clock=clock, ids=ids, publisher=publisher
-    )
+    policy_svc = PolicyService(repo=policy_repo, clock=clock, ids=ids, publisher=publisher)
+    approval_svc = ApprovalService(repo=approval_repo, clock=clock, ids=ids, publisher=publisher)
     evaluator = PolicyEvaluator(
         policy_repo=policy_repo,
         approval_repo=approval_repo,
@@ -284,9 +280,7 @@ async def test_guard_default_allow_when_no_rules() -> None:
     """No matching rule → allow (default policy)."""
     _app, ctx = _build_test_app()
     guard = ctx["guard"]
-    rec = await guard.check(
-        actor=_user_actor(), action="tool:execute:reverse", resource={}
-    )
+    rec = await guard.check(actor=_user_actor(), action="tool:execute:reverse", resource={})
     assert rec.effect.value == "allow"
     assert rec.rule_id is None
 
@@ -309,9 +303,7 @@ async def test_guard_deny_raises_action_denied() -> None:
     guard = ctx["guard"]
     ctx["evaluator"].invalidate(tenant_id=TenantId(TENANT_A))
     with pytest.raises(ActionDeniedError) as ei:
-        await guard.check(
-            actor=_user_actor(), action="tool:execute:reverse", resource={}
-        )
+        await guard.check(actor=_user_actor(), action="tool:execute:reverse", resource={})
     assert ei.value.code == "ACTION_DENIED"
     assert ei.value.status == 403
 

@@ -35,8 +35,7 @@ class PageResponse[ItemT]:
     def to_dict(self) -> dict:
         return {
             "items": [
-                i.model_dump(mode="json") if hasattr(i, "model_dump") else i
-                for i in self.items
+                i.model_dump(mode="json") if hasattr(i, "model_dump") else i for i in self.items
             ],
             "next_cursor": self.next_cursor,
             "total": self.total,

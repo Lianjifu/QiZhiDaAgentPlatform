@@ -9,9 +9,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_agent_runtime.session.turn_runner import CancelProbePort
-
 from qzdap.modules.agent_runtime.application.ports import SessionRepository
+from qzdap_agent_runtime.session.turn_runner import CancelProbePort
 
 
 class SqlCancelProbe(CancelProbePort):

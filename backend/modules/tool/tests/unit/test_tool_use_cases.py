@@ -229,9 +229,7 @@ class TestCRUD:
             enabled=False,
         )
         all_tools = await ListToolsUseCase(d["tools"]).execute(tenant_id=TENANT)
-        only_enabled = await ListToolsUseCase(d["tools"]).execute(
-            tenant_id=TENANT, enabled=True
-        )
+        only_enabled = await ListToolsUseCase(d["tools"]).execute(tenant_id=TENANT, enabled=True)
         assert {t.id for t in all_tools} == {a.id, b.id}
         assert {t.id for t in only_enabled} == {a.id}
 
@@ -251,9 +249,7 @@ class TestCRUD:
             rate_limit_per_minute=None,
         )
         with pytest.raises(ToolNotFound):
-            await GetToolUseCase(d["tools"]).execute(
-                tenant_id=OTHER_TENANT, tool_id=tool.id
-            )
+            await GetToolUseCase(d["tools"]).execute(tenant_id=OTHER_TENANT, tool_id=tool.id)
 
     @pytest.mark.asyncio
     async def test_update_version_mismatch_raises(self) -> None:
@@ -299,9 +295,7 @@ class TestCRUD:
             auth_config=None,
             rate_limit_per_minute=None,
         )
-        await DeleteToolUseCase(d["tools"], d["events"]).execute(
-            tenant_id=TENANT, tool_id=tool.id
-        )
+        await DeleteToolUseCase(d["tools"], d["events"]).execute(tenant_id=TENANT, tool_id=tool.id)
         with pytest.raises(ToolNotFound):
             await GetToolUseCase(d["tools"]).execute(tenant_id=TENANT, tool_id=tool.id)
 
@@ -1064,9 +1058,7 @@ class TestDeleteToolNegative:
             auth_config=None,
             rate_limit_per_minute=None,
         )
-        await DeleteToolUseCase(d["tools"], d["events"]).execute(
-            tenant_id=TENANT, tool_id=tool.id
-        )
+        await DeleteToolUseCase(d["tools"], d["events"]).execute(tenant_id=TENANT, tool_id=tool.id)
         with pytest.raises(ToolNotFound):
             await DeleteToolUseCase(d["tools"], d["events"]).execute(
                 tenant_id=TENANT, tool_id=tool.id
@@ -1147,12 +1139,8 @@ class TestGetToolNegative:
             rate_limit_per_minute=None,
         )
         await d["tools"].update(tool_off.update(enabled=False))
-        out_enabled = await ListToolsUseCase(d["tools"]).execute(
-            tenant_id=TENANT, enabled=True
-        )
-        out_disabled = await ListToolsUseCase(d["tools"]).execute(
-            tenant_id=TENANT, enabled=False
-        )
+        out_enabled = await ListToolsUseCase(d["tools"]).execute(tenant_id=TENANT, enabled=True)
+        out_disabled = await ListToolsUseCase(d["tools"]).execute(tenant_id=TENANT, enabled=False)
         assert {t.name for t in out_enabled} == {"on"}
         assert {t.name for t in out_disabled} == {"off"}
 
@@ -1210,9 +1198,7 @@ class TestInvokeToolNegative:
             description="",
             protocol=ToolProtocol.OPENAPI,
             spec={},  # no servers
-            spec_operations=[
-                SpecOperation(method="GET", path="/a", operation_id="getA")
-            ],
+            spec_operations=[SpecOperation(method="GET", path="/a", operation_id="getA")],
             auth_config=None,
             rate_limit_per_minute=None,
         )

@@ -132,7 +132,8 @@ async def test_in_memory_draft_store_appends_and_lists() -> None:
     )
     assert isinstance(rid, str) and len(rid) >= 8
     rows = await store.read_all(
-        tenant_id=TENANT, kind=EvolveKind.MEMORY_PROMOTE  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        kind=EvolveKind.MEMORY_PROMOTE,  # type: ignore[arg-type]
     )
     assert len(rows) == 1
     assert rows[0]["a"] == 1
@@ -144,16 +145,22 @@ async def test_in_memory_draft_store_appends_and_lists() -> None:
 async def test_in_memory_draft_store_isolated_per_kind() -> None:
     store = InMemoryDraftStore()
     await store.append(
-        tenant_id=TENANT, kind=EvolveKind.MEMORY_PROMOTE, record={"x": 1}  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        kind=EvolveKind.MEMORY_PROMOTE,
+        record={"x": 1},  # type: ignore[arg-type]
     )
     await store.append(
-        tenant_id=TENANT, kind=EvolveKind.SKILL_PATCH, record={"y": 2}  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        kind=EvolveKind.SKILL_PATCH,
+        record={"y": 2},  # type: ignore[arg-type]
     )
     mem = await store.read_all(
-        tenant_id=TENANT, kind=EvolveKind.MEMORY_PROMOTE  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        kind=EvolveKind.MEMORY_PROMOTE,  # type: ignore[arg-type]
     )
     skl = await store.read_all(
-        tenant_id=TENANT, kind=EvolveKind.SKILL_PATCH  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        kind=EvolveKind.SKILL_PATCH,  # type: ignore[arg-type]
     )
     assert mem[0]["x"] == 1
     assert skl[0]["y"] == 2
@@ -166,12 +173,15 @@ async def test_in_memory_draft_store_isolated_per_kind() -> None:
 async def test_jsonl_draft_store_writes_and_reads(tmp_path: Path) -> None:
     store = JsonlDraftStore(base_dir=tmp_path)
     rid = await store.append(
-        tenant_id=TENANT, kind=EvolveKind.MEMORY_PROMOTE, record={"k": "v"}  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        kind=EvolveKind.MEMORY_PROMOTE,
+        record={"k": "v"},  # type: ignore[arg-type]
     )
     path = tmp_path / str(TENANT) / "memory_promote.jsonl"
     assert path.exists()
     rows = await store.read_all(
-        tenant_id=TENANT, kind=EvolveKind.MEMORY_PROMOTE  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        kind=EvolveKind.MEMORY_PROMOTE,  # type: ignore[arg-type]
     )
     assert len(rows) == 1
     assert rows[0]["k"] == "v"
@@ -182,7 +192,8 @@ async def test_jsonl_draft_store_writes_and_reads(tmp_path: Path) -> None:
 async def test_jsonl_draft_store_list_returns_empty_for_missing(tmp_path: Path) -> None:
     store = JsonlDraftStore(base_dir=tmp_path)
     rows = await store.read_all(
-        tenant_id=TENANT, kind=EvolveKind.DREAM  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        kind=EvolveKind.DREAM,  # type: ignore[arg-type]
     )
     assert rows == []
 
@@ -197,7 +208,8 @@ async def test_jsonl_draft_store_appends_are_durable(tmp_path: Path) -> None:
             record={"i": i},
         )
     rows = await store.read_all(
-        tenant_id=TENANT, kind=EvolveKind.ROUTING_HINT  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        kind=EvolveKind.ROUTING_HINT,  # type: ignore[arg-type]
     )
     assert [r["i"] for r in rows] == [0, 1, 2]
 
@@ -211,12 +223,14 @@ async def test_memory_working_layer_guard_writes_to_store() -> None:
     guard = MemoryWorkingLayerGuard(store)
     cand = _candidate()
     outcome = await guard.apply(
-        tenant_id=TENANT, candidate=cand  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        candidate=cand,  # type: ignore[arg-type]
     )
     assert outcome.summary["mode"] == "memory_working_layer"
     assert outcome.summary["draft_path"] == "memory.working_layer"
     rows = await store.read_all(
-        tenant_id=TENANT, kind=EvolveKind.MEMORY_PROMOTE  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        kind=EvolveKind.MEMORY_PROMOTE,  # type: ignore[arg-type]
     )
     assert len(rows) == 1
     assert rows[0]["surface"] == "memory.working_layer"
@@ -230,12 +244,14 @@ async def test_skill_draft_guard_writes_to_store() -> None:
     guard = SkillDraftGuard(store)
     cand = _candidate(kind=EvolveKind.SKILL_PATCH, payload={"name": "router"})
     outcome = await guard.apply(
-        tenant_id=TENANT, candidate=cand  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        candidate=cand,  # type: ignore[arg-type]
     )
     assert outcome.summary["mode"] == "skill_draft"
     assert outcome.summary["draft_path"] == "skill.draft_packs"
     rows = await store.read_all(
-        tenant_id=TENANT, kind=EvolveKind.SKILL_PATCH  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        kind=EvolveKind.SKILL_PATCH,  # type: ignore[arg-type]
     )
     assert rows[0]["surface"] == "skill.draft_packs"
     assert rows[0]["payload"]["name"] == "router"
@@ -247,11 +263,13 @@ async def test_routing_draft_guard_writes_to_store() -> None:
     guard = RoutingDraftGuard(store)
     cand = _candidate(kind=EvolveKind.ROUTING_HINT, payload={"hint": "use-mini"})
     outcome = await guard.apply(
-        tenant_id=TENANT, candidate=cand  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        candidate=cand,  # type: ignore[arg-type]
     )
     assert outcome.summary["mode"] == "routing_draft"
     rows = await store.read_all(
-        tenant_id=TENANT, kind=EvolveKind.ROUTING_HINT  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        kind=EvolveKind.ROUTING_HINT,  # type: ignore[arg-type]
     )
     assert rows[0]["surface"] == "routing.draft_policies"
     assert rows[0]["payload"]["hint"] == "use-mini"
@@ -263,7 +281,8 @@ async def test_dream_guard_writes_to_store() -> None:
     guard = DreamGuard(store)
     cand = _candidate(kind=EvolveKind.DREAM, payload={"scenario": "edge-x"})
     outcome = await guard.apply(
-        tenant_id=TENANT, candidate=cand  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        candidate=cand,  # type: ignore[arg-type]
     )
     assert outcome.summary["mode"] == "dream_artifact"
     assert outcome.summary["draft_path"] == "self_evolution.dream_artifacts"
@@ -320,7 +339,8 @@ async def test_dispatching_guard_falls_back_for_unknown_kind() -> None:
     # bypass identity check by monkey-patching the candidate's kind attr
     object.__setattr__(cand_future, "kind", _FakeKind(value="fantasy"))
     outcome = await dispatcher.apply(
-        tenant_id=TENANT, candidate=cand_future  # type: ignore[arg-type]
+        tenant_id=TENANT,
+        candidate=cand_future,  # type: ignore[arg-type]
     )
     assert outcome.summary["mode"] == "direct"
     # store untouched
@@ -349,9 +369,7 @@ async def test_dispatching_guard_uses_injected_guards(tmp_path: Path) -> None:
             )
 
     trace = _TraceGuard()
-    dispatcher = KindDispatchingApplyGuard(
-        store=store, memory=mem, fallback=trace
-    )
+    dispatcher = KindDispatchingApplyGuard(store=store, memory=mem, fallback=trace)
     out = await dispatcher.apply(
         tenant_id=TENANT,  # type: ignore[arg-type]
         candidate=_candidate(),

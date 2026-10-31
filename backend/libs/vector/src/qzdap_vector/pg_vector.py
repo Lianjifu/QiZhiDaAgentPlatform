@@ -15,13 +15,16 @@ import re
 from typing import Any
 from uuid import UUID
 
-from qzdap_persistence.pgvector import register_pgvector
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from qzdap_persistence.pgvector import register_pgvector
 from qzdap_vector.store import SearchResult, VectorItem, VectorStore
 
 _SAFE_FILTER_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+#: ⚠️ **表名会被拼进 SQL** ✓（``text(f"...")`` ✓）—— 所以**必须校验** ✓
+#: （不是用户输入 ✓ —— 但「配置错了」也能变成注入 ✓ → 一律按标识符校验 ✓）。
+_SAFE_TABLE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _vec_bind(embedding: list[float] | tuple[float, ...]) -> str:
@@ -51,6 +54,8 @@ class PgVectorStore(VectorStore):
         dim: int = 1536,
     ) -> None:
         register_pgvector()
+        if not _SAFE_TABLE.match(table):
+            raise ValueError(f"unsafe table name: {table!r}")
         self._engine = engine
         self._table = table
         self._dim = dim
@@ -87,7 +92,7 @@ class PgVectorStore(VectorStore):
                         ON CONFLICT (id) DO UPDATE SET
                             embedding = EXCLUDED.embedding,
                             payload = EXCLUDED.payload
-                        """
+                        """  # noqa: S608 —— 表名已在 __init__ 校验过标识符 ✓
                     ),
                     {
                         "id": str(item.id),
@@ -119,9 +124,7 @@ class PgVectorStore(VectorStore):
                         r"[A-Za-z_][A-Za-z0-9_]*"
                     )
                 key = f"f_{k}"
-                clauses.append(
-                    f"(payload ->> CAST(:{key} AS text)) = CAST(:{key}_v AS text)"
-                )
+                clauses.append(f"(payload ->> CAST(:{key} AS text)) = CAST(:{key}_v AS text)")
                 params[key] = k
                 params[f"{key}_v"] = str(v)
 
@@ -132,13 +135,11 @@ class PgVectorStore(VectorStore):
             WHERE {" AND ".join(clauses)}
             ORDER BY embedding <=> :vec
             LIMIT :k
-        """
+        """  # noqa: S608 —— 表名已校验 ✓ / 条件走绑定参数 ✓
         async with self._engine.connect() as conn:
             rows = await conn.execute(text(sql), params)
             return [
-                SearchResult(
-                    id=row.id, score=float(row.score), payload=dict(row.payload)
-                )
+                SearchResult(id=row.id, score=float(row.score), payload=dict(row.payload))
                 for row in rows
             ]
 
@@ -147,6 +148,6 @@ class PgVectorStore(VectorStore):
             return
         async with self._engine.begin() as conn:
             await conn.execute(
-                text(f"DELETE FROM {self._table} WHERE id = ANY(:ids)"),
+                text(f"DELETE FROM {self._table} WHERE id = ANY(:ids)"),  # noqa: S608
                 {"ids": [str(i) for i in ids]},
             )

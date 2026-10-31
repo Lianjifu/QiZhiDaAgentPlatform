@@ -40,9 +40,7 @@ class PostgresSessionSequence:
             SessionORM.next_message_seq, tenant_id=tenant_id, session_id=session_id
         )
 
-    async def _bump(
-        self, column: Any, *, tenant_id: UUID, session_id: UUID
-    ) -> int:
+    async def _bump(self, column: Any, *, tenant_id: UUID, session_id: UUID) -> int:
         result = await self._s.execute(
             update(SessionORM)
             .where(

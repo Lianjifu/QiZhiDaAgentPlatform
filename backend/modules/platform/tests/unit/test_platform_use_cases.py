@@ -49,9 +49,7 @@ class TestListPlans:
         execute = list_plans.build(service)
         assert await execute() == []
 
-    async def test_with_seeded_plans(
-        self, seeded_plan_repo: InMemoryPlanRepository
-    ) -> None:
+    async def test_with_seeded_plans(self, seeded_plan_repo: InMemoryPlanRepository) -> None:
         svc = PlatformService.from_parts(
             plan_repo=seeded_plan_repo,
             subscription_repo=InMemorySubscriptionRepository(),
@@ -61,9 +59,7 @@ class TestListPlans:
         rows = await execute()
         assert [p.code for p in rows] == ["free", "pro", "enterprise"]
 
-    async def test_filter_by_status(
-        self, seeded_plan_repo: InMemoryPlanRepository
-    ) -> None:
+    async def test_filter_by_status(self, seeded_plan_repo: InMemoryPlanRepository) -> None:
         from dataclasses import replace
 
         plan = await seeded_plan_repo.get_by_code(code="pro")

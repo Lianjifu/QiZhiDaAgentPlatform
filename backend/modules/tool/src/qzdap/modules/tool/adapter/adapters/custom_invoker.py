@@ -12,21 +12,25 @@ payload so user-supplied `arguments` stay free of internal routing keys.
 
 from __future__ import annotations
 
+import asyncio as _asyncio
+import fnmatch as _fnmatch
 import logging
 import re
+import re as _re_fs
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol
 from uuid import UUID
 
 import httpx
 
+from qzdap.modules.tool.adapter.adapters.tool_audit import ToolAuditRecorder
 from qzdap.modules.tool.adapter.adapters.workspace_paths import (
     ensure_workspace_dir,
     is_protected_prefix,
     resolve_workspace_dir,
 )
-from qzdap.modules.tool.adapter.adapters.tool_audit import ToolAuditRecorder
 from qzdap.modules.tool.domain.errors import ToolNotFound
 
 _log = logging.getLogger(__name__)
@@ -164,28 +168,33 @@ async def _safe_get(
     non-2xx, oversized body, or disallowed content type.
     """
     timeout_obj = httpx.Timeout(timeout)
-    async with httpx.AsyncClient(
-        timeout=timeout_obj,
-        follow_redirects=True,
-        max_redirects=_MAX_REDIRECTS,
-        headers={"User-Agent": user_agent, "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"},
-    ) as client:
+    async with (
+        httpx.AsyncClient(
+            timeout=timeout_obj,
+            follow_redirects=True,
+            max_redirects=_MAX_REDIRECTS,
+            headers={
+                "User-Agent": user_agent,
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            },
+        ) as client,
         # Stream so we can stop early on oversize bodies.
-        async with client.stream("GET", url) as response:
-            response.raise_for_status()
-            content_type = response.headers.get("content-type", "").lower()
-            if not any(ct in content_type for ct in _ALLOWED_CONTENT_TYPES):
-                raise ValueError(
-                    f"disallowed content-type: {content_type!r} "
-                    f"(allowed: {', '.join(_ALLOWED_CONTENT_TYPES)})"
-                )
-            buf = bytearray()
-            async for chunk in response.aiter_bytes(chunk_size=32_768):
-                buf.extend(chunk)
-                if len(buf) > max_bytes:
-                    raise ValueError(f"response exceeded {max_bytes} bytes")
-            charset = response.encoding or "utf-8"
-            return response.status_code, content_type, buf.decode(charset, errors="replace")
+        client.stream("GET", url) as response,
+    ):
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "").lower()
+        if not any(ct in content_type for ct in _ALLOWED_CONTENT_TYPES):
+            raise ValueError(
+                f"disallowed content-type: {content_type!r} "
+                f"(allowed: {', '.join(_ALLOWED_CONTENT_TYPES)})"
+            )
+        buf = bytearray()
+        async for chunk in response.aiter_bytes(chunk_size=32_768):
+            buf.extend(chunk)
+            if len(buf) > max_bytes:
+                raise ValueError(f"response exceeded {max_bytes} bytes")
+        charset = response.encoding or "utf-8"
+        return response.status_code, content_type, buf.decode(charset, errors="replace")
 
 
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -241,7 +250,10 @@ async def built_in_invoke_web_search(
 
     _log.info(
         "tool.network_egress tool=web_search tenant=%s workspace=%s call=%s q=%r",
-        tenant_id, workspace_id, call_id, query,
+        tenant_id,
+        workspace_id,
+        call_id,
+        query,
     )
 
     # Bing HTML search endpoint. q as query param, set lang to zh-Hans.
@@ -296,16 +308,15 @@ async def built_in_invoke_web_search(
         url_clean = title_match.group(1)
         title = _strip_html(title_match.group(2), max_chars=200)
         snippet_match = snippet_re.search(block)
-        snippet = (
-            _strip_html(snippet_match.group(1), max_chars=400)
-            if snippet_match else ""
-        )
+        snippet = _strip_html(snippet_match.group(1), max_chars=400) if snippet_match else ""
         results.append({"title": title, "url": url_clean, "snippet": snippet})
 
     await _audit(
         "tool.network_egress",
         {"tool": "web_search", "url": url, "query": query, "count": len(results)},
-        tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        call_id=call_id,
         workspace_id=workspace_id,
     )
     return {"query": query, "source": "bing", "count": len(results), "results": results}
@@ -339,7 +350,10 @@ async def built_in_invoke_http_fetch(
 
     _log.info(
         "tool.network_egress tool=http_fetch tenant=%s workspace=%s call=%s url=%r",
-        tenant_id, workspace_id, call_id, url,
+        tenant_id,
+        workspace_id,
+        call_id,
+        url,
     )
 
     try:
@@ -353,14 +367,24 @@ async def built_in_invoke_http_fetch(
     except (httpx.RequestError, ValueError) as exc:
         return {"error": str(exc), "url": url}
 
-    title_match = _TITLE_RE.search(body) if content_type.startswith(("text/html", "application/xhtml")) else None
+    title_match = (
+        _TITLE_RE.search(body)
+        if content_type.startswith(("text/html", "application/xhtml"))
+        else None
+    )
     title = _strip_html(title_match.group(1), max_chars=300) if title_match else ""
-    body_text = _strip_html(body, max_chars=max_chars) if "html" in content_type or "xml" in content_type else body[:max_chars]
+    body_text = (
+        _strip_html(body, max_chars=max_chars)
+        if "html" in content_type or "xml" in content_type
+        else body[:max_chars]
+    )
 
     await _audit(
         "tool.network_egress",
         {"tool": "http_fetch", "url": url, "status": status, "content_type": content_type},
-        tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        call_id=call_id,
         workspace_id=workspace_id,
     )
 
@@ -377,8 +401,8 @@ __all__ = [
     "CustomInvokerRegistry",
     "built_in_invoke_bash",
     "built_in_invoke_clock",
-    "built_in_invoke_edit_file",
     "built_in_invoke_echo",
+    "built_in_invoke_edit_file",
     "built_in_invoke_glob",
     "built_in_invoke_grep",
     "built_in_invoke_http_fetch",
@@ -400,21 +424,16 @@ __all__ = [
 # Tools log every invocation via stdlib `logging` at INFO level. Future
 # ticket will wire `audit_log` table writes.
 
-import asyncio as _asyncio
-import fnmatch as _fnmatch
-import re as _re_fs
-import subprocess as _subprocess
-
 # Limits (kept conservative; raise in a follow-up if production needs more).
 _MAX_BASH_TIMEOUT_S = 300
 _DEFAULT_BASH_TIMEOUT_S = 30
-_MAX_READ_BYTES = 1_048_576          # 1 MiB per file
-_DEFAULT_READ_BYTES = 200_000        # ~200 KiB
-_MAX_GREP_BYTES = 5_242_880          # 5 MiB total scanned
+_MAX_READ_BYTES = 1_048_576  # 1 MiB per file
+_DEFAULT_READ_BYTES = 200_000  # ~200 KiB
+_MAX_GREP_BYTES = 5_242_880  # 5 MiB total scanned
 _MAX_GREP_RESULTS = 200
 _MAX_GLOB_RESULTS = 5_000
 _MAX_LS_ENTRIES = 5_000
-_MAX_BASH_OUTPUT_BYTES = 102_400     # 100 KiB per stream
+_MAX_BASH_OUTPUT_BYTES = 102_400  # 100 KiB per stream
 
 
 def _safe_resolve(
@@ -501,7 +520,10 @@ async def built_in_invoke_bash(
 
     _log.info(
         "tool.bash_executed tenant=%s workspace=%s call=%s timeout=%ds",
-        tenant_id, workspace_id, call_id, timeout_s,
+        tenant_id,
+        workspace_id,
+        call_id,
+        timeout_s,
     )
 
     # Resolve workspace dir.
@@ -533,7 +555,7 @@ async def built_in_invoke_bash(
             stdout_bytes, stderr_bytes = await _asyncio.wait_for(
                 proc.communicate(), timeout=timeout_s
             )
-        except _asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
             duration_ms = int((_asyncio.get_event_loop().time() - started) * 1000)
@@ -552,8 +574,10 @@ async def built_in_invoke_bash(
     def _cap(buf: bytes) -> tuple[str, bool]:
         if len(buf) <= _MAX_BASH_OUTPUT_BYTES:
             return buf.decode("utf-8", errors="replace"), False
-        return (buf[:_MAX_BASH_OUTPUT_BYTES].decode("utf-8", errors="replace") +
-                f"\n…[truncated, {len(buf) - _MAX_BASH_OUTPUT_BYTES} more bytes]"), True
+        return (
+            buf[:_MAX_BASH_OUTPUT_BYTES].decode("utf-8", errors="replace")
+            + f"\n…[truncated, {len(buf) - _MAX_BASH_OUTPUT_BYTES} more bytes]"
+        ), True
 
     stdout, stdout_trunc = _cap(stdout_bytes or b"")
     stderr, stderr_trunc = _cap(stderr_bytes or b"")
@@ -569,7 +593,9 @@ async def built_in_invoke_bash(
             "stderr_bytes": len(stderr_bytes or b""),
             "truncated": stdout_trunc or stderr_trunc,
         },
-        tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        call_id=call_id,
         workspace_id=workspace_id,
     )
 
@@ -637,10 +663,7 @@ async def built_in_invoke_read_file(
 
     lines = text.splitlines()
     total_lines = len(text.splitlines())
-    if end_line is not None:
-        lines = lines[start_line:end_line]
-    else:
-        lines = lines[start_line:]
+    lines = lines[start_line:end_line] if end_line is not None else lines[start_line:]
     content = "\n".join(lines)
     if content and not content.endswith("\n"):
         content += "\n"
@@ -650,10 +673,12 @@ async def built_in_invoke_read_file(
         {
             "tool": "read_file",
             "path": path_arg,
-            "bytes_read": sum(len(l.encode("utf-8")) for l in lines) + (1 if lines else 0),
+            "bytes_read": sum(len(line.encode("utf-8")) for line in lines) + (1 if lines else 0),
             "truncated": truncated,
         },
-        tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        call_id=call_id,
         workspace_id=workspace_id,
     )
 
@@ -696,7 +721,11 @@ async def built_in_invoke_write_file(
 
     _log.info(
         "tool.fs_access op=write tenant=%s workspace=%s call=%s path=%s bytes=%d",
-        tenant_id, workspace_id, call_id, path_arg, len(content.encode("utf-8")),
+        tenant_id,
+        workspace_id,
+        call_id,
+        path_arg,
+        len(content.encode("utf-8")),
     )
 
     if create_parents:
@@ -705,7 +734,9 @@ async def built_in_invoke_write_file(
         except OSError as exc:
             return {"error": f"mkdir failed: {exc}"}
     elif not file_path.parent.exists():
-        return {"error": f"parent directory does not exist (pass create_parents=true to auto-create)"}
+        return {
+            "error": "parent directory does not exist (pass create_parents=true to auto-create)"
+        }
 
     try:
         file_path.write_text(content, encoding="utf-8")
@@ -720,7 +751,9 @@ async def built_in_invoke_write_file(
             "bytes_written": len(content.encode("utf-8")),
             "create_parents": create_parents,
         },
-        tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        call_id=call_id,
         workspace_id=workspace_id,
     )
 
@@ -788,13 +821,18 @@ async def built_in_invoke_edit_file(
 
     _log.info(
         "tool.fs_access op=edit tenant=%s workspace=%s call=%s path=%s replacements=1",
-        tenant_id, workspace_id, call_id, path_arg,
+        tenant_id,
+        workspace_id,
+        call_id,
+        path_arg,
     )
 
     await _audit(
         "tool.fs_edit",
         {"tool": "edit_file", "path": path_arg, "replacements": 1},
-        tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        call_id=call_id,
         workspace_id=workspace_id,
     )
 
@@ -847,7 +885,9 @@ async def built_in_invoke_ls(
         if len(entries) >= _MAX_LS_ENTRIES:
             return
         try:
-            for child in sorted(directory.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+            for child in sorted(
+                directory.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
+            ):
                 if len(entries) >= _MAX_LS_ENTRIES:
                     return
                 rel = str(child.relative_to(ws_dir))
@@ -875,8 +915,15 @@ async def built_in_invoke_ls(
     _walk(dir_path, 0)
     await _audit(
         "tool.fs_list",
-        {"tool": "ls", "path": path_arg, "count": len(entries), "truncated": len(entries) >= _MAX_LS_ENTRIES},
-        tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+        {
+            "tool": "ls",
+            "path": path_arg,
+            "count": len(entries),
+            "truncated": len(entries) >= _MAX_LS_ENTRIES,
+        },
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        call_id=call_id,
         workspace_id=workspace_id,
     )
     return {
@@ -980,7 +1027,9 @@ async def built_in_invoke_glob(
     await _audit(
         "tool.fs_list",
         {"tool": "glob", "pattern": pattern, "count": len(matches), "truncated": truncated},
-        tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        call_id=call_id,
         workspace_id=workspace_id,
     )
 
@@ -1040,7 +1089,11 @@ async def built_in_invoke_grep(
     truncated = False
 
     try:
-        candidates = sorted(cwd_path.rglob("*")) if include in ("*", "**/*") else sorted(cwd_path.rglob(include))
+        candidates = (
+            sorted(cwd_path.rglob("*"))
+            if include in ("*", "**/*")
+            else sorted(cwd_path.rglob(include))
+        )
     except OSError as exc:
         return {"error": f"rglob failed: {exc}"}
 
@@ -1067,18 +1120,28 @@ async def built_in_invoke_grep(
                 if len(matches) >= max_results:
                     truncated = True
                     break
-                matches.append({
-                    "path": rel,
-                    "line_number": line_num,
-                    "line": line.strip()[:500],
-                })
+                matches.append(
+                    {
+                        "path": rel,
+                        "line_number": line_num,
+                        "line": line.strip()[:500],
+                    }
+                )
         if truncated:
             break
 
     await _audit(
         "tool.fs_search",
-        {"tool": "grep", "pattern": pattern, "cwd": cwd_arg, "count": len(matches), "truncated": truncated},
-        tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+        {
+            "tool": "grep",
+            "pattern": pattern,
+            "cwd": cwd_arg,
+            "count": len(matches),
+            "truncated": truncated,
+        },
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        call_id=call_id,
         workspace_id=workspace_id,
     )
     return {
@@ -1134,6 +1197,6 @@ async def _audit(event_type: str, payload: dict[str, Any], **ctx: Any) -> None:
             call_id=ctx["call_id"],
             workspace_id=ctx.get("workspace_id"),
         )
-    except Exception:
+    except Exception:  # 审计失败不能带崩工具调用 ✓
         # recorder.record already swallows DB errors, but defensive
-        pass
+        _log.debug("tool_audit_write_failed: %s", event_type, exc_info=True)

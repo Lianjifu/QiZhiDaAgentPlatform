@@ -177,12 +177,8 @@ class CatalogAgent:
                 policy["scope"] = "user"
             data["memory_policy"] = policy
         if "flowRefs" in patch and isinstance(patch["flowRefs"], list):
-            data["flow_refs"] = [
-                item for item in patch["flowRefs"] if isinstance(item, dict)
-            ]
-        if "profile" in patch and (
-            patch["profile"] is None or isinstance(patch["profile"], dict)
-        ):
+            data["flow_refs"] = [item for item in patch["flowRefs"] if isinstance(item, dict)]
+        if "profile" in patch and (patch["profile"] is None or isinstance(patch["profile"], dict)):
             data["profile"] = patch["profile"]
         data["updated_at"] = _utcnow()
         next_agent = replace(self, **data)
@@ -198,9 +194,7 @@ class CatalogAgent:
             "action": action,
             "detail": detail,
         }
-        return replace(
-            self, audit_events=[*self.audit_events, event], updated_at=_utcnow()
-        )
+        return replace(self, audit_events=[*self.audit_events, event], updated_at=_utcnow())
 
     def publish(self) -> Self:
         stamp = _utcnow().strftime("%Y-%m-%d")

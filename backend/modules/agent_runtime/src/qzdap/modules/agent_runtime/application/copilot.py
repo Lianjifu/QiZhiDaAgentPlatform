@@ -10,6 +10,25 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
+from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
+from qzdap.modules.agent_runtime.application.ports import (
+    EventPublisher,
+    SessionJournal,
+    SessionRepository,
+    TurnRepository,
+)
+from qzdap.modules.agent_runtime.application.use_cases.create_session import (
+    CreateSessionUseCase,
+)
+from qzdap.modules.agent_runtime.domain import Session, SessionStatus, Turn
+from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
+from qzdap.modules.agent_runtime.domain.errors import (
+    DuplicateRequestError,
+    SessionBusyError,
+    SessionClosedError,
+    SessionNotFound,
+)
 from qzdap_agent_runtime.gateway.idempotency import (
     IdempotencyGuard,
     InboxScope,
@@ -39,26 +58,6 @@ from qzdap_schema.ids import (
     TenantId,
     UserId,
     WorkspaceId,
-)
-
-from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
-from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
-from qzdap.modules.agent_runtime.application.ports import (
-    EventPublisher,
-    SessionJournal,
-    SessionRepository,
-    TurnRepository,
-)
-from qzdap.modules.agent_runtime.application.use_cases.create_session import (
-    CreateSessionUseCase,
-)
-from qzdap.modules.agent_runtime.domain import Session, SessionStatus, Turn
-from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
-from qzdap.modules.agent_runtime.domain.errors import (
-    DuplicateRequestError,
-    SessionBusyError,
-    SessionClosedError,
-    SessionNotFound,
 )
 
 _log = logging.getLogger(__name__)
@@ -116,9 +115,7 @@ class CopilotSessionService:
         rows = await self._sessions.list_for_owner(tenant_id, owner_id, limit=80)
         query = search.strip().lower()
         # 一次查完「哪些会话在等审批」✓（逐个查 = N 次查询 ✗）
-        waiting = await self._journal.list_waiting_approval_sessions(
-            tenant_id=tenant_id
-        )
+        waiting = await self._journal.list_waiting_approval_sessions(tenant_id=tenant_id)
         out: list[dict[str, Any]] = []
         for session in rows:
             if session.status is SessionStatus.CLOSED:
@@ -128,9 +125,7 @@ class CopilotSessionService:
             hay = f"{title} {preview}".lower()
             if query and query not in hay:
                 continue
-            out.append(
-                _session_card(session, waiting_approval=session.id in waiting)
-            )
+            out.append(_session_card(session, waiting_approval=session.id in waiting))
         return out
 
     async def create_session(
@@ -240,15 +235,11 @@ class CopilotSessionService:
             workspace_id=workspace_id,
             limit=200,
         )
-        waiting = await self._journal.list_waiting_approval_sessions(
-            tenant_id=tenant_id
-        )
+        waiting = await self._journal.list_waiting_approval_sessions(tenant_id=tenant_id)
         out: list[dict[str, Any]] = []
         for session in sessions:
             latest_turn = await self._turns.latest_for_session(session.id)
-            task = _task_card(
-                session, latest_turn, waiting_approval=session.id in waiting
-            )
+            task = _task_card(session, latest_turn, waiting_approval=session.id in waiting)
             if status != "all" and task["status"] != status:
                 continue
             needle = q.strip().lower()
@@ -297,9 +288,7 @@ class CopilotSessionService:
             owner_id=owner_id,
             user_input=user_input,
         )
-        scope = InboxScope.for_web(
-            tenant_id=tenant_id, workspace_id=workspace_id, channel=channel
-        )
+        scope = InboxScope.for_web(tenant_id=tenant_id, workspace_id=workspace_id, channel=channel)
         decision = await self._idempotency.accept(
             scope,
             key,
@@ -363,14 +352,10 @@ class CopilotSessionService:
                 yield chunk
         finally:
             with contextlib.suppress(Exception):
-                await asyncio.shield(
-                    self._idempotency.complete(decision, turn_id=turn_id)
-                )
+                await asyncio.shield(self._idempotency.complete(decision, turn_id=turn_id))
             with contextlib.suppress(Exception):
                 await asyncio.shield(
-                    self._claim.release(
-                        tenant_id=tenant_id, session_id=session_id, turn_id=turn_id
-                    )
+                    self._claim.release(tenant_id=tenant_id, session_id=session_id, turn_id=turn_id)
                 )
 
     def _select_key(
@@ -430,16 +415,12 @@ class CopilotSessionService:
         if session.workspace_id != workspace_id or session.owner_id != owner_id:
             raise SessionNotFound(f"session {session_id} not found")
         if session.status is SessionStatus.CLOSED:
-            raise SessionClosedError(
-                f"session {session_id} is closed", code="SESSION_CLOSED"
-            )
+            raise SessionClosedError(f"session {session_id} is closed", code="SESSION_CLOSED")
         # 上一轮遗留的停止标记不能影响这一轮.
         await self._sessions.clear_cancel(session_id)
         agent_row = await self._catalog.get_published(session.agent_id)
         # 这一轮实际用的模型 —— 轮次表要留痕（``session_turns.model_version``）。
-        model_used = model or str(
-            session.metadata.get("model") or agent_row.model or "default"
-        )
+        model_used = model or str(session.metadata.get("model") or agent_row.model or "default")
         history = await self._messages.list_for_session(session_id)
         hist_msgs = [
             {
@@ -624,9 +605,7 @@ class CopilotSessionService:
         if stored is not None:
             resource = getattr(approval, "resource", None) or {}
             arguments = resource.get("arguments")
-            if arguments is not None and (
-                arguments_digest(arguments) != stored.arguments_digest
-            ):
+            if arguments is not None and (arguments_digest(arguments) != stored.arguments_digest):
                 raise ValidationError(
                     "tool arguments changed since the approval was requested",
                     code=ErrorCode.TOOL_ARGUMENT_INVALID.value,

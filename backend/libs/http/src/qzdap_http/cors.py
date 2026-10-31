@@ -33,8 +33,7 @@ def build_cors_config(env: dict[str, str]) -> CORSMiddlewareConfig:
     origins = tuple(o.strip() for o in origins_raw.split(",") if o.strip())
     return CORSMiddlewareConfig(
         allow_origins=origins or ("*",),
-        allow_credentials=env.get("QZDAP_CORS_ALLOW_CREDENTIALS", "true").lower()
-        == "true",
+        allow_credentials=env.get("QZDAP_CORS_ALLOW_CREDENTIALS", "true").lower() == "true",
         allow_methods=tuple(
             m.strip()
             for m in env.get(
@@ -44,8 +43,6 @@ def build_cors_config(env: dict[str, str]) -> CORSMiddlewareConfig:
             if m.strip()
         ),
         allow_headers=tuple(
-            h.strip()
-            for h in env.get("QZDAP_CORS_ALLOW_HEADERS", "*").split(",")
-            if h.strip()
+            h.strip() for h in env.get("QZDAP_CORS_ALLOW_HEADERS", "*").split(",") if h.strip()
         ),
     )

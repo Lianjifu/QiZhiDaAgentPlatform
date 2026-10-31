@@ -10,10 +10,10 @@ from collections.abc import AsyncIterator
 from urllib.parse import parse_qsl, urlsplit
 
 import httpx
-from qzdap_llm import ChatMessage, ChatRequest
-from qzdap_llm.providers import build_provider_client, get_provider_spec
 
 from qzdap.modules.model.application.ports import ConnectivityTester
+from qzdap_llm import ChatMessage, ChatRequest
+from qzdap_llm.providers import build_provider_client, get_provider_spec
 
 _MAX_RESPONSE_BYTES = 65_536
 
@@ -44,9 +44,7 @@ class _BoundedStream(httpx.AsyncByteStream):
 
 class PublicNetworkTransport(httpx.AsyncBaseTransport):
     def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
-        self._transport = transport or httpx.AsyncHTTPTransport(
-            retries=0, trust_env=False
-        )
+        self._transport = transport or httpx.AsyncHTTPTransport(retries=0, trust_env=False)
         self.status_code: int | None = None
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
@@ -86,9 +84,7 @@ def validate_provider_url(base_url: str, protocol: str) -> None:
         raise ValueError("invalid URL")
     _ = parts.port
     query = parse_qsl(parts.query, keep_blank_values=True)
-    if query and (
-        protocol != "azure" or len(query) != 1 or query[0][0] != "api-version"
-    ):
+    if query and (protocol != "azure" or len(query) != 1 or query[0][0] != "api-version"):
         raise ValueError("invalid query")
 
 
@@ -148,9 +144,7 @@ class HttpConnectivityTester(ConnectivityTester):
                             ChatRequest(
                                 model=model.strip(),
                                 max_tokens=32,
-                                messages=[
-                                    ChatMessage(role="user", content="Reply with OK.")
-                                ],
+                                messages=[ChatMessage(role="user", content="Reply with OK.")],
                             )
                         )
                     finally:
@@ -160,16 +154,10 @@ class HttpConnectivityTester(ConnectivityTester):
                     result["error"] = "供应商返回成功状态，但没有有效的生成文本。"
                     return result
                 raw = response.raw or {}
-                actual = (
-                    raw.get("modelVersion")
-                    if spec.transport == "google"
-                    else raw.get("model")
-                )
+                actual = raw.get("modelVersion") if spec.transport == "google" else raw.get("model")
                 result.update(
                     success=True,
-                    actualModel=_redact(actual, api_key, 256)
-                    if isinstance(actual, str)
-                    else None,
+                    actualModel=_redact(actual, api_key, 256) if isinstance(actual, str) else None,
                     response=_redact(text.strip(), api_key, 500),
                 )
         except (TimeoutError, httpx.TimeoutException):
@@ -180,7 +168,7 @@ class HttpConnectivityTester(ConnectivityTester):
             result["error"] = "供应商响应超过诊断大小限制。"
         except ValueError:
             result["error"] = "配置或响应无效，请检查协议、地址、模型 ID 和 API 版本。"
-        except Exception:  # noqa: BLE001 — upstream exceptions may contain credentials
+        except Exception:
             status = transport.status_code
             result["error"] = (
                 f"供应商返回 HTTP {status}。"

@@ -8,13 +8,13 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from qzdap_agent_runtime.memory.refine import BufferRow
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from qzdap.modules.memory.adapter.persistence.models import (
     SessionMemoryBufferORM,
 )
+from qzdap_agent_runtime.memory.refine import BufferRow
 
 
 class SqlMemoryBufferRepository:
@@ -25,11 +25,9 @@ class SqlMemoryBufferRepository:
 
     async def add(self, row: BufferRow) -> None:
         """**加一条** ✓（同会话同内容**唯一** ✓ —— 重复不重复写 ✓）。"""
-        stmt = (
-            select(SessionMemoryBufferORM).where(
-                SessionMemoryBufferORM.session_id == row.session_id,
-                SessionMemoryBufferORM.content_hash == row.content_hash,
-            )
+        stmt = select(SessionMemoryBufferORM).where(
+            SessionMemoryBufferORM.session_id == row.session_id,
+            SessionMemoryBufferORM.content_hash == row.content_hash,
         )
         existing = (await self._s.execute(stmt)).scalars().first()
         if existing is not None:
@@ -50,9 +48,7 @@ class SqlMemoryBufferRepository:
             )
         )
 
-    async def list_pending(
-        self, *, before: datetime, limit: int = 100
-    ) -> list[BufferRow]:
+    async def list_pending(self, *, before: datetime, limit: int = 100) -> list[BufferRow]:
         """**待提炼** 的行 ✓（按创建时间 ✓）。"""
         stmt = (
             select(SessionMemoryBufferORM)
@@ -82,9 +78,7 @@ class SqlMemoryBufferRepository:
         if not row_ids:
             return
         await self._s.execute(
-            delete(SessionMemoryBufferORM).where(
-                SessionMemoryBufferORM.id.in_(row_ids)
-            )
+            delete(SessionMemoryBufferORM).where(SessionMemoryBufferORM.id.in_(row_ids))
         )
 
 

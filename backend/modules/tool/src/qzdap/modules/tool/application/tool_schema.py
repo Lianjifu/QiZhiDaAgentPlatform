@@ -106,9 +106,7 @@ def _openapi_schema(spec: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(methods, Mapping):
             continue
         for method, operation in methods.items():
-            if str(method).lower() not in _HTTP_METHODS or not isinstance(
-                operation, Mapping
-            ):
+            if str(method).lower() not in _HTTP_METHODS or not isinstance(operation, Mapping):
                 continue
             operation_ids.append(
                 str(operation.get("operationId") or f"{str(method).lower()}_{path}")

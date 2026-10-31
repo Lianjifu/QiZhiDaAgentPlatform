@@ -8,13 +8,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_schema.ids import (
-    EvolveCandidateId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.self_evolution.adapter.persistence.models import (
     EvolveCandidateORM,
 )
@@ -22,6 +15,12 @@ from qzdap.modules.self_evolution.domain.entities import EvolveCandidate
 from qzdap.modules.self_evolution.domain.value_objects import (
     EvolveKind,
     EvolveStatus,
+)
+from qzdap_schema.ids import (
+    EvolveCandidateId,
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 

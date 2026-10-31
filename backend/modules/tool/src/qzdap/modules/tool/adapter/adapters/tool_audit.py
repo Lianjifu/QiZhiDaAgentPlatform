@@ -66,19 +66,23 @@ class ToolAuditRecorder:
             factory = self._session_factory
             cm = factory() if callable(factory) else factory.session()
             async with cm as session:  # type: ignore[union-attr]
-                session.add(AuditLogORM(
-                    id=uuid4(),
-                    tenant_id=tenant_id,
-                    actor_id=actor_id,
-                    event_type=event_type,
-                    payload=payload_with_ctx,
-                    created_at=datetime.now(UTC),
-                ))
+                session.add(
+                    AuditLogORM(
+                        id=uuid4(),
+                        tenant_id=tenant_id,
+                        actor_id=actor_id,
+                        event_type=event_type,
+                        payload=payload_with_ctx,
+                        created_at=datetime.now(UTC),
+                    )
+                )
                 await session.commit()
         except Exception:
             _log.exception(
                 "tool_audit.record failed event=%s tenant=%s call=%s",
-                event_type, tenant_id, call_id,
+                event_type,
+                tenant_id,
+                call_id,
             )
 
     # ── Convenience helpers ────────────────────────────────────────
@@ -99,7 +103,9 @@ class ToolAuditRecorder:
         truncated: bool,
     ) -> None:
         await self.record(
-            tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            call_id=call_id,
             workspace_id=workspace_id,
             event_type="tool.bash_executed",
             payload={
@@ -126,7 +132,9 @@ class ToolAuditRecorder:
         truncated: bool,
     ) -> None:
         await self.record(
-            tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            call_id=call_id,
             workspace_id=workspace_id,
             event_type="tool.fs_read",
             payload={"tool": tool, "path": path, "bytes_read": bytes_read, "truncated": truncated},
@@ -145,11 +153,15 @@ class ToolAuditRecorder:
         create_parents: bool,
     ) -> None:
         await self.record(
-            tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            call_id=call_id,
             workspace_id=workspace_id,
             event_type="tool.fs_write",
             payload={
-                "tool": tool, "path": path, "bytes_written": bytes_written,
+                "tool": tool,
+                "path": path,
+                "bytes_written": bytes_written,
                 "create_parents": create_parents,
             },
         )
@@ -166,7 +178,9 @@ class ToolAuditRecorder:
         replacements: int,
     ) -> None:
         await self.record(
-            tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            call_id=call_id,
             workspace_id=workspace_id,
             event_type="tool.fs_edit",
             payload={"tool": tool, "path": path, "replacements": replacements},
@@ -185,7 +199,9 @@ class ToolAuditRecorder:
         truncated: bool,
     ) -> None:
         await self.record(
-            tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            call_id=call_id,
             workspace_id=workspace_id,
             event_type="tool.fs_list",
             payload={"tool": tool, "path": path, "count": count, "truncated": truncated},
@@ -205,12 +221,17 @@ class ToolAuditRecorder:
         truncated: bool,
     ) -> None:
         await self.record(
-            tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            call_id=call_id,
             workspace_id=workspace_id,
             event_type="tool.fs_search",
             payload={
-                "tool": tool, "pattern": pattern[:500], "cwd": cwd,
-                "count": count, "truncated": truncated,
+                "tool": tool,
+                "pattern": pattern[:500],
+                "cwd": cwd,
+                "count": count,
+                "truncated": truncated,
             },
         )
 
@@ -227,11 +248,15 @@ class ToolAuditRecorder:
         duration_ms: int,
     ) -> None:
         await self.record(
-            tenant_id=tenant_id, actor_id=actor_id, call_id=call_id,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            call_id=call_id,
             workspace_id=workspace_id,
             event_type="tool.network_egress",
             payload={
-                "tool": tool, "url": url[:2000], "status": status,
+                "tool": tool,
+                "url": url[:2000],
+                "status": status,
                 "duration_ms": duration_ms,
             },
         )

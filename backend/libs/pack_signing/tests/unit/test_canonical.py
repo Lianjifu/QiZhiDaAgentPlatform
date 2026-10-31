@@ -190,9 +190,7 @@ def test_load_private_key_pem_rejects_wrong_type() -> None:
     )
 
     rsa_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    rsa_priv_pem = rsa_key.private_bytes(
-        Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
-    )
+    rsa_priv_pem = rsa_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
     with pytest.raises(TypeError):
         load_private_key_pem(rsa_priv_pem)
 

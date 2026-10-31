@@ -117,9 +117,7 @@ async def journal_ctx():
             await conn.execute(text(statement.replace("{schema}", schema)))
         await conn.commit()
 
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
+    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     from qzdap_persistence.session_factory import SessionFactory
 
     factory = SessionFactory(engine)
@@ -227,9 +225,7 @@ async def test_another_tenant_sees_nothing(journal_ctx) -> None:  # type: ignore
     other = uuid4()
     session_id = await _session(factory, tenant_id=tenant)
     turn_id = await _start(journal, session_id=session_id, tenant_id=tenant, key="k1")
-    await journal.append_event(
-        turn_id=turn_id, seq=1, event_type="message", payload={"seq": 1}
-    )
+    await journal.append_event(turn_id=turn_id, seq=1, event_type="message", payload={"seq": 1})
 
     assert await journal.get_events(turn_id, tenant_id=other) == []
     assert await journal.get_turn_status(turn_id, tenant_id=other) is None
@@ -292,20 +288,20 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
         InMemoryIdempotencyStore,
         InMemorySessionRepository,
         InMemoryTurnClaim,
-        make_turn_runner,
         InMemoryTurnRepository,
         RecordingEventPublisher,
+        make_turn_runner,
     )
+
+    from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
+    from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+    from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
     from qzdap_agent_runtime.gateway.facade import Gateway
     from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
     from qzdap_agent_runtime.gateway.replay import event_digest, event_from_chunk
     from qzdap_agent_runtime.gateway.types import ChannelType
     from qzdap_agent_runtime.gateway.web import WebChatNormalizer, WebIdentityVerifier
     from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
-
-    from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
-    from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
-    from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 
     journal, factory = journal_ctx
     tenant = uuid4()
@@ -412,9 +408,7 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
 
     assert event_digest(result.events) == event_digest(original)
     # seq 连续。
-    assert [event.seq for event in result.events] == list(
-        range(1, len(result.events) + 1)
-    )
+    assert [event.seq for event in result.events] == list(range(1, len(result.events) + 1))
     assert result.is_finished is True
 
 
@@ -432,10 +426,7 @@ async def test_a_zombie_turn_does_not_block_the_key_forever(journal_ctx) -> None
     # 把第一行改成「很久以前就起飞了、然后进程死了」。
     async with factory.session() as db, db.begin():
         await db.execute(
-            text(
-                "UPDATE session_turns SET started_at = now() - interval '2 hours' "
-                "WHERE id = :id"
-            ),
+            text("UPDATE session_turns SET started_at = now() - interval '2 hours' WHERE id = :id"),
             {"id": zombie},
         )
 

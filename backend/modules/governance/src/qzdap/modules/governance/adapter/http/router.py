@@ -16,8 +16,6 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from qzdap_schema.ids import ApprovalId, PolicyId
-from qzdap_vault.actor import ActorContext
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from qzdap.modules.governance.adapter.http.dto import (
@@ -39,6 +37,8 @@ from qzdap.modules.governance.adapter.http.mappers import (
 )
 from qzdap.modules.governance.application.approval_service import ApprovalService
 from qzdap.modules.governance.application.policy_service import PolicyService
+from qzdap_schema.ids import ApprovalId, PolicyId
+from qzdap_vault.actor import ActorContext
 
 router = APIRouter(tags=["governance"])
 
@@ -91,7 +91,7 @@ async def create_policy(
 async def list_policies(
     actor: ActorDep,
     svc: Annotated[PolicyService, Depends(make_policy_service)],
-    workspace_id: UUID | None = Query(default=None),  # noqa: B008 — FastAPI idiom
+    workspace_id: UUID | None = Query(default=None),
     enabled_only: bool = Query(default=False),
     limit: int = Query(default=100, ge=1, le=500),
     cursor: str | None = Query(default=None),

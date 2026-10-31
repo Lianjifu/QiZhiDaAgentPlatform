@@ -6,16 +6,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    EvalDatasetId,
-    EvalRunId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.evaluation.application.ports import (
     EvalDatasetRepository,
     EvalRunRepository,
@@ -27,6 +17,15 @@ from qzdap.modules.evaluation.domain.entities import (
     EvalDataset,
     EvalRun,
 )
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    EvalDatasetId,
+    EvalRunId,
+    TenantId,
+    UserId,
+    WorkspaceId,
+)
 
 # ── Datasets ─────────────────────────────────────────────────────────────
 
@@ -37,14 +36,10 @@ class InMemoryEvalDatasetRepository(EvalDatasetRepository):
         self._by_name: dict[tuple[UUID, str], UUID] = {}
         self._cases: dict[tuple[UUID, UUID], list[EvalCase]] = {}
 
-    async def get(
-        self, *, tenant_id: TenantId, dataset_id: EvalDatasetId
-    ) -> EvalDataset | None:
+    async def get(self, *, tenant_id: TenantId, dataset_id: EvalDatasetId) -> EvalDataset | None:
         return self._by_id.get((tenant_id, dataset_id))
 
-    async def get_by_name(
-        self, *, tenant_id: TenantId, name: str
-    ) -> EvalDataset | None:
+    async def get_by_name(self, *, tenant_id: TenantId, name: str) -> EvalDataset | None:
         did = self._by_name.get((tenant_id, name))
         return self._by_id.get((tenant_id, did)) if did else None
 
@@ -78,9 +73,7 @@ class InMemoryEvalDatasetRepository(EvalDatasetRepository):
         self._cases.setdefault((case.tenant_id, case.dataset_id), []).append(case)
         return case
 
-    async def list_cases(
-        self, *, tenant_id: TenantId, dataset_id: EvalDatasetId
-    ) -> list[EvalCase]:
+    async def list_cases(self, *, tenant_id: TenantId, dataset_id: EvalDatasetId) -> list[EvalCase]:
         return list(self._cases.get((tenant_id, dataset_id), ()))
 
 

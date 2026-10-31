@@ -14,6 +14,10 @@ from _evaluation_unit_in_memory import (  # type: ignore[import-not-found]
     make_case,
     make_dataset,
 )
+
+from qzdap.modules.evaluation.application.runner import EvalRunner
+from qzdap.modules.evaluation.application.services import EvaluationService
+from qzdap.modules.evaluation.domain.value_objects import EvalRunStatus
 from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
@@ -22,10 +26,6 @@ from qzdap_schema.ids import (
     UserId,
     WorkspaceId,
 )
-
-from qzdap.modules.evaluation.application.runner import EvalRunner
-from qzdap.modules.evaluation.application.services import EvaluationService
-from qzdap.modules.evaluation.domain.value_objects import EvalRunStatus
 
 _TENANT = TenantId(uuid4())
 _WORKSPACE = WorkspaceId(uuid4())

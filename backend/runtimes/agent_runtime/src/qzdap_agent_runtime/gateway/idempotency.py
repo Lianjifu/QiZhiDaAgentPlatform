@@ -90,9 +90,7 @@ class IdempotencyStore(Protocol):
         """weak 键的落表记录 —— **永不判重、永远放行**（决策 #5）。"""
         ...
 
-    async def mark_completed(
-        self, row_id: UUID, *, turn_id: UUID | None = None
-    ) -> None:
+    async def mark_completed(self, row_id: UUID, *, turn_id: UUID | None = None) -> None:
         """把一行标记为已完成。"""
         ...
 
@@ -235,9 +233,7 @@ class IdempotencyGuard:
             trace_id=trace_id,
         )
 
-    async def complete(
-        self, decision: IdempotencyDecision, *, turn_id: UUID | None = None
-    ) -> None:
+    async def complete(self, decision: IdempotencyDecision, *, turn_id: UUID | None = None) -> None:
         """把受理的这一行标记为已完成。"""
         if decision.row_id is None or not decision.should_run:
             return

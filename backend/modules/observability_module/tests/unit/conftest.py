@@ -12,7 +12,6 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from qzdap_schema.ids import TenantId, WorkspaceId
 
 from qzdap.modules.observability_module.application.pricing import (
     DEFAULT_LLM_PRICING,
@@ -28,6 +27,7 @@ from qzdap.modules.observability_module.domain.value_objects import (
     RunStatus,
     RunType,
 )
+from qzdap_schema.ids import TenantId, WorkspaceId
 
 from ._in_memory import (
     FakeEvalRunQueryPort,

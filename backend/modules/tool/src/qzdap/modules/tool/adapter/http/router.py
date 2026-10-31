@@ -24,7 +24,6 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 
-from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap.modules.tool.adapter.http.dto import (
     BatchInvokeRequest,
     BatchInvokeResponse,
@@ -45,6 +44,7 @@ from qzdap.modules.tool.application.use_cases import (
     InvalidToolSpecCallError,
 )
 from qzdap.modules.tool.domain import ToolProtocol
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 
 
 async def tool_dependency(request: Request) -> ToolService:
@@ -81,13 +81,12 @@ async def tool_dependency(request: Request) -> ToolService:
 def build_router() -> APIRouter:
     router = APIRouter(prefix="/v1/tools", tags=["tool"])
 
-
     @router.post("", status_code=201, dependencies=[Depends(_require_active_workspace)])
     async def register_tool(
         body: RegisterToolRequest,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ToolService = Depends(tool_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ToolService = Depends(tool_dependency),
     ) -> JSONResponse:
         tool = await svc.register_tool().execute(
             tenant_id=x_tenant_id,
@@ -109,11 +108,11 @@ def build_router() -> APIRouter:
 
     @router.get("", response_model=ToolListResponse)
     async def list_tools(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         enabled: bool | None = Query(None),
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
-        svc: ToolService = Depends(tool_dependency),  # noqa: B008
+        svc: ToolService = Depends(tool_dependency),
     ) -> ToolListResponse:
         tools = await svc.list_tools().execute(
             tenant_id=x_tenant_id,
@@ -129,8 +128,8 @@ def build_router() -> APIRouter:
     @router.get("/{tid}", response_model=ToolResponse)
     async def get_tool(
         tid: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: ToolService = Depends(tool_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: ToolService = Depends(tool_dependency),
     ) -> ToolResponse:
         tool = await svc.get_tool().execute(tenant_id=x_tenant_id, tool_id=tid)
         return tool_to_dto(tool)
@@ -139,9 +138,9 @@ def build_router() -> APIRouter:
     async def update_tool(
         tid: UUID,
         body: UpdateToolRequest,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         if_match: str | None = Header(None, alias="If-Match"),
-        svc: ToolService = Depends(tool_dependency),  # noqa: B008
+        svc: ToolService = Depends(tool_dependency),
     ) -> ToolResponse:
         expected_version: int | None = None
         if if_match is not None:
@@ -168,8 +167,8 @@ def build_router() -> APIRouter:
     @router.delete("/{tid}", status_code=204)
     async def delete_tool(
         tid: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: ToolService = Depends(tool_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: ToolService = Depends(tool_dependency),
     ) -> Response:
         await svc.delete_tool().execute(tenant_id=x_tenant_id, tool_id=tid)
         return Response(status_code=204)
@@ -182,9 +181,9 @@ def build_router() -> APIRouter:
     async def invoke_tool(
         name: str,
         body: InvokeToolRequest,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ToolService = Depends(tool_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ToolService = Depends(tool_dependency),
     ) -> JSONResponse:
         try:
             call = await svc.invoke_tool().execute(
@@ -214,25 +213,22 @@ def build_router() -> APIRouter:
     )
     async def batch_invoke_tools(
         body: BatchInvokeRequest,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         request: Request = ...,  # type: ignore[assignment]
-        svc: ToolService = Depends(tool_dependency),  # noqa: B008
+        svc: ToolService = Depends(tool_dependency),
     ) -> BatchInvokeResponse:
         # Each batch item runs on its own DB session via the per-call
         # factory stashed on request.state by `tool_dependency`.
         factory = getattr(request.state, "tool_service_factory", None)
         if factory is None:  # defensive — dependency guarantees this.
-            raise HTTPException(
-                status_code=503, detail="tool service factory not wired"
-            )
+            raise HTTPException(status_code=503, detail="tool service factory not wired")
         results = await svc.batch_invoke_tools(factory).execute(
             tenant_id=x_tenant_id,
             workspace_id=x_workspace_id,
             owner_id=UUID("00000000-0000-0000-0000-000000000000"),
             calls=[
-                BatchInvokeInput(tool_name=c.tool_name, arguments=c.arguments)
-                for c in body.calls
+                BatchInvokeInput(tool_name=c.tool_name, arguments=c.arguments) for c in body.calls
             ],
         )
         return BatchInvokeResponse(

@@ -81,9 +81,7 @@ if config.config_file_name is not None:
 # We deliberately do not raise on a missing value here because the
 # local alembic.ini default (``postgresql+asyncpg://postgres:...
 # @localhost:5432/qzdap_dev``) is sufficient for sandbox / dev shells.
-database_url = os.environ.get("QZDAP_DATABASE_URL") or config.get_main_option(
-    "sqlalchemy.url"
-)
+database_url = os.environ.get("QZDAP_DATABASE_URL") or config.get_main_option("sqlalchemy.url")
 if not database_url:
     raise RuntimeError(
         "QZDAP_DATABASE_URL is required for alembic. In prod this is "

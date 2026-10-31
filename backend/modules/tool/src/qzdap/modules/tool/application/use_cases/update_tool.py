@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_kernel.contextvars import current_trace_id
-
 from qzdap.modules.tool.application.ports import EventPublisher, ToolRepository
 from qzdap.modules.tool.domain import (
     AuthConfig,
@@ -14,6 +12,7 @@ from qzdap.modules.tool.domain import (
     ToolNotFound,
     ToolVersionMismatch,
 )
+from qzdap_kernel.contextvars import current_trace_id
 
 
 class UpdateToolUseCase:
@@ -40,8 +39,7 @@ class UpdateToolUseCase:
             raise ToolNotFound(f"tool {tool_id} not found")
         if expected_version is not None and tool.version != expected_version:
             raise ToolVersionMismatch(
-                f"tool {tool_id} version mismatch: expected {expected_version}, "
-                f"got {tool.version}",
+                f"tool {tool_id} version mismatch: expected {expected_version}, got {tool.version}",
                 code="TOOL_VERSION_MISMATCH",
             )
 

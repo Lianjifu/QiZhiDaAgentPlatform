@@ -23,12 +23,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
-from qzdap_schema.ids import (
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.observability_module.application.ports import (
     CostRecordRepository,
     RunRecordRepository,
@@ -42,6 +36,11 @@ from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunStatus,
     RunType,
+)
+from qzdap_schema.ids import (
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 _log = logging.getLogger(__name__)
@@ -89,7 +88,7 @@ class ObservabilityRecorder:
 
                 workspace_id = WorkspaceId(_UUID(_ZERO_WORKSPACE_HEX))
             await self._route(event_name, envelope, payload, tenant_id, workspace_id)
-        except Exception as exc:  # noqa: BLE001 — observability must not raise
+        except Exception as exc:
             (self.logger or _log).warning(
                 "observability handle failed event=%s err=%s",
                 _event_name(envelope),
@@ -109,9 +108,7 @@ class ObservabilityRecorder:
         actor_id = _actor_id(payload)
         completed_at = _occurred_at(envelope)
         if event_name == "ModelInvoked":
-            await self._record_llm(
-                payload, tenant_id, workspace_id, completed_at, actor_id
-            )
+            await self._record_llm(payload, tenant_id, workspace_id, completed_at, actor_id)
         elif event_name in ("ToolCompleted", "ToolFailed"):
             await self._record_tool(
                 payload,
@@ -122,17 +119,11 @@ class ObservabilityRecorder:
                 failed=event_name == "ToolFailed",
             )
         elif event_name == "SkillInvocationCompleted":
-            await self._record_skill(
-                payload, tenant_id, workspace_id, completed_at, actor_id
-            )
+            await self._record_skill(payload, tenant_id, workspace_id, completed_at, actor_id)
         elif event_name == "MemoryWritten":
-            await self._record_memory(
-                payload, tenant_id, workspace_id, completed_at, actor_id
-            )
+            await self._record_memory(payload, tenant_id, workspace_id, completed_at, actor_id)
         elif event_name == "KnowledgeAssetIngested":
-            await self._record_knowledge(
-                payload, tenant_id, workspace_id, completed_at, actor_id
-            )
+            await self._record_knowledge(payload, tenant_id, workspace_id, completed_at, actor_id)
         elif event_name == "WorkflowRunCompleted":
             await self._record_run_only(
                 payload=payload,
@@ -144,9 +135,7 @@ class ObservabilityRecorder:
                 actor_id=actor_id,
             )
         elif event_name == "ChannelReplySent":
-            await self._record_channel(
-                payload, tenant_id, workspace_id, completed_at, actor_id
-            )
+            await self._record_channel(payload, tenant_id, workspace_id, completed_at, actor_id)
         elif event_name == "EvalRunCompleted":
             await self._record_run_only(
                 payload=payload,
@@ -428,11 +417,7 @@ class ObservabilityRecorder:
             completed_at=completed_at,
             status=status,
             actor_id=actor_id,
-            metadata={
-                k: v
-                for k, v in payload.items()
-                if k not in {"tenant_id", "workspace_id"}
-            },
+            metadata={k: v for k, v in payload.items() if k not in {"tenant_id", "workspace_id"}},
         )
         await self.run_repo.add(run)
 
@@ -480,11 +465,7 @@ def _event_name(envelope: Any) -> str:
             or envelope.get("payload", {}).get("event_name")
             or "unknown"
         )
-    return (
-        getattr(envelope, "event_name", None)
-        or getattr(envelope, "topic", None)
-        or "unknown"
-    )
+    return getattr(envelope, "event_name", None) or getattr(envelope, "topic", None) or "unknown"
 
 
 def _payload(envelope: Any) -> dict[str, Any]:
@@ -495,9 +476,7 @@ def _payload(envelope: Any) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
-def _identity(
-    envelope: Any, payload: dict[str, Any]
-) -> tuple[TenantId | None, WorkspaceId | None]:
+def _identity(envelope: Any, payload: dict[str, Any]) -> tuple[TenantId | None, WorkspaceId | None]:
     raw_tid = payload.get("tenant_id")
     if raw_tid is None and not isinstance(envelope, dict):
         raw_tid = getattr(envelope, "tenant_id", None)
@@ -526,9 +505,7 @@ def _identity(
 
 
 def _actor_id(payload: dict[str, Any]) -> UserId | None:
-    raw = (
-        payload.get("actor_id") or payload.get("user_id") or payload.get("principal_id")
-    )
+    raw = payload.get("actor_id") or payload.get("user_id") or payload.get("principal_id")
     if raw is None:
         return None
     try:

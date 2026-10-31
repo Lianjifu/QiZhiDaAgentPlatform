@@ -26,6 +26,7 @@ from typing import Any
 from uuid import UUID
 
 from langchain_core.tools import BaseTool
+
 from qzdap_schema.ids import ModelId
 
 from ..agent_router.classifier import TaskKind
@@ -169,9 +170,7 @@ class ExpertAssembler:
             agent_id=selection.agent_id,
             agent_version=selection.agent_version,
         )
-        pairs = self._tools.resolve_pairs(
-            bindings, policy=BindingPolicy(unprotected=not protected)
-        )
+        pairs = self._tools.resolve_pairs(bindings, policy=BindingPolicy(unprotected=not protected))
         return ExpertInstance(
             selection=selection,
             model=model,

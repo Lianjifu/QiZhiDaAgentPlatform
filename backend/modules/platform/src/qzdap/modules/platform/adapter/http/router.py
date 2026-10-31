@@ -22,7 +22,6 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from qzdap_kernel.errors import BusinessRuleError
 
 from qzdap.modules.platform.adapter.http.dto import (
     AssignSubscriptionRequest,
@@ -43,6 +42,7 @@ from qzdap.modules.platform.domain.errors import (
     PlanNotFound,
     TenantSettingNotFound,
 )
+from qzdap_kernel.errors import BusinessRuleError
 
 
 async def platform_service_dependency(
@@ -67,7 +67,7 @@ def build_router() -> APIRouter:
         response_model=PlanListResponse,
     )
     async def list_plans(
-        svc: PlatformService = Depends(platform_service_dependency),  # noqa: B008
+        svc: PlatformService = Depends(platform_service_dependency),
         status: str | None = None,
     ) -> PlanListResponse:
         rows = await svc.list_plans(status=status)
@@ -79,8 +79,8 @@ def build_router() -> APIRouter:
         response_model=SubscriptionResponse | None,
     )
     async def get_my_subscription(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: PlatformService = Depends(platform_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: PlatformService = Depends(platform_service_dependency),
     ) -> SubscriptionResponse | None:
         from qzdap_schema.ids import TenantId
 
@@ -95,9 +95,9 @@ def build_router() -> APIRouter:
     )
     async def assign_my_subscription(
         body: AssignSubscriptionRequest,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_user_id: UUID | None = Header(None, alias="X-User-Id"),  # noqa: B008
-        svc: PlatformService = Depends(platform_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_user_id: UUID | None = Header(None, alias="X-User-Id"),
+        svc: PlatformService = Depends(platform_service_dependency),
     ) -> SubscriptionResponse:
         from qzdap_schema.ids import TenantId, UserId
 
@@ -119,8 +119,8 @@ def build_router() -> APIRouter:
         response_model=TenantSettingListResponse,
     )
     async def list_settings(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: PlatformService = Depends(platform_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: PlatformService = Depends(platform_service_dependency),
     ) -> TenantSettingListResponse:
         from qzdap_schema.ids import TenantId
 
@@ -136,12 +136,14 @@ def build_router() -> APIRouter:
         key: str,
         body: UpsertSettingRequest,
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_user_id: UUID | None = Header(None, alias="X-User-Id"),  # noqa: B008
-        svc: PlatformService = Depends(platform_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_user_id: UUID | None = Header(None, alias="X-User-Id"),
+        svc: PlatformService = Depends(platform_service_dependency),
     ) -> TenantSettingResponse:
         from datetime import UTC, datetime
         from uuid import uuid4
+
+        from sqlalchemy import select
 
         from qzdap.modules.identity.adapter.http.account_router import (
             actor,
@@ -149,8 +151,6 @@ def build_router() -> APIRouter:
             control_session,
             current_user,
         )
-        from sqlalchemy import select
-
         from qzdap.modules.platform.adapter.persistence.mappers import (
             tenant_setting_to_domain,
         )
@@ -204,8 +204,8 @@ def build_router() -> APIRouter:
     )
     async def get_setting(
         key: str,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: PlatformService = Depends(platform_service_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: PlatformService = Depends(platform_service_dependency),
     ) -> TenantSettingResponse:
         from qzdap_schema.ids import TenantId
 

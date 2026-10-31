@@ -12,10 +12,9 @@ import asyncio
 from dataclasses import dataclass
 from uuid import UUID
 
+from qzdap_auth.jwt import JWTVerifier
 from qzdap_kernel.errors import AuthenticationError, ForbiddenError
 from qzdap_kernel.principal import Principal, PrincipalType
-
-from qzdap_auth.jwt import JWTVerifier
 
 
 @dataclass(slots=True, frozen=True)

@@ -22,22 +22,22 @@ from _ar_unit_in_memory import (
     InMemoryIdempotencyStore,
     InMemorySessionJournal,
     InMemorySessionRepository,
-    make_turn_runner,
     InMemoryTurnClaim,
     InMemoryTurnRepository,
     RecordingEventPublisher,
+    make_turn_runner,
 )
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+
+from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
+from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 from qzdap_agent_runtime.gateway.facade import Gateway
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_agent_runtime.gateway.types import ChannelType
 from qzdap_agent_runtime.gateway.web import WebChatNormalizer, WebIdentityVerifier
 from qzdap_schema.ids import AgentId, TenantId, WorkspaceId
-
-from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
-from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
-from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 
 # ── App + dependency override ──────────────────────────────────────────────
 
@@ -139,8 +139,9 @@ def _build_test_app(
 
     app = FastAPI(title="agent_runtime-test")
     # AppError → HTTP 错误信封（与生产中间件链同源）。
-    from qzdap_http.error_envelope import error_envelope_middleware
     from starlette.middleware.base import BaseHTTPMiddleware
+
+    from qzdap_http.error_envelope import error_envelope_middleware
 
     app.add_middleware(BaseHTTPMiddleware, dispatch=error_envelope_middleware)  # type: ignore[arg-type]
     app.include_router(build_session_router())
@@ -225,9 +226,7 @@ async def test_create_session_records_the_route_decision() -> None:
     app, ctx = _build_test_app()
 
     async with _make_client(app) as client:
-        resp = await client.post(
-            "/api/sessions", json={"agentId": str(AGENT)}, headers=_hdrs()
-        )
+        resp = await client.post("/api/sessions", json={"agentId": str(AGENT)}, headers=_hdrs())
 
     assert resp.status_code == 201, resp.text
     session_id = UUID(resp.json()["id"])
@@ -245,9 +244,7 @@ async def test_the_route_decision_lands_in_the_turn_row() -> None:
     app, ctx = _build_test_app(llm_content="hi")
 
     async with _make_client(app) as client:
-        resp = await client.post(
-            "/api/sessions", json={"agentId": str(AGENT)}, headers=_hdrs()
-        )
+        resp = await client.post("/api/sessions", json={"agentId": str(AGENT)}, headers=_hdrs())
     session_id = UUID(resp.json()["id"])
 
     async with (
@@ -322,9 +319,7 @@ async def test_get_session_returns_404_when_cross_tenant() -> None:
     sid = await _seed_session(ctx)
 
     async with _make_client(app) as client:
-        resp = await client.get(
-            f"/api/sessions/{sid}", headers=_hdrs(tenant=OTHER_TENANT)
-        )
+        resp = await client.get(f"/api/sessions/{sid}", headers=_hdrs(tenant=OTHER_TENANT))
 
     # 跨租户访问**不得**返回会话。
     assert resp.status_code == 404, resp.text

@@ -22,11 +22,10 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.agent_router.classifier import TaskKind
-from qzdap_agent_runtime.ports import AgentRouterPort, AgentSelection
-
 from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
 from qzdap.modules.agent_runtime.application.ports import AgentCatalogLister
+from qzdap_agent_runtime.agent_router.classifier import TaskKind
+from qzdap_agent_runtime.ports import AgentRouterPort, AgentSelection
 
 #: **category 关键词 → 任务类型** ✓（兜底匹配 ✓ —— 显式声明优先 ✓）。
 _CATEGORY_KEYWORDS: dict[TaskKind, tuple[str, ...]] = {
@@ -67,9 +66,7 @@ class CatalogAgentRouter(AgentRouterPort):
                 if _matches(row, task_kind):
                     return _selection(row, task_kind, confidence, fell_back=False)
         # ⚠️ **落回会话绑定的 agent** ✓（不是报错 ✓ —— §4.1 规则 2 ✓）
-        fallback = next(
-            (row for row in rows if str(row.get("id")) == str(session_agent_id)), None
-        )
+        fallback = next((row for row in rows if str(row.get("id")) == str(session_agent_id)), None)
         if fallback is None:
             fallback = await self._safe_get(session_agent_id)
         if fallback is None:
@@ -85,7 +82,7 @@ class CatalogAgentRouter(AgentRouterPort):
     async def _safe_get(self, agent_id: UUID) -> dict[str, Any] | None:
         try:
             return await self._catalog.get_admin(agent_id)
-        except Exception:  # noqa: BLE001 — 拿不到就落回空配置 ✓
+        except Exception:
             return None
 
 

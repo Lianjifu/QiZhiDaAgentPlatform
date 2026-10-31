@@ -18,6 +18,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
 import pytest
@@ -28,12 +29,6 @@ from _ar_unit_in_memory import (
     make_dependencies,
     make_turn_runner,
 )
-from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
-from qzdap_agent_runtime.session.approval import arguments_digest
-from qzdap_kernel.errors import ValidationError
-from qzdap_llm.client import ChatRequest, LLMChunk, Usage
-from qzdap_schema.dtos.turn import ApprovalRequiredChunk
-from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 
 from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
 from qzdap.modules.agent_runtime.adapter.turn.executor import (
@@ -46,6 +41,12 @@ from qzdap.modules.agent_runtime.domain.errors import (
     SessionBusyError,
     SessionNotFound,
 )
+from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
+from qzdap_agent_runtime.session.approval import arguments_digest
+from qzdap_kernel.errors import ValidationError
+from qzdap_llm.client import ChatRequest, LLMChunk, Usage
+from qzdap_schema.dtos.turn import ApprovalRequiredChunk
+from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 
 
 def _owners() -> tuple[TenantId, WorkspaceId, UserId, AgentId]:
@@ -213,9 +214,7 @@ class _ScriptedLLM:
         if step.get("delta"):
             yield LLMChunk(model=req.model, delta=str(step["delta"]))
         if step.get("tool_calls"):
-            yield LLMChunk(
-                model=req.model, delta="", tool_calls=list(step["tool_calls"])
-            )
+            yield LLMChunk(model=req.model, delta="", tool_calls=list(step["tool_calls"]))
         yield LLMChunk(
             model=req.model,
             delta="",
@@ -338,9 +337,7 @@ async def test_mid_stream_failure_emits_error_chunk_and_fails_the_turn() -> None
         owner="test",
         model="default",
     )
-    svc, deps, sid, *_ = await _make_service(
-        llm=_ExplodingLLM(), agent=agent, owner_id=uid
-    )
+    svc, deps, sid, *_ = await _make_service(llm=_ExplodingLLM(), agent=agent, owner_id=uid)
 
     chunks = [
         chunk
@@ -401,9 +398,7 @@ async def test_first_chunk_failure_raises_so_http_can_answer_with_a_status() -> 
             sessions=deps["sessions"],
         ),
     )
-    detail = await svc.create_session(
-        tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
-    )
+    detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
 
     # deps["llm"] is FakeLLM with raise_on_first_chunk unset → replace the
     # graph with one whose model fails before the first chunk.
@@ -447,9 +442,7 @@ async def test_cancelled_stream_does_not_leave_a_running_turn() -> None:
         owner="test",
         model="default",
     )
-    svc, deps, sid, *_ = await _make_service(
-        llm=_ExplodingLLM(), agent=agent, owner_id=uid
-    )
+    svc, deps, sid, *_ = await _make_service(llm=_ExplodingLLM(), agent=agent, owner_id=uid)
 
     stream = svc.stream_turn(
         tenant_id=tid,
@@ -498,7 +491,7 @@ async def test_catalog_tool_reaches_the_model_with_its_argument_schema() -> None
             }
         ]
     )
-    svc, deps, sid, *_ = await _make_service(
+    svc, _deps, sid, *_ = await _make_service(
         llm=llm, agent=agent, owner_id=uid, tool_port=tool_port
     )
 
@@ -518,9 +511,7 @@ async def test_catalog_tool_reaches_the_model_with_its_argument_schema() -> None
     names = [t["function"]["name"] for t in tools]
     assert "web_search" in names
     schema = next(
-        t["function"]["parameters"]
-        for t in tools
-        if t["function"]["name"] == "web_search"
+        t["function"]["parameters"] for t in tools if t["function"]["name"] == "web_search"
     )
     assert schema["properties"]["query"]["type"] == "string"
     assert schema["required"] == ["query"]
@@ -538,7 +529,7 @@ async def test_unknown_session_still_raises_not_found() -> None:
         owner="test",
         model="default",
     )
-    svc, deps, *_ = await _make_service(llm=_RecordingLLM(), agent=agent, owner_id=uid)
+    svc, _deps, *_ = await _make_service(llm=_RecordingLLM(), agent=agent, owner_id=uid)
     with pytest.raises(SessionNotFound):
         async for _ in svc.stream_turn(
             tenant_id=tid,
@@ -563,7 +554,7 @@ async def test_second_concurrent_turn_is_rejected() -> None:
         owner="test",
         model="default",
     )
-    svc, deps, sid, *_ = await _make_service(llm=_SlowLLM(), agent=agent, owner_id=uid)
+    svc, _deps, sid, *_ = await _make_service(llm=_SlowLLM(), agent=agent, owner_id=uid)
 
     first = svc.stream_turn(
         tenant_id=tid,
@@ -643,9 +634,7 @@ async def test_a_new_turn_is_not_cancelled_by_a_stale_flag(monkeypatch) -> None:
         owner="test",
         model="default",
     )
-    svc, deps, sid, *_ = await _make_service(
-        llm=_RecordingLLM(), agent=agent, owner_id=uid
-    )
+    svc, _deps, sid, *_ = await _make_service(llm=_RecordingLLM(), agent=agent, owner_id=uid)
     await svc.request_cancel(tenant_id=tid, session_id=UUID(sid))
 
     chunks = [
@@ -674,9 +663,7 @@ async def test_a_replayed_client_request_id_does_not_start_a_second_turn() -> No
         owner="test",
         model="default",
     )
-    svc, deps, sid, *_ = await _make_service(
-        llm=_RecordingLLM(), agent=agent, owner_id=uid
-    )
+    svc, _deps, sid, *_ = await _make_service(llm=_RecordingLLM(), agent=agent, owner_id=uid)
 
     async def send(request_id: str) -> None:
         _ = [
@@ -710,9 +697,7 @@ async def test_the_first_user_message_becomes_the_session_title() -> None:
         owner="test",
         model="default",
     )
-    svc, deps, sid, *_ = await _make_service(
-        llm=_RecordingLLM(), agent=agent, owner_id=uid
-    )
+    svc, deps, sid, *_ = await _make_service(llm=_RecordingLLM(), agent=agent, owner_id=uid)
 
     _ = [
         chunk
@@ -744,9 +729,7 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
     )
     deps = make_dependencies()
     messages = _Messages()
-    runner = SessionGraphRunner(
-        llm=_PricingLLM(), catalog_model_resolver=_PricingResolver()
-    )
+    runner = SessionGraphRunner(llm=_PricingLLM(), catalog_model_resolver=_PricingResolver())
     journal = InMemorySessionJournal()
     # 把 journal 也放进 deps —— 断言「审批挂起落库」要用 ✓
     deps["journal"] = journal
@@ -770,9 +753,7 @@ async def test_usage_chunk_carries_the_cost_from_the_model_price() -> None:
             sessions=deps["sessions"],
         ),
     )
-    detail = await svc.create_session(
-        tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid
-    )
+    detail = await svc.create_session(tenant_id=tid, workspace_id=wid, owner_id=uid, agent_id=aid)
     chunks = [
         chunk
         async for chunk in svc.stream_turn(
@@ -1026,7 +1007,10 @@ async def test_changed_tool_arguments_block_the_approval() -> None:
         status = "pending"
         expires_at = datetime.now(UTC) + timedelta(hours=1)
         # 参数与挂起时**不同** —— 模拟「审批记录里的参数被改过」
-        resource = {"tool": "danger_tool", "arguments": {"path": "/etc/passwd"}}
+        resource: ClassVar[dict[str, Any]] = {
+            "tool": "danger_tool",
+            "arguments": {"path": "/etc/passwd"},
+        }
 
     class _ApprovalService:
         async def get(self, *, tenant_id, approval_id):  # type: ignore[no-untyped-def]
@@ -1067,9 +1051,7 @@ async def test_two_identical_messages_without_a_client_request_id_both_run() -> 
         owner="test",
         model="default",
     )
-    svc, _deps, sid, *_ = await _make_service(
-        llm=_RecordingLLM(), agent=agent, owner_id=uid
-    )
+    svc, _deps, sid, *_ = await _make_service(llm=_RecordingLLM(), agent=agent, owner_id=uid)
 
     async def send() -> list:
         return [

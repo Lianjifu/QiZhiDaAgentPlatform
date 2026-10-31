@@ -46,9 +46,7 @@ async def _run() -> int:
     sf = container.session_factory()
     async with sf.session() as session:
         result = await seed_identity(session, container.hasher(), profile)
-        added = await seed_builtin_tools(
-            session, result["tenant_id"], result["workspace_id"]
-        )
+        added = await seed_builtin_tools(session, result["tenant_id"], result["workspace_id"])
         content = await seed_demo_content(
             session,
             profile,

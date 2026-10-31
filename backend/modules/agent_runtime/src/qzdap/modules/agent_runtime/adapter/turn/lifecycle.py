@@ -16,14 +16,13 @@ from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.session.turn_runner import TurnLifecyclePort, TurnRequest
-from qzdap_schema.ids import SessionId, TenantId, TurnId, WorkspaceId
-
 from qzdap.modules.agent_runtime.application.ports import (
     EventPublisher,
     SessionJournal,
 )
 from qzdap.modules.agent_runtime.domain import Turn
+from qzdap_agent_runtime.session.turn_runner import TurnLifecyclePort, TurnRequest
+from qzdap_schema.ids import SessionId, TenantId, TurnId, WorkspaceId
 
 _log = logging.getLogger(__name__)
 
@@ -68,9 +67,7 @@ class TurnLifecycle(TurnLifecyclePort):
             trace_id=request.trace_id,
             # 路由决策随轮次留痕（``session_turns.route_decision``）——
             # **产出者是 Router**，这里只是把它带进轮次行。
-            route_decision=dict(request.route_decision)
-            if request.route_decision
-            else None,
+            route_decision=dict(request.route_decision) if request.route_decision else None,
             # ⚠️ **入站序号** ✓（Router 方案 §4.2 ✓）—— **有值就排队** ✓
             # （轮次行先落 ``queued`` ✓ —— 等 FIFO 位 ✓）。
             ingress_seq=request.ingress_seq,
@@ -123,20 +120,16 @@ class TurnLifecycle(TurnLifecyclePort):
                 error_code=code,
                 error_message=message,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             _log.exception("failed to persist failed turn turn_id=%s", turn_id)
 
     async def mark_delivered(self, *, turn_id: UUID) -> None:
         """事件已投递 ✓。"""
         await self._journal.mark_delivered(turn_id=turn_id)
 
-    async def mark_waiting_approval(
-        self, *, turn_id: UUID, pending: Mapping[str, Any]
-    ) -> None:
+    async def mark_waiting_approval(self, *, turn_id: UUID, pending: Mapping[str, Any]) -> None:
         """审批挂起 → 轮次落库 + 状态转 ``waiting`` ✓（Session 方案 §8）。"""
-        await self._journal.write_pending_approval(
-            turn_id=turn_id, pending=dict(pending)
-        )
+        await self._journal.write_pending_approval(turn_id=turn_id, pending=dict(pending))
 
 
 __all__ = ["TurnLifecycle"]

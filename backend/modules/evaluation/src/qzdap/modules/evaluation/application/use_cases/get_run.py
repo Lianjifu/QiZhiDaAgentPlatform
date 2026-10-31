@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from qzdap.modules.evaluation.application.ports import EvalRunRepository
+from qzdap.modules.evaluation.domain.entities import EvalRun
+from qzdap.modules.evaluation.domain.errors import EvalRunNotFound
 from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
@@ -11,10 +14,6 @@ from qzdap_schema.ids import (
     TenantId,
     WorkspaceId,
 )
-
-from qzdap.modules.evaluation.application.ports import EvalRunRepository
-from qzdap.modules.evaluation.domain.entities import EvalRun
-from qzdap.modules.evaluation.domain.errors import EvalRunNotFound
 
 
 @dataclass(slots=True)

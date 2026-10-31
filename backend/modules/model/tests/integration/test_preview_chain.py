@@ -5,6 +5,7 @@
   - primary 排第一
   - 不存在的 route → 404 / chain=[]
 """
+
 from __future__ import annotations
 
 import os
@@ -13,9 +14,9 @@ from typing import Any
 
 import asyncpg
 import pytest
+
 from qzdap.composition.container import Container
 from qzdap.composition.settings import Settings
-
 from qzdap.modules.model.adapter.crypto.credential_cipher import (
     build_cipher_from_env,
 )
@@ -56,35 +57,52 @@ async def route_setup() -> Any:
         await pg.execute(
             "INSERT INTO tenants (id, slug, display_name, status, tenant_id) "
             "VALUES ($1, $2, $3, 'active', $1) ON CONFLICT (id) DO NOTHING",
-            t, f"t-{str(t)[:8]}", "Test",
+            t,
+            f"t-{str(t)[:8]}",
+            "Test",
         )
         await pg.execute(
             "INSERT INTO workspaces (id, tenant_id, slug, display_name, status) "
             "VALUES ($1, $2, $3, $4, 'active') ON CONFLICT (id) DO NOTHING",
-            w, t, f"w-{str(w)[:8]}", "Test WS",
+            w,
+            t,
+            f"w-{str(w)[:8]}",
+            "Test WS",
         )
         await pg.execute(
             "INSERT INTO users (id, tenant_id, email, display_name, status) "
             "VALUES ($1, $2, $3, $4, 'active') ON CONFLICT (id) DO NOTHING",
-            user, t, f"test-{t}@example.com", "Test User",
+            user,
+            t,
+            f"test-{t}@example.com",
+            "Test User",
         )
         await pg.execute(
             "INSERT INTO admin_model_providers (id, tenant_id, workspace_id, name, region, status, base_url, protocol, api_key_masked, encrypted_payload) "
             "VALUES ($1, $2, $3, 'test-prov', 'global', 'healthy', 'https://api.deepseek.com/v1', 'openai', '****', $4) "
             "ON CONFLICT (id) DO NOTHING",
-            provider_id, t, w, encrypted,
+            provider_id,
+            t,
+            w,
+            encrypted,
         )
         await pg.execute(
             "INSERT INTO admin_models (id, tenant_id, workspace_id, provider_id, name, upstream_model, status, tier, context_window) "
             "VALUES ($1, $2, $3, $4, 'test-model', 'deepseek-chat', 'active', 'balanced', 32000) "
             "ON CONFLICT (id) DO NOTHING",
-            model_id, t, w, provider_id,
+            model_id,
+            t,
+            w,
+            provider_id,
         )
         await pg.execute(
             "INSERT INTO admin_model_routes (id, tenant_id, workspace_id, name, task, strategy, priority, primary_model_id, fallback_model_ids, enabled, description) "
             "VALUES ($1, $2, $3, 'test-route', 'generation', 'fallback', 0, $4, '[]'::jsonb, true, '') "
             "ON CONFLICT (id) DO NOTHING",
-            route_id, t, w, model_id,
+            route_id,
+            t,
+            w,
+            model_id,
         )
         yield {
             "tenant_id": t,
@@ -96,13 +114,9 @@ async def route_setup() -> Any:
         }
     finally:
         try:
-            await pg.execute(
-                "DELETE FROM admin_model_routes WHERE tenant_id = $1", t
-            )
+            await pg.execute("DELETE FROM admin_model_routes WHERE tenant_id = $1", t)
             await pg.execute("DELETE FROM admin_models WHERE tenant_id = $1", t)
-            await pg.execute(
-                "DELETE FROM admin_model_providers WHERE tenant_id = $1", t
-            )
+            await pg.execute("DELETE FROM admin_model_providers WHERE tenant_id = $1", t)
             await pg.execute("DELETE FROM users WHERE id = $1", user)
             await pg.execute("DELETE FROM workspaces WHERE id = $1", w)
             await pg.execute("DELETE FROM tenants WHERE id = $1", t)

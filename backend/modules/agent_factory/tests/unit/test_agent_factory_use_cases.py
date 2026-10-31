@@ -13,15 +13,6 @@ from _agent_factory_unit_in_memory import (  # type: ignore[import-not-found]
     RecordingPublisher,
     make_eval_summary,
 )
-from qzdap_kernel.errors import BusinessRuleError
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    EvalRunId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
 
 from qzdap.modules.agent_factory.application.services import AgentFactoryService
 from qzdap.modules.agent_factory.domain.errors import (
@@ -34,6 +25,15 @@ from qzdap.modules.agent_factory.domain.errors import (
 )
 from qzdap.modules.agent_factory.domain.value_objects import (
     AgentVersionStatus,
+)
+from qzdap_kernel.errors import BusinessRuleError
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    EvalRunId,
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 _TENANT = TenantId(uuid4())
@@ -208,9 +208,7 @@ async def test_publish_then_release_with_eval_passes_gate() -> None:
         tenant_id=_TENANT,
         template_id=tpl.id,
         version_id=pub_ver.id,
-        summary=make_eval_summary(
-            run_id=EvalRunId(uuid4()), status="passed", mean_score=0.85
-        ),
+        summary=make_eval_summary(run_id=EvalRunId(uuid4()), status="passed", mean_score=0.85),
     )
     rel = await svc.release_version.execute(
         tenant_id=_TENANT,
@@ -225,10 +223,7 @@ async def test_publish_then_release_with_eval_passes_gate() -> None:
     fresh = await svc.get_version.execute(tenant_id=_TENANT, version_id=pub_ver.id)
     assert fresh.status is AgentVersionStatus.RELEASED
     # event published
-    assert any(
-        getattr(e, "TOPIC", "") == "agent_factory.version.released"
-        for e in pub.published
-    )
+    assert any(getattr(e, "TOPIC", "") == "agent_factory.version.released" for e in pub.published)
 
 
 @pytest.mark.asyncio
@@ -286,9 +281,7 @@ async def test_release_with_below_threshold_returns_422() -> None:
         tenant_id=_TENANT,
         template_id=tpl.id,
         version_id=pub_ver.id,
-        summary=make_eval_summary(
-            run_id=EvalRunId(uuid4()), status="passed", mean_score=0.4
-        ),
+        summary=make_eval_summary(run_id=EvalRunId(uuid4()), status="passed", mean_score=0.4),
     )
     with pytest.raises(BusinessRuleError) as exc:
         await svc.release_version.execute(
@@ -325,9 +318,7 @@ async def test_release_with_failed_status_returns_422() -> None:
         tenant_id=_TENANT,
         template_id=tpl.id,
         version_id=pub_ver.id,
-        summary=make_eval_summary(
-            run_id=EvalRunId(uuid4()), status="failed", mean_score=0.9
-        ),
+        summary=make_eval_summary(run_id=EvalRunId(uuid4()), status="failed", mean_score=0.9),
     )
     with pytest.raises(BusinessRuleError) as exc:
         await svc.release_version.execute(
@@ -363,9 +354,7 @@ async def test_release_unpublished_version_returns_422() -> None:
         tenant_id=_TENANT,
         template_id=tpl.id,
         version_id=ver.id,
-        summary=make_eval_summary(
-            run_id=EvalRunId(uuid4()), status="passed", mean_score=0.9
-        ),
+        summary=make_eval_summary(run_id=EvalRunId(uuid4()), status="passed", mean_score=0.9),
     )
     with pytest.raises(BusinessRuleError) as exc:
         await svc.release_version.execute(
@@ -436,9 +425,7 @@ async def test_retire_only_after_release() -> None:
 async def test_get_unknown_version_404() -> None:
     svc, *_ = _service()
     with pytest.raises(AgentVersionNotFound):
-        await svc.get_version.execute(
-            tenant_id=_TENANT, version_id=AgentVersionId(uuid4())
-        )
+        await svc.get_version.execute(tenant_id=_TENANT, version_id=AgentVersionId(uuid4()))
 
 
 @pytest.mark.asyncio

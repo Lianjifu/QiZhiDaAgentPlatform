@@ -200,9 +200,7 @@ class WriterPipeline:
         )
         if existing is not None:
             await self._store.touch(item_id=str(existing.get("id") or ""))
-            return WriteOutcome(
-                deduplicated=[{"id": existing.get("id"), "content": content}]
-            )
+            return WriteOutcome(deduplicated=[{"id": existing.get("id"), "content": content}])
         saved = await self._store.save(
             tenant_id=tenant_id,
             workspace_id=workspace_id,

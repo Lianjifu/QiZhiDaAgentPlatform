@@ -10,15 +10,6 @@ share a single transactional unit-of-work per request.  Same for runs.
 
 from __future__ import annotations
 
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    EvalCaseId,
-    EvalDatasetId,
-    EvalRunId,
-    TenantId,
-    WorkspaceId,
-)
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +40,15 @@ from qzdap.modules.evaluation.domain.errors import (
     EvalDatasetNameConflict,
     IdempotencyKeyConflict,
 )
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    EvalCaseId,
+    EvalDatasetId,
+    EvalRunId,
+    TenantId,
+    WorkspaceId,
+)
 
 # ── EvalDatasetRepository ─────────────────────────────────────────────────
 
@@ -57,9 +57,7 @@ class SqlEvalDatasetRepository(EvalDatasetRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get(
-        self, *, tenant_id: TenantId, dataset_id: EvalDatasetId
-    ) -> EvalDataset | None:
+    async def get(self, *, tenant_id: TenantId, dataset_id: EvalDatasetId) -> EvalDataset | None:
         result = await self._session.execute(
             select(EvalDatasetORM).where(
                 EvalDatasetORM.tenant_id == tenant_id,
@@ -69,9 +67,7 @@ class SqlEvalDatasetRepository(EvalDatasetRepository):
         row = result.scalar_one_or_none()
         return dataset_to_domain(row) if row is not None else None
 
-    async def get_by_name(
-        self, *, tenant_id: TenantId, name: str
-    ) -> EvalDataset | None:
+    async def get_by_name(self, *, tenant_id: TenantId, name: str) -> EvalDataset | None:
         result = await self._session.execute(
             select(EvalDatasetORM).where(
                 EvalDatasetORM.tenant_id == tenant_id,
@@ -137,9 +133,7 @@ class SqlEvalDatasetRepository(EvalDatasetRepository):
         await self._session.flush()
         return case_to_domain(row)
 
-    async def list_cases(
-        self, *, tenant_id: TenantId, dataset_id: EvalDatasetId
-    ) -> list[EvalCase]:
+    async def list_cases(self, *, tenant_id: TenantId, dataset_id: EvalDatasetId) -> list[EvalCase]:
         result = await self._session.execute(
             select(EvalCaseORM)
             .where(

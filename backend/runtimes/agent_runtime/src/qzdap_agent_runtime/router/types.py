@@ -151,14 +151,10 @@ class RouteDecision:
             rule_version=str(raw.get("rule_version") or ""),
             confidence=float(raw.get("confidence") or 0.0),
             reason=str(raw.get("reason") or ""),
-            candidates=tuple(
-                AgentCandidate.from_dict(c) for c in raw.get("candidates") or ()
-            ),
+            candidates=tuple(AgentCandidate.from_dict(c) for c in raw.get("candidates") or ()),
             source=raw.get("source") or "fallback",
             overridden_agent_id=(
-                UUID(str(raw["overridden_agent_id"]))
-                if raw.get("overridden_agent_id")
-                else None
+                UUID(str(raw["overridden_agent_id"])) if raw.get("overridden_agent_id") else None
             ),
         )
 
@@ -299,6 +295,4 @@ class UserDirectoryPort(Protocol):
     而不是散落的 JSONB 约定（§1.5）。
     """
 
-    async def get_user_attributes(
-        self, *, tenant_id: UUID, user_id: UUID
-    ) -> UserAttributes: ...
+    async def get_user_attributes(self, *, tenant_id: UUID, user_id: UUID) -> UserAttributes: ...

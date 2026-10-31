@@ -20,6 +20,10 @@ from typing import Any
 from qzdap.modules.agent_runtime.application.one_shot_turn import (
     OneShotTurnService,
 )
+from qzdap.modules.evaluation.application.ports import (
+    AgentFactoryQueryPort,
+    SubAgentPort,
+)
 from qzdap_kernel.errors import AppError
 from qzdap_schema.ids import (
     AgentId,
@@ -27,11 +31,6 @@ from qzdap_schema.ids import (
     TenantId,
     UserId,
     WorkspaceId,
-)
-
-from qzdap.modules.evaluation.application.ports import (
-    AgentFactoryQueryPort,
-    SubAgentPort,
 )
 
 

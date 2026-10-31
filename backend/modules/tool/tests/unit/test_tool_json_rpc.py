@@ -70,9 +70,7 @@ async def test_tools_call_sends_arguments() -> None:
 
     def _handler(req: httpx.Request) -> httpx.Response:
         captured["body"] = json.loads(req.content)
-        return httpx.Response(
-            200, json={"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}
-        )
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"ok": True}})
 
     client = _client(_make_handler([httpx.Response(200)]))
     client._transport = httpx.MockTransport(_handler)  # type: ignore[attr-defined]
@@ -113,9 +111,7 @@ async def test_sse_response_parses_last_data_line() -> None:
     client._transport = httpx.MockTransport(_handler)  # type: ignore[attr-defined]
     adapter = MCPRuntimeAdapter(http=client)
 
-    tools = await adapter.list_tools(
-        server_url="https://mcp.example.com", auth=None, timeout=5.0
-    )
+    tools = await adapter.list_tools(server_url="https://mcp.example.com", auth=None, timeout=5.0)
     # list_tools → tools/list → result.tools → envelope result has no "tools" so []
     # The call_tool path with same envelope would yield {"final": True}.
     assert tools == []  # no "tools" key in last envelope → []
@@ -126,17 +122,13 @@ async def test_sse_response_with_tools() -> None:
     sse_body = 'data: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"a"}]}}\n\n'
 
     def _handler(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200, text=sse_body, headers={"content-type": "text/event-stream"}
-        )
+        return httpx.Response(200, text=sse_body, headers={"content-type": "text/event-stream"})
 
     client = _client(_make_handler([httpx.Response(200)]))
     client._transport = httpx.MockTransport(_handler)  # type: ignore[attr-defined]
     adapter = MCPRuntimeAdapter(http=client)
 
-    tools = await adapter.list_tools(
-        server_url="https://mcp.example.com", auth=None, timeout=5.0
-    )
+    tools = await adapter.list_tools(server_url="https://mcp.example.com", auth=None, timeout=5.0)
     assert tools == [{"name": "a"}]
 
 
@@ -149,9 +141,7 @@ async def test_bearer_auth_injects_token() -> None:
 
     def _handler(req: httpx.Request) -> httpx.Response:
         captured["auth"] = req.headers.get("authorization")
-        return httpx.Response(
-            200, json={"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}
-        )
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"tools": []}})
 
     client = _client(_make_handler([httpx.Response(200)]))
     client._transport = httpx.MockTransport(_handler)  # type: ignore[attr-defined]
@@ -168,18 +158,14 @@ async def test_bearer_auth_injects_token() -> None:
 @pytest.mark.asyncio
 async def test_http_error_envelope_raises() -> None:
     def _handler(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200, json={"jsonrpc": "2.0", "id": 1, "error": {"code": -32601}}
-        )
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "error": {"code": -32601}})
 
     client = _client(_make_handler([httpx.Response(200)]))
     client._transport = httpx.MockTransport(_handler)  # type: ignore[attr-defined]
     adapter = MCPRuntimeAdapter(http=client)
 
     with pytest.raises(httpx.HTTPError):
-        await adapter.list_tools(
-            server_url="https://mcp.example.com", auth=None, timeout=5.0
-        )
+        await adapter.list_tools(server_url="https://mcp.example.com", auth=None, timeout=5.0)
 
 
 @pytest.mark.asyncio
@@ -192,9 +178,7 @@ async def test_timeout() -> None:
     adapter = MCPRuntimeAdapter(http=client)
 
     with pytest.raises(httpx.ConnectTimeout):
-        await adapter.list_tools(
-            server_url="https://mcp.example.com", auth=None, timeout=0.01
-        )
+        await adapter.list_tools(server_url="https://mcp.example.com", auth=None, timeout=0.01)
 
 
 class TestParseSSE:
@@ -236,10 +220,7 @@ class TestParseSSE:
     def test_malformed_json_data_lines_are_skipped(self) -> None:
         # Lines that fail to parse are skipped, not raised — the parser
         # recovers when a later valid data line shows up.
-        text = (
-            "data: {not-valid-json\n\n"
-            'data: {"jsonrpc":"2.0","id":1,"result":{"ok":true}}\n\n'
-        )
+        text = 'data: {not-valid-json\n\ndata: {"jsonrpc":"2.0","id":1,"result":{"ok":true}}\n\n'
         env = _parse_sse_jsonrpc(text)
         assert env["result"] == {"ok": True}
 
@@ -275,9 +256,7 @@ class TestMCPRuntimeNegative:
         adapter = MCPRuntimeAdapter(http=client)
 
         with pytest.raises(httpx.HTTPStatusError):
-            await adapter.list_tools(
-                server_url="https://mcp.example.com", auth=None, timeout=5.0
-            )
+            await adapter.list_tools(server_url="https://mcp.example.com", auth=None, timeout=5.0)
 
     @pytest.mark.asyncio
     async def test_http_404_raises(self) -> None:
@@ -316,9 +295,7 @@ class TestMCPRuntimeNegative:
         adapter = MCPRuntimeAdapter(http=client)
 
         with pytest.raises(httpx.HTTPError) as ei:
-            await adapter.list_tools(
-                server_url="https://mcp.example.com", auth=None, timeout=5.0
-            )
+            await adapter.list_tools(server_url="https://mcp.example.com", auth=None, timeout=5.0)
         assert "method not found" in str(ei.value) or "error" in str(ei.value)
 
     @pytest.mark.asyncio
@@ -327,9 +304,7 @@ class TestMCPRuntimeNegative:
         body = 'data: {"jsonrpc":"2.0","id":1,"error":{"code":-32602}}\n\n'
 
         def _handler(req: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200, text=body, headers={"content-type": "text/event-stream"}
-            )
+            return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
 
         client = _client(_make_handler([httpx.Response(200)]))
         client._transport = httpx.MockTransport(_handler)  # type: ignore[attr-defined]
@@ -347,18 +322,14 @@ class TestMCPRuntimeNegative:
     @pytest.mark.asyncio
     async def test_sse_empty_stream_raises(self) -> None:
         def _handler(req: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200, text="", headers={"content-type": "text/event-stream"}
-            )
+            return httpx.Response(200, text="", headers={"content-type": "text/event-stream"})
 
         client = _client(_make_handler([httpx.Response(200)]))
         client._transport = httpx.MockTransport(_handler)  # type: ignore[attr-defined]
         adapter = MCPRuntimeAdapter(http=client)
 
         with pytest.raises(httpx.HTTPError):
-            await adapter.list_tools(
-                server_url="https://mcp.example.com", auth=None, timeout=5.0
-            )
+            await adapter.list_tools(server_url="https://mcp.example.com", auth=None, timeout=5.0)
 
     @pytest.mark.asyncio
     async def test_json_rpc_request_includes_request_id(self) -> None:
@@ -369,20 +340,14 @@ class TestMCPRuntimeNegative:
         def _handler(req: httpx.Request) -> httpx.Response:
             body = json.loads(req.content)
             captured.append(int(body["id"]))
-            return httpx.Response(
-                200, json={"jsonrpc": "2.0", "id": body["id"], "result": {}}
-            )
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": body["id"], "result": {}})
 
         client = _client(_make_handler([httpx.Response(200), httpx.Response(200)]))
         client._transport = httpx.MockTransport(_handler)  # type: ignore[attr-defined]
         adapter = MCPRuntimeAdapter(http=client)
 
-        await adapter.list_tools(
-            server_url="https://mcp.example.com", auth=None, timeout=5.0
-        )
-        await adapter.list_tools(
-            server_url="https://mcp.example.com", auth=None, timeout=5.0
-        )
+        await adapter.list_tools(server_url="https://mcp.example.com", auth=None, timeout=5.0)
+        await adapter.list_tools(server_url="https://mcp.example.com", auth=None, timeout=5.0)
         assert len(captured) == 2
         assert captured[0] != captured[1]
 
@@ -393,9 +358,7 @@ class TestMCPRuntimeNegative:
 
         def _handler(req: httpx.Request) -> httpx.Response:
             captured["body"] = json.loads(req.content)
-            return httpx.Response(
-                200, json={"jsonrpc": "2.0", "id": 1, "result": {"ok": 1}}
-            )
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"ok": 1}})
 
         client = _client(_make_handler([httpx.Response(200)]))
         client._transport = httpx.MockTransport(_handler)  # type: ignore[attr-defined]
@@ -425,9 +388,7 @@ class TestMCPRuntimeNegative:
         client._transport = httpx.MockTransport(_handler)  # type: ignore[attr-defined]
         adapter = MCPRuntimeAdapter(http=client)
 
-        await adapter.list_tools(
-            server_url="https://mcp.example.com", auth=None, timeout=5.0
-        )
+        await adapter.list_tools(server_url="https://mcp.example.com", auth=None, timeout=5.0)
         assert "authorization" not in {k.lower() for k in captured["headers"]}
 
     @pytest.mark.asyncio

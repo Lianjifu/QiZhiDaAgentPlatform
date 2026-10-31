@@ -46,9 +46,7 @@ def _make_mcp_spec() -> dict:
 
 class TestToolProtocolExtractOperations:
     def test_openapi_extracts_all_http_methods(self) -> None:
-        ops = Tool.extract_operations(
-            protocol=ToolProtocol.OPENAPI, spec=_make_openapi_spec()
-        )
+        ops = Tool.extract_operations(protocol=ToolProtocol.OPENAPI, spec=_make_openapi_spec())
         ids = [op.operation_id for op in ops]
         assert "listPets" in ids
         assert "createPet" in ids
@@ -58,9 +56,7 @@ class TestToolProtocolExtractOperations:
 
     def test_openapi_missing_paths_raises(self) -> None:
         with pytest.raises(InvalidToolSpec):
-            Tool.extract_operations(
-                protocol=ToolProtocol.OPENAPI, spec={"openapi": "3.0.0"}
-            )
+            Tool.extract_operations(protocol=ToolProtocol.OPENAPI, spec={"openapi": "3.0.0"})
 
     def test_openapi_path_must_be_object(self) -> None:
         with pytest.raises(InvalidToolSpec):
@@ -81,9 +77,7 @@ class TestToolProtocolExtractOperations:
 
     def test_mcp_missing_server_url_raises(self) -> None:
         with pytest.raises(InvalidToolSpec):
-            Tool.extract_operations(
-                protocol=ToolProtocol.MCP, spec={"mcp_tool_name": "x"}
-            )
+            Tool.extract_operations(protocol=ToolProtocol.MCP, spec={"mcp_tool_name": "x"})
 
     def test_mcp_missing_tool_name_raises(self) -> None:
         with pytest.raises(InvalidToolSpec):
@@ -93,10 +87,7 @@ class TestToolProtocolExtractOperations:
             )
 
     def test_custom_returns_empty(self) -> None:
-        assert (
-            Tool.extract_operations(protocol=ToolProtocol.CUSTOM, spec={"any": "shape"})
-            == []
-        )
+        assert Tool.extract_operations(protocol=ToolProtocol.CUSTOM, spec={"any": "shape"}) == []
 
     def test_unknown_protocol_raises(self) -> None:
         class FakeProtocol:

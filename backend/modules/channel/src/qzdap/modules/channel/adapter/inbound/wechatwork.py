@@ -89,13 +89,9 @@ class WeChatWorkInboundAdapter:
             return build_inbound_message(
                 context=context,
                 body=body,
-                external_user_id=str(
-                    payload.get("from", {}).get("user_id", "wecom-json")
-                ),
+                external_user_id=str(payload.get("from", {}).get("user_id", "wecom-json")),
                 external_chat_id=str(payload.get("chat_id", "wecom-json")),
-                external_message_id=(
-                    str(payload.get("msg_id")) if payload.get("msg_id") else None
-                ),
+                external_message_id=(str(payload.get("msg_id")) if payload.get("msg_id") else None),
                 text=str(payload.get("text", "")),
                 raw_metadata={
                     "msg_type": payload.get("msgtype", "text"),
@@ -110,9 +106,7 @@ class WeChatWorkInboundAdapter:
                 body=body,
                 external_user_id=root.get("FromUserName", ""),
                 external_chat_id=root.get("ChatId") or root.get("ToUserName", ""),
-                external_message_id=(
-                    str(root.get("MsgId") or root.get("MsgID") or "") or None
-                ),
+                external_message_id=(str(root.get("MsgId") or root.get("MsgID") or "") or None),
                 text=root.get("Content") or "",
                 attachments=_attachments(root),
                 raw_metadata={
@@ -139,9 +133,7 @@ class WeChatWorkInboundAdapter:
         payload: dict[str, Any],
     ) -> InboundMessage:
         if self._aes_key is None or self._aes_iv is None:
-            return _placeholder(
-                context=context, body=body, raw_metadata={"kind": "encrypted"}
-            )
+            return _placeholder(context=context, body=body, raw_metadata={"kind": "encrypted"})
         try:
             cipher = base64.b64decode(payload["encrypt"])
             if len(cipher) < 32:
@@ -153,9 +145,7 @@ class WeChatWorkInboundAdapter:
             from cryptography.hazmat.primitives import padding as sym_padding
             from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-            decryptor = Cipher(
-                algorithms.AES(self._aes_key), modes.CBC(self._aes_iv)
-            ).decryptor()
+            decryptor = Cipher(algorithms.AES(self._aes_key), modes.CBC(self._aes_iv)).decryptor()
             padded = decryptor.update(cipher) + decryptor.finalize()
             unpadder = sym_padding.PKCS7(128).unpadder()
             plaintext = unpadder.update(padded) + unpadder.finalize()
@@ -178,9 +168,7 @@ class WeChatWorkInboundAdapter:
             body=body,
             external_user_id=root.get("FromUserName", ""),
             external_chat_id=root.get("ChatId") or root.get("ToUserName", ""),
-            external_message_id=(
-                str(root.get("MsgId") or root.get("MsgID") or "") or None
-            ),
+            external_message_id=(str(root.get("MsgId") or root.get("MsgID") or "") or None),
             text=root.get("Content") or "",
             attachments=_attachments(root),
             raw_metadata={

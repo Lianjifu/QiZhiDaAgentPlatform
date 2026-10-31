@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_observability.metrics import record_legacy_call
-from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +25,7 @@ from qzdap.modules.agent_runtime.application.ports import (
     TurnRepository,
 )
 from qzdap.modules.agent_runtime.domain import Session, Turn
+from qzdap_persistence.tenant_guard import current_tenant_id
 
 # 一个轮次占用会话超过这个时长, 就认为上一轮已经异常退出 (可被接管).
 CLAIM_STALE_MINUTES = 30
@@ -83,9 +82,7 @@ class SqlSessionRepository(SessionRepository):
         answer comes from the database — the flag is set by another
         request, possibly on another worker.
         """
-        raw = await self._s.scalar(
-            select(SessionORM.metadata_).where(SessionORM.id == session_id)
-        )
+        raw = await self._s.scalar(select(SessionORM.metadata_).where(SessionORM.id == session_id))
         return bool((raw or {}).get("cancel_requested"))
 
     async def request_cancel(self, session_id: UUID) -> bool:
@@ -101,9 +98,12 @@ class SqlSessionRepository(SessionRepository):
         meta["cancel_requested"] = True
         await self.update(session.with_runtime(metadata=meta))
         await self._s.commit()
-        return await self._s.scalar(
-            select(SessionORM.current_turn_id).where(SessionORM.id == session_id)
-        ) is not None
+        return (
+            await self._s.scalar(
+                select(SessionORM.current_turn_id).where(SessionORM.id == session_id)
+            )
+            is not None
+        )
 
     async def clear_cancel(self, session_id: UUID) -> None:
         """Drop a stale cancel flag — a new turn starts fresh."""

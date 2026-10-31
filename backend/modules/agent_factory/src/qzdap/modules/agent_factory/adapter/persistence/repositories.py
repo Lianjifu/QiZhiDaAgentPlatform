@@ -11,13 +11,6 @@ goes through ``AgentFactoryEventPublisher`` from the application layer
 
 from __future__ import annotations
 
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    ReleaseId,
-    TenantId,
-    WorkspaceId,
-)
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +42,13 @@ from qzdap.modules.agent_factory.domain.errors import (
     AgentTemplateNameConflict,
     AgentVersionTagConflict,
 )
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    ReleaseId,
+    TenantId,
+    WorkspaceId,
+)
 
 # ── AgentTemplateRepository ───────────────────────────────────────────────
 
@@ -69,9 +69,7 @@ class SqlAgentTemplateRepository(AgentTemplateRepository):
         row = result.scalar_one_or_none()
         return template_to_domain(row) if row is not None else None
 
-    async def get_by_name(
-        self, *, tenant_id: TenantId, name: str
-    ) -> AgentTemplate | None:
+    async def get_by_name(self, *, tenant_id: TenantId, name: str) -> AgentTemplate | None:
         result = await self._session.execute(
             select(AgentTemplateORM).where(
                 AgentTemplateORM.tenant_id == tenant_id,
@@ -143,9 +141,7 @@ class SqlAgentVersionRepository(AgentVersionRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get(
-        self, *, tenant_id: TenantId, version_id: AgentVersionId
-    ) -> AgentVersion | None:
+    async def get(self, *, tenant_id: TenantId, version_id: AgentVersionId) -> AgentVersion | None:
         result = await self._session.execute(
             select(AgentVersionORM).where(
                 AgentVersionORM.tenant_id == tenant_id,
@@ -219,9 +215,7 @@ class SqlAgentVersionRepository(AgentVersionRepository):
         existing.allowed_skills = list(version.allowed_skills)
         existing.knowledge_package_ids = list(version.knowledge_package_ids)
         existing.plan_dsl_snapshot = (
-            dict(version.plan_dsl_snapshot)
-            if version.plan_dsl_snapshot is not None
-            else None
+            dict(version.plan_dsl_snapshot) if version.plan_dsl_snapshot is not None else None
         )
         existing.max_total_steps = version.max_total_steps
         existing.release_notes = version.release_notes
@@ -244,9 +238,7 @@ class SqlReleaseRepository(ReleaseRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get(
-        self, *, tenant_id: TenantId, release_id: ReleaseId
-    ) -> Release | None:
+    async def get(self, *, tenant_id: TenantId, release_id: ReleaseId) -> Release | None:
         result = await self._session.execute(
             select(ReleaseORM).where(
                 ReleaseORM.tenant_id == tenant_id,

@@ -113,9 +113,7 @@ class SessionManagerPort(Protocol):
         self, *, identity: SessionIdentity, agent: AgentBinding
     ) -> SessionRef: ...
 
-    async def close(
-        self, *, session_id: UUID, tenant_id: UUID, reason: CloseReason
-    ) -> None: ...
+    async def close(self, *, session_id: UUID, tenant_id: UUID, reason: CloseReason) -> None: ...
 
     async def archive(self, *, session_id: UUID, tenant_id: UUID) -> None: ...
 
@@ -182,12 +180,8 @@ class SessionManager(SessionManagerPort):
             f"(session_key={identity.channel_session_key!r})"
         )
 
-    async def close(
-        self, *, session_id: UUID, tenant_id: UUID, reason: CloseReason
-    ) -> None:
-        await self._store.close_session(
-            session_id=session_id, tenant_id=tenant_id, reason=reason
-        )
+    async def close(self, *, session_id: UUID, tenant_id: UUID, reason: CloseReason) -> None:
+        await self._store.close_session(session_id=session_id, tenant_id=tenant_id, reason=reason)
 
     async def archive(self, *, session_id: UUID, tenant_id: UUID) -> None:
         await self._store.archive_session(session_id=session_id, tenant_id=tenant_id)

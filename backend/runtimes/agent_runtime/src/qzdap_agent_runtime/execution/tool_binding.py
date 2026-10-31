@@ -114,9 +114,7 @@ class ToolBindingResolver:
             让模型以为「工具执行了但没结果」✗）。
             """
             if self._runtime is None:
-                raise RuntimeError(
-                    f"tool {binding.name} has no runtime — bind a ToolRuntimePort"
-                )
+                raise RuntimeError(f"tool {binding.name} has no runtime — bind a ToolRuntimePort")
             scope = current_tool_scope()
             result = await self._runtime.invoke(
                 ToolInvocation(
@@ -154,9 +152,7 @@ class ToolBindingResolver:
 #:
 #: ⚠️ **取不到 actor 就拒绝执行工具** ✓（Gateway 决策：工具执行必须有真实
 #: 调用者 ✓）—— 见 ``require_actor`` ✓。
-_CURRENT_ACTOR: ContextVar[ActorContext | None] = ContextVar(
-    "qzdap_current_actor", default=None
-)
+_CURRENT_ACTOR: ContextVar[ActorContext | None] = ContextVar("qzdap_current_actor", default=None)
 
 
 def set_current_actor(actor: ActorContext | None) -> Token[ActorContext | None]:
@@ -173,18 +169,14 @@ def current_actor() -> ActorContext:
     """**当前 actor** ✓ —— 没有就**拒绝** ✓（不静默降级成匿名 ✗✗）。"""
     actor = _CURRENT_ACTOR.get()
     if actor is None:
-        raise RuntimeError(
-            "tool execution requires a real actor — 没有真实调用者就不许执行工具"
-        )
+        raise RuntimeError("tool execution requires a real actor — 没有真实调用者就不许执行工具")
     return actor
 
 
 def require_actor(actor: ActorContext | None) -> ActorContext:
     """**必须有真实 actor** ✓ —— 没有就**拒绝** ✓（不静默降级成匿名 ✗✗）。"""
     if actor is None:
-        raise RuntimeError(
-            "tool execution requires a real actor — 没有真实调用者就不许执行工具"
-        )
+        raise RuntimeError("tool execution requires a real actor — 没有真实调用者就不许执行工具")
     return actor
 
 

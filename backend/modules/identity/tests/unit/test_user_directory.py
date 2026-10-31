@@ -12,10 +12,10 @@ from dataclasses import replace
 from uuid import uuid4
 
 from _identity_unit_in_memory import InMemoryUserRepository
-from qzdap_agent_runtime.router.types import UserAttributes
 
 from qzdap.modules.identity.adapter.user_directory import IdentityUserDirectory
 from qzdap.modules.identity.domain import Tenant, User
+from qzdap_agent_runtime.router.types import UserAttributes
 
 
 def _user_with_metadata(metadata: dict) -> User:
@@ -39,9 +39,7 @@ async def test_departments_and_tags_are_exposed() -> None:
     user = _user_with_metadata({"departments": ["财务部"], "tags": ["审计"]})
     directory = await _directory_with(user)
 
-    attrs = await directory.get_user_attributes(
-        tenant_id=user.tenant_id, user_id=user.id
-    )
+    attrs = await directory.get_user_attributes(tenant_id=user.tenant_id, user_id=user.id)
 
     assert attrs.departments == ("财务部",)
     assert attrs.tags == ("审计",)
@@ -52,9 +50,7 @@ async def test_a_single_department_string_is_accepted() -> None:
     user = _user_with_metadata({"department": "财务部"})
     directory = await _directory_with(user)
 
-    attrs = await directory.get_user_attributes(
-        tenant_id=user.tenant_id, user_id=user.id
-    )
+    attrs = await directory.get_user_attributes(tenant_id=user.tenant_id, user_id=user.id)
 
     assert attrs.departments == ("财务部",)
 
@@ -73,8 +69,6 @@ async def test_a_cross_tenant_read_is_refused() -> None:
     user = _user_with_metadata({"departments": ["财务部"]})
     directory = await _directory_with(user)
 
-    attrs = await directory.get_user_attributes(
-        tenant_id=uuid4(), user_id=user.id
-    )
+    attrs = await directory.get_user_attributes(tenant_id=uuid4(), user_id=user.id)
 
     assert attrs == UserAttributes()

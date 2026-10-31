@@ -36,16 +36,16 @@ _OBS_TEST_DIR = (
 if str(_OBS_TEST_DIR.parent) not in sys.path:
     sys.path.insert(0, str(_OBS_TEST_DIR.parent))
 
-from modules.observability_module.tests.unit._in_memory import (  # noqa: E402
+from modules.observability_module.tests.unit._in_memory import (
     InMemoryCostRecordRepository,
     InMemoryRunRecordRepository,
 )
 
-from qzdap.modules.observability_module.application.pricing import (  # noqa: E402
+from qzdap.modules.observability_module.application.pricing import (
     DEFAULT_LLM_PRICING,
     PricingCatalog,
 )
-from qzdap.modules.observability_module.application.recorder import (  # noqa: E402
+from qzdap.modules.observability_module.application.recorder import (
     ObservabilityRecorder,
 )
 

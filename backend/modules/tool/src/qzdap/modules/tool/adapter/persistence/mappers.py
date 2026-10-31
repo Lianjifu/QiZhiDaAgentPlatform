@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from qzdap_schema.ids import TenantId, ToolCallId, ToolId, WorkspaceId
-
 from qzdap.modules.tool.adapter.persistence.models import ToolCallORM, ToolORM
 from qzdap.modules.tool.domain import (
     AuthConfig,
@@ -16,6 +14,7 @@ from qzdap.modules.tool.domain import (
     ToolCallStatus,
     ToolProtocol,
 )
+from qzdap_schema.ids import TenantId, ToolCallId, ToolId, WorkspaceId
 
 
 def _to_auth_config(raw: dict | None) -> AuthConfig | None:
@@ -53,10 +52,7 @@ def _to_spec_operations(raw: list | None) -> list[SpecOperation]:
 
 
 def _spec_operations_to_list(ops: list[SpecOperation]) -> list[dict]:
-    return [
-        {"method": o.method, "path": o.path, "operation_id": o.operation_id}
-        for o in ops
-    ]
+    return [{"method": o.method, "path": o.path, "operation_id": o.operation_id} for o in ops]
 
 
 def tool_orm_to_domain(o: ToolORM) -> Tool:

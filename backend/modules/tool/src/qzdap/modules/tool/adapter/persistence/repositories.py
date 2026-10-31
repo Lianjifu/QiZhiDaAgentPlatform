@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +21,7 @@ from qzdap.modules.tool.adapter.persistence.mappers import (
 from qzdap.modules.tool.adapter.persistence.models import ToolCallORM, ToolORM
 from qzdap.modules.tool.application.ports import ToolCallRepository, ToolRepository
 from qzdap.modules.tool.domain import Tool, ToolCall
+from qzdap_persistence.tenant_guard import current_tenant_id
 
 
 def _cross_tenant(o: object) -> bool:
@@ -86,12 +86,7 @@ class SqlToolRepository(ToolRepository):
         limit: int = 50,
         offset: int = 0,
     ) -> list[Tool]:
-        q = (
-            select(ToolORM)
-            .order_by(ToolORM.created_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
+        q = select(ToolORM).order_by(ToolORM.created_at.desc()).limit(limit).offset(offset)
         if enabled is not None:
             q = q.where(ToolORM.enabled == enabled)
         rows = (await self._s.execute(q)).scalars().all()

@@ -35,17 +35,13 @@ def catalog() -> PricingCatalog:
 
 
 def test_llm_cost_known(catalog: PricingCatalog) -> None:
-    in_c, out_c = catalog.llm_cost(
-        model_id="gpt-4o", input_tokens=1000, output_tokens=500
-    )
+    in_c, out_c = catalog.llm_cost(model_id="gpt-4o", input_tokens=1000, output_tokens=500)
     assert in_c == Decimal("0.0025")
     assert out_c == Decimal("0.01") * Decimal("0.5")
 
 
 def test_llm_cost_falls_back_to_default(catalog: PricingCatalog) -> None:
-    in_c, out_c = catalog.llm_cost(
-        model_id="unknown-model", input_tokens=2000, output_tokens=1000
-    )
+    in_c, out_c = catalog.llm_cost(model_id="unknown-model", input_tokens=2000, output_tokens=1000)
     assert in_c == Decimal("0.00015") * Decimal(2)
     assert out_c == Decimal("0.0006")
 

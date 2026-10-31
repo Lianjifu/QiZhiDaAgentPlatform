@@ -6,13 +6,12 @@ from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
+from qzdap.modules.self_evolution.domain.entities import EvolveCandidate
+from qzdap.modules.self_evolution.domain.value_objects import EvolveStatus
 from qzdap_schema.ids import (
     EvolveCandidateId,
     TenantId,
 )
-
-from qzdap.modules.self_evolution.domain.entities import EvolveCandidate
-from qzdap.modules.self_evolution.domain.value_objects import EvolveStatus
 
 
 @runtime_checkable

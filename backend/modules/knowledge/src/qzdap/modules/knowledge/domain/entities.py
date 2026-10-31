@@ -10,9 +10,7 @@ from uuid import UUID
 KbStatus = Literal["indexed", "indexing", "paused", "failed"]
 DocStatus = Literal["parsed", "parsing", "pending", "failed"]
 DocType = Literal["manual", "policy", "meeting", "contract", "faq"]
-SourceType = Literal[
-    "notion", "slack", "web", "postgres", "s3", "api", "folder", "confluence"
-]
+SourceType = Literal["notion", "slack", "web", "postgres", "s3", "api", "folder", "confluence"]
 SourceStatus = Literal["online", "syncing", "error", "paused"]
 TaskStatus = Literal["pending", "running", "success", "failed", "paused"]
 TaskKind = Literal["index", "reindex", "rebuild"]

@@ -134,9 +134,7 @@ async def _run(args: argparse.Namespace) -> list[Sample]:
             # (try_claim): 同一个会话上并发跑轮次会被拒(SESSION_BUSY)。
             # 旧路径(`/v1/sessions*`, 第二套 turn 实现)没有这个约束,
             # 因此并发压测的语义从「同会话并发」变成「多会话并发」。
-            session_id = await _create_session(
-                client, base, token, tenant, workspace, agent_id
-            )
+            session_id = await _create_session(client, base, token, tenant, workspace, agent_id)
             for _ in range(args.turns):
                 async with sem:
                     out.append(

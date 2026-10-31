@@ -85,9 +85,7 @@ def test_issue_api_key_returns_raw_secret() -> None:
         users = InMemoryUserRepository()
         tenant = Tenant.create(id=uuid4(), slug="acme", display_name="Acme")
         await tenants.add(tenant)
-        user = User.create(
-            id=uuid4(), tenant_id=tenant.id, email="hi@x.com", display_name="Hi"
-        )
+        user = User.create(id=uuid4(), tenant_id=tenant.id, email="hi@x.com", display_name="Hi")
         await users.add(user)
 
         svc = IdentityService(
@@ -98,9 +96,7 @@ def test_issue_api_key_returns_raw_secret() -> None:
             hasher=FakeHasher(),
             issuer=FakeAccessTokenIssuer(),
         )
-        k, raw = await svc.issue_api_key().execute(
-            owner_user_id=user.id, name="prod", ttl_days=30
-        )
+        k, raw = await svc.issue_api_key().execute(owner_user_id=user.id, name="prod", ttl_days=30)
         assert raw.startswith(k.prefix)
         assert k.status.value == "active"
 

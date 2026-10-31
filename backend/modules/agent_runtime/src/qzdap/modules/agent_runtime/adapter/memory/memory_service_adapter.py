@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_agent_runtime.memory.policy import MemoryPolicy
-
 from qzdap.modules.memory.application.services import MemoryRuntimeService
+from qzdap_agent_runtime.memory.policy import MemoryPolicy
 
 
 class MemoryServiceAdapter:

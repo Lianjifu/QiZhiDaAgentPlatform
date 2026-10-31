@@ -84,7 +84,14 @@ async def test_empty_catalog_then_create_budget(service: AdminOpsService) -> Non
     created = await service.create_budget(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
-        body={"name": "联调预算", "period": "monthly", "totalCap": 1000, "alertThreshold": 80, "rollover": False, "owner": "测试"},
+        body={
+            "name": "联调预算",
+            "period": "monthly",
+            "totalCap": 1000,
+            "alertThreshold": 80,
+            "rollover": False,
+            "owner": "测试",
+        },
     )
     assert created["name"] == "联调预算"
     assert created["status"] == "healthy"
@@ -132,7 +139,9 @@ async def test_overview_and_create_dashboard_rule(service: AdminOpsService) -> N
     assert summary["topAgents"] == []
     assert next(kpi for kpi in summary["kpis"] if kpi["label"] == "可用率")["value"] == "—"
     assert all(not kpi["sparkline"] for kpi in summary["kpis"])
-    assert (await service.overview_trend(tenant_id=TENANT, workspace_id=WORKSPACE, range_key="24h"))["points"] == []
+    assert (
+        await service.overview_trend(tenant_id=TENANT, workspace_id=WORKSPACE, range_key="24h")
+    )["points"] == []
     dash = await service.create_dashboard(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
@@ -142,7 +151,13 @@ async def test_overview_and_create_dashboard_rule(service: AdminOpsService) -> N
     rule = await service.create_audit_rule(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
-        body={"name": "循环熔断", "category": "tool", "condition": "repeat > 5", "action": "block", "severity": "high"},
+        body={
+            "name": "循环熔断",
+            "category": "tool",
+            "condition": "repeat > 5",
+            "action": "block",
+            "severity": "high",
+        },
     )
     assert rule["action"] == "block"
 
@@ -182,9 +197,7 @@ async def test_overview_write_then_read(service: AdminOpsService) -> None:
     assert summary["alerts"][0]["title"] == "模型错误率突增"
     assert summary["services"][0]["name"] == "模型服务"
     assert summary["topAgents"][0]["name"] == "客户沟通助手"
-    trend = await service.overview_trend(
-        tenant_id=TENANT, workspace_id=WORKSPACE, range_key="24h"
-    )
+    trend = await service.overview_trend(tenant_id=TENANT, workspace_id=WORKSPACE, range_key="24h")
     assert trend["points"][0]["calls"] == 3200
 
 

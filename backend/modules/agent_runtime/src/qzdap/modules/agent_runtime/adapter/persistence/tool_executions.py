@@ -16,13 +16,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from qzdap.modules.tool.application.ports import ToolExecutionClaim
-from qzdap_persistence.base import Base
 from sqlalchemy import DateTime, ForeignKey, String, select, text, update
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
+
+from qzdap.modules.tool.application.ports import ToolExecutionClaim
+from qzdap_persistence.base import Base
 
 
 class ToolExecutionORM(Base):
@@ -52,9 +53,7 @@ class ToolExecutionORM(Base):
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-    finished_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -137,9 +136,7 @@ class PostgresToolExecutionStore:
         )
         await self._session.flush()
 
-    async def _get(
-        self, *, idempotency_key: str, tenant_id: UUID
-    ) -> ToolExecutionORM | None:
+    async def _get(self, *, idempotency_key: str, tenant_id: UUID) -> ToolExecutionORM | None:
         result = await self._session.execute(
             select(ToolExecutionORM).where(
                 ToolExecutionORM.idempotency_key == idempotency_key,

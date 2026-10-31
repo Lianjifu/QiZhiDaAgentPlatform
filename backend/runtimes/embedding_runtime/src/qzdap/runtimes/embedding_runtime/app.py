@@ -33,9 +33,7 @@ def _build_adapter(
         return NoOpAdapter()
     if p == "openai":
         if not openai_api_key:
-            raise RuntimeError(
-                "QZDAP_OPENAI_API_KEY required when QZDAP_EMBEDDING_PROVIDER=openai"
-            )
+            raise RuntimeError("QZDAP_OPENAI_API_KEY required when QZDAP_EMBEDDING_PROVIDER=openai")
         return OpenAIAdapter(
             api_key=openai_api_key,
             base_url=openai_base_url,

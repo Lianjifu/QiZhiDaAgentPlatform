@@ -31,7 +31,9 @@ def upgrade() -> None:
         sa.Column("owner", sa.String(128), nullable=False, server_default=sa.text("''")),
         sa.Column("status", sa.String(16), nullable=False, server_default=sa.text("'draft'")),
         sa.Column("version", sa.String(32), nullable=False, server_default=sa.text("'draft'")),
-        sa.Column("tags", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column(
+            "tags", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")
+        ),
         sa.Column("tone", sa.String(16), nullable=False, server_default=sa.text("'brand'")),
         sa.Column("calls", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("success_rate", sa.Float(), nullable=False, server_default=sa.text("0")),
@@ -39,23 +41,65 @@ def upgrade() -> None:
         sa.Column("avg_latency_ms", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("rating", sa.Float(), nullable=False, server_default=sa.text("0")),
         sa.Column("starred", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("visible_scope", postgresql.JSONB(), nullable=False, server_default=sa.text("'[\"部门\"]'::jsonb")),
+        sa.Column(
+            "visible_scope",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'[\"部门\"]'::jsonb"),
+        ),
         sa.Column("data_access", sa.String(256), nullable=False, server_default=sa.text("''")),
         sa.Column("model", sa.String(128), nullable=False, server_default=sa.text("''")),
         sa.Column("max_steps", sa.Integer(), nullable=False, server_default=sa.text("8")),
-        sa.Column("tools", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("versions", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column(
+            "tools", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")
+        ),
+        sa.Column(
+            "versions", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")
+        ),
         sa.Column("evaluation_pass_rate", sa.Float(), nullable=False, server_default=sa.text("0")),
         sa.Column("evaluation_runs", sa.Integer(), nullable=False, server_default=sa.text("0")),
-        sa.Column("evaluation_failed_cases", sa.Integer(), nullable=False, server_default=sa.text("0")),
-        sa.Column("trend", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("prompts", postgresql.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("custom_prompts", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("knowledge_refs", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("memory_policy", postgresql.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("flow_refs", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "evaluation_failed_cases", sa.Integer(), nullable=False, server_default=sa.text("0")
+        ),
+        sa.Column(
+            "trend", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")
+        ),
+        sa.Column(
+            "prompts", postgresql.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")
+        ),
+        sa.Column(
+            "custom_prompts",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
+        sa.Column(
+            "knowledge_refs",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
+        sa.Column(
+            "memory_policy",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "flow_refs", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
     )
     op.create_index(
         "ix_admin_agents_tenant_workspace_status",
@@ -74,8 +118,18 @@ def upgrade() -> None:
         sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("agent_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("favorited", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.UniqueConstraint("tenant_id", "user_id", "agent_id", name="uq_admin_agent_user_state"),
     )
 
@@ -90,15 +144,31 @@ def upgrade() -> None:
         sa.Column("role", sa.String(32), nullable=False),
         sa.Column("content", sa.Text(), nullable=False, server_default=sa.text("''")),
         sa.Column("tool_name", sa.String(128), nullable=False, server_default=sa.text("''")),
-        sa.Column("extra", postgresql.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "extra", postgresql.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
     )
-    op.create_index("ix_agent_session_messages_session_seq", "agent_session_messages", ["session_id", "seq"])
+    op.create_index(
+        "ix_agent_session_messages_session_seq", "agent_session_messages", ["session_id", "seq"]
+    )
 
     op.add_column(
         "agent_sessions",
-        sa.Column("graph_state", postgresql.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column(
+            "graph_state", postgresql.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")
+        ),
     )
     op.add_column(
         "agent_sessions",

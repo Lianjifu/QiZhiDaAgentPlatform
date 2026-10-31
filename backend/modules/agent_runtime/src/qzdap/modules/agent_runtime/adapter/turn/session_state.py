@@ -11,9 +11,8 @@ from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.session.turn_runner import SessionStatePort
-
 from qzdap.modules.agent_runtime.application.ports import SessionRepository
+from qzdap_agent_runtime.session.turn_runner import SessionStatePort
 
 
 class SqlSessionState(SessionStatePort):

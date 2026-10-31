@@ -29,8 +29,6 @@ from time import monotonic
 from typing import Protocol
 from uuid import UUID
 
-from qzdap_observability.metrics import record_router_route
-
 from qzdap_agent_runtime.router.types import (
     RULE_VERSION,
     STRATEGY_ID,
@@ -43,6 +41,7 @@ from qzdap_agent_runtime.router.types import (
     UserAttributes,
     UserDirectoryPort,
 )
+from qzdap_observability.metrics import record_router_route
 
 #: 视为「已发布」的状态 —— 与 ``AgentCatalogService.get_published`` 同一口径
 #: （"graying" = 灰度中，仍可用）。
@@ -128,8 +127,7 @@ class RuleChainStrategy:
             return None
         overridden = (
             request.explicit_agent_id
-            if request.explicit_agent_id
-            and request.explicit_agent_id != target.agent_id
+            if request.explicit_agent_id and request.explicit_agent_id != target.agent_id
             else None
         )
         reason = "sticky_session_binding"
@@ -174,9 +172,7 @@ class RuleChainStrategy:
             agent_version=winner.agent_version if winner else "",
             source="explicit",
             confidence=0.9 if known else 0.6,
-            reason=(
-                "explicit_agent_requested" if known else "explicit_agent_not_in_catalog"
-            ),
+            reason=("explicit_agent_requested" if known else "explicit_agent_not_in_catalog"),
             winner=winner,
             pool=pool,
         )
@@ -191,9 +187,7 @@ class RuleChainStrategy:
         if not line:
             return None
         matched = [
-            agent
-            for agent in pool
-            if any(_same_scope(item, line) for item in agent.business_lines)
+            agent for agent in pool if any(_same_scope(item, line) for item in agent.business_lines)
         ]
         if not matched:
             return None
@@ -226,14 +220,8 @@ class RuleChainStrategy:
         values = attributes.all_values()
         matched: list[RoutingAgent] = []
         for agent in pool:
-            scope_hit = any(
-                _scope_matches(scope, attributes) for scope in agent.visible_scope
-            )
-            tag_hit = any(
-                _same_scope(tag, value)
-                for tag in agent.routing_tags
-                for value in values
-            )
+            scope_hit = any(_scope_matches(scope, attributes) for scope in agent.visible_scope)
+            tag_hit = any(_same_scope(tag, value) for tag in agent.routing_tags for value in values)
             if scope_hit or tag_hit:
                 matched.append(agent)
         if not matched:

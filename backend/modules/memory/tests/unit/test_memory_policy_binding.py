@@ -14,12 +14,12 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
-from qzdap_agent_runtime.memory.policy import MemoryPolicy, MemoryRef, MemoryRefKind
-from qzdap_agent_runtime.memory.refine import BufferRow
-from qzdap_agent_runtime.memory.scope import MemoryScope
 
 from qzdap.modules.memory.application.services import MemoryRuntimeService
 from qzdap.modules.memory.domain.entities import L2Fact, L3Entry, RetentionPolicy
+from qzdap_agent_runtime.memory.policy import MemoryPolicy, MemoryRef, MemoryRefKind
+from qzdap_agent_runtime.memory.refine import BufferRow
+from qzdap_agent_runtime.memory.scope import MemoryScope
 from tests.unit.test_memory_catalog import InMemoryCatalog
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")

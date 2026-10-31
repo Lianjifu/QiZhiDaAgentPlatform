@@ -21,6 +21,10 @@ from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
+from qzdap.modules.platform.domain.value_objects import (
+    PlanStatus,
+    SubscriptionStatus,
+)
 from qzdap_schema.ids import (
     PlanId,
     SubscriptionId,
@@ -28,11 +32,6 @@ from qzdap_schema.ids import (
     TenantSettingId,
     UserId,
     WorkspaceId,
-)
-
-from qzdap.modules.platform.domain.value_objects import (
-    PlanStatus,
-    SubscriptionStatus,
 )
 
 

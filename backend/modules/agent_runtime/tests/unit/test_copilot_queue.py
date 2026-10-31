@@ -20,13 +20,13 @@ from _ar_unit_in_memory import (
     make_dependencies,
     make_turn_runner,
 )
-from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
-from qzdap_agent_runtime.session.queue import QueueDecision, QueueOutcome
-from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
 from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
 from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
+from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
+from qzdap_agent_runtime.session.queue import QueueDecision, QueueOutcome
+from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
 
 class _FakeLLM:
@@ -151,9 +151,7 @@ async def test_a_queued_turn_is_released_and_then_runs() -> None:
     agent = _agent()
     owner_id = UserId(UUID(int=3))
     queue = _FakeQueue()
-    svc, journal, sid, tid, wid = await _make_service(
-        queue=queue, agent=agent, owner_id=owner_id
-    )
+    svc, journal, sid, tid, wid = await _make_service(queue=queue, agent=agent, owner_id=owner_id)
     chunks = [
         chunk
         async for chunk in svc.stream_turn(
@@ -178,9 +176,7 @@ async def test_a_full_queue_is_refused_with_a_clear_error() -> None:
     agent = _agent()
     owner_id = UserId(UUID(int=3))
     queue = _FakeQueue(depth=5)
-    svc, _journal, sid, tid, wid = await _make_service(
-        queue=queue, agent=agent, owner_id=owner_id
-    )
+    svc, _journal, sid, tid, wid = await _make_service(queue=queue, agent=agent, owner_id=owner_id)
     with pytest.raises(Exception) as excinfo:
         async for _chunk in svc.stream_turn(
             tenant_id=tid,
@@ -198,9 +194,7 @@ async def test_without_the_queue_the_old_semantics_stay() -> None:
     """**没有排队端口 = 旧语义** ✓（开关关掉 ✓ —— 「拒绝 409」✓）。"""
     agent = _agent()
     owner_id = UserId(UUID(int=3))
-    svc, _journal, sid, tid, wid = await _make_service(
-        queue=None, agent=agent, owner_id=owner_id
-    )
+    svc, _journal, sid, tid, wid = await _make_service(queue=None, agent=agent, owner_id=owner_id)
     chunks = [
         chunk
         async for chunk in svc.stream_turn(

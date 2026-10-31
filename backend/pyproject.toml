@@ -77,44 +77,6 @@ qzdap-observability-module = { workspace = true }
 qzdap-platform = { workspace = true }
 qzdap-self-evolution = { workspace = true }
 
-[tool.ruff]
-target-version = "py312"
-line-length = 100
-src = ["libs", "modules", "composition"]
-
-[tool.ruff.lint]
-select = [
-    "E", "F", "W",  # pycodestyle/pyflakes
-    "I",             # isort
-    "N",             # pep8-naming
-    "UP",            # pyupgrade
-    "B",             # bugbear
-    "C4",            # comprehensions
-    "SIM",           # simplify
-    "TCH",           # type-checking blocks
-    "RUF",           # ruff-specific
-    "ASYNC",         # async-correctness
-    "S",             # bandit (security) — relaxed via per-file-ignores
-    "TRY",           # tryceratops
-]
-ignore = [
-    "S101",          # allow assert in tests
-    "S104",          # allow 0.0.0.0 binding (gateway)
-    "TRY003",        # allow raise-without-message in domain errors
-]
-
-[tool.ruff.lint.per-file-ignores]
-"**/tests/**/*.py" = ["S", "B011"]
-"**/migrations/**/*.py" = ["E", "F", "I", "N", "TC003", "RUF001", "RUF002", "RUF003"]
-"**/router.py" = ["B008"]  # FastAPI Depends() in defaults is intentional
-"**/events.py" = ["RUF009"]
-"**/_in_memory.py" = ["PYI034"]
-"**/uow.py" = ["PYI034"]
-"lifespan.py" = ["PYI034"]
-
-[tool.ruff.lint.isort]
-known-first-party = ["qzdap_*", "qzdap"]
-
 [tool.mypy]
 python_version = "3.12"
 # Each module under modules/ and composition/ is a separate namespace package;

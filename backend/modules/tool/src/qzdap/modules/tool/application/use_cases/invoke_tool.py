@@ -28,8 +28,6 @@ from time import monotonic
 from uuid import UUID, uuid4
 
 import httpx
-from qzdap_kernel.contextvars import current_trace_id
-from qzdap_schema.ids import ToolCallId
 
 from qzdap.modules.tool.application.idempotency import request_hash
 from qzdap.modules.tool.application.ports import (
@@ -61,6 +59,8 @@ from qzdap.modules.tool.domain.errors import (
     ToolRateLimited,
     UpstreamUnavailable,
 )
+from qzdap_kernel.contextvars import current_trace_id
+from qzdap_schema.ids import ToolCallId
 
 _log = logging.getLogger("qzdap.modules.tool")
 
@@ -84,9 +84,7 @@ def _pick_operation(operations: list[SpecOperation], arguments: dict) -> SpecOpe
     without inventing a separate field on the request body."""
     op_id = arguments.get("__operation_id")
     if not isinstance(op_id, str) or not op_id:
-        raise InvalidToolSpecCallError(
-            "openapi invocation requires '__operation_id' in arguments"
-        )
+        raise InvalidToolSpecCallError("openapi invocation requires '__operation_id' in arguments")
     for op in operations:
         if op.operation_id == op_id:
             return op
@@ -338,7 +336,7 @@ class InvokeToolUseCase:
             await self._executions.finish(
                 idempotency_key=idempotency_key, status=status, result_ref=result_ref
             )
-        except Exception:  # noqa: BLE001 — 收尾失败不掩盖主结果 ✓
+        except Exception:
             _log.exception("tool execution finalize failed")
 
     # ── 重试与熔断 ──────────────────────────────────────────────────────
@@ -374,8 +372,10 @@ class InvokeToolUseCase:
                 self._breaker.record_success(tool.name)
             return result
         # ⚠️ **走到这里说明循环没返回** ✓ —— 只可能是异常 ✓
-        raise last_error if last_error is not None else RuntimeError(
-            f"tool {tool.name!r} produced no result"
+        raise (
+            last_error
+            if last_error is not None
+            else RuntimeError(f"tool {tool.name!r} produced no result")
         )
 
     async def _dispatch(self, protocol: ToolProtocol, tool, arguments: dict) -> dict:
@@ -396,9 +396,7 @@ class InvokeToolUseCase:
             operation = _pick_operation(tool.spec_operations, arguments)
             clean = {k: v for k, v in arguments.items() if not k.startswith("__")}
             base_url = (
-                tool.spec.get("servers", [{}])[0].get("url")
-                if tool.spec.get("servers")
-                else ""
+                tool.spec.get("servers", [{}])[0].get("url") if tool.spec.get("servers") else ""
             )
             if not base_url:
                 raise InvalidToolSpecCallError(

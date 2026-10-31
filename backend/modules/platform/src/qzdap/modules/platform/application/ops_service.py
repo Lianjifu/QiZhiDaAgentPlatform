@@ -5,8 +5,8 @@ from __future__ import annotations
 import csv
 import io
 import json
-from datetime import date, datetime, timezone
-from typing import Any
+from datetime import UTC, date, datetime
+from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
 from qzdap.modules.platform.adapter.persistence.ops_repositories import SqlAdminOpsRepository
@@ -49,7 +49,9 @@ class AdminOpsService:
         body: dict[str, Any],
         prefix: str,
     ) -> dict[str, Any]:
-        await self.list_collection(tenant_id=tenant_id, workspace_id=workspace_id, collection=collection)
+        await self.list_collection(
+            tenant_id=tenant_id, workspace_id=workspace_id, collection=collection
+        )
         key = str(body.get("id") or f"{prefix}-{uuid4().hex[:8]}")
         payload = {**body, "id": key}
         return await self._repo.upsert_doc(
@@ -72,7 +74,7 @@ class AdminOpsService:
         current = await self.get(
             tenant_id=tenant_id, workspace_id=workspace_id, collection=collection, doc_key=doc_key
         )
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         history = list(current.get("history") or [])
         history.append({"time": now, "actor": "管理员", "action": "patch", "changes": dict(patch)})
         logs = list(current.get("logs") or [])
@@ -107,33 +109,54 @@ class AdminOpsService:
                 workspace_id=workspace_id,
                 collection=collection,
                 doc_key=doc_key,
-                patch={"reply": reply, "status": "in-progress", "repliedAt": datetime.now(timezone.utc).isoformat()},
+                patch={
+                    "reply": reply,
+                    "status": "in-progress",
+                    "repliedAt": datetime.now(UTC).isoformat(),
+                },
             )
         if action in {"resolve", "review", "triage", "investigate"}:
-            status = {"resolve": "resolved", "review": "reviewed", "triage": "triaged", "investigate": "investigating"}[action]
+            status = {
+                "resolve": "resolved",
+                "review": "reviewed",
+                "triage": "triaged",
+                "investigate": "investigating",
+            }[action]
             return await self.patch(
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 collection=collection,
                 doc_key=doc_key,
-                patch={"resolved": True} if collection == "operations.incidents" else {"status": status},
+                patch={"resolved": True}
+                if collection == "operations.incidents"
+                else {"status": status},
             )
         raise ValueError(f"unsupported action: {action}")
 
     async def validate_run(
         self, *, tenant_id: UUID, workspace_id: UUID, collection: str, doc_key: str
     ) -> dict[str, Any]:
-        row = await self.get(tenant_id=tenant_id, workspace_id=workspace_id, collection=collection, doc_key=doc_key)
+        row = await self.get(
+            tenant_id=tenant_id, workspace_id=workspace_id, collection=collection, doc_key=doc_key
+        )
         cases = row.get("casesList") or row.get("cases")
         if not isinstance(cases, list) or not cases:
             raise ValueError("a run requires at least one evaluation case")
         return row
 
     async def run_collection(
-        self, *, tenant_id: UUID, workspace_id: UUID, collection: str, doc_key: str,
-        runner: Any, owner_id: UUID,
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        collection: str,
+        doc_key: str,
+        runner: Any,
+        owner_id: UUID,
     ) -> dict[str, Any]:
-        row = await self.validate_run(tenant_id=tenant_id, workspace_id=workspace_id, collection=collection, doc_key=doc_key)
+        row = await self.validate_run(
+            tenant_id=tenant_id, workspace_id=workspace_id, collection=collection, doc_key=doc_key
+        )
         if runner is None:
             raise NotImplementedError("evaluation runner is not configured")
         cases = row.get("casesList")
@@ -142,16 +165,34 @@ class AdminOpsService:
             if not isinstance(case, dict) or not str(case.get("input") or "").strip():
                 raise ValueError("every evaluation case requires input")
             result = await runner(
-                tenant_id=tenant_id, workspace_id=workspace_id, owner_id=owner_id,
-                agent_id=str(row.get("target") or ""), user_input=str(case["input"]),
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_id=owner_id,
+                agent_id=str(row.get("target") or ""),
+                user_input=str(case["input"]),
             )
             expected = str(case.get("expected") or "")
             actual = str(result.get("final_message") or "")
-            results.append({**result, "caseId": case.get("id"), "passed": bool(expected and expected in actual)})
+            results.append(
+                {
+                    **result,
+                    "caseId": case.get("id"),
+                    "passed": bool(expected and expected in actual),
+                }
+            )
         passed = sum(1 for item in results if item["passed"])
         return await self.patch(
-            tenant_id=tenant_id, workspace_id=workspace_id, collection=collection, doc_key=doc_key,
-            patch={"status": "passed" if passed == len(results) else "failed", "cases": len(results), "passRate": passed / len(results) * 100, "results": results, "lastRunAt": datetime.now(timezone.utc).isoformat()},
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            collection=collection,
+            doc_key=doc_key,
+            patch={
+                "status": "passed" if passed == len(results) else "failed",
+                "cases": len(results),
+                "passRate": passed / len(results) * 100,
+                "results": results,
+                "lastRunAt": datetime.now(UTC).isoformat(),
+            },
         )
 
     async def delete(
@@ -213,14 +254,19 @@ class AdminOpsService:
         prefix: str,
     ) -> dict[str, Any]:
         current = await self.get(
-            tenant_id=tenant_id, workspace_id=workspace_id,
-            collection=collection, doc_key=doc_key,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            collection=collection,
+            doc_key=doc_key,
         )
         body = {key: value for key, value in current.items() if key != "id"}
         body["name"] = f"{body.get('name') or '副本'}（副本）"
         return await self.create(
-            tenant_id=tenant_id, workspace_id=workspace_id,
-            collection=collection, prefix=prefix, body=body,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            collection=collection,
+            prefix=prefix,
+            body=body,
         )
 
     async def import_docs(
@@ -242,12 +288,19 @@ class AdminOpsService:
             parsed = [json.loads(line) for line in content.splitlines() if line.strip()]
         elif fmt in {"yaml", "yml"}:
             import yaml
+
             parsed = yaml.safe_load(content)
         elif fmt == "csv":
             parsed = list(csv.DictReader(io.StringIO(content)))
         else:
             raise ValueError("supported import formats: json, jsonl, yaml, csv")
-        items = parsed if isinstance(parsed, list) else parsed.get("items") if isinstance(parsed, dict) else None
+        items = (
+            parsed
+            if isinstance(parsed, list)
+            else parsed.get("items")
+            if isinstance(parsed, dict)
+            else None
+        )
         if not isinstance(items, list) or not items:
             raise ValueError("import requires a non-empty array of records")
         if any(not isinstance(item, dict) for item in items):
@@ -266,10 +319,18 @@ class AdminOpsService:
             if creator:
                 await creator(tenant_id=tenant_id, workspace_id=workspace_id, body=dict(item))
             else:
-                await self.create(tenant_id=tenant_id, workspace_id=workspace_id, collection=collection, prefix=prefix, body=dict(item))
+                await self.create(
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    collection=collection,
+                    prefix=prefix,
+                    body=dict(item),
+                )
         return {"imported": len(items)}
 
-    async def create_budget(self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]) -> dict[str, Any]:
+    async def create_budget(
+        self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
+    ) -> dict[str, Any]:
         return await self.create(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -290,7 +351,9 @@ class AdminOpsService:
             },
         )
 
-    async def create_alert(self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]) -> dict[str, Any]:
+    async def create_alert(
+        self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
+    ) -> dict[str, Any]:
         notify = body.get("notify")
         if isinstance(notify, str):
             notify_list = [item.strip() for item in notify.split(",") if item.strip()]
@@ -317,7 +380,9 @@ class AdminOpsService:
             },
         )
 
-    async def create_channel(self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]) -> dict[str, Any]:
+    async def create_channel(
+        self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
+    ) -> dict[str, Any]:
         kind = str(body.get("kind") or "web")
         return await self.create(
             tenant_id=tenant_id,
@@ -340,7 +405,9 @@ class AdminOpsService:
             },
         )
 
-    async def create_group(self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]) -> dict[str, Any]:
+    async def create_group(
+        self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
+    ) -> dict[str, Any]:
         return await self.create(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -369,7 +436,9 @@ class AdminOpsService:
             updated += 1
         return {"updated": updated}
 
-    async def create_eval_suite(self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]) -> dict[str, Any]:
+    async def create_eval_suite(
+        self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
+    ) -> dict[str, Any]:
         criteria = body.get("criteria")
         if isinstance(criteria, str):
             criteria_list = [line.strip() for line in criteria.splitlines() if line.strip()]
@@ -403,9 +472,7 @@ class AdminOpsService:
             },
         )
 
-    async def operations_summary(
-        self, *, tenant_id: UUID, workspace_id: UUID
-    ) -> dict[str, Any]:
+    async def operations_summary(self, *, tenant_id: UUID, workspace_id: UUID) -> dict[str, Any]:
         sessions = await self.list_collection(
             tenant_id=tenant_id, workspace_id=workspace_id, collection="operations.sessions"
         )
@@ -543,7 +610,7 @@ class AdminOpsService:
             },
         )
 
-    _TREND_LABELS = {
+    _TREND_LABELS: ClassVar[dict[str, list[str]]] = {
         "1h": ["-60", "-50", "-40", "-30", "-20", "-10", "00"],
         "6h": ["-6h", "-5h", "-4h", "-3h", "-2h", "-1h", "00"],
         "24h": ["00", "02", "04", "06", "08", "10", "12", "14", "16", "18", "20", "22"],
@@ -653,9 +720,7 @@ class AdminOpsService:
             "points": [],
         }
 
-    async def overview_alerts(
-        self, *, tenant_id: UUID, workspace_id: UUID
-    ) -> list[dict[str, Any]]:
+    async def overview_alerts(self, *, tenant_id: UUID, workspace_id: UUID) -> list[dict[str, Any]]:
         stored = await self.list_collection(
             tenant_id=tenant_id, workspace_id=workspace_id, collection="overview.alerts"
         )
@@ -704,9 +769,7 @@ class AdminOpsService:
             )
         return out[:12]
 
-    async def overview_summary(
-        self, *, tenant_id: UUID, workspace_id: UUID
-    ) -> dict[str, Any]:
+    async def overview_summary(self, *, tenant_id: UUID, workspace_id: UUID) -> dict[str, Any]:
         sessions = await self.list_collection(
             tenant_id=tenant_id, workspace_id=workspace_id, collection="operations.sessions"
         )
@@ -719,12 +782,6 @@ class AdminOpsService:
         suites = await self.list_collection(
             tenant_id=tenant_id, workspace_id=workspace_id, collection="evaluations.suites"
         )
-        audit_entries = await self.list_collection(
-            tenant_id=tenant_id, workspace_id=workspace_id, collection="audit.entries"
-        )
-        channels = await self.list_collection(
-            tenant_id=tenant_id, workspace_id=workspace_id, collection="notifications.channels"
-        )
         alerts = await self.overview_alerts(tenant_id=tenant_id, workspace_id=workspace_id)
         trend = await self.overview_trend(
             tenant_id=tenant_id, workspace_id=workspace_id, range_key="24h"
@@ -734,10 +791,14 @@ class AdminOpsService:
         if not calls:
             calls = sum(int(point.get("calls") or 0) for point in (trend.get("points") or []))
         error_rate = (
-            sum(float(item.get("errorRate") or 0) for item in models) / len(models) if models else 0.0
+            sum(float(item.get("errorRate") or 0) for item in models) / len(models)
+            if models
+            else 0.0
         )
         avail = (
-            sum(float(item.get("availability") or 0) for item in models) / len(models) if models else 0.0
+            sum(float(item.get("availability") or 0) for item in models) / len(models)
+            if models
+            else 0.0
         )
         p95 = int(sum(int(item.get("p95") or 0) for item in models) / max(len(models), 1))
         open_incidents = [item for item in incidents if not item.get("resolved")]
@@ -819,4 +880,3 @@ class AdminOpsService:
             "services": services,
             "topAgents": top_agents,
         }
-

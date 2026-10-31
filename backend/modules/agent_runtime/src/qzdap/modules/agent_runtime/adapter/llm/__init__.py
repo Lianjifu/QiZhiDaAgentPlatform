@@ -7,11 +7,10 @@ from contextlib import aclosing
 from dataclasses import dataclass
 from uuid import UUID
 
+from qzdap.modules.agent_runtime.application.ports import LLMPort
 from qzdap_llm.client import ChatRequest, LLMChunk, LLMClient
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
-
-from qzdap.modules.agent_runtime.application.ports import LLMPort
 
 
 @dataclass(slots=True, frozen=True)
@@ -67,7 +66,9 @@ class LLMPortAdapter(LLMPort):
                 )
             else:
                 stream = self._model_service.stream(
-                    actor=actor, model_id=model_id, req=req  # type: ignore[arg-type]
+                    actor=actor,
+                    model_id=model_id,
+                    req=req,  # type: ignore[arg-type]
                 )
         async with aclosing(stream):
             async for chunk in stream:

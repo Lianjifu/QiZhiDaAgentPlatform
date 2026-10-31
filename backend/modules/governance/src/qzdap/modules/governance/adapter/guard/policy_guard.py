@@ -14,12 +14,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from qzdap_kernel.errors import ActionDeniedError, ApprovalRequiredError
-from qzdap_vault.actor import ActorContext
-
 from qzdap.modules.governance.application.policy_evaluator import PolicyEvaluator
 from qzdap.modules.governance.domain.entities import DecisionRecord
-from qzdap.modules.governance.domain.value_objects import PolicyEffect as POL_EFFECT
+from qzdap.modules.governance.domain.value_objects import PolicyEffect
+from qzdap_kernel.errors import ActionDeniedError, ApprovalRequiredError
+from qzdap_vault.actor import ActorContext
 
 
 class PolicyGuard:
@@ -33,10 +32,8 @@ class PolicyGuard:
         action: str,
         resource: dict[str, Any] | None = None,
     ) -> DecisionRecord:
-        rec = await self._evaluator.evaluate(
-            actor=actor, action=action, resource=resource or {}
-        )
-        if rec.effect is POL_EFFECT.DENY:
+        rec = await self._evaluator.evaluate(actor=actor, action=action, resource=resource or {})
+        if rec.effect is PolicyEffect.DENY:
             raise ActionDeniedError(
                 reason=rec.reason,
                 code="ACTION_DENIED",
@@ -45,7 +42,7 @@ class PolicyGuard:
                     "rule_id": str(rec.rule_id) if rec.rule_id else None,
                 },
             )
-        if rec.effect is POL_EFFECT.REQUIRE_APPROVAL:
+        if rec.effect is PolicyEffect.REQUIRE_APPROVAL:
             raise ApprovalRequiredError(
                 approval_id=str(rec.approval_id) if rec.approval_id else "",  # type: ignore[arg-type]
                 code="APPROVAL_REQUIRED",

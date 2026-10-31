@@ -9,7 +9,7 @@ Inbound adapter registry + outbound adapter registry are read from
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated
-from uuid import UUID  # noqa: TC003 —— FastAPI 在运行时解析注解，UUID 不能进 TYPE_CHECKING
+from uuid import UUID
 
 from fastapi import APIRouter, Body, Path, Query, Request, status
 

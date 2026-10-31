@@ -15,15 +15,15 @@ from uuid import UUID
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware as FastAPICORSMiddleware
-from qzdap_auth.jwt import JWTVerifier
-from qzdap_auth.middleware import AuthMiddleware
-from qzdap_kernel.errors import AuthenticationError, ForbiddenError
-from qzdap_observability.middleware import ObservabilityMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from qzdap_auth.jwt import JWTVerifier
+from qzdap_auth.middleware import AuthMiddleware
 from qzdap_http.cors import CORSMiddlewareConfig
 from qzdap_http.error_envelope import error_envelope_middleware
 from qzdap_http.rate_limit import RateLimitMiddleware, RateLimitPolicy
+from qzdap_kernel.errors import AuthenticationError, ForbiddenError
+from qzdap_observability.middleware import ObservabilityMiddleware
 
 ASGIApp = Callable[
     [dict, Callable[[], Awaitable[dict]], Callable[[dict], Awaitable[None]]],
@@ -169,9 +169,7 @@ class AuthRequiredMiddleware:
         if not self._is_public(path):
             state = scope.get("state") or {}
             if state.get("principal") is None:
-                raise AuthenticationError(
-                    "missing bearer token", code="MISSING_TOKEN"
-                )
+                raise AuthenticationError("missing bearer token", code="MISSING_TOKEN")
 
         await self.app(scope, receive, send)
 

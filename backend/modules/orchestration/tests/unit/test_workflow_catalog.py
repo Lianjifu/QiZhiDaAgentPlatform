@@ -71,9 +71,7 @@ class InMemoryWorkflowRunRepository(WorkflowRunRepository):
         self, *, workspace_id: UUID, user_id: UUID, limit: int = 50
     ) -> list[FlowRun]:
         return [
-            row
-            for row in self.rows
-            if row.workspace_id == workspace_id and row.user_id == user_id
+            row for row in self.rows if row.workspace_id == workspace_id and row.user_id == user_id
         ][:limit]
 
 
@@ -99,9 +97,7 @@ async def test_create_list_and_catalog_visibility() -> None:
     assert catalog == []
 
     flow_id = UUID(created["id"])
-    published = await svc.update(
-        workflow_id=flow_id, body={"status": "published"}, actor="管理员"
-    )
+    published = await svc.update(workflow_id=flow_id, body={"status": "published"}, actor="管理员")
     assert published["status"] == "published"
     catalog = await svc.list_catalog(workspace_id=WORKSPACE)
     assert len(catalog) == 1

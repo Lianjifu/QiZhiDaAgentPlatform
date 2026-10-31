@@ -1,15 +1,15 @@
 """HTTP adapter for admin knowledge + user catalog.
 
-  GET/POST  /api/admin/knowledge/kbs
-  GET       /api/admin/knowledge/kbs/{id}
-  POST      /api/admin/knowledge/kbs/{id}/toggle-status
-  POST      /api/admin/knowledge/kbs/__batch__
-  GET/POST  /api/admin/knowledge/docs
-  GET/POST  /api/admin/knowledge/sources
-  GET       /api/admin/knowledge/tasks
-  GET       /api/admin/knowledge/eval
-  GET       /api/catalog/knowledge
-  POST      /api/catalog/knowledge/__noop__/ask
+GET/POST  /api/admin/knowledge/kbs
+GET       /api/admin/knowledge/kbs/{id}
+POST      /api/admin/knowledge/kbs/{id}/toggle-status
+POST      /api/admin/knowledge/kbs/__batch__
+GET/POST  /api/admin/knowledge/docs
+GET/POST  /api/admin/knowledge/sources
+GET       /api/admin/knowledge/tasks
+GET       /api/admin/knowledge/eval
+GET       /api/catalog/knowledge
+POST      /api/catalog/knowledge/__noop__/ask
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
-from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap.modules.knowledge.application.services import KnowledgeService
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 
 
 def _owner_label(request: Request) -> str:
@@ -52,8 +52,8 @@ def build_router() -> APIRouter:
 
     @router.get("/api/admin/knowledge/kbs")
     async def list_kbs(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_kbs(workspace_id=x_workspace_id)
 
@@ -65,9 +65,9 @@ def build_router() -> APIRouter:
     async def create_kb(
         body: dict[str, Any],
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> dict[str, Any]:
         return await svc.create_kb(
             tenant_id=x_tenant_id,
@@ -82,7 +82,7 @@ def build_router() -> APIRouter:
     )
     async def batch_kbs(
         body: dict[str, Any],
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> dict[str, int]:
         return await svc.batch_kbs(
             ids=[str(item) for item in (body.get("ids") or [])],
@@ -92,7 +92,7 @@ def build_router() -> APIRouter:
     @router.get("/api/admin/knowledge/kbs/{kb_id}")
     async def get_kb(
         kb_id: UUID,
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> dict[str, Any]:
         return await svc.get_kb(kb_id)
 
@@ -102,14 +102,14 @@ def build_router() -> APIRouter:
     )
     async def toggle_kb(
         kb_id: UUID,
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> dict[str, Any]:
         return await svc.toggle_kb_status(kb_id)
 
     @router.get("/api/admin/knowledge/docs")
     async def list_docs(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_docs(workspace_id=x_workspace_id)
 
@@ -120,18 +120,16 @@ def build_router() -> APIRouter:
     )
     async def ingest_doc(
         body: dict[str, Any],
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> dict[str, Any]:
-        return await svc.ingest_doc(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
-        )
+        return await svc.ingest_doc(tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body)
 
     @router.get("/api/admin/knowledge/sources")
     async def list_sources(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_sources(workspace_id=x_workspace_id)
 
@@ -142,9 +140,9 @@ def build_router() -> APIRouter:
     )
     async def create_source(
         body: dict[str, Any],
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> dict[str, Any]:
         return await svc.create_source(
             tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
@@ -152,22 +150,22 @@ def build_router() -> APIRouter:
 
     @router.get("/api/admin/knowledge/tasks")
     async def list_tasks(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_tasks(workspace_id=x_workspace_id)
 
     @router.get("/api/admin/knowledge/eval")
     async def list_eval(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_eval_cases(workspace_id=x_workspace_id)
 
     @router.get("/api/catalog/knowledge")
     async def list_catalog(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_catalog(workspace_id=x_workspace_id)
 
@@ -175,9 +173,9 @@ def build_router() -> APIRouter:
     @router.post("/api/catalog/knowledge/__noop__/ask", include_in_schema=False)
     async def ask_catalog(
         body: dict[str, Any],
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_tenant_id: UUID | None = Header(default=None, alias="X-Tenant-Id"),  # noqa: B008
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_tenant_id: UUID | None = Header(default=None, alias="X-Tenant-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> dict[str, Any]:
         return await svc.ask(
             workspace_id=x_workspace_id,
@@ -187,8 +185,8 @@ def build_router() -> APIRouter:
 
     @router.get("/api/knowledge/docs")
     async def list_user_docs_alias(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: KnowledgeService = Depends(knowledge_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: KnowledgeService = Depends(knowledge_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_catalog(workspace_id=x_workspace_id)
 

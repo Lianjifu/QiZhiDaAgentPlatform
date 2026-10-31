@@ -91,7 +91,7 @@ async def execute_tool(
             "error_message": f"tool {name} is not bound",
             "call_id": str(call_id),
         }
-    except Exception as exc:  # noqa: BLE001 — a tool must not kill the turn
+    except Exception as exc:
         return {
             "ok": False,
             "error_code": type(exc).__name__,

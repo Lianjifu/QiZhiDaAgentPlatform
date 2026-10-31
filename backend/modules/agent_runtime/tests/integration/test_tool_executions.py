@@ -88,9 +88,7 @@ async def store_ctx():
             await conn.execute(text(statement.replace("{schema}", schema)))
         await conn.commit()
 
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
+    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     from qzdap_persistence.session_factory import SessionFactory
 
     factory = SessionFactory(engine)
@@ -108,7 +106,7 @@ async def _seed_turn(session, *, turn_id, tenant_id, workspace_id) -> None:
     """**种一行轮次** ✓（`tool_executions.turn_id` 的外键父行 ✓）。"""
     await session.execute(
         text(
-            'INSERT INTO session_turns (id, tenant_id, workspace_id, session_id, '
+            "INSERT INTO session_turns (id, tenant_id, workspace_id, session_id, "
             "idempotency_key, agent_version, model_version) "
             "VALUES (:id, :tenant, :workspace, :session, :key, 'v1', 'm1')"
         ),
@@ -126,9 +124,7 @@ async def _seed_turn(session, *, turn_id, tenant_id, workspace_id) -> None:
 async def test_the_first_call_wins_and_the_second_reads_it_back(store_ctx) -> None:  # type: ignore[no-untyped-def]
     tenant, workspace, turn = uuid4(), uuid4(), uuid4()
     async with store_ctx.session() as session, session.begin():
-        await _seed_turn(
-            session, turn_id=turn, tenant_id=tenant, workspace_id=workspace
-        )
+        await _seed_turn(session, turn_id=turn, tenant_id=tenant, workspace_id=workspace)
         store = PostgresToolExecutionStore(session)
         first = await store.begin(
             idempotency_key="k1",
@@ -157,9 +153,7 @@ async def test_the_first_call_wins_and_the_second_reads_it_back(store_ctx) -> No
 async def test_the_finish_writes_the_status_and_the_pointer(store_ctx) -> None:  # type: ignore[no-untyped-def]
     tenant, workspace, turn = uuid4(), uuid4(), uuid4()
     async with store_ctx.session() as session, session.begin():
-        await _seed_turn(
-            session, turn_id=turn, tenant_id=tenant, workspace_id=workspace
-        )
+        await _seed_turn(session, turn_id=turn, tenant_id=tenant, workspace_id=workspace)
         store = PostgresToolExecutionStore(session)
         await store.begin(
             idempotency_key="k1",
@@ -169,9 +163,7 @@ async def test_the_finish_writes_the_status_and_the_pointer(store_ctx) -> None: 
             tenant_id=tenant,
             workspace_id=workspace,
         )
-        await store.finish(
-            idempotency_key="k1", status="succeeded", result_ref="call-1"
-        )
+        await store.finish(idempotency_key="k1", status="succeeded", result_ref="call-1")
         rows = (
             await session.execute(
                 text(

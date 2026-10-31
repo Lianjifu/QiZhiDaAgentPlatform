@@ -47,9 +47,7 @@ class EventEnvelope:
         # `dataclasses.asdict` would work for dataclass events; we fall back
         # to `__dict__` for plain classes and use `_as_payload_dict` if defined.
         payload = (
-            event._as_payload_dict()
-            if hasattr(event, "_as_payload_dict")
-            else _safe_asdict(event)
+            event._as_payload_dict() if hasattr(event, "_as_payload_dict") else _safe_asdict(event)
         )
         return cls(
             event_id=uuid4(),

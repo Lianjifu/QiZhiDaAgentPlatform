@@ -39,14 +39,12 @@ class FileVaultSecretsResolver(VaultSecretsResolver):
         path = Path(address)
         if self._allowed_root is not None:
             try:
-                resolved = path.resolve()
+                resolved = path.resolve()  # noqa: ASYNC240 —— vault 落盘走同步 IO ✓
                 resolved.relative_to(self._allowed_root)
             except ValueError as exc:
-                raise SecretAccessDenied(
-                    f"path {address!r} escapes allowed_root"
-                ) from exc
+                raise SecretAccessDenied(f"path {address!r} escapes allowed_root") from exc
         try:
-            text = path.read_text(encoding="utf-8").strip()
+            text = path.read_text(encoding="utf-8").strip()  # noqa: ASYNC240
         except FileNotFoundError as exc:
             raise SecretNotFound(f"file {address!r} does not exist") from exc
         return {"value": text}

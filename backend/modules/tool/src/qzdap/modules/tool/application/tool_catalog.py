@@ -256,7 +256,9 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             "type": "object",
             "properties": {
                 "data": _p(type="object", description="要查询的 JSON 对象，必填。"),
-                "path": _p(type="string", description="JSONPath 表达式，如 $..items[?(@.ok==true)]，必填。"),
+                "path": _p(
+                    type="string", description="JSONPath 表达式，如 $..items[?(@.ok==true)]，必填。"
+                ),
             },
             "required": ["data", "path"],
         },
@@ -354,7 +356,9 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             "type": "object",
             "properties": {
                 "question": _p(type="string", description="单个问题。"),
-                "questions": _p(type="array", description="问题数组，每项含 question / options。", items=_OBJ),
+                "questions": _p(
+                    type="array", description="问题数组，每项含 question / options。", items=_OBJ
+                ),
                 "options": _p(type="array", description="单题的候选项数组。", items=_OBJ),
             },
         },
@@ -379,7 +383,11 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
             "type": "object",
             "properties": {
                 "title": _p(type="string", description="计划标题。"),
-                "steps": _p(type="array", description="步骤数组，每项 {id, title, description, kind}。", items=_OBJ),
+                "steps": _p(
+                    type="array",
+                    description="步骤数组，每项 {id, title, description, kind}。",
+                    items=_OBJ,
+                ),
                 "plan_id": _p(type="string", description="计划 ID。"),
                 "reason": _p(type="string", description="提交理由。"),
             },
@@ -391,7 +399,11 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
         "parameters": {
             "type": "object",
             "properties": {
-                "todos": _p(type="array", description="待办数组，每项 {id, content, status, active_form}。", items=_OBJ),
+                "todos": _p(
+                    type="array",
+                    description="待办数组，每项 {id, content, status, active_form}。",
+                    items=_OBJ,
+                ),
                 "content": _p(type="string", description="单条待办内容。"),
                 "id": _p(type="string", description="待办 ID。"),
                 "status": _p(type="string", description="状态 pending / in_progress / completed。"),

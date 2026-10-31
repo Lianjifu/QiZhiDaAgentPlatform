@@ -52,15 +52,11 @@ def upgrade() -> None:
     )
     op.add_column(
         "agent_sessions",
-        sa.Column(
-            "agent_version_pinned", sa.String(64), nullable=True
-        ),
+        sa.Column("agent_version_pinned", sa.String(64), nullable=True),
     )
     op.add_column(
         "agent_sessions",
-        sa.Column(
-            "channel_session_key", sa.String(512), nullable=True
-        ),
+        sa.Column("channel_session_key", sa.String(512), nullable=True),
     )
     op.create_index(
         "ix_agent_sessions_channel_session_key",
@@ -163,9 +159,7 @@ def upgrade() -> None:
             nullable=False,
             server_default="pending",
         ),
-        sa.Column(
-            "delivery_attempts", sa.Integer(), nullable=False, server_default="0"
-        ),
+        sa.Column("delivery_attempts", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("delivered_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at",
@@ -276,9 +270,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.text("now()"),
         ),
-        sa.PrimaryKeyConstraint(
-            "turn_id", "seq", "attempt", name="pk_outbox_dead_letters"
-        ),
+        sa.PrimaryKeyConstraint("turn_id", "seq", "attempt", name="pk_outbox_dead_letters"),
     )
     op.create_index(
         "ix_outbox_dead_letters_dead_at",
@@ -306,9 +298,7 @@ def downgrade() -> None:
     op.drop_index("ix_session_turns_tenant_session", "session_turns")
     op.drop_table("session_turns")
 
-    op.drop_index(
-        "ix_agent_sessions_channel_session_key", "agent_sessions"
-    )
+    op.drop_index("ix_agent_sessions_channel_session_key", "agent_sessions")
     op.drop_column("agent_sessions", "channel_session_key")
     op.drop_column("agent_sessions", "agent_version_pinned")
     op.drop_column("agent_sessions", "current_turn_id")

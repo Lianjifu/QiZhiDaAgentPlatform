@@ -5,15 +5,15 @@
   - weighted: dict-list 解析正确, string-list fallback uniform
   - weighted 选了 chosen 排第一, 其他按 weight 降序
 """
+
 from __future__ import annotations
 
 from typing import Any
 from uuid import UUID, uuid4
 
-from qzdap_schema.ids import ModelId
-
 from qzdap.modules.model.application.services import ModelService
 from qzdap.modules.model.domain.entities import HealthEvent, Model, RouteRule
+from qzdap_schema.ids import ModelId
 
 TENANT = uuid4()
 WORKSPACE = uuid4()
@@ -88,9 +88,7 @@ class _MemHealthStub:
     async def add(self, *_args: Any, **_kwargs: Any) -> None:
         return None
 
-    async def list_for_workspace(
-        self, *_args: Any, **_kwargs: Any
-    ) -> list[HealthEvent]:
+    async def list_for_workspace(self, *_args: Any, **_kwargs: Any) -> list[HealthEvent]:
         return []
 
 
@@ -177,9 +175,7 @@ def test_weighted_dict_list_picks_by_weight() -> None:
     ]
     seen_first: list[UUID] = []
     for _ in range(50):
-        result = svc._apply_weighted(
-            chain=chain, primary_id=primary, fallback_model_ids=fb_ids
-        )
+        result = svc._apply_weighted(chain=chain, primary_id=primary, fallback_model_ids=fb_ids)
         assert UUID(str(result[0])) == primary
         seen_first.append(UUID(str(result[1])))
     # 50 次采样, b (weight=2) 出现最多, c (weight=0.5) 最少
@@ -202,9 +198,7 @@ def test_weighted_string_list_uniform_weight() -> None:
     fb_ids = [str(a), str(b)]
     seen_first: list[UUID] = []
     for _ in range(40):
-        result = svc._apply_weighted(
-            chain=chain, primary_id=primary, fallback_model_ids=fb_ids
-        )
+        result = svc._apply_weighted(chain=chain, primary_id=primary, fallback_model_ids=fb_ids)
         seen_first.append(UUID(str(result[1])))
     from collections import Counter
 
@@ -226,9 +220,7 @@ def test_weighted_skips_zero_or_negative_weight() -> None:
     ]
     seen_first: list[UUID] = []
     for _ in range(20):
-        result = svc._apply_weighted(
-            chain=chain, primary_id=primary, fallback_model_ids=fb_ids
-        )
+        result = svc._apply_weighted(chain=chain, primary_id=primary, fallback_model_ids=fb_ids)
         seen_first.append(UUID(str(result[1])))
     from collections import Counter
 
@@ -243,9 +235,7 @@ def test_weighted_empty_fallback_falls_back_to_chain() -> None:
     primary = uuid4()
     a = uuid4()
     chain = [ModelId(primary), ModelId(a)]
-    result = svc._apply_weighted(
-        chain=chain, primary_id=primary, fallback_model_ids=[]
-    )
+    result = svc._apply_weighted(chain=chain, primary_id=primary, fallback_model_ids=[])
     # 空 fallback → 原 chain 不变
     assert [UUID(str(m)) for m in result] == [primary, a]
 
@@ -271,9 +261,7 @@ def test_weighted_others_sorted_by_weight_desc() -> None:
     seen_after: list[list[UUID]] = []
     chosen_counter: Counter[UUID] = Counter()
     for _ in range(100):
-        result = svc._apply_weighted(
-            chain=chain, primary_id=primary, fallback_model_ids=fb_ids
-        )
+        result = svc._apply_weighted(chain=chain, primary_id=primary, fallback_model_ids=fb_ids)
         chosen = UUID(str(result[1]))
         chosen_counter[chosen] += 1
         rest = [UUID(str(m)) for m in result[2:]]

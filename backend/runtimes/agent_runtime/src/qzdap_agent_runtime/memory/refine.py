@@ -61,9 +61,7 @@ class BufferPort(Protocol):
 
     async def add(self, row: BufferRow) -> None: ...
 
-    async def list_pending(
-        self, *, before: datetime, limit: int = 100
-    ) -> list[BufferRow]:
+    async def list_pending(self, *, before: datetime, limit: int = 100) -> list[BufferRow]:
         """**待提炼** 的行 ✓（按创建时间 ✓）。"""
         ...
 
@@ -79,9 +77,7 @@ class SessionActivityPort(Protocol):
     ⚠️ **Memory 不查会话表** ✓ —— 那是别人的表 ✗✗ → 走窄端口 ✓。
     """
 
-    async def active_session_ids(
-        self, *, session_ids: tuple[UUID, ...]
-    ) -> set[UUID]:
+    async def active_session_ids(self, *, session_ids: tuple[UUID, ...]) -> set[UUID]:
         """**还在跑**的会话 ✓（空的 = 都结束了 ✓）。"""
         ...
 
@@ -106,9 +102,7 @@ class BufferRefiner:
         self._writer = writer
         self._ttl = ttl
 
-    async def refine(
-        self, *, now: datetime, limit: int = 100
-    ) -> RefineReport:
+    async def refine(self, *, now: datetime, limit: int = 100) -> RefineReport:
         """**提炼一批** ✓。
 
         ⚠️ **过期先丢** ✓（TTL 到期 → 丢弃 ✓ —— 不留垃圾 ✓）；

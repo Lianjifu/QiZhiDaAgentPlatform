@@ -6,6 +6,7 @@ trace_id context variable, and the AppError hierarchy.
 
 from qzdap_kernel.contexts import TenantContext, TenantWorkspaceContext, WorkspaceContext
 from qzdap_kernel.contextvars import current_trace_id, new_trace_id, trace_id_var
+from qzdap_kernel.digest import canonical_json, request_hash
 from qzdap_kernel.errors import (
     AppError,
     AuthenticationError,
@@ -19,7 +20,6 @@ from qzdap_kernel.errors import (
     RateLimitError,
     ValidationError,
 )
-from qzdap_kernel.digest import canonical_json, request_hash
 from qzdap_kernel.events import DomainEvent
 from qzdap_kernel.principal import Principal, PrincipalType
 
@@ -28,14 +28,12 @@ __all__ = [
     "AuthenticationError",
     "BusinessRuleError",
     "ConflictError",
-    "canonical_json",
     "DomainEvent",
     "ErrorEnvelope",
     "ExternalServiceError",
     "ForbiddenError",
     "InternalError",
     "NotFoundError",
-    "request_hash",
     "Principal",
     "PrincipalType",
     "RateLimitError",
@@ -43,7 +41,9 @@ __all__ = [
     "TenantWorkspaceContext",
     "ValidationError",
     "WorkspaceContext",
+    "canonical_json",
     "current_trace_id",
     "new_trace_id",
+    "request_hash",
     "trace_id_var",
 ]

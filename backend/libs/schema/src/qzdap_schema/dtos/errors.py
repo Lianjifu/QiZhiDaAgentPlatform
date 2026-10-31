@@ -73,8 +73,8 @@ class ErrorCode(str, Enum):
     CHANNEL_DELIVERY_FAILED = "CHANNEL_DELIVERY_FAILED"
     IDENTITY_REJECTED = "IDENTITY_REJECTED"
     IDENTITY_CREDENTIALS_MISSING = "IDENTITY_CREDENTIALS_MISSING"
-    TOKEN_INVALID = "TOKEN_INVALID"
-    TOKEN_EXPIRED = "TOKEN_EXPIRED"
+    TOKEN_INVALID = "TOKEN_INVALID"  # noqa: S105 —— 错误码 ✓ 不是口令 ✓
+    TOKEN_EXPIRED = "TOKEN_EXPIRED"  # noqa: S105 —— 错误码 ✓ 不是口令 ✓
     # Gateway ② 的**拒绝原因码**（审计事件里的 reason_code）—— 与 API 错误码
     # 是两套词汇，都登记进枚举（投影表要覆盖它们），但**不互相替代**。
     SERVICE_ACCOUNT_NOT_CONFIGURED = "SERVICE_ACCOUNT_NOT_CONFIGURED"
@@ -374,9 +374,7 @@ ERROR_PROJECTION: Mapping[ErrorCode, ErrorCopy] = {
 _BY_VALUE: Mapping[str, ErrorCode] = {code.value: code for code in ErrorCode}
 
 
-def try_project_error(
-    code: str | ErrorCode, surface: ErrorSurface = "http"
-) -> str | None:
+def try_project_error(code: str | ErrorCode, surface: ErrorSurface = "http") -> str | None:
     """码在表里才给文案；不认识就返回 ``None``。
 
     ⚠️ 给**已经有自己文案**的调用方用 —— 投影表没登记这个码时，调用方宁可
@@ -402,9 +400,7 @@ def project_error(code: str | ErrorCode, surface: ErrorSurface = "http") -> str:
     return copy.for_surface(surface)
 
 
-def project_error_message(
-    code: str, message: str, surface: ErrorSurface = "http"
-) -> str:
+def project_error_message(code: str, message: str, surface: ErrorSurface = "http") -> str:
     """**没有自己的消息时**用投影文案；有自己的消息就保留。
 
     ⚠️ 判据是「消息为空，或消息就是码本身」（`AppError.__init__` 是

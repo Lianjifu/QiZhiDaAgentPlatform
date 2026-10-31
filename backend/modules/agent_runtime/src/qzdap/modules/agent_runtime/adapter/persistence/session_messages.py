@@ -23,9 +23,6 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.session.message import SessionMessagePort
-from qzdap_agent_runtime.session.sequence import SessionSequencePort
-from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import select
 
 from qzdap.modules.agent_runtime.adapter.persistence.models import (
@@ -35,6 +32,9 @@ from qzdap.modules.agent_runtime.adapter.persistence.models import (
 from qzdap.modules.agent_runtime.adapter.persistence.session_sequence import (
     PostgresSessionSequence,
 )
+from qzdap_agent_runtime.session.message import SessionMessagePort
+from qzdap_agent_runtime.session.sequence import SessionSequencePort
+from qzdap_persistence.tenant_guard import current_tenant_id
 
 _log = logging.getLogger(__name__)
 

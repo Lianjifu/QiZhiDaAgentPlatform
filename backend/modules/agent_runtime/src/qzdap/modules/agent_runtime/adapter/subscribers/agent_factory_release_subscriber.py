@@ -15,6 +15,7 @@
 若 catalog 找不到匹配行, silent skip (产品上允许独立建 catalog agent,
 只有"两边都建过"才需要联动).
 """
+
 from __future__ import annotations
 
 import inspect
@@ -154,7 +155,7 @@ def build_handler(session: AsyncSession):
         # 显式 commit: 防止 subscriber session 被外层回收导致 audit 不落库
         try:
             await session.commit()
-        except Exception:  # noqa: BLE001
+        except Exception:
             _log.exception("agent_factory_release: commit failed")
 
     return handle
@@ -168,6 +169,7 @@ async def install(event_bus: Any, session_opener: Any) -> None:
     * 一个 async generator (lifespan 里那种 ``async def gen(): ... yield s``)
     * 任何支持 ``async with session_opener() as session`` 的对象
     """
+
     async def _open_session():  # type: ignore[no-untyped-def]
         if hasattr(session_opener, "session") and callable(
             getattr(session_opener, "session", None)
@@ -186,7 +188,7 @@ async def install(event_bus: Any, session_opener: Any) -> None:
                 handler = build_handler(session)
                 await handler(envelope)
                 return
-        except Exception:  # noqa: BLE001
+        except Exception:
             _log.exception("agent_factory_release handler failed")
 
     result = event_bus.subscribe(EVENT_NAME, _handler)

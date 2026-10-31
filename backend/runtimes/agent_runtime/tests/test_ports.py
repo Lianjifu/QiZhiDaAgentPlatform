@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-import pytest
 from pydantic import BaseModel
 
 from qzdap_agent_runtime.ports import (
@@ -23,7 +22,6 @@ from qzdap_agent_runtime.ports import (
     ToolMeta,
     ToolRegistry,
 )
-
 
 # ---------------------------------------------------------------------------
 # ToolMeta
@@ -123,7 +121,9 @@ def test_actor_context_default_roles() -> None:
 
 def test_actor_context_with_roles() -> None:
     a = ActorContext(
-        actor_id="u-1", tenant_id="t-1", workspace_id="w-1",
+        actor_id="u-1",
+        tenant_id="t-1",
+        workspace_id="w-1",
         roles=("admin", "developer"),
     )
     assert "admin" in a.roles
@@ -154,10 +154,16 @@ class _FakeToolRegistry:
 def test_tool_registry_protocol_duck_typing() -> None:
     reg = _FakeToolRegistry()
     meta = ToolMeta(
-        name="x", description="x", args_schema=_Args,
-        risk="low", requires_approval=False,
-        timeout_ms=1000, max_retries=1, backoff_ms=100,
-        idempotent=True, side_effect=False,
+        name="x",
+        description="x",
+        args_schema=_Args,
+        risk="low",
+        requires_approval=False,
+        timeout_ms=1000,
+        max_retries=1,
+        backoff_ms=100,
+        idempotent=True,
+        side_effect=False,
     )
     reg.register(meta, lambda: None)
     assert isinstance(reg, ToolRegistry)
@@ -180,13 +186,20 @@ class _FakePolicyGuard:
 
 def test_policy_guard_protocol_duck_typing() -> None:
     import asyncio
+
     guard = _FakePolicyGuard()
     assert isinstance(guard, PolicyGuard)
     meta = ToolMeta(
-        name="send_email", description="x", args_schema=_Args,
-        risk="high", requires_approval=True,
-        timeout_ms=1000, max_retries=1, backoff_ms=100,
-        idempotent=False, side_effect=True,
+        name="send_email",
+        description="x",
+        args_schema=_Args,
+        risk="high",
+        requires_approval=True,
+        timeout_ms=1000,
+        max_retries=1,
+        backoff_ms=100,
+        idempotent=False,
+        side_effect=True,
     )
     actor = ActorContext(actor_id="u", tenant_id="t", workspace_id="w")
     decision, approval_id = asyncio.run(

@@ -26,6 +26,9 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
 from qzdap_agent_runtime.session.approval import arguments_digest
 from qzdap_agent_runtime.session.turn_runner import (
     AgentSnapshot,
@@ -38,8 +41,6 @@ from qzdap_schema.dtos.turn import (
     MessageChunk,
     UsageChunk,
 )
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
 
 _DDL = [
     """
@@ -252,9 +253,7 @@ async def turn_ctx():
             await conn.execute(text(statement.replace("{schema}", schema)))
         await conn.commit()
 
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
+    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     from qzdap_persistence.session_factory import SessionFactory
 
     factory = SessionFactory(engine)
@@ -333,9 +332,7 @@ async def test_a_turn_lands_only_in_the_new_table(turn_ctx) -> None:  # type: ig
             user_input="你好",
             idempotency_key="k1",
             key_strength="strong",
-            agent=AgentSnapshot(
-                agent_id=uuid4(), agent_version="v1", model="default", raw=None
-            ),
+            agent=AgentSnapshot(agent_id=uuid4(), agent_version="v1", model="default", raw=None),
             # 会话元数据的快照（生产里由 copilot 从会话行读出来 ✓）——
             # ``title_auto`` 让这一轮顺手把标题定下来 ✓。
             session_metadata={"title_auto": True},
@@ -353,17 +350,12 @@ async def test_a_turn_lands_only_in_the_new_table(turn_ctx) -> None:  # type: ig
         ).all()
         new_turn = (
             await session.execute(
-                text(
-                    "SELECT status, cost_usd, finished_at FROM session_turns "
-                    "WHERE id = :id"
-                ),
+                text("SELECT status, cost_usd, finished_at FROM session_turns WHERE id = :id"),
                 {"id": turn_id},
             )
         ).one()
         events_rows = (
-            await session.execute(
-                text("SELECT seq, event_type FROM session_events ORDER BY seq")
-            )
+            await session.execute(text("SELECT seq, event_type FROM session_events ORDER BY seq"))
         ).all()
         old_msgs = (
             await session.execute(
@@ -375,10 +367,7 @@ async def test_a_turn_lands_only_in_the_new_table(turn_ctx) -> None:  # type: ig
         ).scalar_one()
         new_msgs = (
             await session.execute(
-                text(
-                    "SELECT role, content, session_seq FROM session_messages "
-                    "ORDER BY session_seq"
-                )
+                text("SELECT role, content, session_seq FROM session_messages ORDER BY session_seq")
             )
         ).all()
         session_row = (
@@ -455,9 +444,7 @@ async def test_a_failed_turn_lands_as_failed(turn_ctx) -> None:  # type: ignore[
             user_input="你好",
             idempotency_key="k1",
             key_strength="strong",
-            agent=AgentSnapshot(
-                agent_id=uuid4(), agent_version="v1", model="default", raw=None
-            ),
+            agent=AgentSnapshot(agent_id=uuid4(), agent_version="v1", model="default", raw=None),
         )
         with pytest.raises(RuntimeError):
             async for _ in runner.run(request=request):
@@ -516,9 +503,7 @@ async def test_the_pending_approval_lands_on_the_turn_row(turn_ctx) -> None:  # 
             user_input="清理磁盘",
             idempotency_key="k1",
             key_strength="strong",
-            agent=AgentSnapshot(
-                agent_id=uuid4(), agent_version="v1", model="default", raw=None
-            ),
+            agent=AgentSnapshot(agent_id=uuid4(), agent_version="v1", model="default", raw=None),
         )
         chunks = [chunk async for chunk in runner.run(request=request)]
         assert [chunk.kind for chunk in chunks] == ["approval_required"]
@@ -527,9 +512,7 @@ async def test_the_pending_approval_lands_on_the_turn_row(turn_ctx) -> None:  # 
     async with turn_ctx.session() as session:
         row = (
             await session.execute(
-                text(
-                    "SELECT status, pending_approval FROM session_turns WHERE id = :id"
-                ),
+                text("SELECT status, pending_approval FROM session_turns WHERE id = :id"),
                 {"id": turn_id},
             )
         ).one()

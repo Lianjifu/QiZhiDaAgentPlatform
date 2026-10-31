@@ -50,9 +50,7 @@ class InMemoryChannelRepo(ChannelRepository):
     async def add(self, channel: Channel) -> None:
         self.rows[channel.id] = channel
 
-    async def get(
-        self, *, tenant_id: TenantId, channel_id: ChannelId
-    ) -> Channel | None:
+    async def get(self, *, tenant_id: TenantId, channel_id: ChannelId) -> Channel | None:
         row = self.rows.get(channel_id)
         if row is None or row.tenant_id != tenant_id:
             return None
@@ -69,15 +67,9 @@ class InMemoryChannelRepo(ChannelRepository):
         enabled_only: bool = False,
         limit: int = 100,
     ) -> list[Channel]:
-        items: list[Channel] = [
-            r for r in self.rows.values() if r.tenant_id == tenant_id
-        ]
+        items: list[Channel] = [r for r in self.rows.values() if r.tenant_id == tenant_id]
         if workspace_id is not None:
-            items = [
-                r
-                for r in items
-                if r.workspace_id is None or r.workspace_id == workspace_id
-            ]
+            items = [r for r in items if r.workspace_id is None or r.workspace_id == workspace_id]
         if enabled_only:
             items = [r for r in items if r.status is ChannelStatus.ACTIVE]
         return items[:limit]
@@ -110,9 +102,7 @@ class InMemoryDeliveryRepo(ChannelDeliveryRepository):
     async def add(self, delivery: ChannelDelivery) -> None:
         self.rows[delivery.id] = delivery
 
-    async def get(
-        self, *, tenant_id: TenantId, delivery_id: UUID
-    ) -> ChannelDelivery | None:
+    async def get(self, *, tenant_id: TenantId, delivery_id: UUID) -> ChannelDelivery | None:
         row = self.rows.get(delivery_id)
         if row is None or row.tenant_id != tenant_id:
             return None
@@ -126,9 +116,7 @@ class InMemoryDeliveryRepo(ChannelDeliveryRepository):
         limit: int = 50,
     ) -> list[ChannelDelivery]:
         return [
-            r
-            for r in self.rows.values()
-            if r.tenant_id == tenant_id and r.channel_id == channel_id
+            r for r in self.rows.values() if r.tenant_id == tenant_id and r.channel_id == channel_id
         ][:limit]
 
     async def update(self, delivery: ChannelDelivery) -> None:
@@ -189,9 +177,7 @@ class InMemorySecretRepo(WebhookSecretRepository):
 class FixedClock:
     """A test clock that returns the same ``now`` until ``advance`` is called."""
 
-    fixed: datetime = field(
-        default_factory=lambda: datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
-    )
+    fixed: datetime = field(default_factory=lambda: datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC))
 
     def now(self) -> datetime:
         return self.fixed

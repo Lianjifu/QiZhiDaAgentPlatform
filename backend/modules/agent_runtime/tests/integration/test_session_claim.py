@@ -19,13 +19,13 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from qzdap_agent_runtime.session.state import TurnStatus
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from qzdap.modules.agent_runtime.adapter.persistence.session_claim import (
     PostgresTurnClaim,
 )
+from qzdap_agent_runtime.session.state import TurnStatus
 
 _DDL = [
     """
@@ -98,9 +98,7 @@ async def claim_ctx():
             await conn.execute(text(statement.replace("{schema}", schema)))
         await conn.commit()
 
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
+    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     from qzdap_persistence.session_factory import SessionFactory
 
     factory = SessionFactory(engine)
@@ -179,13 +177,9 @@ async def test_only_one_turn_can_hold_a_session(claim_ctx) -> None:  # type: ign
 
     async with claim_ctx.session() as session:
         claim = PostgresTurnClaim(session)
-        assert await claim.claim(
-            tenant_id=tenant, session_id=session_id, turn_id=uuid4()
-        )
+        assert await claim.claim(tenant_id=tenant, session_id=session_id, turn_id=uuid4())
         # 第二个 claim 必须失败 —— 否则两轮的消息会交错 ✗
-        assert not await claim.claim(
-            tenant_id=tenant, session_id=session_id, turn_id=uuid4()
-        )
+        assert not await claim.claim(tenant_id=tenant, session_id=session_id, turn_id=uuid4())
 
 
 @pytest.mark.asyncio
@@ -208,13 +202,9 @@ async def test_releasing_frees_the_session(claim_ctx) -> None:  # type: ignore[n
 
     async with claim_ctx.session() as session:
         claim = PostgresTurnClaim(session)
-        assert await claim.claim(
-            tenant_id=tenant, session_id=session_id, turn_id=turn_id
-        )
+        assert await claim.claim(tenant_id=tenant, session_id=session_id, turn_id=turn_id)
         await claim.release(tenant_id=tenant, session_id=session_id, turn_id=turn_id)
-        assert await claim.claim(
-            tenant_id=tenant, session_id=session_id, turn_id=uuid4()
-        )
+        assert await claim.claim(tenant_id=tenant, session_id=session_id, turn_id=uuid4())
 
 
 @pytest.mark.asyncio
@@ -232,9 +222,7 @@ async def test_a_zombie_turn_can_be_taken_over(claim_ctx) -> None:  # type: igno
 
     async with claim_ctx.session() as session:
         claim = PostgresTurnClaim(session)
-        assert await claim.claim(
-            tenant_id=tenant, session_id=session_id, turn_id=uuid4()
-        )
+        assert await claim.claim(tenant_id=tenant, session_id=session_id, turn_id=uuid4())
 
 
 @pytest.mark.asyncio
@@ -248,9 +236,7 @@ async def test_a_finished_turn_does_not_block_the_session(claim_ctx) -> None:  #
 
     async with claim_ctx.session() as session:
         claim = PostgresTurnClaim(session)
-        assert await claim.claim(
-            tenant_id=tenant, session_id=session_id, turn_id=uuid4()
-        )
+        assert await claim.claim(tenant_id=tenant, session_id=session_id, turn_id=uuid4())
 
 
 @pytest.mark.asyncio
@@ -260,9 +246,7 @@ async def test_another_tenant_cannot_claim_the_session(claim_ctx) -> None:  # ty
 
     async with claim_ctx.session() as session:
         claim = PostgresTurnClaim(session)
-        assert not await claim.claim(
-            tenant_id=uuid4(), session_id=session_id, turn_id=uuid4()
-        )
+        assert not await claim.claim(tenant_id=uuid4(), session_id=session_id, turn_id=uuid4())
 
 
 @pytest.mark.asyncio

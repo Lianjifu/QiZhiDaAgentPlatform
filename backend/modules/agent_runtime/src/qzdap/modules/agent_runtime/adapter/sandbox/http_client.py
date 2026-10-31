@@ -68,7 +68,11 @@ class HttpSandboxRuntimeClient:
                 headers={"Authorization": f"Bearer {self._secret}"},
             )
         if response.status_code >= 400:
-            detail = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+            detail = (
+                response.json()
+                if response.headers.get("content-type", "").startswith("application/json")
+                else {}
+            )
             code = "SANDBOX_HTTP_ERROR"
             if isinstance(detail, dict) and isinstance(detail.get("detail"), dict):
                 code = str(detail["detail"].get("code") or code)

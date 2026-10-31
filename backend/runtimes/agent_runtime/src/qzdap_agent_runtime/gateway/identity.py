@@ -21,14 +21,13 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 from uuid import UUID
 
-from qzdap_kernel.errors import AuthenticationError
-from qzdap_schema.dtos.errors import ErrorCode
-
 from qzdap_agent_runtime.gateway.types import (
     ActorContext,
     AuthMethod,
     TrustLevel,
 )
+from qzdap_kernel.errors import AuthenticationError
+from qzdap_schema.dtos.errors import ErrorCode
 
 # 时间戳容差（秒）—— 沿用旧路径 ``DEFAULT_TIMESTAMP_TOLERANCE_SECONDS``。
 DEFAULT_TIMESTAMP_TOLERANCE_SECONDS = 300
@@ -56,9 +55,7 @@ class IdentityRejected(AuthenticationError):
     code = ErrorCode.IDENTITY_REJECTED.value
     status = 401
 
-    def __init__(
-        self, message: str = "", *, reason_code: str, trace_id: str = ""
-    ) -> None:
+    def __init__(self, message: str = "", *, reason_code: str, trace_id: str = "") -> None:
         super().__init__(
             message or reason_code,
             code=reason_code,

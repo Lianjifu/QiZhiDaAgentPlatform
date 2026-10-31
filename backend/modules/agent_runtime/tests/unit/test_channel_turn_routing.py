@@ -14,6 +14,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+
+from qzdap.modules.agent_runtime.application.channel_turn import ChannelTurnService
 from qzdap_agent_runtime.gateway.types import ChannelType, IdempotencyKey, KeySource
 from qzdap_agent_runtime.router.types import (
     AgentCandidate,
@@ -22,8 +24,6 @@ from qzdap_agent_runtime.router.types import (
     RoutingUnavailable,
 )
 from qzdap_agent_runtime.session.manager import AgentBinding, SessionRef
-
-from qzdap.modules.agent_runtime.application.channel_turn import ChannelTurnService
 
 
 class _FakeSessions:
@@ -35,9 +35,7 @@ class _FakeSessions:
         self.metadata: dict[str, Any] | None = None
         self.lookups: list[str] = []
 
-    async def lookup(
-        self, *, session_key: str, tenant_id: UUID
-    ) -> SessionRef | None:
+    async def lookup(self, *, session_key: str, tenant_id: UUID) -> SessionRef | None:
         self.lookups.append(session_key)
         return self.existing
 
@@ -70,9 +68,7 @@ class _FakeCopilot:
 class _FakeStrategy:
     """**可控的策略** ✓ —— 记下它收到的请求 ✓。"""
 
-    def __init__(
-        self, decision: RouteDecision | None = None, *, unavailable: bool = False
-    ) -> None:
+    def __init__(self, decision: RouteDecision | None = None, *, unavailable: bool = False) -> None:
         self.decision = decision
         self.unavailable = unavailable
         self.requests: list[RoutingRequest] = []

@@ -105,6 +105,7 @@ async def test_saved_model_stream_facade_session_lifecycle(monkeypatch, outcome:
     class DBSession:
         async def commit(self):
             events.append("commit")
+
         async def rollback(self):
             events.append("rollback")
 
@@ -120,6 +121,7 @@ async def test_saved_model_stream_facade_session_lifecycle(monkeypatch, outcome:
     class Service:
         def __init__(self, *args, **kwargs):
             pass
+
         async def stream(self, **kwargs):
             assert kwargs == {"actor": actor, "model_id": saved_id, "req": req}
             try:
@@ -135,9 +137,18 @@ async def test_saved_model_stream_facade_session_lifecycle(monkeypatch, outcome:
 
     monkeypatch.setattr(services, "ModelService", Service)
     monkeypatch.setattr(client_factory, "build_default_client_factory", lambda **kwargs: object())
-    for name in ("SqlModelRepository", "SqlProviderRepository", "SqlRouteRepository", "SqlHealthRepository"):
+    for name in (
+        "SqlModelRepository",
+        "SqlProviderRepository",
+        "SqlRouteRepository",
+        "SqlHealthRepository",
+    ):
         monkeypatch.setattr(repositories, name, lambda session: object())
-    host = SimpleNamespace(settings=SimpleNamespace(model_invocation_timeout_seconds=1), model_credential_cipher=lambda: object(), session_factory=lambda: Sessions())
+    host = SimpleNamespace(
+        settings=SimpleNamespace(model_invocation_timeout_seconds=1),
+        model_credential_cipher=lambda: object(),
+        session_factory=lambda: Sessions(),
+    )
     facade = Container.model_service(host)
     stream = facade.stream(actor=actor, model_id=saved_id, req=req)
     assert (await anext(stream)).delta == "first"
@@ -155,7 +166,12 @@ async def test_saved_model_stream_facade_session_lifecycle(monkeypatch, outcome:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
-    assert events == ["open", "provider_closed", "commit" if outcome == "complete" else "rollback", "exit"]
+    assert events == [
+        "open",
+        "provider_closed",
+        "commit" if outcome == "complete" else "rollback",
+        "exit",
+    ]
 
 
 # ── raw-secret sentinel detection ────────────────────────────────────────

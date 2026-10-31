@@ -15,11 +15,11 @@ from _ar_unit_in_memory import (
     InMemorySessionRepository,
     make_dependencies,
 )
-from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
-from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 
 from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
 from qzdap.modules.agent_runtime.domain import Session, SessionStatus
+from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
+from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 
 
 def _session(tenant_id: UUID, owner_id: UUID, workspace_id: UUID) -> Session:

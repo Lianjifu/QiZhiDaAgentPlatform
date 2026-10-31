@@ -18,12 +18,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.session.state import TurnStatus
 from sqlalchemy import text
 
 from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
     CLAIM_STALE_MINUTES,
 )
+from qzdap_agent_runtime.session.state import TurnStatus
 
 #: 占用执行权 —— 会话行上的原子 CAS ✓。
 _CLAIM_SQL = text(
@@ -85,9 +85,7 @@ class PostgresTurnClaim:
     def __init__(self, session: Any) -> None:
         self._s = session
 
-    async def claim(
-        self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID
-    ) -> bool:
+    async def claim(self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID) -> bool:
         """占用执行权 —— 已被占用（且不是僵尸）返回 ``False`` ✓。"""
         stale_before = datetime.now(UTC) - timedelta(minutes=CLAIM_STALE_MINUTES)
         result = await self._s.execute(
@@ -101,9 +99,7 @@ class PostgresTurnClaim:
         )
         return result.scalar_one_or_none() is not None
 
-    async def release(
-        self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID
-    ) -> None:
+    async def release(self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID) -> None:
         """释放执行权 —— **只释放自己占的那个** ✓。"""
         await self._s.execute(
             _RELEASE_SQL,
@@ -114,9 +110,7 @@ class PostgresTurnClaim:
             },
         )
 
-    async def current_turn_status(
-        self, *, tenant_id: UUID, session_id: UUID
-    ) -> TurnStatus | None:
+    async def current_turn_status(self, *, tenant_id: UUID, session_id: UUID) -> TurnStatus | None:
         """当前轮次的状态 —— 没有在飞的轮次就是 ``None`` ✓。"""
         result = await self._s.execute(
             _CURRENT_STATUS_SQL,

@@ -44,9 +44,7 @@ class _FakeKV2:
     via the engine binding, not part of the logical key).
     """
 
-    def __init__(
-        self, payloads: dict[str, dict[str, str]], *, fail: str | None = None
-    ) -> None:
+    def __init__(self, payloads: dict[str, dict[str, str]], *, fail: str | None = None) -> None:
         self._payloads = payloads
         self._fail = fail
         self.calls = 0
@@ -83,9 +81,7 @@ class _FakeSecrets:
 
 
 class _FakeClient:
-    def __init__(
-        self, payloads: dict[str, dict[str, str]], *, fail: str | None = None
-    ) -> None:
+    def __init__(self, payloads: dict[str, dict[str, str]], *, fail: str | None = None) -> None:
         self.kv2 = _FakeKV2(payloads, fail=fail)
         self.secrets = _FakeSecrets(_FakeKV(_FakeV2(self.kv2)))
 
@@ -101,9 +97,7 @@ def _install_fake(resolver: HashicorpVaultSecretsResolver, fake: _FakeClient) ->
 async def test_hashicorp_resolver_reads_kv_v2(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    r = HashicorpVaultSecretsResolver(
-        url="https://vault.test", token="hvs.x", mount_point="secret"
-    )
+    r = HashicorpVaultSecretsResolver(url="https://vault.test", token="hvs.x", mount_point="secret")
     _install_fake(r, _FakeClient({"api/token": {"value": "v123"}}))
 
     out = await r.resolve("vault:secret/data/api/token", actor=_actor())
@@ -156,9 +150,7 @@ async def test_hashicorp_resolver_empty_payload_raises_not_found(
 
 @pytest.mark.asyncio
 async def test_hashicorp_resolver_cache_hits_second_call() -> None:
-    r = HashicorpVaultSecretsResolver(
-        url="https://vault.test", token="x", cache_ttl_seconds=60.0
-    )
+    r = HashicorpVaultSecretsResolver(url="https://vault.test", token="x", cache_ttl_seconds=60.0)
     fake = _FakeClient({"api/token": {"value": "v"}})
     _install_fake(r, fake)
 

@@ -6,14 +6,6 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    EvalRunId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
 
 from qzdap.modules.agent_factory.domain.entities import (
     AgentTemplate,
@@ -28,6 +20,14 @@ from qzdap.modules.agent_factory.domain.value_objects import (
     AgentTemplateStatus,
     AgentVersionStatus,
     ReleaseStatus,
+)
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    EvalRunId,
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 _TENANT = TenantId(uuid4())

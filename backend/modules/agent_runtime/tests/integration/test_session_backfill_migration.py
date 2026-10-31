@@ -73,8 +73,7 @@ CREATE TABLE agent_session_messages (
 ]
 
 _MIGRATION = (
-    Path(__file__).resolve().parents[4]
-    / "migrations/versions/0054_session_legacy_backfill.py"
+    Path(__file__).resolve().parents[4] / "migrations/versions/0054_session_legacy_backfill.py"
 )
 
 
@@ -95,9 +94,7 @@ async def db_ctx():
     async with admin.connect() as conn:
         await conn.execute(text(f'CREATE SCHEMA "{schema}"'))
         await conn.commit()
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
+    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     try:
         yield engine, schema
     finally:
@@ -290,9 +287,7 @@ async def test_the_legacy_rows_land_in_the_new_tables(db_ctx) -> None:
         ).all()
         counters = (
             await conn.execute(
-                text(
-                    "SELECT id::text, next_message_seq FROM agent_sessions ORDER BY id"
-                )
+                text("SELECT id::text, next_message_seq FROM agent_sessions ORDER BY id")
             )
         ).all()
 
@@ -343,10 +338,7 @@ async def test_the_dual_written_rows_keep_their_turn(db_ctx) -> None:
     async with engine.connect() as conn:
         row = (
             await conn.execute(
-                text(
-                    "SELECT idempotency_key, model_version FROM session_turns "
-                    "WHERE id = :t"
-                ),
+                text("SELECT idempotency_key, model_version FROM session_turns WHERE id = :t"),
                 {"t": ids["t3"]},
             )
         ).one()
@@ -363,12 +355,8 @@ async def test_the_downgrade_removes_the_backfilled_rows(db_ctx) -> None:
 
     async with engine.connect() as conn:
         turns = (await conn.execute(text("SELECT count(*) FROM session_turns"))).one()
-        messages = (
-            await conn.execute(text("SELECT count(*) FROM session_messages"))
-        ).one()
-        legacy = (
-            await conn.execute(text("SELECT count(*) FROM agent_session_messages"))
-        ).one()
+        messages = (await conn.execute(text("SELECT count(*) FROM session_messages"))).one()
+        legacy = (await conn.execute(text("SELECT count(*) FROM agent_session_messages"))).one()
     assert turns[0] == 0
     assert messages[0] == 0
     # 旧表**一行没动** ✓

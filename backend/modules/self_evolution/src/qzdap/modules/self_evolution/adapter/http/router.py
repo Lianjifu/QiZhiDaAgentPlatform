@@ -16,8 +16,6 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from qzdap_schema.ids import EvolveCandidateId
-from qzdap_vault.actor import ActorContext
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from qzdap.modules.self_evolution.adapter.http.dto import (
@@ -36,6 +34,8 @@ from qzdap.modules.self_evolution.adapter.http.mappers import (
 from qzdap.modules.self_evolution.application.evolution_service import (
     EvolutionCandidateService,
 )
+from qzdap_schema.ids import EvolveCandidateId
+from qzdap_vault.actor import ActorContext
 
 router = APIRouter(tags=["self-evolution"])
 
@@ -97,9 +97,7 @@ async def list_candidates(
             status_code=422,
             detail=f"unknown status '{status_filter}'",
         ) from e
-    items = await svc.list_by_status(
-        tenant_id=actor.tenant_id, status=parsed, limit=limit
-    )
+    items = await svc.list_by_status(tenant_id=actor.tenant_id, status=parsed, limit=limit)
     return CandidateListResponse(items=[candidate_to_response(c) for c in items])
 
 

@@ -29,7 +29,6 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from qzdap_persistence.base import Base, TenantScopedMixin, make_composite_index
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
@@ -45,17 +44,15 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from qzdap_persistence.base import Base, TenantScopedMixin, make_composite_index
+
 
 class EvalDatasetORM(TenantScopedMixin, Base):
     __tablename__ = "eval_datasets"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
-    description: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=text("''")
-    )
+    description: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
     kind: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
@@ -66,9 +63,7 @@ class EvalDatasetORM(TenantScopedMixin, Base):
         nullable=False,
         server_default=text("'active'"),
     )
-    case_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
+    case_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSONB,
@@ -97,9 +92,7 @@ class EvalDatasetORM(TenantScopedMixin, Base):
 class EvalCaseORM(TenantScopedMixin, Base):
     __tablename__ = "eval_cases"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     dataset_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey("eval_datasets.id", ondelete="CASCADE"),
@@ -143,9 +136,7 @@ class EvalCaseORM(TenantScopedMixin, Base):
 class EvalRunORM(TenantScopedMixin, Base):
     __tablename__ = "eval_runs"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     dataset_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey("eval_datasets.id", ondelete="RESTRICT"),
@@ -159,26 +150,14 @@ class EvalRunORM(TenantScopedMixin, Base):
         server_default=text("'queued'"),
     )
     mean_score: Mapped[float | None] = mapped_column(Numeric(4, 3), nullable=True)
-    case_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
-    passed_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
-    failed_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    case_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    passed_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    triggered_by: Mapped[UUID | None] = mapped_column(
-        PgUUID(as_uuid=True), nullable=True
-    )
+    triggered_by: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
 
     __table_args__ = (
         CheckConstraint(

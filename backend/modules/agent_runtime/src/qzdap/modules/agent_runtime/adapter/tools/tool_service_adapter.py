@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from qzdap.modules.agent_runtime.application.ports import ToolPort
 from qzdap.modules.tool.application.services import ToolService
 from qzdap.modules.tool.application.tool_catalog import BUILTIN_TOOL_SPECS
 from qzdap.modules.tool.application.tool_schema import (
@@ -19,8 +20,6 @@ from qzdap.modules.tool.application.tool_schema import (
     tool_parameters,
     tool_risk,
 )
-
-from qzdap.modules.agent_runtime.application.ports import ToolPort
 
 
 class ToolServiceAdapter(ToolPort):
@@ -77,7 +76,7 @@ class ToolServiceAdapter(ToolPort):
                 enabled=True,
                 limit=200,
             )
-        except Exception:  # noqa: BLE001 — catalog is best-effort
+        except Exception:
             return []
 
         out: list[dict] = []

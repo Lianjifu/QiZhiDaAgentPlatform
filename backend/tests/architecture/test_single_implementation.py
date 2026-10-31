@@ -75,8 +75,8 @@ INMEMORY_BASELINE = {
     # ⚠️ **只剩三个** ✓（2026-10-31：Agent Stage 7 把 runtime 里那 16 个
     # 全删了 ✓；当天 Memory C5 的**向量补写队列**是**生产在用**的 ✓ ——
     # 登记进基线 ✓ —— 归属 Memory 层 ✓）。
-    "InMemoryOutboxRepository",   # runtime 的 outbox ✓（Session Stage 4b 取用 ✓）
-    "InMemoryDraftStore",         # self_evolution 的草稿存储 ✓（归 self_evolution ✓）
+    "InMemoryOutboxRepository",  # runtime 的 outbox ✓（Session Stage 4b 取用 ✓）
+    "InMemoryDraftStore",  # self_evolution 的草稿存储 ✓（归 self_evolution ✓）
     # ⚠️ **Memory 的向量补写队列** ✓（C5 ✓）—— 它是**生产在用**的进程内
     # 有界队列 ✓（组合根起停 ✓ —— **应用级** ✓ 不是每请求一个 ✓）——
     # 队列满了就丢 ✓（不阻塞对话 ✓）+ **兜底补写**捡回来 ✓（丢的不丢向量 ✓）。
@@ -129,9 +129,7 @@ def test_closed_concerns_have_no_second_implementation() -> None:
         if not _symbol_hits(new_dir, new_sym):
             problems.append(f"关注点『{concern}』：新实现 {new_sym} 不在 {new_dir} —— 接管没落地？")
         old_hits = [
-            f"{rel_dir}:{hit}"
-            for rel_dir in PROD_DIRS
-            for hit in _symbol_hits(rel_dir, old_sym)
+            f"{rel_dir}:{hit}" for rel_dir in PROD_DIRS for hit in _symbol_hits(rel_dir, old_sym)
         ]
         if old_hits:
             problems.append(f"关注点『{concern}』：旧实现 {old_sym} 仍在 → {old_hits}")

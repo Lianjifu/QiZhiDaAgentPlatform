@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import pytest
-from qzdap.modules.tool.application.tool_catalog import BUILTIN_TOOL_SPECS
 
 from qzdap.composition.seeds import (
     DEMO_AGENT_MODEL,
@@ -24,6 +23,7 @@ from qzdap.composition.seeds import (
     seed_demo_memory,
 )
 from qzdap.composition.settings import Settings
+from qzdap.modules.tool.application.tool_catalog import BUILTIN_TOOL_SPECS
 
 
 @pytest.fixture()
@@ -43,9 +43,7 @@ def test_demo_agents_are_skipped_for_the_dev_profile(settings: Settings) -> None
 
     import asyncio
 
-    created = asyncio.run(
-        seed_demo_agents(None, dev, tenant_id=dev.tenant_id, workspace_id=None)
-    )
+    created = asyncio.run(seed_demo_agents(None, dev, tenant_id=dev.tenant_id, workspace_id=None))
     assert created == []
 
 
@@ -75,9 +73,7 @@ def test_demo_agent_specs_are_chat_ready() -> None:
         prompts = spec["prompts"]
         assert prompts["soul"] and prompts["prompt"]
         # prompts.user 里以 "- " 开头的行会被 to_catalog_dict 取成开场示例.
-        starters = [
-            line for line in prompts["user"].splitlines() if line.strip().startswith("-")
-        ]
+        starters = [line for line in prompts["user"].splitlines() if line.strip().startswith("-")]
         assert starters, f"{spec['name']} 没有开场示例"
         assert spec["tools"], f"{spec['name']} 没有可用工具"
 
@@ -99,9 +95,7 @@ def test_dev_profile_seeds_no_demo_content(settings: Settings) -> None:
     dev = dev_profile(settings)
     import asyncio
 
-    result = asyncio.run(
-        seed_demo_content(None, dev, tenant_id=dev.tenant_id, workspace_id=None)
-    )
+    result = asyncio.run(seed_demo_content(None, dev, tenant_id=dev.tenant_id, workspace_id=None))
     assert result == {
         "agents": [],
         "skills": [],
@@ -147,9 +141,7 @@ def test_demo_memory_is_skipped_for_the_dev_profile(settings: Settings) -> None:
     dev = dev_profile(settings)
     import asyncio
 
-    counts = asyncio.run(
-        seed_demo_memory(None, dev, tenant_id=dev.tenant_id, workspace_id=None)
-    )
+    counts = asyncio.run(seed_demo_memory(None, dev, tenant_id=dev.tenant_id, workspace_id=None))
     assert counts == {}
 
 

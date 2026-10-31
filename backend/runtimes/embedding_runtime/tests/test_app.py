@@ -57,9 +57,7 @@ def test_openai_app_embeds_via_mock_client() -> None:
     adapter = app.state.embedding_adapter
     fake_vector = [0.1] * 1536
     resp = MagicMock()
-    resp.json = MagicMock(
-        return_value={"data": [{"index": 0, "embedding": fake_vector}]}
-    )
+    resp.json = MagicMock(return_value={"data": [{"index": 0, "embedding": fake_vector}]})
     resp.raise_for_status = MagicMock()
     mock = AsyncMock()
     mock.post = AsyncMock(return_value=resp)

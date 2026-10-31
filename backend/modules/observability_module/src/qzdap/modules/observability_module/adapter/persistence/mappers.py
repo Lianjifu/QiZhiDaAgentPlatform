@@ -16,14 +16,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from qzdap_schema.ids import (
-    CostRecordId,
-    RunRecordId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.observability_module.adapter.persistence.models import (
     CostRecordORM,
     RunRecordORM,
@@ -36,6 +28,13 @@ from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunStatus,
     RunType,
+)
+from qzdap_schema.ids import (
+    CostRecordId,
+    RunRecordId,
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 

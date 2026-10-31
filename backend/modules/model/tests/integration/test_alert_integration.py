@@ -4,6 +4,7 @@
 connectivity_tester (返回 failure). health_check 写 incident, 然后调
 alert_service.evaluate, 累加 3 次触发 down.
 """
+
 from __future__ import annotations
 
 import os
@@ -74,9 +75,7 @@ async def alert_setup() -> Any:
         transaction = await connection.begin()
         await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         await connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
-        await connection.run_sync(
-            lambda conn: HealthEventORM.__table__.create(conn)
-        )
+        await connection.run_sync(lambda conn: HealthEventORM.__table__.create(conn))
         await connection.run_sync(lambda conn: ProviderORM.__table__.create(conn))
 
         @asynccontextmanager

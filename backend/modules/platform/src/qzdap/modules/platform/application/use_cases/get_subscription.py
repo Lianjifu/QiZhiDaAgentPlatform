@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from qzdap_schema.ids import TenantId
-
 from qzdap.modules.platform.domain.entities import Subscription
+from qzdap_schema.ids import TenantId
 
 if TYPE_CHECKING:
     from qzdap.modules.platform.application.services import PlatformService

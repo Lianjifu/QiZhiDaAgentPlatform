@@ -7,6 +7,12 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap.modules.agent_factory.application.ports import (
+    AgentFactoryEventPublisher,
+    AgentTemplateRepository,
+    AgentVersionRepository,
+)
+from qzdap.modules.agent_factory.domain.entities import AgentVersion
 from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
@@ -14,13 +20,6 @@ from qzdap_schema.ids import (
     UserId,
     WorkspaceId,
 )
-
-from qzdap.modules.agent_factory.application.ports import (
-    AgentFactoryEventPublisher,
-    AgentTemplateRepository,
-    AgentVersionRepository,
-)
-from qzdap.modules.agent_factory.domain.entities import AgentVersion
 
 logger = logging.getLogger(__name__)
 
@@ -68,17 +67,13 @@ class CreateAgentVersionUseCase:
             )
 
         # resolve template (inherits defaults)
-        template = await self.template_repository.get(
-            tenant_id=tenant_id, template_id=template_id
-        )
+        template = await self.template_repository.get(tenant_id=tenant_id, template_id=template_id)
         if template is None:
             from qzdap.modules.agent_factory.domain.errors import (
                 AgentTemplateNotFound,
             )
 
-            raise AgentTemplateNotFound(
-                f"agent template {template_id} not found in tenant"
-            )
+            raise AgentTemplateNotFound(f"agent template {template_id} not found in tenant")
 
         # version_tag uniqueness per (tenant, template)
         existing = await self.version_repository.get_by_tag(

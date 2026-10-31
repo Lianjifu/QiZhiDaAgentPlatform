@@ -84,11 +84,7 @@ def upgrade() -> None:
     )
 
     # ── 2) 把新表已有的序号挪开 ──────────────────────────────────────
-    op.execute(
-        sa.text(
-            "UPDATE session_messages SET session_seq = session_seq + 1000000"
-        )
-    )
+    op.execute(sa.text("UPDATE session_messages SET session_seq = session_seq + 1000000"))
 
     # ── 3) 回填旧消息 ────────────────────────────────────────────────
     #
@@ -139,11 +135,7 @@ def upgrade() -> None:
     #
     # ⚠️ **先整体下移到负数区** —— 直接改成新序号会在改的过程中撞唯一索引 ✗
     # （两个行互换序号时 ✗）。负数与正数不会撞 ✓。
-    op.execute(
-        sa.text(
-            "UPDATE session_messages SET session_seq = session_seq - 2000000"
-        )
-    )
+    op.execute(sa.text("UPDATE session_messages SET session_seq = session_seq - 2000000"))
     op.execute(
         sa.text(
             """
@@ -196,9 +188,7 @@ def downgrade() -> None:
             """
         )
     )
-    op.execute(
-        sa.text("DELETE FROM session_turns WHERE idempotency_key LIKE 'legacy:%'")
-    )
+    op.execute(sa.text("DELETE FROM session_turns WHERE idempotency_key LIKE 'legacy:%'"))
     # 序号恢复成「从 1 开始连续」—— 与迁移前一致 ✓（不能留洞 ✗）。
     op.execute(
         sa.text(

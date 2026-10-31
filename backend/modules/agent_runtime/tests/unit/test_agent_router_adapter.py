@@ -9,10 +9,11 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from qzdap_agent_runtime.agent_router.classifier import TaskKind
+
 from qzdap.modules.agent_runtime.adapter.tools.agent_router_adapter import (
     CatalogAgentRouter,
 )
+from qzdap_agent_runtime.agent_router.classifier import TaskKind
 
 TENANT = uuid4()
 WORKSPACE = uuid4()

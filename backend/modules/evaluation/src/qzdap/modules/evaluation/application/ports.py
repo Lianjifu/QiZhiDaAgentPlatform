@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
+from qzdap.modules.evaluation.domain.entities import (
+    EvalCase,
+    EvalDataset,
+    EvalRun,
+)
 from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
@@ -13,12 +18,6 @@ from qzdap_schema.ids import (
     TenantId,
     UserId,
     WorkspaceId,
-)
-
-from qzdap.modules.evaluation.domain.entities import (
-    EvalCase,
-    EvalDataset,
-    EvalRun,
 )
 
 __all__ = [
@@ -39,9 +38,7 @@ class EvalDatasetRepository(Protocol):
         self, *, tenant_id: TenantId, dataset_id: EvalDatasetId
     ) -> EvalDataset | None: ...
 
-    async def get_by_name(
-        self, *, tenant_id: TenantId, name: str
-    ) -> EvalDataset | None: ...
+    async def get_by_name(self, *, tenant_id: TenantId, name: str) -> EvalDataset | None: ...
 
     async def list_records(
         self,
@@ -65,9 +62,7 @@ class EvalDatasetRepository(Protocol):
 
 @runtime_checkable
 class EvalRunRepository(Protocol):
-    async def get(
-        self, *, tenant_id: TenantId, run_id: EvalRunId
-    ) -> EvalRun | None: ...
+    async def get(self, *, tenant_id: TenantId, run_id: EvalRunId) -> EvalRun | None: ...
 
     async def get_by_idempotency_key(
         self, *, tenant_id: TenantId, idempotency_key: str

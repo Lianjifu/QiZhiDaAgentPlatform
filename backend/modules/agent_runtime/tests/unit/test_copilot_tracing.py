@@ -27,16 +27,16 @@ from opentelemetry import trace as otel_trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
+from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 from qzdap_agent_runtime.gateway.facade import Gateway
 from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
 from qzdap_agent_runtime.gateway.types import ChannelType
 from qzdap_agent_runtime.gateway.web import WebChatNormalizer, WebIdentityVerifier
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
-
-from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
-from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
-from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 
 
 class _Catalog:

@@ -5,6 +5,7 @@
   - weighted: dict-list [{id, weight}] 按 weight 比例采样
   - string-list (旧格式) 走 uniform weight
 """
+
 from __future__ import annotations
 
 import os
@@ -13,8 +14,6 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from qzdap_schema.ids import ModelId
-from qzdap_vault.actor import ActorContext
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -31,6 +30,8 @@ from qzdap.modules.model.adapter.persistence.repositories import (
 )
 from qzdap.modules.model.application.services import ModelService
 from qzdap.modules.model.domain.entities import HealthEvent, Model, Provider, RouteRule
+from qzdap_schema.ids import ModelId
+from qzdap_vault.actor import ActorContext
 
 
 def _pg_dsn() -> str:
@@ -57,9 +58,7 @@ async def setup_db() -> Any:
             CatalogModelORM.__table__,
             RouteORM.__table__,
         ]:
-            await connection.run_sync(
-                lambda conn, table=table: table.create(conn)
-            )
+            await connection.run_sync(lambda conn, table=table: table.create(conn))
 
         @asynccontextmanager
         async def session():
@@ -139,7 +138,9 @@ async def _seed_models_and_route(
         fb_serialized: list[Any] = []
         for item in fallback_model_ids or []:
             if isinstance(item, dict):
-                fb_serialized.append({k: str(v) if isinstance(v, UUID) else v for k, v in item.items()})
+                fb_serialized.append(
+                    {k: str(v) if isinstance(v, UUID) else v for k, v in item.items()}
+                )
             elif isinstance(item, UUID):
                 fb_serialized.append(str(item))
             else:
@@ -256,9 +257,7 @@ class _FakeHealth:
     async def add(self, *_args: Any, **_kwargs: Any) -> None:
         return None
 
-    async def list_for_workspace(
-        self, *_args: Any, **_kwargs: Any
-    ) -> list[HealthEvent]:
+    async def list_for_workspace(self, *_args: Any, **_kwargs: Any) -> list[HealthEvent]:
         return []
 
 
@@ -266,9 +265,7 @@ class _FakeHealth:
 async def test_select_chain_round_robin_through_real_db(setup_db: Any) -> None:
     """端到端 round-robin 走真 DB + 真 RouteORM."""
     # 注意: SqlRouteRepository 反序列化时 fallback_model_ids 仍是 list[str]
-    setup = await _seed_models_and_route(
-        setup_db, n_models=4, strategy="round-robin"
-    )
+    setup = await _seed_models_and_route(setup_db, n_models=4, strategy="round-robin")
     svc = _make_svc(setup_db)
     actor = ActorContext(tenant_id=setup["tenant"], workspace_id=setup["workspace"])
     seen_starts: list[UUID] = []
@@ -311,7 +308,7 @@ async def test_select_chain_weighted_with_dict_fallback(setup_db: Any) -> None:
     )
     svc = _make_svc(setup_db)
     actor = ActorContext(tenant_id=setup["tenant"], workspace_id=setup["workspace"])
-    chosen_counter: dict[UUID, int] = {m: 0 for m in model_ids}
+    chosen_counter: dict[UUID, int] = dict.fromkeys(model_ids, 0)
     for _ in range(80):
         chain = await svc.select_chain_for_strategy(
             actor=actor, route_id=ModelId(setup["route_id"])

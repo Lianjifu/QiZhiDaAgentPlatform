@@ -30,6 +30,15 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from opentelemetry import trace as _trace
+
+from qzdap.modules.agent_runtime.adapter.graph.tools import execute_tool
+from qzdap.modules.agent_runtime.application.ports import (
+    CatalogModelResolver,
+    LLMPort,
+    SandboxPort,
+    SkillPort,
+    ToolPort,
+)
 from qzdap_agent_runtime.agent_router.classifier import TaskKind
 from qzdap_agent_runtime.ports import (
     ActorContext,
@@ -43,15 +52,6 @@ from qzdap_llm.client import ChatRequest
 from qzdap_observability.tracing import get_tracer
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext as VaultActorContext
-
-from qzdap.modules.agent_runtime.adapter.graph.tools import execute_tool
-from qzdap.modules.agent_runtime.application.ports import (
-    CatalogModelResolver,
-    LLMPort,
-    SandboxPort,
-    SkillPort,
-    ToolPort,
-)
 
 _tracer = get_tracer("qzdap.agent_runtime")
 
@@ -152,9 +152,7 @@ class ModuleToolRuntime(ToolRuntimePort):
         # ⚠️ **执行必须带真实 actor** ✓ —— 工具执行是**谁的权限**就得用**谁的
         # actor** ✗✗（用别人的身份调工具 ✗✗✗）。
         if not actor.actor_id:
-            return ToolInvocationResult(
-                ok=False, error_code="TOOL_ACTOR_MISSING", is_error=True
-            )
+            return ToolInvocationResult(ok=False, error_code="TOOL_ACTOR_MISSING", is_error=True)
         if (
             self._tenant_id is not None
             and actor.tenant_id
@@ -191,6 +189,7 @@ class ModuleToolRuntime(ToolRuntimePort):
             span.end()
         span.set_attribute("tool.ok", result.get("ok") is not False)
         return _to_result(result)
+
 
 class SessionAgentRouter(AgentRouterPort):
     """**不选专家** ✓ —— 直接用会话绑定的 agent ✓。

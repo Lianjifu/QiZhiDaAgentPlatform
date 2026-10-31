@@ -30,7 +30,7 @@ class ApiKeyHasher:
             return self._ph.verify(hashed, raw)
         except VerifyMismatchError:
             return False
-        except Exception:  # noqa: BLE001 — bad hashes fail closed
+        except Exception:
             return False
 
 

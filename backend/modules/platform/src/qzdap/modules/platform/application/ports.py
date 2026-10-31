@@ -5,17 +5,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
+from qzdap.modules.platform.domain.entities import (
+    Plan,
+    Subscription,
+    TenantSetting,
+)
 from qzdap_schema.ids import (
     PlanId,
     SubscriptionId,
     TenantId,
     WorkspaceId,
-)
-
-from qzdap.modules.platform.domain.entities import (
-    Plan,
-    Subscription,
-    TenantSetting,
 )
 
 

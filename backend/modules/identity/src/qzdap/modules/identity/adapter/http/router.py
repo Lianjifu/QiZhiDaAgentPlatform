@@ -20,7 +20,6 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, Request
-from qzdap_schema.dtos.errors import ErrorCode
 
 from qzdap.modules.identity.adapter.http.auth.router import auth_router
 from qzdap.modules.identity.adapter.http.deps import get_identity_service
@@ -41,6 +40,7 @@ from qzdap.modules.identity.adapter.http.mappers import (
     workspace_domain_to_response,
 )
 from qzdap.modules.identity.application.services import IdentityService
+from qzdap_schema.dtos.errors import ErrorCode
 
 
 def get_service(request: Request) -> IdentityService:
@@ -60,7 +60,7 @@ def build_router() -> APIRouter:
     @router.post("/tenants", response_model=TenantResponse, status_code=201)
     async def create_tenant(
         body: CreateTenantRequest,
-        svc: IdentityService = Depends(get_identity_service),  # noqa: B008
+        svc: IdentityService = Depends(get_identity_service),
     ) -> TenantResponse:
         t = await svc.create_tenant().execute(
             slug=body.slug,
@@ -71,8 +71,8 @@ def build_router() -> APIRouter:
 
     @router.get("/tenants/current", response_model=TenantResponse)
     async def get_current_tenant(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: IdentityService = Depends(get_identity_service),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: IdentityService = Depends(get_identity_service),
     ) -> TenantResponse:
         t = await svc.tenants.get(x_tenant_id)
         if t is None:
@@ -85,8 +85,8 @@ def build_router() -> APIRouter:
     @router.post("/workspaces", response_model=WorkspaceResponse, status_code=201)
     async def create_workspace(
         body: CreateWorkspaceRequest,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: IdentityService = Depends(get_identity_service),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: IdentityService = Depends(get_identity_service),
     ) -> WorkspaceResponse:
         w = await svc.create_workspace().execute(
             tenant_id=x_tenant_id, slug=body.slug, display_name=body.display_name
@@ -95,10 +95,10 @@ def build_router() -> APIRouter:
 
     @router.get("/workspaces", response_model=list[WorkspaceResponse])
     async def list_workspaces(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         limit: int = Query(50, ge=1, le=100),
         offset: int = Query(0, ge=0),
-        svc: IdentityService = Depends(get_identity_service),  # noqa: B008
+        svc: IdentityService = Depends(get_identity_service),
     ) -> list[WorkspaceResponse]:
         rows = await svc.workspaces.list_for_tenant(x_tenant_id, limit, offset)
         return [workspace_domain_to_response(r) for r in rows]
@@ -107,8 +107,8 @@ def build_router() -> APIRouter:
     @router.post("/users", response_model=UserResponse, status_code=201)
     async def register_user(
         body: RegisterUserRequest,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: IdentityService = Depends(get_identity_service),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: IdentityService = Depends(get_identity_service),
     ) -> UserResponse:
         u = await svc.register_user().execute(
             tenant_id=x_tenant_id,
@@ -123,9 +123,9 @@ def build_router() -> APIRouter:
     # non-UUID `me` literal before reaching this handler.
     @router.get("/users/me", response_model=UserResponse)
     async def get_current_user(
-        x_user_id: UUID = Header(..., alias="X-User-Id"),  # noqa: B008
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: IdentityService = Depends(get_identity_service),  # noqa: B008
+        x_user_id: UUID = Header(..., alias="X-User-Id"),
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: IdentityService = Depends(get_identity_service),
     ) -> UserResponse:
         from qzdap_kernel.errors import ForbiddenError
 
@@ -135,16 +135,14 @@ def build_router() -> APIRouter:
 
             raise UserNotFound(f"user {x_user_id} not found")
         if u.tenant_id != x_tenant_id:
-            raise ForbiddenError(
-                "cross-tenant access", code=ErrorCode.TENANT_DENIED.value
-            )
+            raise ForbiddenError("cross-tenant access", code=ErrorCode.TENANT_DENIED.value)
         return user_domain_to_response(u)
 
     @router.get("/users/{uid}", response_model=UserResponse)
     async def get_user(
         uid: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: IdentityService = Depends(get_identity_service),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: IdentityService = Depends(get_identity_service),
     ) -> UserResponse:
         from qzdap_kernel.errors import ForbiddenError
 
@@ -154,9 +152,7 @@ def build_router() -> APIRouter:
 
             raise UserNotFound(f"user {uid} not found")
         if u.tenant_id != x_tenant_id:
-            raise ForbiddenError(
-                "cross-tenant access", code=ErrorCode.TENANT_DENIED.value
-            )
+            raise ForbiddenError("cross-tenant access", code=ErrorCode.TENANT_DENIED.value)
         return user_domain_to_response(u)
 
     # ── API keys ───────────────────────────────────────────────────────────
@@ -168,8 +164,8 @@ def build_router() -> APIRouter:
     async def issue_api_key(
         uid: UUID,
         body: IssueAPIKeyRequest,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: IdentityService = Depends(get_identity_service),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: IdentityService = Depends(get_identity_service),
     ) -> APIKeyResponse:
         from qzdap_kernel.errors import ForbiddenError
 
@@ -177,9 +173,7 @@ def build_router() -> APIRouter:
         # of the with_loader_criteria auto-filter.
         owner = await svc.users.get(uid)
         if owner is None or owner.tenant_id != x_tenant_id:
-            raise ForbiddenError(
-                "cross-tenant access", code=ErrorCode.TENANT_DENIED.value
-            )
+            raise ForbiddenError("cross-tenant access", code=ErrorCode.TENANT_DENIED.value)
         # If a workspace is supplied, it must also belong to the tenant.
         if body.workspace_id is not None:
             ws = await svc.workspaces.get(body.workspace_id)
@@ -200,20 +194,14 @@ def build_router() -> APIRouter:
     async def revoke_api_key(
         uid: UUID,
         kid: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        svc: IdentityService = Depends(get_identity_service),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        svc: IdentityService = Depends(get_identity_service),
     ) -> None:
         from qzdap_kernel.errors import ForbiddenError
 
         existing = await svc.api_keys.get(kid)
-        if (
-            existing is None
-            or existing.tenant_id != x_tenant_id
-            or existing.owner_user_id != uid
-        ):
-            raise ForbiddenError(
-                "cross-tenant access", code=ErrorCode.TENANT_DENIED.value
-            )
+        if existing is None or existing.tenant_id != x_tenant_id or existing.owner_user_id != uid:
+            raise ForbiddenError("cross-tenant access", code=ErrorCode.TENANT_DENIED.value)
         await svc.revoke_api_key().execute(api_key_id=kid)
 
     # ── login ──────────────────────────────────────────────────────────────

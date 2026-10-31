@@ -196,9 +196,7 @@ def _parse_llm_pricing(raw: str) -> dict[str, ModelPricing]:
         if not isinstance(data, dict):
             raise TypeError("not a dict")
     except (json.JSONDecodeError, TypeError, ValueError) as exc:
-        _log.warning(
-            "model_pricing_json parse failed, falling back to defaults: %s", exc
-        )
+        _log.warning("model_pricing_json parse failed, falling back to defaults: %s", exc)
         return dict(DEFAULT_LLM_PRICING)
     out: dict[str, ModelPricing] = {}
     for model_id, pair in data.items():

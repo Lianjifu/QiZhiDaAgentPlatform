@@ -127,7 +127,9 @@ def upgrade() -> None:
         sa.Column("target_id", sa.String(64), nullable=False, server_default=sa.text("''")),
         *_timestamps(),
     )
-    op.create_index("ix_admin_memory_promotions_tenant_id", "admin_memory_promotions", ["tenant_id"])
+    op.create_index(
+        "ix_admin_memory_promotions_tenant_id", "admin_memory_promotions", ["tenant_id"]
+    )
     op.create_index(
         "ix_admin_memory_promotions_workspace_id", "admin_memory_promotions", ["workspace_id"]
     )

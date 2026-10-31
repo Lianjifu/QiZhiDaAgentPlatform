@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from qzdap.modules.model.application.ports import ModelClientFactory
 from qzdap_llm import LLMClient
 from qzdap_llm.providers import build_provider_client
-
-from qzdap.modules.model.application.ports import ModelClientFactory
 
 
 @dataclass(slots=True, frozen=True)
@@ -31,9 +30,7 @@ class _DefaultClientFactory(ModelClientFactory):
         )
 
 
-def build_default_client_factory(
-    *, request_timeout_seconds: float = 30.0
-) -> ModelClientFactory:
+def build_default_client_factory(*, request_timeout_seconds: float = 30.0) -> ModelClientFactory:
     return _DefaultClientFactory(request_timeout_seconds=request_timeout_seconds)
 
 

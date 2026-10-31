@@ -39,9 +39,7 @@ async def test_openai_connectivity_sends_real_chat_request(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", _public_dns)
-    result = await HttpConnectivityTester(
-        transport=httpx.MockTransport(handler)
-    ).test_connection(
+    result = await HttpConnectivityTester(transport=httpx.MockTransport(handler)).test_connection(
         api_key="sk-test",
         base_url="https://example.com/v1",
         protocol="openai",
@@ -74,9 +72,7 @@ async def test_anthropic_connectivity_uses_messages_wire_format(monkeypatch) -> 
         )
 
     monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", _public_dns)
-    result = await HttpConnectivityTester(
-        transport=httpx.MockTransport(handler)
-    ).test_connection(
+    result = await HttpConnectivityTester(transport=httpx.MockTransport(handler)).test_connection(
         api_key="sk-ant-test",
         base_url="https://example.com/anthropic",
         protocol="anthropic",
@@ -95,9 +91,7 @@ async def test_connectivity_redacts_upstream_failure(monkeypatch) -> None:
         return httpx.Response(401, json={"error": {"message": "sk-secret invalid"}})
 
     monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", _public_dns)
-    result = await HttpConnectivityTester(
-        transport=httpx.MockTransport(handler)
-    ).test_connection(
+    result = await HttpConnectivityTester(transport=httpx.MockTransport(handler)).test_connection(
         api_key="sk-secret",
         base_url="https://example.com/v1",
         protocol="openai",
@@ -154,9 +148,7 @@ async def test_public_transport_pins_ip_retains_host_and_tls_identity(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [301, 302, 307, 400, 401, 404, 429, 500])
-async def test_connectivity_never_retries_or_follows_redirect(
-    monkeypatch, status
-) -> None:
+async def test_connectivity_never_retries_or_follows_redirect(monkeypatch, status) -> None:
     visited = []
 
     def handler(request):
@@ -168,9 +160,7 @@ async def test_connectivity_never_retries_or_follows_redirect(
         )
 
     monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", _public_dns)
-    result = await HttpConnectivityTester(
-        transport=httpx.MockTransport(handler)
-    ).test_connection(
+    result = await HttpConnectivityTester(transport=httpx.MockTransport(handler)).test_connection(
         api_key="sk-secret",
         base_url="https://provider.example/v1",
         protocol="openai",
@@ -193,9 +183,7 @@ async def test_connectivity_never_retries_or_follows_redirect(
         '{"choices":[{"message":{"role":"assistant","content":" "}}]}',
     ],
 )
-async def test_http_200_without_valid_generated_text_is_failure(
-    monkeypatch, body
-) -> None:
+async def test_http_200_without_valid_generated_text_is_failure(monkeypatch, body) -> None:
     monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", _public_dns)
     result = await HttpConnectivityTester(
         transport=httpx.MockTransport(lambda _req: httpx.Response(200, text=body))
@@ -220,9 +208,7 @@ async def test_connectivity_limits_body_and_redacts_key_echo(monkeypatch) -> Non
                     200,
                     json={
                         "model": "model",
-                        "choices": [
-                            {"message": {"role": "assistant", "content": value}}
-                        ],
+                        "choices": [{"message": {"role": "assistant", "content": value}}],
                     },
                 )
             )

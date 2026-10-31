@@ -13,10 +13,11 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
+
 from qzdap_agent_runtime.memory.vectorize import (
     InMemoryVectorWriteQueue,
-    VectorWriteRequest,
     VectorizeWorker,
+    VectorWriteRequest,
 )
 
 
@@ -92,9 +93,7 @@ class TestTheAsyncVectorWrite:
         queue = InMemoryVectorWriteQueue()
         store = _Store()
         missing = [_request(), _request()]
-        worker = VectorizeWorker(
-            queue=queue, store=store, backfill=_Backfill(missing)
-        )
+        worker = VectorizeWorker(queue=queue, store=store, backfill=_Backfill(missing))
         requeued = await worker.backfill_once()
         assert requeued == 2
         assert len(queue) == 2

@@ -6,6 +6,11 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+
+from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
+from qzdap.modules.agent_runtime.adapter.llm import LLMPortAdapter
+from qzdap.modules.agent_runtime.application.ports import LLMPort
+from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 from qzdap_agent_runtime.agent_loop.evaluate import HARD_MAX_STEPS
 from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 from qzdap_schema.dtos.turn import (
@@ -16,11 +21,6 @@ from qzdap_schema.dtos.turn import (
 )
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
-
-from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
-from qzdap.modules.agent_runtime.adapter.llm import LLMPortAdapter
-from qzdap.modules.agent_runtime.application.ports import LLMPort
-from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
 WORKSPACE = UUID("00000000-0000-0000-0000-000000000002")
@@ -90,16 +90,16 @@ class ConfirmSkill:
 
 
 def _agent(**overrides: object) -> CatalogAgent:
-    data = dict(
-        id=uuid4(),
-        tenant_id=TENANT,
-        workspace_id=WORKSPACE,
-        name="助手",
-        category="企业通用",
-        owner="管理员",
-        description="",
-        model="demo",
-    )
+    data = {
+        "id": uuid4(),
+        "tenant_id": TENANT,
+        "workspace_id": WORKSPACE,
+        "name": "助手",
+        "category": "企业通用",
+        "owner": "管理员",
+        "description": "",
+        "model": "demo",
+    }
     data.update(overrides)
     return CatalogAgent.create(**data)  # type: ignore[arg-type]
 
@@ -270,9 +270,7 @@ async def test_the_compressor_folds_when_over_budget() -> None:
 
     history = [{"role": "user", "content": "x" * 800} for _ in range(40)]
     history.append({"role": "assistant", "content": "ok"})
-    outcome = await ContextCompressor(context_window=8000).compact(
-        messages=history
-    )
+    outcome = await ContextCompressor(context_window=8000).compact(messages=history)
     assert outcome.tokens_after < outcome.tokens_before
     assert outcome.summary
     assert len(outcome.messages) < len(history)
@@ -297,7 +295,10 @@ async def test_compact_chunk_on_long_history() -> None:
     ):
         kinds.append(chunk.kind)
     assert "context_compacted" in kinds
-    assert isinstance(ContextCompactedChunk(turn_id=uuid4(), seq=1, tokens_before=1, tokens_after=1), ContextCompactedChunk)
+    assert isinstance(
+        ContextCompactedChunk(turn_id=uuid4(), seq=1, tokens_before=1, tokens_after=1),
+        ContextCompactedChunk,
+    )
 
 
 @pytest.mark.asyncio
@@ -310,16 +311,20 @@ async def test_saved_adapter_passes_actor_and_closes_stream() -> None:
     class SavedService:
         def stream(self, **kwargs: object):
             assert kwargs["actor"] == actor
+
             async def inner():
                 nonlocal closed
                 try:
                     yield LLMChunk(model="upstream", delta="x")
                 finally:
                     closed = True
+
             return inner()
 
     adapter = LLMPortAdapter(ScriptedLLM([]), model_service=SavedService())
-    iterator = adapter.stream(ChatRequest(model="saved", messages=[]), model_id=model_id, actor=actor)
+    iterator = adapter.stream(
+        ChatRequest(model="saved", messages=[]), model_id=model_id, actor=actor
+    )
     assert (await iterator.__anext__()).delta == "x"
     await iterator.aclose()
     assert closed
@@ -335,7 +340,9 @@ async def test_saved_graph_early_delta_cancellation_closes_provider() -> None:
 
     class SavedService:
         async def stream(self, *, actor, model_id: ModelId, req: ChatRequest):
-            assert actor == ActorContext(tenant_id=TENANT, workspace_id=WORKSPACE, principal_id=OWNER)
+            assert actor == ActorContext(
+                tenant_id=TENANT, workspace_id=WORKSPACE, principal_id=OWNER
+            )
             assert str(model_id) == req.model
             assert req.tools and req.tools[0]["function"]["name"] == "sandbox_exec"
             try:
@@ -355,8 +362,16 @@ async def test_saved_graph_early_delta_cancellation_closes_provider() -> None:
         # （旧路径是无条件暴露 ✓ —— 那等于每个 agent 都凭空多了跑代码的能力 ✗✗）。
         sandbox_port=Sandbox(),  # type: ignore[arg-type]
     )
-    stream = runner.run_turn(tenant_id=TENANT, workspace_id=WORKSPACE, owner_id=OWNER,
-                             turn_id=uuid4(), user_input="hi", history=[], agent=None, model=str(model_id))
+    stream = runner.run_turn(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        owner_id=OWNER,
+        turn_id=uuid4(),
+        user_input="hi",
+        history=[],
+        agent=None,
+        model=str(model_id),
+    )
     first = await asyncio.wait_for(anext(stream), timeout=1)
     assert first.kind == "message" and first.content == "first"
     assert not entered.is_set()  # no read-ahead / completion buffering
@@ -370,15 +385,28 @@ async def test_saved_graph_early_delta_cancellation_closes_provider() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("actor", [None, ActorContext(tenant_id=TENANT), ActorContext(tenant_id=TENANT, principal_id=UUID(int=0))])
+@pytest.mark.parametrize(
+    "actor",
+    [
+        None,
+        ActorContext(tenant_id=TENANT),
+        ActorContext(tenant_id=TENANT, principal_id=UUID(int=0)),
+    ],
+)
 async def test_saved_model_requires_real_actor(actor: ActorContext | None) -> None:
     adapter = LLMPortAdapter(ScriptedLLM([]), model_service=object())
     with pytest.raises(RuntimeError, match="real caller"):
-        await anext(adapter.stream(ChatRequest(model="saved", messages=[]), model_id=ModelId(uuid4()), actor=actor))
+        await anext(
+            adapter.stream(
+                ChatRequest(model="saved", messages=[]), model_id=ModelId(uuid4()), actor=actor
+            )
+        )
 
 
 @pytest.mark.asyncio
 async def test_saved_model_never_silently_falls_back_when_service_absent() -> None:
     adapter = LLMPortAdapter(ScriptedLLM([]))
     with pytest.raises(RuntimeError, match="unavailable"):
-        await anext(adapter.stream(ChatRequest(model="saved", messages=[]), model_id=ModelId(uuid4())))
+        await anext(
+            adapter.stream(ChatRequest(model="saved", messages=[]), model_id=ModelId(uuid4()))
+        )

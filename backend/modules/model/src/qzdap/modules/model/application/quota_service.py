@@ -16,6 +16,7 @@ API:
   - 没配 quota (model_quotas 无行) → 不限制 (skip)
   - 0 / 0 (max 0) → 视为「不限制」 (admin 用 0 表示无上限)
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -195,9 +196,7 @@ class QuotaService:
         )
 
     # ── Phase 17: admin CRUD + usage 查询 ─────────────────────────────────
-    async def list_quotas(
-        self, *, tenant_id: UUID, workspace_id: UUID
-    ) -> list[dict]:
+    async def list_quotas(self, *, tenant_id: UUID, workspace_id: UUID) -> list[dict]:
         """列 workspace 内所有 quota 配置."""
         result = await self._s.execute(
             select(ModelQuotaORM)
@@ -239,9 +238,7 @@ class QuotaService:
         if period not in {"minute", "hour", "day"}:
             raise ValueError("period 必须是 minute/hour/day")
         max_tokens_in = int(body.get("maxTokensIn") or body.get("max_tokens_in") or 0)
-        max_tokens_out = int(
-            body.get("maxTokensOut") or body.get("max_tokens_out") or 0
-        )
+        max_tokens_out = int(body.get("maxTokensOut") or body.get("max_tokens_out") or 0)
         max_requests = int(body.get("maxRequests") or body.get("max_requests") or 0)
         if max_tokens_in < 0 or max_tokens_out < 0 or max_requests < 0:
             raise ValueError("maxTokensIn/maxTokensOut/maxRequests 必须 >= 0")
@@ -305,14 +302,10 @@ class QuotaService:
         """删除一条 quota 配置 (不影响 usage 历史)."""
         from sqlalchemy import delete
 
-        await self._s.execute(
-            delete(ModelQuotaORM).where(ModelQuotaORM.id == quota_id)
-        )
+        await self._s.execute(delete(ModelQuotaORM).where(ModelQuotaORM.id == quota_id))
         await self._s.commit()
 
-    async def list_usage(
-        self, *, tenant_id: UUID, workspace_id: UUID
-    ) -> list[dict]:
+    async def list_usage(self, *, tenant_id: UUID, workspace_id: UUID) -> list[dict]:
         """当前每个 (model, period) 的 usage 计数 + 配置上限 (若有)."""
         from sqlalchemy import func
 
@@ -342,9 +335,7 @@ class QuotaService:
                 ModelQuotaORM.workspace_id == workspace_id,
             )
         )
-        cfg_index = {
-            (str(c.model_id), c.period): c for c in cfg_result.scalars().all()
-        }
+        cfg_index = {(str(c.model_id), c.period): c for c in cfg_result.scalars().all()}
         out: list[dict] = []
         for r in rows:
             cfg = cfg_index.get((str(r.model_id), r.period))

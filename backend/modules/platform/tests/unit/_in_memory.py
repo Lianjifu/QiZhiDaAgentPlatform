@@ -9,14 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from qzdap_schema.ids import (
-    PlanId,
-    SubscriptionId,
-    TenantId,
-    TenantSettingId,
-    WorkspaceId,
-)
-
 from qzdap.modules.platform.application.ports import (
     PlanRepository,
     PlatformEventPublisher,
@@ -27,6 +19,13 @@ from qzdap.modules.platform.domain.entities import (
     Plan,
     Subscription,
     TenantSetting,
+)
+from qzdap_schema.ids import (
+    PlanId,
+    SubscriptionId,
+    TenantId,
+    TenantSettingId,
+    WorkspaceId,
 )
 
 

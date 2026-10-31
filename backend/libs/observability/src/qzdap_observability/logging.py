@@ -6,10 +6,12 @@ trace_id, tenant_id, principal_id automatically.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sys
 
 import structlog
+
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_persistence.tenant_guard import current_tenant_id
 
@@ -52,13 +54,9 @@ def configure_logging(*, level: str = "INFO", json: bool = True) -> None:
     # call (e.g. background tasks) renders through the same JSON / console pipeline.
     class _StructlogHandler(logging.Handler):
         def emit(self, record: logging.LogRecord) -> None:
-            try:
-                structlog.get_logger(record.name).log(
-                    record.levelno, record.getMessage()
-                )
-            except (ValueError, TypeError, RuntimeError):
-                # Never raise from a logging handler
-                pass
+            # ⚠️ **日志处理器不许抛** ✓（抛了会打到 stderr 并打断业务 ✓）
+            with contextlib.suppress(ValueError, TypeError, RuntimeError):
+                structlog.get_logger(record.name).log(record.levelno, record.getMessage())
 
     root = logging.getLogger()
     # Replace previous install (test re-runs / hot reload).

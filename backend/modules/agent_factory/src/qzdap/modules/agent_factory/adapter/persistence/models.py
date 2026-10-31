@@ -30,7 +30,6 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from qzdap_persistence.base import Base, TenantScopedMixin, make_composite_index
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
@@ -45,20 +44,16 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from qzdap_persistence.base import Base, TenantScopedMixin, make_composite_index
+
 
 class AgentTemplateORM(TenantScopedMixin, Base):
     __tablename__ = "agent_templates"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
-    description: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=text("''")
-    )
-    default_model_id: Mapped[UUID | None] = mapped_column(
-        PgUUID(as_uuid=True), nullable=True
-    )
+    description: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
+    default_model_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
     default_system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(
         String(16),
@@ -90,9 +85,7 @@ class AgentTemplateORM(TenantScopedMixin, Base):
 class AgentVersionORM(TenantScopedMixin, Base):
     __tablename__ = "agent_versions"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     template_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey("agent_templates.id", ondelete="RESTRICT"),
@@ -129,19 +122,11 @@ class AgentVersionORM(TenantScopedMixin, Base):
         nullable=False,
         server_default=text("'{}'::text[]"),
     )
-    plan_dsl_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
-        JSONB, nullable=True
-    )
+    plan_dsl_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     max_total_steps: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    release_notes: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=text("''")
-    )
-    published_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    released_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    release_notes: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSONB,
@@ -166,9 +151,7 @@ class AgentVersionORM(TenantScopedMixin, Base):
 class ReleaseORM(TenantScopedMixin, Base):
     __tablename__ = "releases"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     template_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey("agent_templates.id", ondelete="RESTRICT"),
@@ -179,21 +162,15 @@ class ReleaseORM(TenantScopedMixin, Base):
         ForeignKey("agent_versions.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    eval_run_id: Mapped[UUID | None] = mapped_column(
-        PgUUID(as_uuid=True), nullable=True
-    )
+    eval_run_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
     eval_score: Mapped[float | None] = mapped_column(Numeric(4, 3), nullable=True)
     status: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
         server_default=text("'released'"),
     )
-    released_by: Mapped[UUID | None] = mapped_column(
-        PgUUID(as_uuid=True), nullable=True
-    )
-    released_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    released_by: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
+    released_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     notes: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
 
     __table_args__ = (

@@ -8,14 +8,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from qzdap_schema.ids import AgentTemplateId, TenantId
-
 from qzdap.modules.agent_factory.application.ports import (
     AgentFactoryEventPublisher,
     AgentTemplateRepository,
 )
 from qzdap.modules.agent_factory.domain.entities import AgentTemplate
 from qzdap.modules.agent_factory.domain.value_objects import AgentTemplateStatus
+from qzdap_schema.ids import AgentTemplateId, TenantId
 
 
 @dataclass(slots=True)
@@ -37,9 +36,7 @@ class UpdateAgentTemplateUseCase:
                 AgentTemplateNotFound,
             )
 
-            raise AgentTemplateNotFound(
-                f"agent template {template_id} not found in tenant"
-            )
+            raise AgentTemplateNotFound(f"agent template {template_id} not found in tenant")
         updated = tpl.with_status(status)
         saved = await self.repository.update(updated)
         # Phase 2: 显式 commit

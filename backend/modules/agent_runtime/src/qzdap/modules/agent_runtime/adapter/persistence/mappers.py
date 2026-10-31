@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from qzdap.modules.agent_runtime.adapter.persistence.models import (
+    SessionORM,
+    SessionTurnORM,
+)
+from qzdap.modules.agent_runtime.domain import Session, SessionStatus, Turn, TurnStatus
 from qzdap_schema.ids import (
     AgentId,
     SessionId,
@@ -10,12 +15,6 @@ from qzdap_schema.ids import (
     UserId,
     WorkspaceId,
 )
-
-from qzdap.modules.agent_runtime.adapter.persistence.models import (
-    SessionORM,
-    SessionTurnORM,
-)
-from qzdap.modules.agent_runtime.domain import Session, SessionStatus, Turn, TurnStatus
 
 
 def session_orm_to_domain(o: SessionORM) -> Session:

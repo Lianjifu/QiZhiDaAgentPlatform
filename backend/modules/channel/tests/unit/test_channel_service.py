@@ -655,9 +655,7 @@ async def test_a_forged_signature_is_rejected_with_an_audit_event_and_trace_id()
             },
             trace_id="trace-forged",
         )
-    rejected = [
-        payload for topic, payload in publisher.events if topic == "ChannelWebhookRejected"
-    ]
+    rejected = [payload for topic, payload in publisher.events if topic == "ChannelWebhookRejected"]
     assert rejected, publisher.events
     assert rejected[-1]["reason_code"] == "WEBHOOK_SIGNATURE_INVALID"
     assert rejected[-1]["trace_id"] == "trace-forged"
@@ -690,9 +688,7 @@ async def test_an_expired_timestamp_is_rejected_with_an_audit_event_and_trace_id
             },
             trace_id="trace-skew",
         )
-    rejected = [
-        payload for topic, payload in publisher.events if topic == "ChannelWebhookRejected"
-    ]
+    rejected = [payload for topic, payload in publisher.events if topic == "ChannelWebhookRejected"]
     assert rejected
     assert rejected[-1]["reason_code"] == "WEBHOOK_TIMESTAMP_SKEW"
     assert rejected[-1]["trace_id"] == "trace-skew"
@@ -754,9 +750,7 @@ async def test_a_signature_replayed_across_tenants_is_rejected() -> None:
         },
     )
     assert delivery.status is DeliveryStatus.PENDING
-    rejected = [
-        payload for topic, payload in publisher.events if topic == "ChannelWebhookRejected"
-    ]
+    rejected = [payload for topic, payload in publisher.events if topic == "ChannelWebhookRejected"]
     assert rejected
     assert rejected[-1]["trace_id"] == "trace-replay"
 
@@ -837,9 +831,7 @@ async def test_a_channel_without_a_service_account_is_refused() -> None:
             },
             trace_id="trace-no-account",
         )
-    rejected = [
-        payload for topic, payload in publisher.events if topic == "ChannelWebhookRejected"
-    ]
+    rejected = [payload for topic, payload in publisher.events if topic == "ChannelWebhookRejected"]
     assert rejected
     assert rejected[-1]["reason_code"] == "SERVICE_ACCOUNT_NOT_CONFIGURED"
     assert rejected[-1]["trace_id"] == "trace-no-account"

@@ -8,6 +8,7 @@
 跨模块 ORM 读 + 写: 复用 model 自己的 session (audit_log 表在 governance schema,
 但都在同一个 DB). 这样不引入跨模块 import.
 """
+
 from __future__ import annotations
 
 import logging

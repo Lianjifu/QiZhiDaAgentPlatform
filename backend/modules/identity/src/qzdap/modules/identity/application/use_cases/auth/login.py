@@ -8,7 +8,6 @@ fold token + expires_at + user into one response without a second
 from __future__ import annotations
 
 from dataclasses import dataclass
-
 from uuid import UUID
 
 from qzdap.modules.identity.application.ports import (

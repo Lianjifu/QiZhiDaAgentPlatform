@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from qzdap_schema.ids import TenantId, ToolId, WorkspaceId
-
 from qzdap.modules.tool.application.tool_schema import (
     tool_description,
     tool_needs_confirm,
@@ -17,6 +15,7 @@ from qzdap.modules.tool.application.tool_schema import (
     tool_risk,
 )
 from qzdap.modules.tool.domain import Tool, ToolProtocol
+from qzdap_schema.ids import TenantId, ToolId, WorkspaceId
 
 _TENANT = TenantId(uuid4())
 _WORKSPACE = WorkspaceId(uuid4())
@@ -108,9 +107,7 @@ class TestDeclaredSchemas:
         assert tool_parameters(tool) == declared
 
     def test_the_mcp_tool_without_a_schema_is_empty(self) -> None:
-        tool = _tool(
-            ToolProtocol.MCP, {"server_url": "https://mcp.example", "mcp_tool_name": "x"}
-        )
+        tool = _tool(ToolProtocol.MCP, {"server_url": "https://mcp.example", "mcp_tool_name": "x"})
         assert tool_parameters(tool) == {"type": "object", "properties": {}}
 
 

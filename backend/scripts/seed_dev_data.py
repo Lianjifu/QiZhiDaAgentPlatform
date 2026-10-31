@@ -48,14 +48,9 @@ async def _run(*, prune: bool) -> int:
     async with sf.session() as session:
         if prune:
             pruned = await prune_demo_data(session)
-            print(
-                f"pruned demo data: {pruned['tenants']} tenant(s), "
-                f"{pruned['users']} user(s)"
-            )
+            print(f"pruned demo data: {pruned['tenants']} tenant(s), {pruned['users']} user(s)")
         result = await seed_identity(session, container.hasher(), profile)
-        added = await seed_builtin_tools(
-            session, result["tenant_id"], result["workspace_id"]
-        )
+        added = await seed_builtin_tools(session, result["tenant_id"], result["workspace_id"])
     print(f"dev tenant     : {profile.tenant_slug} ({result['tenant_id']})")
     print(f"dev workspace  : {result['workspace_id']}")
     print(f"built-in tools : {len(added)} added")

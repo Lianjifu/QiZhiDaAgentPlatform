@@ -208,8 +208,9 @@ class InteractiveActionChunk(ChunkEnvelope):
 
     kind: Literal["interactive_action"] = "interactive_action"
     call_id: str
-    action: Literal["show_question_card", "toast", "render_plan",
-                   "render_todo_list", "delegate_agent"]
+    action: Literal[
+        "show_question_card", "toast", "render_plan", "render_todo_list", "delegate_agent"
+    ]
     payload: dict = Field(default_factory=dict)
 
 

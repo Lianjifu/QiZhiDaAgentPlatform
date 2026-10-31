@@ -14,9 +14,9 @@ Stage 0 的验收：同一批语料上，两条路径的估算差异 **< 10%** �
 from __future__ import annotations
 
 import pytest
-from qzdap_agent_runtime.context.tokens import estimate_message_tokens
 
 from qzdap.modules.agent_runtime.adapter.graph.state import estimate_tokens
+from qzdap_agent_runtime.context.tokens import estimate_message_tokens
 
 _CORPUS = [
     "你好，这是一段中文上下文。",

@@ -23,6 +23,8 @@ import logging
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+from qzdap.modules.agent_runtime.domain.errors import DuplicateRequestError
 from qzdap_agent_runtime.router.strategy import Strategy
 from qzdap_agent_runtime.router.types import (
     AgentTarget,
@@ -40,9 +42,6 @@ from qzdap_agent_runtime.session.manager import (
     SessionIdentity,
     SessionManagerPort,
 )
-
-from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
-from qzdap.modules.agent_runtime.domain.errors import DuplicateRequestError
 
 _log = logging.getLogger("qzdap.agent_runtime.channel_turn")
 
@@ -68,9 +67,7 @@ class ChannelTurnService:
         # 没有它 = 旧行为 ✓（直取渠道登记的 agent ✓ —— 开关式降级 ✓）。
         self._strategy = strategy
 
-    async def _route(
-        self, request: ChannelTurnRequest
-    ) -> tuple[AgentBinding, dict[str, Any]]:
+    async def _route(self, request: ChannelTurnRequest) -> tuple[AgentBinding, dict[str, Any]]:
         """**选 agent** ✓（台账 R19 ✓）—— 走 Router 的规则链 ✓。
 
         ⚠️ **渠道登记的 agent 只是「显式指定」这一条规则的输入** ✓ —— 它

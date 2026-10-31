@@ -44,9 +44,7 @@ class InMemoryWorkspaceRepository(WorkspaceRepository):
     async def get(self, workspace_id: UUID) -> Workspace | None:
         return self._by_id.get(workspace_id)
 
-    async def list_for_tenant(
-        self, tenant_id: UUID, limit: int, offset: int
-    ) -> list[Workspace]:
+    async def list_for_tenant(self, tenant_id: UUID, limit: int, offset: int) -> list[Workspace]:
         items = [w for w in self._by_id.values() if w.tenant_id == tenant_id]
         return items[offset : offset + limit]
 

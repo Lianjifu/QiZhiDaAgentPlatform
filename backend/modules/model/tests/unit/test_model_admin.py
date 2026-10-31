@@ -7,13 +7,12 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from fastapi import FastAPI
-from qzdap_llm import ChatRequest, LLMChunk
-from qzdap_vault.actor import ActorContext
+from test_model_catalog import TENANT, WORKSPACE, _svc
 
 from qzdap.modules.model.adapter.http.router import build_router
 from qzdap.modules.model.domain.errors import CredentialNotFound, ModelNotFound
-
-from test_model_catalog import TENANT, WORKSPACE, _svc
+from qzdap_llm import ChatRequest, LLMChunk
+from qzdap_vault.actor import ActorContext
 
 
 class AADCipher:
@@ -185,9 +184,7 @@ async def test_diagnostics_no_writes_saved_override_and_safe_corrupt_credentials
     assert svc._tester.last["api_key"] == "secret-1234"
     assert svc._models.rows[mid] == before
     provider = await svc._provider(before)
-    svc._providers.rows[provider.id] = replace(
-        provider, encrypted_payload=b"corrupt-secret"
-    )
+    svc._providers.rows[provider.id] = replace(provider, encrypted_payload=b"corrupt-secret")
     with pytest.raises(CredentialNotFound, match="新的 API Key"):
         await svc.test_connectivity({"modelId": str(mid), "model": "new"})
 
@@ -254,9 +251,7 @@ async def test_verified_create_requires_proof_and_binds_requested_model():
     result = await svc.test_connectivity(body)
     create = {**body, "models": ["custom-glm"], "source": "verified"}
     with pytest.raises(ValueError):
-        await svc.create_from_provider(
-            tenant_id=TENANT, workspace_id=WORKSPACE, body=create
-        )
+        await svc.create_from_provider(tenant_id=TENANT, workspace_id=WORKSPACE, body=create)
     saved = await svc.create_from_provider(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
@@ -321,9 +316,7 @@ async def test_http_admin_auth_and_scope(roles, tenant, workspace, expected):
         async def __aexit__(self, *args):
             pass
 
-    app.state.container = SimpleNamespace(
-        session_factory=lambda: SimpleNamespace(session=Session)
-    )
+    app.state.container = SimpleNamespace(session_factory=lambda: SimpleNamespace(session=Session))
     app.state.model_service_factory = SimpleNamespace(for_session=lambda session: svc)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"

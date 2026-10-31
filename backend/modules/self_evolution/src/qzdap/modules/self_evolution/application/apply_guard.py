@@ -31,6 +31,7 @@ unknown kind so new ``EvolveKind`` values don't crash the apply path.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -41,10 +42,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from qzdap_schema.ids import TenantId
-
 from qzdap.modules.self_evolution.domain.entities import EvolveCandidate
 from qzdap.modules.self_evolution.domain.value_objects import EvolveKind
+from qzdap_schema.ids import TenantId
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +71,7 @@ class ApplyOutcome:
 class ApplyGuard(Protocol):
     """Single chokepoint for ``EvolutionCandidateService.apply()``."""
 
-    async def apply(
-        self, *, tenant_id: TenantId, candidate: EvolveCandidate
-    ) -> ApplyOutcome: ...
+    async def apply(self, *, tenant_id: TenantId, candidate: EvolveCandidate) -> ApplyOutcome: ...
 
 
 @runtime_checkable
@@ -94,9 +92,7 @@ class DraftStore(Protocol):
         record: dict[str, Any],
     ) -> str: ...
 
-    async def read_all(
-        self, *, tenant_id: TenantId, kind: EvolveKind
-    ) -> list[dict[str, Any]]: ...
+    async def read_all(self, *, tenant_id: TenantId, kind: EvolveKind) -> list[dict[str, Any]]: ...
 
 
 class JsonlDraftStore:
@@ -119,9 +115,7 @@ class JsonlDraftStore:
         await asyncio.to_thread(self._append_sync, path, line)
         return record_id
 
-    async def read_all(
-        self, *, tenant_id: TenantId, kind: EvolveKind
-    ) -> list[dict[str, Any]]:
+    async def read_all(self, *, tenant_id: TenantId, kind: EvolveKind) -> list[dict[str, Any]]:
         path = self._path_for(tenant_id, kind)
         return await asyncio.to_thread(self._read_all_sync, path)
 
@@ -152,10 +146,8 @@ class JsonlDraftStore:
                 os.fsync(tmp.fileno())
             os.replace(tmp_name, path)
         except Exception:
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(tmp_name)
-            except FileNotFoundError:
-                pass
             raise
 
     @staticmethod
@@ -171,9 +163,7 @@ class JsonlDraftStore:
                 try:
                     out.append(json.loads(line))
                 except json.JSONDecodeError:
-                    logger.warning(
-                        "evolution_drafts: skipping malformed line in %s", path
-                    )
+                    logger.warning("evolution_drafts: skipping malformed line in %s", path)
         return out
 
 
@@ -196,9 +186,7 @@ class InMemoryDraftStore:
         self._records.setdefault(key, []).append(payload)
         return record_id
 
-    async def read_all(
-        self, *, tenant_id: TenantId, kind: EvolveKind
-    ) -> list[dict[str, Any]]:
+    async def read_all(self, *, tenant_id: TenantId, kind: EvolveKind) -> list[dict[str, Any]]:
         return list(self._records.get((str(tenant_id), kind.value), []))
 
 
@@ -233,9 +221,7 @@ class MemoryWorkingLayerGuard:
     def __init__(self, store: DraftStore) -> None:
         self._store = store
 
-    async def apply(
-        self, *, tenant_id: TenantId, candidate: EvolveCandidate
-    ) -> ApplyOutcome:
+    async def apply(self, *, tenant_id: TenantId, candidate: EvolveCandidate) -> ApplyOutcome:
         record_id = await self._store.append(
             tenant_id=tenant_id,
             kind=EvolveKind.MEMORY_PROMOTE,
@@ -270,9 +256,7 @@ class SkillDraftGuard:
     def __init__(self, store: DraftStore) -> None:
         self._store = store
 
-    async def apply(
-        self, *, tenant_id: TenantId, candidate: EvolveCandidate
-    ) -> ApplyOutcome:
+    async def apply(self, *, tenant_id: TenantId, candidate: EvolveCandidate) -> ApplyOutcome:
         record_id = await self._store.append(
             tenant_id=tenant_id,
             kind=EvolveKind.SKILL_PATCH,
@@ -307,9 +291,7 @@ class RoutingDraftGuard:
     def __init__(self, store: DraftStore) -> None:
         self._store = store
 
-    async def apply(
-        self, *, tenant_id: TenantId, candidate: EvolveCandidate
-    ) -> ApplyOutcome:
+    async def apply(self, *, tenant_id: TenantId, candidate: EvolveCandidate) -> ApplyOutcome:
         record_id = await self._store.append(
             tenant_id=tenant_id,
             kind=EvolveKind.ROUTING_HINT,
@@ -344,9 +326,7 @@ class DreamGuard:
     def __init__(self, store: DraftStore) -> None:
         self._store = store
 
-    async def apply(
-        self, *, tenant_id: TenantId, candidate: EvolveCandidate
-    ) -> ApplyOutcome:
+    async def apply(self, *, tenant_id: TenantId, candidate: EvolveCandidate) -> ApplyOutcome:
         record_id = await self._store.append(
             tenant_id=tenant_id,
             kind=EvolveKind.DREAM,
@@ -398,9 +378,7 @@ class KindDispatchingApplyGuard:
         self._dream = dream or DreamGuard(store)
         self._fallback = fallback or DirectApplyGuard()
 
-    async def apply(
-        self, *, tenant_id: TenantId, candidate: EvolveCandidate
-    ) -> ApplyOutcome:
+    async def apply(self, *, tenant_id: TenantId, candidate: EvolveCandidate) -> ApplyOutcome:
         guard: ApplyGuard
         if candidate.kind is EvolveKind.MEMORY_PROMOTE:
             guard = self._memory
@@ -425,9 +403,7 @@ class DirectApplyGuard:
     unit tests that don't care about the draft side-effect.
     """
 
-    async def apply(
-        self, *, tenant_id: TenantId, candidate: EvolveCandidate
-    ) -> ApplyOutcome:
+    async def apply(self, *, tenant_id: TenantId, candidate: EvolveCandidate) -> ApplyOutcome:
         return ApplyOutcome(
             candidate_id=candidate.id,
             kind=candidate.kind,

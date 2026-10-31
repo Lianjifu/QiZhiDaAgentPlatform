@@ -65,18 +65,14 @@ class DingTalkInboundAdapter:
         # ``encrypt`` so the rest of the pipeline can dispatch on
         # ``msgtype``.
         if "encrypt" in payload and isinstance(payload.get("encrypt"), str):
-            return self._encrypted_message(
-                context=context, body=body, payload=payload
-            )
+            return self._encrypted_message(context=context, body=body, payload=payload)
 
         msg_type = str(payload.get("msgtype", "text"))
         text = _extract_text(payload)
         return build_inbound_message(
             context=context,
             body=body,
-            external_user_id=str(
-                payload.get("senderId") or payload.get("senderStaffId") or ""
-            ),
+            external_user_id=str(payload.get("senderId") or payload.get("senderStaffId") or ""),
             external_chat_id=str(
                 payload.get("conversationId")
                 or payload.get("chatId")
@@ -126,9 +122,7 @@ class DingTalkInboundAdapter:
             from cryptography.hazmat.primitives import padding as sym_padding
             from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-            decryptor = Cipher(
-                algorithms.AES(self._aes_key), modes.CBC(iv)
-            ).decryptor()
+            decryptor = Cipher(algorithms.AES(self._aes_key), modes.CBC(iv)).decryptor()
             padded = decryptor.update(ct) + decryptor.finalize()
             unpadder = sym_padding.PKCS7(128).unpadder()
             plaintext = unpadder.update(padded) + unpadder.finalize()
@@ -155,9 +149,7 @@ class DingTalkInboundAdapter:
         return build_inbound_message(
             context=context,
             body=body,
-            external_user_id=str(
-                inner.get("senderId") or inner.get("senderStaffId") or ""
-            ),
+            external_user_id=str(inner.get("senderId") or inner.get("senderStaffId") or ""),
             external_chat_id=str(
                 inner.get("conversationId")
                 or inner.get("chatId")
@@ -219,9 +211,7 @@ def _extract_text(payload: dict[str, Any]) -> str:
     return str(payload.get("text", {}).get("content", ""))
 
 
-def _attachments(
-    msg_type: str, payload: dict[str, Any]
-) -> tuple[AttachmentRef, ...]:
+def _attachments(msg_type: str, payload: dict[str, Any]) -> tuple[AttachmentRef, ...]:
     """图片 / 文件 / 语音 → 统一成 :class:`AttachmentRef`（§3.4）。"""
     if msg_type not in {"image", "file", "audio", "video"}:
         return ()

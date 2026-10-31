@@ -56,9 +56,7 @@ def _live_route_paths() -> set[str]:
 
 def _path_to_regex(path: str) -> re.Pattern[str]:
     """``/api/admin/agents/{agent_id}`` → 能匹配具体 id 的正则."""
-    return re.compile(
-        "^" + re.sub(r"\{[^}]+\}", r"[^/]+", path.replace("/", r"/")) + "$"
-    )
+    return re.compile("^" + re.sub(r"\{[^}]+\}", r"[^/]+", path.replace("/", r"/")) + "$")
 
 
 def _rules() -> list[tuple[str, str, str, bool]]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import hmac
 import json
@@ -16,11 +17,6 @@ from typing import Any, ClassVar
 from uuid import UUID, uuid4
 
 import httpx
-from qzdap_llm import ChatRequest, ChatResponse, LLMChunk
-from qzdap_schema.ids import ModelId
-from qzdap_vault.actor import ActorContext
-
-_log = logging.getLogger(__name__)
 
 from qzdap.modules.model.application.ports import (
     CatalogDiscoveryUnsupported,
@@ -47,6 +43,12 @@ from qzdap.modules.model.domain.errors import (
     ModelNotFound,
     RouteNotFound,
 )
+from qzdap_llm import ChatRequest, ChatResponse, LLMChunk
+from qzdap_schema.ids import ModelId
+from qzdap_vault.actor import ActorContext
+
+_log = logging.getLogger(__name__)
+
 
 # Shared by per-request service instances; short-lived proofs intentionally expire on restart.
 _VERIFICATION_SECRET = secrets.token_bytes(32)
@@ -118,13 +120,9 @@ class ModelService:
             self._workspace_id is None or item.workspace_id == self._workspace_id
         )
 
-    def _check_workspace(
-        self, workspace_id: UUID, tenant_id: UUID | None = None
-    ) -> None:
+    def _check_workspace(self, workspace_id: UUID, tenant_id: UUID | None = None) -> None:
         if (self._workspace_id is not None and workspace_id != self._workspace_id) or (
-            tenant_id is not None
-            and self._tenant_id is not None
-            and tenant_id != self._tenant_id
+            tenant_id is not None and self._tenant_id is not None and tenant_id != self._tenant_id
         ):
             raise PermissionError("scope mismatch")
 
@@ -169,8 +167,7 @@ class ModelService:
             and (tier in ("all", "", None) or m.tier == tier)
             and (
                 not query
-                or query
-                in f"{m.name} {m.provider_name} {m.description} {' '.join(m.tags)}".lower()
+                or query in f"{m.name} {m.provider_name} {m.description} {' '.join(m.tags)}".lower()
             )
         ]
         items.sort(key=lambda m: (m.updated_at, str(m.id)), reverse=True)
@@ -186,11 +183,7 @@ class ModelService:
 
     async def list_routes(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
         self._check_workspace(workspace_id)
-        items = [
-            r
-            for r in await self._routes.list_for_workspace(workspace_id)
-            if self._owns(r)
-        ]
+        items = [r for r in await self._routes.list_for_workspace(workspace_id) if self._owns(r)]
         items.sort(key=lambda r: (-r.priority, r.name, str(r.id)))
         return [r.to_admin_dict() for r in items]
 
@@ -207,14 +200,10 @@ class ModelService:
         from qzdap.modules.model.application.quota_service import QuotaService
 
         if self._quota_session is None:
-            raise RuntimeError(
-                "quota service requires a session-backed repository"
-            )
+            raise RuntimeError("quota service requires a session-backed repository")
         return QuotaService(self._quota_session)
 
-    async def list_quotas(
-        self, *, tenant_id: UUID, workspace_id: UUID
-    ) -> list[dict[str, Any]]:
+    async def list_quotas(self, *, tenant_id: UUID, workspace_id: UUID) -> list[dict[str, Any]]:
         return await self._quota_service().list_quotas(
             tenant_id=tenant_id, workspace_id=workspace_id
         )
@@ -229,9 +218,7 @@ class ModelService:
     async def delete_quota(self, *, quota_id: UUID) -> None:
         await self._quota_service().delete_quota(quota_id=quota_id)
 
-    async def list_usage(
-        self, *, tenant_id: UUID, workspace_id: UUID
-    ) -> list[dict[str, Any]]:
+    async def list_usage(self, *, tenant_id: UUID, workspace_id: UUID) -> list[dict[str, Any]]:
         return await self._quota_service().list_usage(
             tenant_id=tenant_id, workspace_id=workspace_id
         )
@@ -262,14 +249,10 @@ class ModelService:
         if body.get("modelId"):
             model = await self._require_model(UUID(str(body["modelId"])))
             provider = await self._provider(model)
-        protocol = str(
-            body.get("protocol") or (provider.protocol if provider else "openai")
-        )
+        protocol = str(body.get("protocol") or (provider.protocol if provider else "openai"))
         if protocol not in PROTOCOLS:
             raise ValueError("unsupported protocol")
-        url = str(
-            body.get("baseUrl") or (provider.base_url if provider else "")
-        ).strip()
+        url = str(body.get("baseUrl") or (provider.base_url if provider else "")).strip()
         version = str(
             body.get("apiVersion", provider.api_version if provider else "") or ""
         ).strip()
@@ -318,16 +301,12 @@ class ModelService:
         try:
             encoded, signature = str(token or "").split(".")
             raw = base64.urlsafe_b64decode(encoded)
-            expected = hmac.new(
-                self._verification_secret, raw, hashlib.sha256
-            ).hexdigest()
+            expected = hmac.new(self._verification_secret, raw, hashlib.sha256).hexdigest()
             payload = json.loads(raw)
             if (
                 not hmac.compare_digest(signature, expected)
                 or payload["exp"] < time.time()
-                or not hmac.compare_digest(
-                    payload["binding"], self._proof_binding(config)
-                )
+                or not hmac.compare_digest(payload["binding"], self._proof_binding(config))
             ):
                 raise ValueError
         except (ValueError, KeyError, TypeError) as exc:
@@ -360,9 +339,7 @@ class ModelService:
                 type="recovery" if result.get("success") else "incident",
                 provider_id=provider.id,
                 provider_name=provider.name,
-                message=str(
-                    result.get("response") or result.get("error") or "health check"
-                ),
+                message=str(result.get("response") or result.get("error") or "health check"),
                 occurred_at=datetime.now(UTC).isoformat(),
             )
         )
@@ -382,7 +359,7 @@ class ModelService:
                     provider_id=provider.id,
                     provider_name=provider.name,
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _log.warning("alert_evaluate_failed: %s", provider.id)
         return {
             "success": bool(result.get("success")),
@@ -436,9 +413,7 @@ class ModelService:
             key, url, protocol, _, _ = await self._effective(body)
             if self._prober is None:
                 return {"models": [], "error": "目录探测器未配置，请联系管理员。"}
-            names = await self._prober.list_models(
-                api_key=key, base_url=url, protocol=protocol
-            )
+            names = await self._prober.list_models(api_key=key, base_url=url, protocol=protocol)
             return {
                 "models": names,
                 "discoverySupported": True,
@@ -457,7 +432,7 @@ class ModelService:
                 "models": [],
                 "error": f"供应商返回 {exc.response.status_code}，请检查请求地址、协议与 API Key。",
             }
-        except Exception:  # noqa: BLE001 — provider exception text can contain credentials
+        except Exception:
             return {"models": [], "error": "无法拉取模型目录，请检查供应商配置。"}
 
     async def test_connectivity(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -499,9 +474,7 @@ class ModelService:
                     api_key=key, base_url=url, protocol=protocol
                 )
             except Exception as exc:
-                raise ValueError(
-                    "无法确认模型目录，请重新拉取或通过真实测试验证。"
-                ) from exc
+                raise ValueError("无法确认模型目录，请重新拉取或通过真实测试验证。") from exc
             if any(name not in available for name in names):
                 raise ValueError("模型不在当前供应商目录中，请重新拉取或测试。")
         else:
@@ -512,9 +485,7 @@ class ModelService:
     ) -> dict[str, Any]:
         self._check_workspace(workspace_id, tenant_id)
         names = list(
-            dict.fromkeys(
-                str(n).strip() for n in body.get("models", []) if str(n).strip()
-            )
+            dict.fromkeys(str(n).strip() for n in body.get("models", []) if str(n).strip())
         )
         if not names:
             raise ValueError("models required")
@@ -548,9 +519,7 @@ class ModelService:
             first = first or model
         return await self.get_model(first.id)
 
-    async def update_model(
-        self, *, model_id: UUID, body: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def update_model(self, *, model_id: UUID, body: dict[str, Any]) -> dict[str, Any]:
         model = await self._require_model(model_id)
         provider = await self._provider(model)
         patch = body.get("patch") if isinstance(body.get("patch"), dict) else body
@@ -566,10 +535,8 @@ class ModelService:
         supplied_key = str(pp.get("apiKey") or "").strip()
         old_key = None
         if supplied_key and provider.encrypted_payload:
-            try:
+            with contextlib.suppress(CredentialNotFound):
                 old_key = self._decrypt(provider)
-            except CredentialNotFound:
-                pass
         key_changed = bool(supplied_key) and supplied_key != old_key
         fields_changed = (name, protocol, url, version) != (
             provider.name,
@@ -614,9 +581,7 @@ class ModelService:
                 key = supplied_key or self._decrypt(provider)
                 encrypted = self._encrypt(key, protocol, url)
             shared = any(
-                m.id != model.id
-                and m.provider_id == provider.id
-                and m.tenant_id == model.tenant_id
+                m.id != model.id and m.provider_id == provider.id and m.tenant_id == model.tenant_id
                 for m in await self._models.list_for_workspace(model.workspace_id)
             )
             effective = replace(
@@ -636,9 +601,7 @@ class ModelService:
                 await self._providers.add(effective)
             else:
                 await self._providers.update(effective)
-            updated = replace(
-                updated, provider_id=effective.id, provider_name=effective.name
-            )
+            updated = replace(updated, provider_id=effective.id, provider_name=effective.name)
             for field, before, after in [
                 ("providerName", provider.name, name),
                 ("protocol", provider.protocol, protocol),
@@ -659,18 +622,14 @@ class ModelService:
         return {"id": str(model_id)}
 
     async def set_starred(self, *, model_id: UUID, starred: bool) -> dict[str, Any]:
-        return await self.update_model(
-            model_id=model_id, body={"patch": {"starred": starred}}
-        )
+        return await self.update_model(model_id=model_id, body={"patch": {"starred": starred}})
 
     async def batch_status(self, *, ids: list[str], status: str) -> dict[str, Any]:
         if status not in MODEL_STATUSES:
             raise ValueError("invalid status")
         models = [await self._require_model(UUID(raw)) for raw in dict.fromkeys(ids)]
         for model in models:
-            await self.update_model(
-                model_id=model.id, body={"patch": {"status": status}}
-            )
+            await self.update_model(model_id=model.id, body={"patch": {"status": status}})
         return {"ids": [str(m.id) for m in models]}
 
     async def create_route(
@@ -709,9 +668,7 @@ class ModelService:
         await self._routes.delete(route_id)
         return {"id": str(route_id)}
 
-    async def _execution(
-        self, actor: ActorContext, model_id: ModelId
-    ) -> tuple[Model, Any]:
+    async def _execution(self, actor: ActorContext, model_id: ModelId) -> tuple[Model, Any]:
         model = await self._require_model(UUID(str(model_id)))
         if (
             model.tenant_id != actor.tenant_id
@@ -738,9 +695,7 @@ class ModelService:
         start = time.monotonic()
         ok = False
         try:
-            response = await client.chat(
-                replace(req, model=model.upstream_model or model.name)
-            )
+            response = await client.chat(replace(req, model=model.upstream_model or model.name))
             ok = True
             return response
         finally:
@@ -748,9 +703,7 @@ class ModelService:
                 await client.aclose()
             finally:
                 await self._models.update(
-                    model.record_call(
-                        latency_ms=int((time.monotonic() - start) * 1000), ok=ok
-                    )
+                    model.record_call(latency_ms=int((time.monotonic() - start) * 1000), ok=ok)
                 )
 
     async def stream(
@@ -810,15 +763,9 @@ class ModelService:
             try:
                 await client.aclose()
             finally:
-                await self._models.update(
-                    model.record_call(latency_ms=latency_ms, ok=ok)
-                )
+                await self._models.update(model.record_call(latency_ms=latency_ms, ok=ok))
                 # Phase 4: record actual tokens after the call.
-                if (
-                    ok
-                    and (actual_in or actual_out)
-                    and self._quota_session is not None
-                ):
+                if ok and (actual_in or actual_out) and self._quota_session is not None:
                     try:
                         from qzdap.modules.model.application.quota_service import (
                             QuotaService,
@@ -869,7 +816,7 @@ class ModelService:
                                     provider_id=provider_id,
                                     provider_name=provider_name,
                                 )
-                            except Exception:  # noqa: BLE001
+                            except Exception:
                                 _log.warning("alert_evaluate_failed: %s", provider_id)
                     except (RuntimeError, OSError) as _exc:  # defensive
                         _log.warning("health_event_write_failed: %s", _exc)
@@ -881,7 +828,9 @@ class ModelService:
                             LLMAuditService,
                         )
 
-                        await LLMAuditService(self._quota_session).record(
+                        await LLMAuditService(
+                            self._quota_session
+                        ).record(
                             tenant_id=actor.tenant_id,
                             actor_id=actor.principal_id,  # type: ignore[arg-type]
                             model_id=UUID(str(model_id)),
@@ -917,9 +866,8 @@ class ModelService:
         第一个成功的流就赢; 全失败抛 ModelRouteExhausted.
         全过程通过 _log.warning 记录每一次 fallback, 便于 audit.
         """
-        from qzdap_llm import ProviderTransportError
-
         from qzdap.modules.model.domain.errors import ModelRouteExhausted
+        from qzdap_llm import ProviderTransportError
 
         chain: list[ModelId] = [primary_model_id, *fallback_model_ids]
         last_exc: Exception | None = None
@@ -927,9 +875,7 @@ class ModelService:
             try:
                 start = time.monotonic()
                 yielded_any = False
-                async for chunk in self.stream(
-                    actor=actor, model_id=model_id, req=req
-                ):
+                async for chunk in self.stream(actor=actor, model_id=model_id, req=req):
                     if index > 0 and not yielded_any:
                         # 第一个 fallback 刚开始产生 chunk 时, 在流前插一个 notice event
                         # (kind='message' 走同一个 SSE pipeline, 客户端按 chunk.kind 渲染)
@@ -1153,7 +1099,7 @@ class ModelService:
         if not parsed:
             return chain
         # 按 weight 选首
-        rng = random.Random()
+        rng = random.Random()  # noqa: S311 —— 非安全用途 ✓（造随机后缀 ✓）
         ids = [fid for fid, _ in parsed]
         weights = [w for _, w in parsed]
         chosen = rng.choices(ids, weights=weights, k=1)[0]
@@ -1174,9 +1120,7 @@ class ModelService:
         self, *, actor: ActorContext, route_id: ModelId, req: ChatRequest
     ) -> AsyncIterator[LLMChunk]:
         """Phase 7: 策略路由 stream. select_chain_for_strategy 选链, 走 stream_with_fallback."""
-        chain = await self.select_chain_for_strategy(
-            actor=actor, route_id=route_id
-        )
+        chain = await self.select_chain_for_strategy(actor=actor, route_id=route_id)
         if not chain:
             from qzdap.modules.model.domain.errors import ModelNotFound
 
@@ -1219,13 +1163,9 @@ class ModelService:
                 "chain": [],
                 "error": f"route {route_id} not found",
             }
-        actor = ActorContext(
-            tenant_id=tenant_id, workspace_id=workspace_id
-        )
+        actor = ActorContext(tenant_id=tenant_id, workspace_id=workspace_id)
         try:
-            chain = await self.select_chain_for_strategy(
-                actor=actor, route_id=ModelId(route_id)
-            )
+            chain = await self.select_chain_for_strategy(actor=actor, route_id=ModelId(route_id))
         except ModelNotFound as exc:
             return {
                 "routeId": str(route_id),

@@ -1,0 +1,68 @@
+# ⚠️ **ruff 的唯一配置** ✓ —— 各包的 `pyproject.toml` **不再带 `[tool.ruff]`** ✓
+# （之前每个包都有 `[tool.ruff] src = ["src"]` ✓ → **它们把根配置挡住了** ✓
+# —— 于是 `make lint` 实际用的是 **ruff 的默认规则** ✓ → CI 的 lint job
+# **一直是红的** ✗✗ —— 现在改成「一份配置 ✓ 全树生效 ✓」）。
+#
+# ⚠️ **为什么有些族被忽略** ✓ —— 每一行都写明理由 ✓（不写理由的忽略项
+# 就是「把闸门关掉」 ✗✗）：
+#
+# - `RUF001/2/3`：**中文标点是 Unicode 的「歧义字符」** ✓ —— 中文注释与
+#   文案**必然**命中 ✗✗ → 误报 ✓ → 忽略 ✓（不是代码问题 ✓）；
+# - `E501`：**行宽由 `ruff format` 保证** ✓ —— 但 formatter **不拆**
+#   长字符串与长注释 ✓（中文文案尤其长 ✓）→ 交给人看 ✓；
+# - `N818`：异常类名要带 `Error` 后缀 ✓ —— 既有命名**是公开 API** ✓
+#   （改名 = 破坏兼容 ✗✗）→ 保持现状 ✓；
+# - `B008`：`FastAPI` 的 `Depends()` 放在函数默认值里 ✓ —— 那是框架的
+#   惯用法 ✓（根配置原来也是这么忽略的 ✓）；
+# - `S101/104/TRY003`：断言 ✓ / 绑 0.0.0.0 ✓ / 自定义异常不带消息 ✓。
+#
+# ⚠️ **没被忽略的族都是要守的** ✓ —— 「让闸门真的能拦住东西」✓。
+
+line-length = 100
+target-version = "py312"
+src = ["libs", "modules", "runtimes", "composition"]
+
+[lint]
+select = [
+    "E",     # pycodestyle
+    "F",     # pyflakes
+    "W",     # pycodestyle-warnings
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # bugbear
+    "C4",    # comprehensions
+    "SIM",   # simplify
+    "ASYNC", # async-correctness
+    "S",     # bandit
+    "TRY",   # tryceratops
+    "RUF",   # ruff-specific
+]
+ignore = [
+    "S101",     # 允许测试里 assert
+    "S104",     # 允许 gateway 绑 0.0.0.0
+    "TRY003",   # 允许自定义异常不带消息
+    "RUF001",   # 中文标点 = Unicode 歧义字符
+    "RUF002",
+    "RUF003",
+    "E501",     # 行宽交给 formatter
+    "N818",     # 异常类名是公开 API
+    "B008",     # FastAPI Depends() 惯用法
+    "N811",     # SQLAlchemy 的 `UUID as PgUUID` 是通用写法
+    "N803",     # 对外契约的字段名（sortKey / displayName）不能改
+    "N815",     # 同上（DTO 的驼峰字段）
+    "ASYNC109", # `timeout` 是对外 API 的形状（协议方法），改签名 = 破坏契约
+    "TRY300",   # 「挪到 else 块」是写法偏好 —— 不动既有控制流
+    "TRY301",   # 同上
+    "UP042",    # `class X(str, Enum)` 的 __str__ 语义与 StrEnum 不同 —— 不改
+]
+
+[lint.per-file-ignores]
+# ⚠️ **测试里的模块级导入不在文件顶部** ✓ —— 那是为了先做
+# `sys.path` / 环境准备 ✓ —— 不是代码组织问题 ✓。
+"**/tests/**/*.py" = ["S", "B011", "E402"]
+"**/migrations/**/*.py" = ["E", "F", "I", "N", "RUF001", "RUF002", "RUF003"]
+"**/router.py" = ["B008"]
+
+[lint.isort]
+known-first-party = ["qzdap_*", "qzdap"]

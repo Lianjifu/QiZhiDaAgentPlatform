@@ -57,7 +57,9 @@ class OrchestrationService:
     async def get_admin(self, workflow_id: UUID) -> dict[str, Any]:
         return (await self._require(workflow_id)).to_admin_dict()
 
-    async def create(self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]) -> dict[str, Any]:
+    async def create(
+        self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
+    ) -> dict[str, Any]:
         trigger = body.get("trigger") if body.get("trigger") in TRIGGER_TYPES else "消息触发"
         status = body.get("status") if body.get("status") in FLOW_STATUSES else "draft"
         nodes = body.get("initialNodes") if isinstance(body.get("initialNodes"), list) else None
@@ -85,7 +87,9 @@ class OrchestrationService:
         await self._workflows.add(flow)
         return flow.to_admin_dict()
 
-    async def update(self, *, workflow_id: UUID, body: dict[str, Any], actor: str) -> dict[str, Any]:
+    async def update(
+        self, *, workflow_id: UUID, body: dict[str, Any], actor: str
+    ) -> dict[str, Any]:
         flow = await self._require(workflow_id)
         patch = body.get("patch") if isinstance(body.get("patch"), dict) else body
         updated = flow.apply_patch(patch, actor=actor)
@@ -99,11 +103,7 @@ class OrchestrationService:
 
     async def list_catalog(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
         items = await self._workflows.list_for_workspace(workspace_id)
-        return [
-            flow.to_catalog_dict()
-            for flow in items
-            if flow.status == "published"
-        ]
+        return [flow.to_catalog_dict() for flow in items if flow.status == "published"]
 
     async def set_favorite(self, *, workflow_id: UUID, user_id: UUID, on: bool) -> dict[str, Any]:
         flow = await self._require(workflow_id)

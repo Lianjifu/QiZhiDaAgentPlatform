@@ -24,8 +24,6 @@ import time
 from datetime import timedelta
 from typing import Any
 
-from qzdap_vault.actor import ActorContext
-
 from qzdap.modules.governance.application.ports import (
     ApprovalRepository,
     ClockPort,
@@ -44,6 +42,7 @@ from qzdap.modules.governance.domain.policy_match import action_precedence, matc
 from qzdap.modules.governance.domain.value_objects import (
     PolicyEffect,
 )
+from qzdap_vault.actor import ActorContext
 
 _log = logging.getLogger(__name__)
 
@@ -150,9 +149,7 @@ class PolicyEvaluator:
             )
             return rec
 
-        matched.sort(
-            key=lambda r: (action_precedence(r.effect.value), r.priority, str(r.id))
-        )
+        matched.sort(key=lambda r: (action_precedence(r.effect.value), r.priority, str(r.id)))
         winner = matched[0]
         latency_ms = int((time.monotonic() - started) * 1000)
 
@@ -164,9 +161,7 @@ class PolicyEvaluator:
                 latency_ms=latency_ms,
             )
         elif winner.effect is PolicyEffect.REQUIRE_APPROVAL:
-            approval = await self._mint_approval(
-                actor=actor, action=action, resource=res
-            )
+            approval = await self._mint_approval(actor=actor, action=action, resource=res)
             rec = DecisionRecord(
                 effect=PolicyEffect.REQUIRE_APPROVAL,
                 rule_id=winner.id,

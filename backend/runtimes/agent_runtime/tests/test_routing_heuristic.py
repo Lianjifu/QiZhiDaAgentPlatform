@@ -36,9 +36,7 @@ def default_config() -> AgentRouteConfig:
 class TestClassifyTaskKindHeuristic:
     """5 类输入 → 5 类预期输出。"""
 
-    def test_rule1_deep_research_flag_wins(
-        self, default_config: AgentRouteConfig
-    ) -> None:
+    def test_rule1_deep_research_flag_wins(self, default_config: AgentRouteConfig) -> None:
         """规则 1：agent.deep_research=true 优先（即使消息很短）。"""
         cfg = AgentRouteConfig(agent_id="agt_deep", deep_research=True)
         classification = classify_task_kind_heuristic(
@@ -51,9 +49,7 @@ class TestClassifyTaskKindHeuristic:
         assert kind is TaskKind.DEEP_RESEARCH
         assert is_deep_task(kind) is True
 
-    def test_rule2_long_context_and_many_tools(
-        self, default_config: AgentRouteConfig
-    ) -> None:
+    def test_rule2_long_context_and_many_tools(self, default_config: AgentRouteConfig) -> None:
         """规则 2：message_count > 20 且 tools_count > 5 → MULTI_STEP_CODE。"""
         classification = classify_task_kind_heuristic(
             message_count=21,
@@ -65,9 +61,7 @@ class TestClassifyTaskKindHeuristic:
         assert kind is TaskKind.MULTI_STEP_CODE
         assert is_deep_task(kind) is True
 
-    def test_rule2_threshold_boundary(
-        self, default_config: AgentRouteConfig
-    ) -> None:
+    def test_rule2_threshold_boundary(self, default_config: AgentRouteConfig) -> None:
         """规则 2 边界：message_count=20 或 tools_count=5 不触发。"""
         # message_count=20（不 > 20）→ 不触发 rule 2
         classification = classify_task_kind_heuristic(
@@ -89,9 +83,7 @@ class TestClassifyTaskKindHeuristic:
         kind = classification.kind
         assert kind is TaskKind.SIMPLE_QA
 
-    def test_rule3_keyword_deep_chinese(
-        self, default_config: AgentRouteConfig
-    ) -> None:
+    def test_rule3_keyword_deep_chinese(self, default_config: AgentRouteConfig) -> None:
         """规则 3：中文 deep 关键词 → DEEP_RESEARCH。"""
         for keyword in ("研究", "调研", "对比", "分析", "综述"):
             classification = classify_task_kind_heuristic(
@@ -103,9 +95,7 @@ class TestClassifyTaskKindHeuristic:
             kind = classification.kind
             assert kind is TaskKind.DEEP_RESEARCH, f"keyword={keyword}"
 
-    def test_rule3_keyword_deep_english(
-        self, default_config: AgentRouteConfig
-    ) -> None:
+    def test_rule3_keyword_deep_english(self, default_config: AgentRouteConfig) -> None:
         """规则 3：英文 deep 关键词（大小写不敏感）→ DEEP_RESEARCH。"""
         for keyword in ("research", "compare", "investigate", "survey"):
             classification = classify_task_kind_heuristic(
@@ -117,9 +107,7 @@ class TestClassifyTaskKindHeuristic:
             kind = classification.kind
             assert kind is TaskKind.DEEP_RESEARCH, f"keyword={keyword}"
 
-    def test_rule3_keyword_code_chinese(
-        self, default_config: AgentRouteConfig
-    ) -> None:
+    def test_rule3_keyword_code_chinese(self, default_config: AgentRouteConfig) -> None:
         """规则 3：中文 code 关键词 → MULTI_STEP_CODE。"""
         for keyword in ("写代码", "实现", "重构", "迁移"):
             classification = classify_task_kind_heuristic(
@@ -131,9 +119,7 @@ class TestClassifyTaskKindHeuristic:
             kind = classification.kind
             assert kind is TaskKind.MULTI_STEP_CODE, f"keyword={keyword}"
 
-    def test_rule3_keyword_code_english(
-        self, default_config: AgentRouteConfig
-    ) -> None:
+    def test_rule3_keyword_code_english(self, default_config: AgentRouteConfig) -> None:
         """规则 3：英文 code 关键词 → MULTI_STEP_CODE。"""
         for keyword in ("refactor", "implement", "migrate", "rewrite", "build"):
             classification = classify_task_kind_heuristic(
@@ -145,9 +131,7 @@ class TestClassifyTaskKindHeuristic:
             kind = classification.kind
             assert kind is TaskKind.MULTI_STEP_CODE, f"keyword={keyword}"
 
-    def test_rule3_deep_keyword_priority_over_code(
-        self, default_config: AgentRouteConfig
-    ) -> None:
+    def test_rule3_deep_keyword_priority_over_code(self, default_config: AgentRouteConfig) -> None:
         """规则 3：deep 关键词优先于 code 关键词（出现在 list 中时分类）。"""
         # 同时含 deep 与 code 关键词 → deep 胜出
         classification = classify_task_kind_heuristic(
@@ -159,9 +143,7 @@ class TestClassifyTaskKindHeuristic:
         kind = classification.kind
         assert kind is TaskKind.DEEP_RESEARCH
 
-    def test_rule4_default_fallback(
-        self, default_config: AgentRouteConfig
-    ) -> None:
+    def test_rule4_default_fallback(self, default_config: AgentRouteConfig) -> None:
         """规则 4：默认 fallback → SIMPLE_QA（不允许 None）。"""
         classification = classify_task_kind_heuristic(
             message_count=3,
@@ -173,9 +155,7 @@ class TestClassifyTaskKindHeuristic:
         assert kind is TaskKind.SIMPLE_QA
         assert is_deep_task(kind) is False
 
-    def test_rule4_empty_message(
-        self, default_config: AgentRouteConfig
-    ) -> None:
+    def test_rule4_empty_message(self, default_config: AgentRouteConfig) -> None:
         """规则 4：空消息 → SIMPLE_QA（不允许 None / 不允许抛异常）。"""
         classification = classify_task_kind_heuristic(
             message_count=0,

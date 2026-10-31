@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+
 from qzdap_agent_runtime.memory.refine import (
     BufferRefiner,
     BufferRow,
@@ -29,9 +30,7 @@ class _Buffer:
     async def add(self, row: BufferRow) -> None:
         self.rows.append(row)
 
-    async def list_pending(
-        self, *, before: datetime, limit: int = 100
-    ) -> list[BufferRow]:
+    async def list_pending(self, *, before: datetime, limit: int = 100) -> list[BufferRow]:
         return [row for row in self.rows if row.created_at <= before][:limit]
 
     async def delete(self, row_ids: tuple) -> None:
@@ -77,9 +76,7 @@ class TestTheRefinement:
         session_id = uuid4()
         buffer = _Buffer([_row(session_id=session_id, content="我在上海办公")])
         writer = _Writer()
-        refiner = BufferRefiner(
-            buffer=buffer, activity=_Activity(), writer=writer
-        )
+        refiner = BufferRefiner(buffer=buffer, activity=_Activity(), writer=writer)
         report = await refiner.refine(now=datetime.now(UTC))
         assert report.promoted == 1
         assert writer.written == ["我在上海办公"]
@@ -92,9 +89,7 @@ class TestTheRefinement:
         session_id = uuid4()
         buffer = _Buffer([_row(session_id=session_id, content="我在上海办公")])
         writer = _Writer()
-        refiner = BufferRefiner(
-            buffer=buffer, activity=_Activity({session_id}), writer=writer
-        )
+        refiner = BufferRefiner(buffer=buffer, activity=_Activity({session_id}), writer=writer)
         report = await refiner.refine(now=datetime.now(UTC))
         assert report.promoted == 0
         assert writer.written == []
@@ -104,9 +99,7 @@ class TestTheRefinement:
     async def test_expired_rows_are_discarded(self) -> None:
         """**过期 → 丢弃** ✓（不留垃圾 ✓）。"""
         session_id = uuid4()
-        buffer = _Buffer(
-            [_row(session_id=session_id, content="很久以前的事", age_hours=48)]
-        )
+        buffer = _Buffer([_row(session_id=session_id, content="很久以前的事", age_hours=48)])
         writer = _Writer()
         refiner = BufferRefiner(
             buffer=buffer,

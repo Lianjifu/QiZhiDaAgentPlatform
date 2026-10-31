@@ -59,7 +59,10 @@ def _binding(**kwargs) -> ToolBinding:
         "kind": "tool",
         "risk": "low",
         "side_effect": False,
-        "spec": {"description": "回显", "parameters": {"type": "object", "properties": {"text": {"type": "string"}}}},
+        "spec": {
+            "description": "回显",
+            "parameters": {"type": "object", "properties": {"text": {"type": "string"}}},
+        },
     }
     defaults.update(kwargs)
     return ToolBinding(**defaults)
@@ -136,9 +139,7 @@ class TestGovernance:
             _binding(name="echo"),
             _binding(name="write_file", risk="high", side_effect=True),
         ]
-        tools = resolver.resolve(
-            bindings, policy=BindingPolicy(unprotected=True)
-        )
+        tools = resolver.resolve(bindings, policy=BindingPolicy(unprotected=True))
         assert [tool.name for tool in tools] == ["echo"]
 
     def test_the_high_risk_tools_are_not_filtered_out(self) -> None:

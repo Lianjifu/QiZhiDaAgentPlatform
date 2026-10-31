@@ -188,9 +188,7 @@ def test_the_inbound_message_survives_the_bus_round_trip() -> None:
         ),
     ],
 )
-def test_attachments_converge_on_one_shape(
-    channel_type: ChannelType, body: bytes
-) -> None:
+def test_attachments_converge_on_one_shape(channel_type: ChannelType, body: bytes) -> None:
     """飞书的 image_key / 钉钉的 media_id / 企微的 MediaId → 同一个 AttachmentRef。
 
     字节不在消息里（要另走下载接口）—— 只统一**引用形状**。

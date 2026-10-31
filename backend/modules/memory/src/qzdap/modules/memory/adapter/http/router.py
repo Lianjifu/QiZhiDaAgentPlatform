@@ -24,9 +24,9 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from qzdap_auth.workspace_guard_dep import _require_active_workspace
 
 from qzdap.modules.memory.application.admin_service import MemoryAdminService
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 
 
 def _owner_label(request: Request) -> str:
@@ -72,9 +72,7 @@ async def _related_agents(
         service = factory.for_session(session)
         principal = getattr(request.state, "principal", None)
         if principal:
-            service.bind_scope(
-                tenant_id=principal.tenant_id, workspace_id=principal.workspace_id
-            )
+            service.bind_scope(tenant_id=principal.tenant_id, workspace_id=principal.workspace_id)
         agents = await service.list_admin(workspace_id=workspace_id)
         return [agent for agent in agents if predicate(agent)]
 
@@ -84,15 +82,15 @@ def build_router() -> APIRouter:
 
     @router.get("/api/admin/memory/l1")
     async def list_l1(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_l1(workspace_id=x_workspace_id)
 
     @router.get("/api/admin/memory/l1/{item_id}")
     async def get_l1(
         item_id: UUID,
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> dict[str, Any]:
         return await svc.get_l1(item_id)
 
@@ -101,8 +99,8 @@ def build_router() -> APIRouter:
         dependencies=[Depends(_require_active_workspace)],
     )
     async def flush_all_l1(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> dict[str, int]:
         return await svc.flush_all_l1(workspace_id=x_workspace_id)
 
@@ -112,22 +110,22 @@ def build_router() -> APIRouter:
     )
     async def flush_l1(
         item_id: UUID,
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> dict[str, Any]:
         return await svc.flush_l1(item_id, workspace_id=x_workspace_id)
 
     @router.get("/api/admin/memory/l2")
     async def list_l2(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_l2(workspace_id=x_workspace_id)
 
     @router.get("/api/admin/memory/l2/{item_id}")
     async def get_l2(
         item_id: UUID,
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> dict[str, Any]:
         return await svc.get_l2(item_id)
 
@@ -138,12 +136,10 @@ def build_router() -> APIRouter:
     async def update_l2(
         item_id: UUID,
         body: dict[str, Any],
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> dict[str, Any]:
-        return await svc.update_l2(
-            item_id, workspace_id=x_workspace_id, patch=_patch_of(body)
-        )
+        return await svc.update_l2(item_id, workspace_id=x_workspace_id, patch=_patch_of(body))
 
     @router.post(
         "/api/admin/memory/l2/promote",
@@ -152,9 +148,9 @@ def build_router() -> APIRouter:
     async def promote_l2(
         body: dict[str, Any],
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> dict[str, Any]:
         raw_ids = body.get("ids") or []
         try:
@@ -174,15 +170,15 @@ def build_router() -> APIRouter:
 
     @router.get("/api/admin/memory/l3")
     async def list_l3(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_l3(workspace_id=x_workspace_id)
 
     @router.get("/api/admin/memory/l3/{item_id}")
     async def get_l3(
         item_id: UUID,
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> dict[str, Any]:
         return await svc.get_l3(item_id)
 
@@ -194,9 +190,9 @@ def build_router() -> APIRouter:
     async def create_l3(
         body: dict[str, Any],
         request: Request,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> dict[str, Any]:
         title = str(body.get("title") or "").strip()
         if not title:
@@ -219,35 +215,31 @@ def build_router() -> APIRouter:
     async def update_l3(
         item_id: UUID,
         body: dict[str, Any],
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> dict[str, Any]:
-        return await svc.update_l3(
-            item_id, workspace_id=x_workspace_id, patch=_patch_of(body)
-        )
+        return await svc.update_l3(item_id, workspace_id=x_workspace_id, patch=_patch_of(body))
 
     @router.get("/api/admin/memory/promotions")
     async def list_promotions(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_promotions(workspace_id=x_workspace_id)
 
     @router.get("/api/admin/memory/policies")
     async def list_policies(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> list[dict[str, Any]]:
-        return await svc.list_policies(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id
-        )
+        return await svc.list_policies(tenant_id=x_tenant_id, workspace_id=x_workspace_id)
 
     @router.get("/api/admin/memory/policies/{label}")
     async def get_policy(
         label: str,
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> dict[str, Any]:
         return await svc.get_policy(workspace_id=x_workspace_id, label=label)
 
@@ -255,7 +247,7 @@ def build_router() -> APIRouter:
     async def policy_agents(
         label: str,
         request: Request,
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         svc: MemoryAdminService = Depends(memory_dependency),
     ) -> list[dict[str, Any]]:
         policy = await svc.get_policy(workspace_id=x_workspace_id, label=label)
@@ -276,7 +268,7 @@ def build_router() -> APIRouter:
     async def l3_agents(
         item_id: UUID,
         request: Request,
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         svc: MemoryAdminService = Depends(memory_dependency),
     ) -> list[dict[str, Any]]:
         entry = await svc._catalog.get_l3(item_id)
@@ -297,9 +289,9 @@ def build_router() -> APIRouter:
 
     @router.get("/api/admin/memory/trend")
     async def trend(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         range: str = Query(default="7d"),
-        svc: MemoryAdminService = Depends(memory_dependency),  # noqa: B008
+        svc: MemoryAdminService = Depends(memory_dependency),
     ) -> dict[str, list[int]]:
         return await svc.trend(workspace_id=x_workspace_id, range=range)
 

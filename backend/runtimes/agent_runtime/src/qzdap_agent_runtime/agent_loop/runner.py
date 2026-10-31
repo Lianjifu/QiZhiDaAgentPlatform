@@ -27,6 +27,7 @@ from typing import Any, Literal
 from langchain_core.messages import BaseMessage
 from langchain_core.tools import BaseTool
 from pydantic import create_model
+
 from qzdap_kernel.digest import request_hash
 
 from ..execution.tool_binding import (
@@ -42,8 +43,14 @@ from .reason import Reasoner
 from .state import LoopState
 
 LoopEventKind = Literal[
-    "text", "tool_call", "tool_result", "approval_required", "final", "error",
-    "usage", "extra",
+    "text",
+    "tool_call",
+    "tool_result",
+    "approval_required",
+    "final",
+    "error",
+    "usage",
+    "extra",
 ]
 
 
@@ -174,9 +181,7 @@ class AgentLoopRunner:
                 if approval is not None:
                     state.pending_approval = approval
                     termination = self._evaluator.evaluate(state)
-                    yield LoopEvent(
-                        kind="approval_required", approval=approval, payload=state
-                    )
+                    yield LoopEvent(kind="approval_required", approval=approval, payload=state)
                     async for event in self._finish(state, termination):
                         yield event
                     return
@@ -211,9 +216,7 @@ class AgentLoopRunner:
         """**跑一步推理** ✓（流式文本 ✓ + 工具调用 ✓）。"""
         schemas = [tool_schema(bound.tool) for bound in by_name.values()]
         text_parts: list[str] = []
-        async for chunk in self._reasoner.reason(
-            messages=state.messages, tools=schemas
-        ):
+        async for chunk in self._reasoner.reason(messages=state.messages, tools=schemas):
             if chunk.content:
                 text = _as_text(chunk.content)
                 text_parts.append(text)
@@ -244,9 +247,7 @@ class AgentLoopRunner:
 
     # ── 治理与执行 ─────────────────────────────────────────────────────
 
-    async def _approval_for(
-        self, call: dict[str, Any], bound: BoundTool
-    ) -> dict[str, Any] | None:
+    async def _approval_for(self, call: dict[str, Any], bound: BoundTool) -> dict[str, Any] | None:
         """**这个工具要不要审批** ✓（§3.5 ✓）。
 
         ⚠️ **治理是默认路径** ✓ —— 有 ``PolicyGuard`` 就**每个工具都问一遍**
@@ -310,7 +311,7 @@ class AgentLoopRunner:
         actor_token = set_current_actor(self._actor)
         try:
             result = await bound.tool.ainvoke(dict(arguments))
-        except Exception as exc:  # noqa: BLE001 — 工具失败也要回灌 ✓（§3.2 规则 1 ✓）
+        except Exception as exc:
             return ToolOutcome(
                 tool_call_id=call_id,
                 name=bound.tool.name,
@@ -329,9 +330,7 @@ class AgentLoopRunner:
 
     # ── 收尾 ───────────────────────────────────────────────────────────
 
-    async def _finish(
-        self, state: LoopState, termination: Termination
-    ) -> AsyncIterator[LoopEvent]:
+    async def _finish(self, state: LoopState, termination: Termination) -> AsyncIterator[LoopEvent]:
         """**收尾** ✓（exit ✓ / abort ✓ / suspend ✓）。"""
         if termination.action == "abort":
             yield LoopEvent(
@@ -391,15 +390,11 @@ def _as_text(content: Any) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        return "".join(
-            str(part.get("text") or "") for part in content if isinstance(part, dict)
-        )
+        return "".join(str(part.get("text") or "") for part in content if isinstance(part, dict))
     return str(content)
 
 
-def _scope(
-    *, call_id: str, turn_id: str | None, session_id: str | None, protected: bool
-):
+def _scope(*, call_id: str, turn_id: str | None, session_id: str | None, protected: bool):
     """**这一次工具调用的上下文** ✓（幂等键 ✓ / 轮次 ✓ / 是否受保护 ✓）。"""
     from ..execution.tool_binding import ToolScope
 

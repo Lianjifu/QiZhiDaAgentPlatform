@@ -53,9 +53,7 @@ async def sse_stream(
         while True:
             if pending is None:
                 pending = asyncio.ensure_future(iterator.__anext__())
-            done, _pending = await asyncio.wait(
-                {pending}, timeout=keepalive_seconds
-            )
+            done, _pending = await asyncio.wait({pending}, timeout=keepalive_seconds)
             if not done:
                 # Still waiting for the next chunk — tell the proxy we're alive.
                 yield b": keepalive\n\n"

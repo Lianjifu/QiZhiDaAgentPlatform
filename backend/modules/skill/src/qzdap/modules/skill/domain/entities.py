@@ -262,11 +262,15 @@ class Skill:
             data["starred"] = bool(patch["starred"])
         if "inputSchema" in patch and isinstance(patch["inputSchema"], list):
             data["input_schema"] = [
-                SchemaField.from_dict(item) for item in patch["inputSchema"] if isinstance(item, dict)
+                SchemaField.from_dict(item)
+                for item in patch["inputSchema"]
+                if isinstance(item, dict)
             ]
         if "outputSchema" in patch and isinstance(patch["outputSchema"], list):
             data["output_schema"] = [
-                SchemaField.from_dict(item) for item in patch["outputSchema"] if isinstance(item, dict)
+                SchemaField.from_dict(item)
+                for item in patch["outputSchema"]
+                if isinstance(item, dict)
             ]
         if "runtime" in patch and isinstance(patch["runtime"], dict):
             data["runtime"] = SkillRuntime.from_dict(patch["runtime"])
@@ -283,9 +287,7 @@ class Skill:
 
     def publish(self, *, actor: str) -> Self:
         stamp = _utcnow().strftime("%Y-%m-%d")
-        versions = [
-            replace(item, current=False) for item in self.versions
-        ]
+        versions = [replace(item, current=False) for item in self.versions]
         next_version = f"v{len(self.versions) + 1}"
         versions.insert(
             0,
@@ -321,7 +323,7 @@ class Skill:
         trend = list(self.trend or [0] * 12)
         if len(trend) < 12:
             trend = ([0] * (12 - len(trend))) + trend
-        trend = trend[1:] + [trend[-1] + 1]
+        trend = [*trend[1:], trend[-1] + 1]
         return replace(
             self,
             calls=self.calls + 1,
@@ -377,10 +379,14 @@ class Skill:
 
     def to_catalog_dict(self, *, last_used: str | None = None) -> dict[str, Any]:
         input_desc = "；".join(
-            field.description or field.name for field in self.input_schema if field.name or field.description
+            field.description or field.name
+            for field in self.input_schema
+            if field.name or field.description
         )
         output_desc = "；".join(
-            field.description or field.name for field in self.output_schema if field.name or field.description
+            field.description or field.name
+            for field in self.output_schema
+            if field.name or field.description
         )
         available = self.status in {"published", "graying"}
         return {

@@ -47,7 +47,8 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
         ),
         sa.UniqueConstraint(
-            "tenant_id", "content_hash",
+            "tenant_id",
+            "content_hash",
             name="uq_memory_l2_embeddings_tenant_hash",
         ),
         sa.CheckConstraint(

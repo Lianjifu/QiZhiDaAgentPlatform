@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import ast
 import re
-import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,10 +51,7 @@ class Member:
 
     def owns(self, module: str) -> bool:
         """这个 import 名是不是它的 ✓。"""
-        return any(
-            module == root or module.startswith(f"{root}.")
-            for root in self.roots
-        )
+        return any(module == root or module.startswith(f"{root}.") for root in self.roots)
 
 
 def _normalize_dep(raw: str) -> str:
@@ -132,15 +128,13 @@ def main() -> int:
             for module in _imported_modules(py_file):
                 if not module.startswith("qzdap"):
                     continue
-                owner = next(
-                    (m for m in members if m is not member and m.owns(module)), None
-                )
+                owner = next((m for m in members if m is not member and m.owns(module)), None)
                 if owner is None:
                     continue
                 # ⚠️ **只管「依赖 lib」的声明** ✓ —— **模块之间的 import** 是
                 # **层次问题** ✓（归 import-linter 契约管 ✓ —— 那些契约还没启用
                 # ✗✗ —— 见实施计划 P-12 的说明 ✓）—— 这里不重复管 ✓。
-                if not owner.path.parent.name == "libs":
+                if owner.path.parent.name != "libs":
                     continue
                 if owner.distribution not in member.dependencies:
                     rel = py_file.relative_to(BACKEND)

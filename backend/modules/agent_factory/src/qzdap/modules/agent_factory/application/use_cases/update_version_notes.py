@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from qzdap_schema.ids import AgentVersionId, TenantId
-
 from qzdap.modules.agent_factory.application.ports import AgentVersionRepository
 from qzdap.modules.agent_factory.domain.entities import AgentVersion
+from qzdap_schema.ids import AgentVersionId, TenantId
 
 
 @dataclass(slots=True)
@@ -27,9 +26,7 @@ class UpdateAgentVersionNotesUseCase:
                 AgentVersionNotFound,
             )
 
-            raise AgentVersionNotFound(
-                f"agent version {version_id} not found in tenant"
-            )
+            raise AgentVersionNotFound(f"agent version {version_id} not found in tenant")
         # .with_release_notes raises AgentVersionImmutable if not draft.
         updated = version.with_release_notes(release_notes)
         saved = await self.repository.update(updated)

@@ -20,9 +20,8 @@ import functools
 from collections.abc import Awaitable, Callable
 from typing import Any, ParamSpec, TypeVar
 
-from qzdap_vault.actor import ActorContext
-
 from qzdap.modules.governance.adapter.guard.policy_guard import PolicyGuard
+from qzdap_vault.actor import ActorContext
 
 P = ParamSpec("P")
 R = TypeVar("R")

@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 import random
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ class OutboxEvent:
     delivery_status: DeliveryStatus
     delivery_attempts: int
     delivered_at: datetime | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 # ---------------------------------------------------------------------------
@@ -104,9 +104,7 @@ class OutboxRepository(Protocol):
         """标记事件已投递:delivery_status='delivered', delivered_at=now()。"""
         ...
 
-    async def mark_failed(
-        self, turn_id: str, seq: int, attempts: int, last_error: str
-    ) -> None:
+    async def mark_failed(self, turn_id: str, seq: int, attempts: int, last_error: str) -> None:
         """标记事件投递失败,attempts +1。"""
         ...
 
@@ -184,7 +182,7 @@ class InMemoryOutboxRepository:
                 payload=e.payload,
                 delivery_status="delivered",
                 delivery_attempts=e.delivery_attempts,
-                delivered_at=datetime.now(timezone.utc),
+                delivered_at=datetime.now(UTC),
                 created_at=e.created_at,
             )
             if e.turn_id == turn_id and e.seq == seq
@@ -192,9 +190,7 @@ class InMemoryOutboxRepository:
             for e in self._events
         ]
 
-    async def mark_failed(
-        self, turn_id: str, seq: int, attempts: int, last_error: str
-    ) -> None:
+    async def mark_failed(self, turn_id: str, seq: int, attempts: int, last_error: str) -> None:
         self._events = [
             OutboxEvent(
                 turn_id=e.turn_id,
@@ -215,11 +211,7 @@ class InMemoryOutboxRepository:
         self, turn_id: str, seq: int, attempts: int, last_error: str
     ) -> None:
         target = next(
-            (
-                e
-                for e in self._events
-                if e.turn_id == turn_id and e.seq == seq
-            ),
+            (e for e in self._events if e.turn_id == turn_id and e.seq == seq),
             None,
         )
         if target is None:
@@ -234,9 +226,7 @@ class InMemoryOutboxRepository:
                 "last_error": last_error,
             }
         )
-        self._events = [
-            e for e in self._events if not (e.turn_id == turn_id and e.seq == seq)
-        ]
+        self._events = [e for e in self._events if not (e.turn_id == turn_id and e.seq == seq)]
 
     @property
     def dead_letters(self) -> list[dict[str, Any]]:
@@ -262,7 +252,7 @@ def compute_retry_delay(attempt: int) -> float:
     base = RETRY_BASE_SECONDS * (2 ** (attempt - 1))
     capped = min(base, RETRY_MAX_SECONDS)
     # jitter: ±20% 抖动避免 thundering herd
-    jitter = capped * 0.2 * (random.random() * 2 - 1)
+    jitter = capped * 0.2 * (random.random() * 2 - 1)  # noqa: S311 —— 退避抖动 ✓ 不是安全用途 ✓
     return max(0.0, min(RETRY_MAX_SECONDS, capped + jitter))
 
 
@@ -319,11 +309,12 @@ class OutboxWorker:
         except DispatchError as exc:
             await self._handle_failure(event, next_attempt, str(exc))
             return  # 关键: 失败路径必须 return, 不能落到成功分支
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             # 任何其他异常都按 FAILED 处理(不抛穿 worker)
             logger.exception(
                 "outbox dispatch unexpected error: turn_id=%s seq=%s",
-                event.turn_id, event.seq,
+                event.turn_id,
+                event.seq,
             )
             await self._handle_failure(event, next_attempt, str(exc))
             return
@@ -332,24 +323,21 @@ class OutboxWorker:
         self._stats.delivered += 1
         self._stats.processed += 1
 
-    async def _handle_failure(
-        self, event: OutboxEvent, attempts: int, error: str
-    ) -> None:
+    async def _handle_failure(self, event: OutboxEvent, attempts: int, error: str) -> None:
         """§4.4 状态机: FAILED 或 DEAD_LETTER。"""
         if attempts >= MAX_DELIVERY_ATTEMPTS:
             # §4.4: 超 MAX_DELIVERY_ATTEMPTS=8 进死信
-            await self._repo.move_to_dead_letter(
-                event.turn_id, event.seq, attempts, error
-            )
+            await self._repo.move_to_dead_letter(event.turn_id, event.seq, attempts, error)
             self._stats.dead_lettered += 1
             logger.warning(
                 "outbox dead-letter: turn_id=%s seq=%s attempts=%s error=%s",
-                event.turn_id, event.seq, attempts, error,
+                event.turn_id,
+                event.seq,
+                attempts,
+                error,
             )
         else:
-            await self._repo.mark_failed(
-                event.turn_id, event.seq, attempts, error
-            )
+            await self._repo.mark_failed(event.turn_id, event.seq, attempts, error)
             self._stats.failed += 1
         self._stats.processed += 1
 
@@ -385,19 +373,25 @@ def to_result_event(event: Any) -> Any:
         # ⚠️ 出站队列里的那条消息（``im_reply``）与轮次里的 chunk 消息**同形** ——
         # 都是「一段文本」✓（投递目标在 payload 里 ✓）。
         result_event = MessageEvent(
-            turn_id=turn_id, seq=seq, event_id=event_id,
+            turn_id=turn_id,
+            seq=seq,
+            event_id=event_id,
             delta=str(payload.get("content", "") or payload.get("text", "")),
         )
     elif ev_type == "tool_call":
         result_event = ToolCallEvent(
-            turn_id=turn_id, seq=seq, event_id=event_id,
+            turn_id=turn_id,
+            seq=seq,
+            event_id=event_id,
             tool_name=str(payload.get("tool_name", "")),
             tool_call_id=str(payload.get("tool_call_id", "")),
             arguments=payload.get("arguments", {}),
         )
     elif ev_type == "tool_result":
         result_event = ToolResultEvent(
-            turn_id=turn_id, seq=seq, event_id=event_id,
+            turn_id=turn_id,
+            seq=seq,
+            event_id=event_id,
             tool_call_id=str(payload.get("tool_call_id", "")),
             output=payload.get("output"),
             is_error=bool(payload.get("is_error", False)),
@@ -405,21 +399,27 @@ def to_result_event(event: Any) -> Any:
         )
     elif ev_type == "skill_invocation":
         result_event = SkillInvocationEvent(
-            turn_id=turn_id, seq=seq, event_id=event_id,
+            turn_id=turn_id,
+            seq=seq,
+            event_id=event_id,
             invocation_id=str(payload.get("invocation_id", "")),
             skill=str(payload.get("skill", "")),
             status=str(payload.get("status", "started")),
         )
     elif ev_type == "memory_write":
         result_event = MemoryWriteEvent(
-            turn_id=turn_id, seq=seq, event_id=event_id,
+            turn_id=turn_id,
+            seq=seq,
+            event_id=event_id,
             layer=str(payload.get("layer", "l1")),
             source_turn_id=str(payload.get("source_turn_id", "")),
             preview=str(payload.get("preview", "")),
         )
     elif ev_type == "knowledge_search":
         result_event = KnowledgeSearchEvent(
-            turn_id=turn_id, seq=seq, event_id=event_id,
+            turn_id=turn_id,
+            seq=seq,
+            event_id=event_id,
             query_hash=str(payload.get("query_hash", "")),
             hits=payload.get("hits", []),
             citations=payload.get("citations", []),
@@ -427,14 +427,18 @@ def to_result_event(event: Any) -> Any:
         )
     elif ev_type == "context_compacted":
         result_event = ContextCompactedEvent(
-            turn_id=turn_id, seq=seq, event_id=event_id,
+            turn_id=turn_id,
+            seq=seq,
+            event_id=event_id,
             tokens_before=int(payload.get("tokens_before", 0)),
             tokens_after=int(payload.get("tokens_after", 0)),
             removed_ids=payload.get("removed_ids", []),
         )
     elif ev_type == "approval_required":
         result_event = ApprovalRequiredEvent(
-            turn_id=turn_id, seq=seq, event_id=event_id,
+            turn_id=turn_id,
+            seq=seq,
+            event_id=event_id,
             approval_id=str(payload.get("approval_id", "")),
             tool_call_id=str(payload.get("tool_call_id", "")),
             tool=str(payload.get("tool", "")),
@@ -444,7 +448,9 @@ def to_result_event(event: Any) -> Any:
         )
     elif ev_type == "usage":
         result_event = UsageEvent(
-            turn_id=turn_id, seq=seq, event_id=event_id,
+            turn_id=turn_id,
+            seq=seq,
+            event_id=event_id,
             input_tokens=int(payload.get("input_tokens", 0)),
             output_tokens=int(payload.get("output_tokens", 0)),
             cache_tokens=int(payload.get("cache_tokens", 0)),
@@ -460,7 +466,9 @@ def to_result_event(event: Any) -> Any:
         )
     elif ev_type == "done":
         result_event = DoneEvent(
-            turn_id=turn_id, seq=seq, event_id=event_id,
+            turn_id=turn_id,
+            seq=seq,
+            event_id=event_id,
             final_message=str(payload.get("final_message", "")),
             status=str(payload.get("status", "succeeded")),
             agent_version=str(payload.get("agent_version", "")),
@@ -468,7 +476,9 @@ def to_result_event(event: Any) -> Any:
         )
     else:
         result_event = ErrorEvent(
-            turn_id=turn_id, seq=seq, event_id=event_id,
+            turn_id=turn_id,
+            seq=seq,
+            event_id=event_id,
             error_code=str(payload.get("error_code", "INTERNAL_ERROR")),
             safe_message=str(payload.get("message", ev_type)),
             retriable=False,
@@ -504,25 +514,27 @@ class OutboxToSinkAdapter:
             name = type(sink).__name__
             try:
                 await sink.dispatch(result_event)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logging.getLogger(__name__).warning(
-                    "OutboxToSink dispatch failed: sink=%s error=%s", name, exc,
+                    "OutboxToSink dispatch failed: sink=%s error=%s",
+                    name,
+                    exc,
                 )
 
 
 __all__ = [
-    "DispatchError",
     "IM_REPLY_EVENT_TYPE",
-    "OutboundMessage",
-    "InMemoryOutboxRepository",
     "MAX_DELIVERY_ATTEMPTS",
+    "RETRY_BASE_SECONDS",
+    "RETRY_MAX_SECONDS",
+    "DispatchError",
+    "InMemoryOutboxRepository",
+    "OutboundMessage",
     "OutboxDispatcher",
     "OutboxEvent",
     "OutboxRepository",
     "OutboxToSinkAdapter",
     "OutboxWorker",
-    "RETRY_BASE_SECONDS",
-    "RETRY_MAX_SECONDS",
     "WorkerStats",
     "compute_retry_delay",
     "to_result_event",

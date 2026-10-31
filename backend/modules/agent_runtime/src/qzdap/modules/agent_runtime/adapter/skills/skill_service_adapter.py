@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
+from qzdap.modules.agent_runtime.application.ports import SkillPort
 from qzdap.modules.skill.application.services import SkillService
 from qzdap.modules.skill.domain.errors import (
     SkillDisabled,
@@ -17,8 +18,6 @@ from qzdap.modules.skill.domain.errors import (
     SkillSandboxUnavailable,
 )
 from qzdap_schema.ids import TenantId, UserId, WorkspaceId
-
-from qzdap.modules.agent_runtime.application.ports import SkillPort
 
 
 @dataclass(slots=True)

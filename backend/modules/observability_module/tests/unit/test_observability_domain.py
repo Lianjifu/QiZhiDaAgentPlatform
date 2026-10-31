@@ -7,8 +7,6 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
-from qzdap_schema.ids import TenantId, UserId, WorkspaceId
-
 from qzdap.modules.observability_module.domain.entities import (
     CostRecord,
     RunRecord,
@@ -18,6 +16,7 @@ from qzdap.modules.observability_module.domain.value_objects import (
     RunStatus,
     RunType,
 )
+from qzdap_schema.ids import TenantId, UserId, WorkspaceId
 
 # ── RunRecord ─────────────────────────────────────────────────────────────
 

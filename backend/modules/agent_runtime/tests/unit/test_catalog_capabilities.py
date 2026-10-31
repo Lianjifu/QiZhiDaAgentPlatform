@@ -1,8 +1,10 @@
 from uuid import UUID
 
 import pytest
+
 from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
-from .test_agent_catalog import InMemoryCatalogRepo, TENANT, WORKSPACE
+
+from .test_agent_catalog import TENANT, WORKSPACE, InMemoryCatalogRepo
 
 
 async def test_release_snapshots_diff_and_rollback_preserve_audit():
@@ -18,9 +20,7 @@ async def test_release_snapshots_diff_and_rollback_preserve_audit():
         },
     )
     aid = UUID(created["id"])
-    await svc.update(
-        agent_id=aid, body={"status": "draft", "prompts": {"prompt": "second"}}
-    )
+    await svc.update(agent_id=aid, body={"status": "draft", "prompts": {"prompt": "second"}})
     await svc.update(agent_id=aid, body={"status": "published"})
     difference = await svc.diff(agent_id=aid, left_version="v1", right_version="v2")
     assert difference["changes"]["prompts"]["before"]["prompt"] == "first"

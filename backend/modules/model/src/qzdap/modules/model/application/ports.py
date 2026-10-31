@@ -2,9 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
-from qzdap_llm import LLMClient
-
 from qzdap.modules.model.domain.entities import HealthEvent, Model, Provider, RouteRule
+from qzdap_llm import LLMClient
 
 
 class ModelRepository(ABC):
@@ -99,9 +98,7 @@ class CatalogDiscoveryUnsupported(ValueError):
 
 class CatalogProber(ABC):
     @abstractmethod
-    async def list_models(
-        self, *, api_key: str, base_url: str, protocol: str
-    ) -> list[str]: ...
+    async def list_models(self, *, api_key: str, base_url: str, protocol: str) -> list[str]: ...
 
 
 class ConnectivityTester(ABC):

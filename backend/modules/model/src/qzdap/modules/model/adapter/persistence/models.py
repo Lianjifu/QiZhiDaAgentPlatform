@@ -2,19 +2,18 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_persistence.base import Base, TenantScopedMixin
 from sqlalchemy import Boolean, Float, Index, Integer, LargeBinary, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from qzdap_persistence.base import Base, TenantScopedMixin
+
 
 class ProviderORM(TenantScopedMixin, Base):
     __tablename__ = "admin_model_providers"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     region: Mapped[str] = mapped_column(
         String(64), nullable=False, default="custom", server_default=text("'custom'")
@@ -31,9 +30,7 @@ class ProviderORM(TenantScopedMixin, Base):
     protocol: Mapped[str] = mapped_column(
         String(32), nullable=False, default="openai", server_default=text("'openai'")
     )
-    encrypted_payload: Mapped[bytes] = mapped_column(
-        LargeBinary, nullable=False, default=b""
-    )
+    encrypted_payload: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, default=b"")
     api_version: Mapped[str] = mapped_column(
         String(64), nullable=False, default="", server_default=text("''")
     )
@@ -43,13 +40,9 @@ class ProviderORM(TenantScopedMixin, Base):
     avg_latency_ms: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    qps: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default=text("0")
-    )
+    qps: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
 
-    __table_args__ = (
-        Index("ix_admin_model_providers_tenant_ws", "tenant_id", "workspace_id"),
-    )
+    __table_args__ = (Index("ix_admin_model_providers_tenant_ws", "tenant_id", "workspace_id"),)
 
 
 class CatalogModelORM(TenantScopedMixin, Base):
@@ -59,13 +52,9 @@ class CatalogModelORM(TenantScopedMixin, Base):
         String(256), nullable=False, default="", server_default=text("''")
     )
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
-    provider_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    provider_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     provider_name: Mapped[str] = mapped_column(
         String(256), nullable=False, default="", server_default=text("''")
     )
@@ -99,9 +88,7 @@ class CatalogModelORM(TenantScopedMixin, Base):
     starred: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
-    calls: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default=text("0")
-    )
+    calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
     trend: Mapped[list] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
     )
@@ -113,18 +100,14 @@ class CatalogModelORM(TenantScopedMixin, Base):
     )
 
     __table_args__ = (
-        Index(
-            "ix_admin_models_tenant_ws_status", "tenant_id", "workspace_id", "status"
-        ),
+        Index("ix_admin_models_tenant_ws_status", "tenant_id", "workspace_id", "status"),
     )
 
 
 class RouteORM(TenantScopedMixin, Base):
     __tablename__ = "admin_model_routes"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     task: Mapped[str] = mapped_column(
         String(32),
@@ -152,21 +135,15 @@ class RouteORM(TenantScopedMixin, Base):
         Text, nullable=False, default="", server_default=text("''")
     )
 
-    __table_args__ = (
-        Index("ix_admin_model_routes_tenant_ws", "tenant_id", "workspace_id"),
-    )
+    __table_args__ = (Index("ix_admin_model_routes_tenant_ws", "tenant_id", "workspace_id"),)
 
 
 class HealthEventORM(TenantScopedMixin, Base):
     __tablename__ = "admin_model_health"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     type: Mapped[str] = mapped_column(String(16), nullable=False)
-    provider_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    provider_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     provider_name: Mapped[str] = mapped_column(
         String(256), nullable=False, default="", server_default=text("''")
     )
@@ -177,6 +154,4 @@ class HealthEventORM(TenantScopedMixin, Base):
         String(32), nullable=False, default="", server_default=text("''")
     )
 
-    __table_args__ = (
-        Index("ix_admin_model_health_tenant_ws", "tenant_id", "workspace_id"),
-    )
+    __table_args__ = (Index("ix_admin_model_health_tenant_ws", "tenant_id", "workspace_id"),)

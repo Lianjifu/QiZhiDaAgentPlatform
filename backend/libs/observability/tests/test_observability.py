@@ -25,13 +25,9 @@ def test_configure_logging_does_not_raise() -> None:
 
 
 def test_record_http_request_increments() -> None:
-    before = HTTP_REQUESTS_TOTAL.labels(
-        method="GET", route="/x", status="200"
-    )._value.get()
+    before = HTTP_REQUESTS_TOTAL.labels(method="GET", route="/x", status="200")._value.get()
     record_http_request("GET", "/x", 200, 0.123)
-    after = HTTP_REQUESTS_TOTAL.labels(
-        method="GET", route="/x", status="200"
-    )._value.get()
+    after = HTTP_REQUESTS_TOTAL.labels(method="GET", route="/x", status="200")._value.get()
     assert after > before
 
 

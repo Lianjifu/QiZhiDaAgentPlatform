@@ -114,6 +114,8 @@ def test_clip_and_safe_path() -> None:
 
 
 def test_production_refuses_stub() -> None:
-    settings = Settings(sandbox_executor="stub", env="production", sandbox_runtime_secret="prod-secret")
+    settings = Settings(
+        sandbox_executor="stub", env="production", sandbox_runtime_secret="prod-secret"
+    )
     with pytest.raises(RuntimeError, match="stub"):
         create_app(settings=settings)

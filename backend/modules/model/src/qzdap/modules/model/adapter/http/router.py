@@ -21,21 +21,19 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
-from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap.modules.model.application.services import ModelService
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 
 
 async def require_model_admin(
     request: Request,
-    x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-    x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+    x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+    x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
 ) -> Any:
     principal = getattr(request.state, "principal", None)
     if principal is None:
         raise HTTPException(status_code=401, detail="authentication required")
-    if not set(principal.roles).intersection(
-        {"admin", "platform_admin", "workspace_owner"}
-    ):
+    if not set(principal.roles).intersection({"admin", "platform_admin", "workspace_owner"}):
         raise HTTPException(status_code=403, detail="admin required")
     if principal.tenant_id != x_tenant_id or principal.workspace_id != x_workspace_id:
         raise HTTPException(status_code=403, detail="scope mismatch")
@@ -44,7 +42,7 @@ async def require_model_admin(
 
 async def model_dependency(
     request: Request,
-    principal: Any = Depends(require_model_admin),  # noqa: B008
+    principal: Any = Depends(require_model_admin),
 ) -> ModelService:
     factory = getattr(request.app.state, "model_service_factory", None)
     container = getattr(request.app.state, "container", None)
@@ -84,11 +82,11 @@ def build_router() -> APIRouter:
 
     @router.get("/api/admin/models")
     async def list_admin_models(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         search: str = Query(default=""),
         status: str = Query(default="all"),
         tier: str = Query(default="all"),
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        svc: ModelService = Depends(model_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_models(
             workspace_id=x_workspace_id, search=search, status=status, tier=tier
@@ -96,29 +94,29 @@ def build_router() -> APIRouter:
 
     @router.get("/api/admin/models/providers")
     async def list_admin_providers(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ModelService = Depends(model_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_providers(workspace_id=x_workspace_id)
 
     @router.get("/api/admin/models/routes")
     async def list_admin_routes(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ModelService = Depends(model_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_routes(workspace_id=x_workspace_id)
 
     @router.get("/api/admin/models/health")
     async def list_admin_health(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ModelService = Depends(model_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_health(workspace_id=x_workspace_id)
 
     @router.get("/api/admin/llm/audit")
     async def list_llm_audit(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         limit: int = Query(50, ge=1, le=200),
         offset: int = Query(0, ge=0),
         model_id: UUID | None = Query(default=None),
@@ -127,7 +125,7 @@ def build_router() -> APIRouter:
         since: str | None = Query(
             default=None, description="ISO timestamp, e.g. 2026-10-17T00:00:00Z"
         ),
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         """Phase 11: LLM 审计日志查询. 直接读 audit_log (governance 表).
 
@@ -159,12 +157,11 @@ def build_router() -> APIRouter:
             params["since"] = since
 
         where_sql = " AND ".join(where)
+        # ⚠️ **where_sql 是固定片段的拼接** ✓（不是用户输入 ✓）—— 值全走绑定参数 ✓。
         list_sql = text(
-            f"SELECT id, tenant_id, actor_id, event_type, payload, created_at, updated_at "
-            f"FROM audit_log WHERE {where_sql} "
-            f"ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
+            f"SELECT id, tenant_id, actor_id, event_type, payload, created_at, updated_at FROM audit_log WHERE {where_sql} ORDER BY created_at DESC LIMIT :limit OFFSET :offset"  # noqa: S608
         )
-        count_sql = text(f"SELECT count(*) FROM audit_log WHERE {where_sql}")
+        count_sql = text(f"SELECT count(*) FROM audit_log WHERE {where_sql}")  # noqa: S608
         # 强制使用 model module 自己的 session, 不破坏 audit_log 跨模块责任
         session = svc._models._s  # type: ignore[attr-defined]
         list_result = await session.execute(list_sql, params)
@@ -209,14 +206,14 @@ def build_router() -> APIRouter:
     @router.post("/api/admin/models/catalog")
     async def probe_catalog(
         body: dict[str, Any],
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         return await svc.probe_catalog(body)
 
     @router.post("/api/admin/models/connectivity-test")
     async def test_connectivity(
         body: dict[str, Any],
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         return await svc.test_connectivity(body)
 
@@ -227,9 +224,9 @@ def build_router() -> APIRouter:
     )
     async def create_admin_models(
         body: dict[str, Any],
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         try:
             return await svc.create_from_provider(
@@ -245,18 +242,16 @@ def build_router() -> APIRouter:
     )
     async def create_admin_route(
         body: dict[str, Any],
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
-        return await svc.create_route(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
-        )
+        return await svc.create_route(tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body)
 
     @router.post("/api/admin/models/batch-status")
     async def batch_admin_status(
         body: dict[str, Any],
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         return await svc.batch_status(
             ids=[str(item) for item in (body.get("ids") or [])],
@@ -266,7 +261,7 @@ def build_router() -> APIRouter:
     @router.get("/api/admin/models/{model_id}")
     async def get_admin_model(
         model_id: UUID,
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         return await svc.get_model(model_id)
 
@@ -274,14 +269,14 @@ def build_router() -> APIRouter:
     async def patch_admin_model(
         model_id: UUID,
         body: dict[str, Any],
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         return await svc.update_model(model_id=model_id, body=body)
 
     @router.delete("/api/admin/models/{model_id}")
     async def delete_admin_model(
         model_id: UUID,
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         return await svc.delete_model(model_id)
 
@@ -289,32 +284,30 @@ def build_router() -> APIRouter:
     async def star_admin_model(
         model_id: UUID,
         body: dict[str, Any],
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
-        return await svc.set_starred(
-            model_id=model_id, starred=bool(body.get("starred"))
-        )
+        return await svc.set_starred(model_id=model_id, starred=bool(body.get("starred")))
 
     @router.post("/api/admin/models/routes/{route_id}/toggle")
     async def toggle_admin_route(
         route_id: UUID,
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         return await svc.toggle_route(route_id)
 
     @router.delete("/api/admin/models/routes/{route_id}")
     async def delete_admin_route(
         route_id: UUID,
-        svc: ModelService = Depends(model_dependency),  # noqa: B008  # noqa: B008
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         return await svc.delete_route(route_id)
 
     @router.get("/api/admin/models/routes/{route_id}/preview-chain")
     async def preview_route_chain(
         route_id: UUID,
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         """Phase 16: 预览 route 解析后的 model chain (不发请求, 不消耗 quota).
 
@@ -331,13 +324,11 @@ def build_router() -> APIRouter:
 
     @router.get("/api/admin/models/quotas")
     async def list_admin_quotas(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ModelService = Depends(model_dependency),
     ) -> list[dict[str, Any]]:
-        return await svc.list_quotas(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id
-        )
+        return await svc.list_quotas(tenant_id=x_tenant_id, workspace_id=x_workspace_id)
 
     @router.post(
         "/api/admin/models/quotas",
@@ -346,9 +337,9 @@ def build_router() -> APIRouter:
     )
     async def upsert_admin_quota(
         body: dict[str, Any],
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         try:
             return await svc.upsert_quota(
@@ -362,19 +353,17 @@ def build_router() -> APIRouter:
     @router.delete("/api/admin/models/quotas/{quota_id}")
     async def delete_admin_quota(
         quota_id: UUID,
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        svc: ModelService = Depends(model_dependency),
     ) -> dict[str, Any]:
         await svc.delete_quota(quota_id=quota_id)
         return {"ok": True, "id": str(quota_id)}
 
     @router.get("/api/admin/models/quotas/usage")
     async def list_admin_quota_usage(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: ModelService = Depends(model_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: ModelService = Depends(model_dependency),
     ) -> list[dict[str, Any]]:
-        return await svc.list_usage(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id
-        )
+        return await svc.list_usage(tenant_id=x_tenant_id, workspace_id=x_workspace_id)
 
     return router

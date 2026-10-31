@@ -38,6 +38,14 @@ from time import monotonic
 from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
+from qzdap_agent_runtime.session.approval import PendingApproval, arguments_digest
+from qzdap_agent_runtime.session.queue import (
+    QueueCancelled,
+    QueueFullError,
+    QueueTimeoutError,
+    TurnQueuePort,
+    wait_for_turn_slot,
+)
 from qzdap_schema.dtos.errors import project_error_message
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
@@ -47,15 +55,6 @@ from qzdap_schema.dtos.turn import (
     UsageChunk,
 )
 from qzdap_schema.ids import ModelId
-
-from qzdap_agent_runtime.session.approval import PendingApproval, arguments_digest
-from qzdap_agent_runtime.session.queue import (
-    QueueCancelled,
-    QueueFullError,
-    QueueTimeoutError,
-    TurnQueuePort,
-    wait_for_turn_slot,
-)
 
 _log = logging.getLogger(__name__)
 
@@ -167,9 +166,7 @@ class TurnLifecyclePort(Protocol):
         """事件已投递（重放判据用 —— 见 Session 方案 §7）。"""
         ...
 
-    async def mark_waiting_approval(
-        self, *, turn_id: UUID, pending: Mapping[str, Any]
-    ) -> None:
+    async def mark_waiting_approval(self, *, turn_id: UUID, pending: Mapping[str, Any]) -> None:
         """轮次挂起等审批 —— **挂起信息落库** ✓（``session_turns.pending_approval``）。
 
         ⚠️ **必须落库**：进程重启后审批要能恢复 ✓（只在内存里 = 永久卡死 ✗✗）。
@@ -282,9 +279,7 @@ class TurnRunner:
                 now = monotonic()
                 if now - last_cancel_check >= CANCEL_POLL_SECONDS:
                     last_cancel_check = now
-                    if await self._cancel.is_cancel_requested(
-                        session_id=request.session_id
-                    ):
+                    if await self._cancel.is_cancel_requested(session_id=request.session_id):
                         raise TurnCancelled("用户请求停止生成")
                 stamped = await self._publish_chunk(
                     turn_id=request.turn_id, chunk=chunk, seq=event_seq
@@ -340,9 +335,7 @@ class TurnRunner:
                         status="succeeded",
                         final_response=final,
                         input_tokens=turn_usage.input_tokens if turn_usage else None,
-                        output_tokens=(
-                            turn_usage.output_tokens if turn_usage else None
-                        ),
+                        output_tokens=(turn_usage.output_tokens if turn_usage else None),
                         cost_usd=turn_usage.cost_usd if turn_usage else None,
                     )
                     await self._lifecycle.mark_delivered(turn_id=request.turn_id)
@@ -367,11 +360,9 @@ class TurnRunner:
             # 显示「执行中」.
             try:
                 await asyncio.shield(
-                    self._lifecycle.fail_turn(
-                        turn_id=request.turn_id, code="TURN_CANCELLED"
-                    )
+                    self._lifecycle.fail_turn(turn_id=request.turn_id, code="TURN_CANCELLED")
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _log.exception("failed to close cancelled turn")
             raise
         except Exception as exc:  # 失败必须可见
@@ -418,9 +409,7 @@ class TurnRunner:
                 session_id=request.session_id,
                 turn_id=request.turn_id,
                 ingress_seq=request.ingress_seq,
-                cancelled=lambda: self._cancel.is_cancel_requested(
-                    session_id=request.session_id
-                ),
+                cancelled=lambda: self._cancel.is_cancel_requested(session_id=request.session_id),
             ):
                 yield await self._publish_chunk(
                     turn_id=request.turn_id,
@@ -436,16 +425,12 @@ class TurnRunner:
                 seq += 1
         except QueueCancelled as exc:
             # ⚠️ **取消 = 轮次落终态** ✓（不留一行 running ✗✗）。
-            await self._lifecycle.finish_turn(
-                turn_id=request.turn_id, status="cancelled"
-            )
+            await self._lifecycle.finish_turn(turn_id=request.turn_id, status="cancelled")
             raise TurnCancelled(str(exc)) from exc
         except (QueueFullError, QueueTimeoutError):
             # ⚠️ **超限 / 超时 → 轮次落 cancelled** ✓（可查 ✓ —— 决策 #7 ✓）
             # —— **不静默丢弃** ✓。
-            await self._lifecycle.finish_turn(
-                turn_id=request.turn_id, status="cancelled"
-            )
+            await self._lifecycle.finish_turn(turn_id=request.turn_id, status="cancelled")
             raise
 
     async def _publish_chunk(self, *, turn_id: UUID, chunk: Any, seq: int) -> Any:

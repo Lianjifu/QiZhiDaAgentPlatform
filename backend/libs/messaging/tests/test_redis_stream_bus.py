@@ -133,16 +133,14 @@ class _FakeRedis:
             for consumer_pel in stream.pel.get(groupname, {}).values():
                 pending_in_group.update(consumer_pel)
             new_entries: list[tuple[str, dict[bytes, bytes]]] = [
-                (mid, fields)
-                for mid, fields in stream.entries
-                if mid not in pending_in_group
+                (mid, fields) for mid, fields in stream.entries if mid not in pending_in_group
             ]
             chunk = new_entries[:count]
             if chunk:
                 # Mark these as delivered to *this* consumer
-                stream.pel.setdefault(groupname, {}).setdefault(
-                    consumername, set()
-                ).update(mid for mid, _ in chunk)
+                stream.pel.setdefault(groupname, {}).setdefault(consumername, set()).update(
+                    mid for mid, _ in chunk
+                )
                 # xreadgroup returns msg_id as bytes in real Redis
                 out.append((k, [(mid.encode(), fields) for mid, fields in chunk]))
         return out
@@ -241,9 +239,7 @@ async def test_handler_exception_retries_then_dlqs() -> None:
                 break
             await asyncio.sleep(0.05)
         dlq = fake.streams[dlq_key]
-        assert len(dlq.entries) == 1, (
-            f"expected DLQ to receive one entry; got {len(dlq.entries)}"
-        )
+        assert len(dlq.entries) == 1, f"expected DLQ to receive one entry; got {len(dlq.entries)}"
         _, fields = dlq.entries[0]
         assert fields[b"dlq_reason"] == b"max_retries_exceeded"
         # retry_count must exceed max_retries (3 attempts: 0 → 1 → 2 → DLQ at next_count=3)
@@ -276,14 +272,11 @@ async def test_handler_eventually_succeeds_within_retry_budget() -> None:
             if fake.xack_calls:
                 break
             await asyncio.sleep(0.05)
-        assert len(attempts) == 2, (
-            f"expected 2 attempts (1 fail + 1 success); got {len(attempts)}"
-        )
+        assert len(attempts) == 2, f"expected 2 attempts (1 fail + 1 success); got {len(attempts)}"
         assert fake.xack_calls, "should have ACK'd the eventually-successful event"
         # No DLQ
         assert (
-            b"qzdap:events:dlq" not in fake.streams
-            or not fake.streams[b"qzdap:events:dlq"].entries
+            b"qzdap:events:dlq" not in fake.streams or not fake.streams[b"qzdap:events:dlq"].entries
         )
     finally:
         await bus.stop()
@@ -320,12 +313,8 @@ async def test_two_buses_with_distinct_names_fan_out() -> None:
             if len(received_a) >= 2 and len(received_b) >= 2:
                 break
             await asyncio.sleep(0.05)
-        assert len(received_a) == 2, (
-            f"replica-a should see all 2 events; got {len(received_a)}"
-        )
-        assert len(received_b) == 2, (
-            f"replica-b should see all 2 events; got {len(received_b)}"
-        )
+        assert len(received_a) == 2, f"replica-a should see all 2 events; got {len(received_a)}"
+        assert len(received_b) == 2, f"replica-b should see all 2 events; got {len(received_b)}"
         # Distinct consumer groups → no cross-PEL interference.
         assert bus_a._group != bus_b._group  # type: ignore[attr-defined]
     finally:

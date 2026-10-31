@@ -50,13 +50,15 @@ def build_router() -> APIRouter:
     @router.post("/internal/jobs")
     async def create_job(
         body: dict[str, Any],
-        service: JobService = Depends(_service),  # noqa: B008
+        service: JobService = Depends(_service),
         _: None = Depends(require_internal),
     ) -> dict[str, Any]:
         try:
             result = await service.submit(body)
         except JobRejected as exc:
-            raise HTTPException(status_code=400, detail={"code": exc.code, "message": exc.message}) from exc
+            raise HTTPException(
+                status_code=400, detail={"code": exc.code, "message": exc.message}
+            ) from exc
         except ValueError as exc:
             raise HTTPException(
                 status_code=400,
@@ -67,7 +69,7 @@ def build_router() -> APIRouter:
     @router.get("/internal/jobs/{job_id}")
     async def get_job(
         job_id: UUID,
-        service: JobService = Depends(_service),  # noqa: B008
+        service: JobService = Depends(_service),
         _: None = Depends(require_internal),
     ) -> dict[str, Any]:
         result = await service.get(job_id)
@@ -78,7 +80,7 @@ def build_router() -> APIRouter:
     @router.post("/internal/jobs/{job_id}/cancel")
     async def cancel_job(
         job_id: UUID,
-        service: JobService = Depends(_service),  # noqa: B008
+        service: JobService = Depends(_service),
         _: None = Depends(require_internal),
     ) -> dict[str, Any]:
         ok = await service.cancel(job_id)

@@ -30,9 +30,7 @@ def _actor() -> ActorContext:
 
 
 @pytest.mark.asyncio
-async def test_csi_resolver_reads(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_csi_resolver_reads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "API_TOKEN").write_text("supersecret\n")
     monkeypatch.setenv("QZDAP_CSI_VAULT_ROOT", str(tmp_path))
 

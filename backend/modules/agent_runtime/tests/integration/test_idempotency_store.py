@@ -12,18 +12,18 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
+    PostgresIdempotencyStore,
+)
 from qzdap_agent_runtime.gateway.idempotency import (
     IdempotencyGuard,
     InboxScope,
     approval_key,
     client_request_key,
     payload_fingerprint_key,
-)
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
-
-from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
-    PostgresIdempotencyStore,
 )
 
 _DDL = [
@@ -72,9 +72,7 @@ async def inbox_db():
         await conn.commit()
 
     # 每条连接都要在自己的 schema 里 —— search_path 走连接参数.
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
+    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     from qzdap_persistence.session_factory import SessionFactory
 
     store = PostgresIdempotencyStore(SessionFactory(engine))
@@ -139,9 +137,7 @@ async def test_a_weak_key_never_suppresses(inbox_db) -> None:
     store, engine = inbox_db
     scope = _scope()
     now = datetime.now(UTC)
-    key = payload_fingerprint_key(
-        channel="web", chat_id="s1", user_id="u1", text="好的", now=now
-    )
+    key = payload_fingerprint_key(channel="web", chat_id="s1", user_id="u1", text="好的", now=now)
 
     first = await store.record_weak(scope, key, payload_hash="h")
     second = await store.record_weak(scope, key, payload_hash="h")
@@ -166,18 +162,14 @@ async def test_an_expired_key_is_treated_as_a_new_message(inbox_db) -> None:
 
     await store.claim(scope, key, payload_hash="h")
     async with engine.begin() as conn:
-        await conn.execute(
-            text("update session_inbox set expires_at = now() - interval '1 hour'")
-        )
+        await conn.execute(text("update session_inbox set expires_at = now() - interval '1 hour'"))
 
     decision = await store.claim(scope, key, payload_hash="h")
     assert decision.outcome == "taken_over"
     assert decision.should_run
 
     async with engine.connect() as conn:
-        count = (
-            await conn.execute(text("select count(*) from session_inbox"))
-        ).scalar()
+        count = (await conn.execute(text("select count(*) from session_inbox"))).scalar()
     assert count == 1
 
 
@@ -187,21 +179,15 @@ async def test_the_approval_key_dedupes_a_double_click(inbox_db) -> None:
     scope = _scope()
     approval = uuid.uuid4()
 
-    first = await store.claim(
-        scope, approval_key(str(approval), "approved"), payload_hash="h"
-    )
+    first = await store.claim(scope, approval_key(str(approval), "approved"), payload_hash="h")
     assert first.outcome == "new"
 
-    second = await store.claim(
-        scope, approval_key(str(approval), "approved"), payload_hash="h"
-    )
+    second = await store.claim(scope, approval_key(str(approval), "approved"), payload_hash="h")
     assert second.outcome == "in_progress"
     assert second.is_duplicate
 
     # 拒绝是另一次决策 —— 不该被上面那次「同意」误伤.
-    deny = await store.claim(
-        scope, approval_key(str(approval), "denied"), payload_hash="h"
-    )
+    deny = await store.claim(scope, approval_key(str(approval), "denied"), payload_hash="h")
     assert deny.outcome == "new"
 
 
@@ -218,9 +204,7 @@ async def test_release_frees_the_key_for_a_retry(inbox_db) -> None:
     second = await store.claim(scope, key, payload_hash="h")
     assert second.outcome == "new"
     async with engine.connect() as conn:
-        count = (
-            await conn.execute(text("select count(*) from session_inbox"))
-        ).scalar()
+        count = (await conn.execute(text("select count(*) from session_inbox"))).scalar()
     assert count == 1
 
 
@@ -229,16 +213,12 @@ async def test_the_sweeper_removes_expired_rows(inbox_db) -> None:
     scope = _scope()
     await store.claim(scope, client_request_key("req-old"), payload_hash="h")
     async with engine.begin() as conn:
-        await conn.execute(
-            text("update session_inbox set expires_at = now() - interval '1 hour'")
-        )
+        await conn.execute(text("update session_inbox set expires_at = now() - interval '1 hour'"))
 
     removed = await store.sweep_expired()
     assert removed == 1
     async with engine.connect() as conn:
-        count = (
-            await conn.execute(text("select count(*) from session_inbox"))
-        ).scalar()
+        count = (await conn.execute(text("select count(*) from session_inbox"))).scalar()
     assert count == 0
 
 
@@ -247,17 +227,13 @@ async def test_the_guard_marks_the_row_completed(inbox_db) -> None:
     guard = IdempotencyGuard(store)
     scope = _scope()
 
-    decision = await guard.accept(
-        scope, client_request_key("req-guard"), payload_hash="h"
-    )
+    decision = await guard.accept(scope, client_request_key("req-guard"), payload_hash="h")
     assert decision.should_run
     await guard.complete(decision, turn_id=uuid.uuid4())
 
     async with engine.connect() as conn:
         row = (
-            await conn.execute(
-                text("select status, turn_id from session_inbox limit 1")
-            )
+            await conn.execute(text("select status, turn_id from session_inbox limit 1"))
         ).first()
     assert row[0] == "completed"
     assert row[1] is not None

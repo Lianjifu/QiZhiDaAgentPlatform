@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_kernel.contextvars import current_trace_id
-
 from qzdap.modules.tool.application.ports import EventPublisher, ToolRepository
 from qzdap.modules.tool.domain import ToolNotFound
+from qzdap_kernel.contextvars import current_trace_id
 
 
 class DeleteToolUseCase:

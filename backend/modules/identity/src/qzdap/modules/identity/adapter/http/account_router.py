@@ -1,7 +1,6 @@
 """Authenticated console APIs backed by identity, membership and runtime rows."""
 
 # FastAPI dependency declarations intentionally use Depends/File defaults.
-# ruff: noqa: B008
 
 import re
 from datetime import UTC, datetime, timedelta
@@ -97,8 +96,7 @@ async def workspace_access(request, session, *, admin=False):
     if (
         admin
         and not elevated
-        and member.role
-        not in {"admin", "owner", "管理员", "workspace_admin", "workspace_owner"}
+        and member.role not in {"admin", "owner", "管理员", "workspace_admin", "workspace_owner"}
     ):
         raise HTTPException(403, "workspace administrator required")
     return workspace_id
@@ -175,9 +173,7 @@ def build_account_router():
     router = APIRouter(tags=["account"])
 
     @router.get("/api/account/settings")
-    async def get_settings(
-        request: Request, session: AsyncSession = Depends(control_session)
-    ):
+    async def get_settings(request: Request, session: AsyncSession = Depends(control_session)):
         return settings_dict(await current_user(request, session))
 
     @router.put("/api/account/settings")
@@ -216,9 +212,7 @@ def build_account_router():
         return settings_dict(user)
 
     @router.get("/api/workspaces/current/members")
-    async def members(
-        request: Request, session: AsyncSession = Depends(control_session)
-    ):
+    async def members(request: Request, session: AsyncSession = Depends(control_session)):
         user = await current_user(request, session)
         workspace_id = await workspace_access(request, session)
         rows = (
@@ -375,8 +369,7 @@ def build_account_router():
                         IdentityControlAuditORM.workspace_id.is_(None)
                         & IdentityControlAuditORM.action.like("platform.settings.%")
                     ),
-                    IdentityControlAuditORM.created_at
-                    >= datetime.now(UTC) - timedelta(days=7),
+                    IdentityControlAuditORM.created_at >= datetime.now(UTC) - timedelta(days=7),
                 )
                 .order_by(IdentityControlAuditORM.created_at.desc())
                 .limit(200)
@@ -441,9 +434,7 @@ def build_account_router():
         daily = {}
         for turn, _ in rows:
             day = turn.started_at.strftime("%m-%d")
-            entry = daily.setdefault(
-                day, {"label": day, "tasks": 0, "completed": 0, "total": 0}
-            )
+            entry = daily.setdefault(day, {"label": day, "tasks": 0, "completed": 0, "total": 0})
             entry["total"] += 1
             if turn.status == "succeeded":
                 entry["completed"] += 1

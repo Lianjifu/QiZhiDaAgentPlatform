@@ -15,6 +15,7 @@ from uuid import uuid4
 
 import pytest
 from langchain_core.messages import HumanMessage
+
 from qzdap_agent_runtime.agent_loop.evaluate import BUDGET_EXCEEDED, Evaluator
 from qzdap_agent_runtime.agent_loop.observe import Observer, ToolOutcome
 from qzdap_agent_runtime.agent_loop.reason import Reasoner
@@ -31,9 +32,7 @@ from qzdap_agent_runtime.ports import (
 TENANT = uuid4()
 WORKSPACE = uuid4()
 
-_ACTOR = ActorContext(
-    actor_id="user-1", tenant_id=str(TENANT), workspace_id=str(WORKSPACE)
-)
+_ACTOR = ActorContext(actor_id="user-1", tenant_id=str(TENANT), workspace_id=str(WORKSPACE))
 
 
 class _ScriptedLLM:
@@ -43,9 +42,7 @@ class _ScriptedLLM:
         self._scripts = scripts
         self.calls = 0
 
-    async def stream(
-        self, request: Any, **kwargs: Any
-    ) -> AsyncIterator[Any]:  # pragma: no cover
+    async def stream(self, request: Any, **kwargs: Any) -> AsyncIterator[Any]:  # pragma: no cover
         from qzdap_llm.client import LLMChunk
 
         script = self._scripts[min(self.calls, len(self._scripts) - 1)]
@@ -156,7 +153,13 @@ class TestTheWholeLoop:
         """**整条循环** ✓（工具 → 回灌 → 最终回答 ✓）。"""
         harness = _Harness(
             [
-                [{"model": "demo", "delta": "", "tool_calls": [_call("call-1", "echo", '{"text":"hi"}')]}],
+                [
+                    {
+                        "model": "demo",
+                        "delta": "",
+                        "tool_calls": [_call("call-1", "echo", '{"text":"hi"}')],
+                    }
+                ],
                 [{"model": "demo", "delta": "回答"}],
             ],
             bindings=[_ECHO],
@@ -213,7 +216,13 @@ class TestTheWholeLoop:
         """**没有真实调用者就不许执行工具** ✓（§3.5 的洞 ✓）。"""
         harness = _Harness(
             [
-                [{"model": "demo", "delta": "", "tool_calls": [_call("call-1", "echo", '{"text":"hi"}')]}],
+                [
+                    {
+                        "model": "demo",
+                        "delta": "",
+                        "tool_calls": [_call("call-1", "echo", '{"text":"hi"}')],
+                    }
+                ],
                 [{"model": "demo", "delta": "结束"}],
             ],
             bindings=[_ECHO],
@@ -234,7 +243,13 @@ class TestGovernance:
         """**审批挂起 → suspend** ✓（§3.5 ✓）—— **不执行** ✓。"""
         harness = _Harness(
             [
-                [{"model": "demo", "delta": "", "tool_calls": [_call("call-1", "write_file", '{"path":"a.txt"}')]}]
+                [
+                    {
+                        "model": "demo",
+                        "delta": "",
+                        "tool_calls": [_call("call-1", "write_file", '{"path":"a.txt"}')],
+                    }
+                ]
             ],
             bindings=[_WRITE],
         )
@@ -257,7 +272,13 @@ class TestGovernance:
 
         harness = _Harness(
             [
-                [{"model": "demo", "delta": "", "tool_calls": [_call("call-1", "write_file", '{"path":"a.txt"}')]}]
+                [
+                    {
+                        "model": "demo",
+                        "delta": "",
+                        "tool_calls": [_call("call-1", "write_file", '{"path":"a.txt"}')],
+                    }
+                ]
             ],
             bindings=[_WRITE],
             policy_guard=_Deny(),
@@ -277,7 +298,13 @@ class TestGovernance:
 
         harness = _Harness(
             [
-                [{"model": "demo", "delta": "", "tool_calls": [_call("call-1", "write_file", '{"path":"a.txt"}')]}],
+                [
+                    {
+                        "model": "demo",
+                        "delta": "",
+                        "tool_calls": [_call("call-1", "write_file", '{"path":"a.txt"}')],
+                    }
+                ],
                 [{"model": "demo", "delta": "写好了"}],
             ],
             bindings=[_WRITE],
@@ -295,7 +322,13 @@ class TestTermination:
         """**步数闸门** ✓（§3.4 条件 1 ✓）。"""
         harness = _Harness(
             [
-                [{"model": "demo", "delta": "", "tool_calls": [_call("call-1", "echo", '{"text":"x"}')]}]
+                [
+                    {
+                        "model": "demo",
+                        "delta": "",
+                        "tool_calls": [_call("call-1", "echo", '{"text":"x"}')],
+                    }
+                ]
             ],
             bindings=[_ECHO],
             evaluator=Evaluator(max_steps=1),
@@ -342,7 +375,13 @@ class TestTermination:
         """**空转护栏** ✓（§3.4 条件 6 ✓ —— 同样的工具反复调 → 收尾 ✓）。"""
         harness = _Harness(
             [
-                [{"model": "demo", "delta": "", "tool_calls": [_call("call-1", "echo", '{"text":"x"}')]}]
+                [
+                    {
+                        "model": "demo",
+                        "delta": "",
+                        "tool_calls": [_call("call-1", "echo", '{"text":"x"}')],
+                    }
+                ]
             ],
             bindings=[_ECHO],
             evaluator=Evaluator(max_steps=8, stall_limit=2),

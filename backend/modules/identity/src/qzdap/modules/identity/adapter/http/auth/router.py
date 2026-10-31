@@ -18,7 +18,9 @@ from qzdap.modules.identity.application.services import IdentityService
 
 
 def build_auth_router(
-    identity_service_dep: Callable[..., Coroutine[Any, Any, IdentityService]] = get_identity_service,
+    identity_service_dep: Callable[
+        ..., Coroutine[Any, Any, IdentityService]
+    ] = get_identity_service,
 ) -> APIRouter:
     # No prefix here — the parent router (adapter/http/router.py) already
     # mounts the `/v1/identity` prefix; nested routers that re-prefix cause
@@ -34,7 +36,7 @@ def build_auth_router(
     @router.post("/login", response_model=LoginResponse)
     async def login(
         body: LoginRequest,
-        svc: IdentityService = Depends(identity_service_dep),  # noqa: B008
+        svc: IdentityService = Depends(identity_service_dep),
     ) -> LoginResponse:
         # Cross-tenant password auth — email uniqueness is enforced upstream
         # by the registration flow (see UserRepository.get_by_email_global).
@@ -42,9 +44,7 @@ def build_auth_router(
         return LoginResponse(
             access_token=result.token,
             expires_at=result.expires_at,
-            user=user_domain_to_response(
-                result.user, workspace_id=result.workspace_id
-            ),
+            user=user_domain_to_response(result.user, workspace_id=result.workspace_id),
         )
 
     return router

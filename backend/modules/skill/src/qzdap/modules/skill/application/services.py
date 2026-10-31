@@ -77,7 +77,9 @@ class SkillService:
     async def get_by_name(self, *, workspace_id: UUID, name: str) -> Skill | None:
         return await self._skills.get_by_name(workspace_id=workspace_id, name=name)
 
-    async def create(self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]) -> dict[str, Any]:
+    async def create(
+        self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
+    ) -> dict[str, Any]:
         skill_type = body.get("type") or "Skill"
         if skill_type not in SKILL_TYPES:
             skill_type = "Skill"

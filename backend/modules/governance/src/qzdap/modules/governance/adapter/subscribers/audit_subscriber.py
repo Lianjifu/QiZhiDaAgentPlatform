@@ -55,9 +55,7 @@ async def install(
 
         async def _policy_changed(envelope: Any) -> None:
             payload = (
-                getattr(envelope, "payload", None)
-                if not isinstance(envelope, dict)
-                else envelope
+                getattr(envelope, "payload", None) if not isinstance(envelope, dict) else envelope
             )
             raw_tid = payload.get("tenant_id") if isinstance(payload, dict) else None
             if raw_tid is None:

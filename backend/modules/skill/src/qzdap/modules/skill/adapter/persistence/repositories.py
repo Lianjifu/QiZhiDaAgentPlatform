@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +17,7 @@ from qzdap.modules.skill.domain.entities import (
     SkillRuntime,
     VersionEntry,
 )
+from qzdap_persistence.tenant_guard import current_tenant_id
 
 
 def _cross_tenant(row: object) -> bool:

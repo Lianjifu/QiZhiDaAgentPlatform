@@ -28,10 +28,8 @@ class InProcessBus(EventBus):
         for h in handlers:
             try:
                 await h(envelope)
-            except Exception:  # noqa: BLE001
-                _log.exception(
-                    "handler failed", extra={"event_name": envelope.event_name}
-                )
+            except Exception:
+                _log.exception("handler failed", extra={"event_name": envelope.event_name})
 
     async def subscribe(self, event_name: str, handler: Handler) -> None:
         self._subs[event_name].append(handler)

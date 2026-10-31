@@ -9,21 +9,23 @@ admin_models 表 (跨模块 ORM 读取), 取 workspace + upstream_model + active
   - 跨模块 ORM 读: admin_models 由 model 模块建表, 这里只读不写
   - tenant 守卫: tenant_id 是复合过滤的一部分, 防止越权跨租户解析
 """
+
 from __future__ import annotations
 
 import logging
 from uuid import UUID
 
-# 跨模块 ORM 读: admin_models 由 model 模块建表
-from qzdap.modules.model.adapter.persistence.models import CatalogModelORM
-from qzdap_persistence.session_factory import SessionFactory
-from qzdap_schema.ids import ModelId
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from qzdap.modules.agent_runtime.application.ports.catalog_model_resolver import (
     CatalogModelResolver,
 )
+
+# 跨模块 ORM 读: admin_models 由 model 模块建表
+from qzdap.modules.model.adapter.persistence.models import CatalogModelORM
+from qzdap_persistence.session_factory import SessionFactory
+from qzdap_schema.ids import ModelId
 
 _log = logging.getLogger(__name__)
 
@@ -79,7 +81,6 @@ class SqlCatalogModelResolver(CatalogModelResolver):
                 },
             )
             return None
-
 
     async def price_of(
         self,

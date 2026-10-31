@@ -65,9 +65,7 @@ class _FakeChannel:
     ) -> None:
         self.type = type
         self.workspace_id = workspace_id
-        self.service_account = (
-            _SERVICE_ACCOUNT if service_account is _UNSET else service_account
-        )
+        self.service_account = _SERVICE_ACCOUNT if service_account is _UNSET else service_account
 
 
 class _FakeTurnService:
@@ -130,9 +128,7 @@ def _make_dispatcher(
     channel: Any | None,
     outbound: dict | None = None,
     service: _FakeTurnService | None = None,
-) -> tuple[
-    ChannelTurnDispatcher, _FakeBus, _FakeChannelRepo, _FakeTurnService
-]:
+) -> tuple[ChannelTurnDispatcher, _FakeBus, _FakeChannelRepo, _FakeTurnService]:
     repo = _FakeChannelRepo(channel)
     bus = _FakeBus()
     svc = service or _FakeTurnService()
@@ -188,9 +184,7 @@ async def test_subscribes_by_event_class_name() -> None:
 @pytest.mark.asyncio
 async def test_the_turn_uses_the_channels_service_account() -> None:
     """IM 的 actor 由**渠道登记的服务账号**物化 —— 不再是全局常量（台账 G3）。"""
-    dispatcher, bus, _, svc = _make_dispatcher(
-        channel=_FakeChannel(ChannelType.WEB, uuid4())
-    )
+    dispatcher, bus, _, svc = _make_dispatcher(channel=_FakeChannel(ChannelType.WEB, uuid4()))
     await dispatcher.install(bus)
     handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
     await handler({"payload": _msg()._as_payload_dict()})
@@ -208,18 +202,12 @@ async def test_the_session_key_is_sticky_per_channel_and_chat() -> None:
     ⚠️ 过去 IM 每条消息新建会话 —— 跨消息没有上下文 ✗。
     """
     channel_id = uuid4()
-    dispatcher, bus, _, svc = _make_dispatcher(
-        channel=_FakeChannel(ChannelType.WEB, uuid4())
-    )
+    dispatcher, bus, _, svc = _make_dispatcher(channel=_FakeChannel(ChannelType.WEB, uuid4()))
     await dispatcher.install(bus)
     handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
     for _ in range(2):
         await handler(
-            {
-                "payload": _msg(
-                    channel_id=channel_id, external_chat_id="chat-9"
-                )._as_payload_dict()
-            }
+            {"payload": _msg(channel_id=channel_id, external_chat_id="chat-9")._as_payload_dict()}
         )
     assert len(svc.requests) == 2
     keys = {request.channel_session_key for request in svc.requests}
@@ -235,18 +223,12 @@ async def test_the_session_key_is_sticky_per_channel_and_chat() -> None:
 async def test_different_chats_get_different_session_keys() -> None:
     """不同的聊天 → 不同的会话 ✓（粘性是**按 chat** 的，不是按渠道）。"""
     channel_id = uuid4()
-    dispatcher, bus, _, svc = _make_dispatcher(
-        channel=_FakeChannel(ChannelType.WEB, uuid4())
-    )
+    dispatcher, bus, _, svc = _make_dispatcher(channel=_FakeChannel(ChannelType.WEB, uuid4()))
     await dispatcher.install(bus)
     handler = bus.subs[INBOUND_MESSAGE_EVENT][0]
     for chat in ("chat-a", "chat-b"):
         await handler(
-            {
-                "payload": _msg(
-                    channel_id=channel_id, external_chat_id=chat
-                )._as_payload_dict()
-            }
+            {"payload": _msg(channel_id=channel_id, external_chat_id=chat)._as_payload_dict()}
         )
     keys = {request.channel_session_key for request in svc.requests}
     assert len(keys) == 2

@@ -20,9 +20,7 @@ async def test_openai_compatible_parses_data_array(monkeypatch) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
         captured["auth"] = request.headers.get("authorization", "")
-        return httpx.Response(
-            200, json={"data": [{"id": "gpt-4o"}, {"id": "gpt-4o-mini"}]}
-        )
+        return httpx.Response(200, json={"data": [{"id": "gpt-4o"}, {"id": "gpt-4o-mini"}]})
 
     real_async_client = httpx.AsyncClient
     monkeypatch.setattr(
@@ -216,9 +214,7 @@ async def test_anthropic_compatible_does_not_fallback_without_path(monkeypatch) 
         ("anthropic-compatible", 500),
     ],
 )
-async def test_anthropic_does_not_retry_non_catalog_errors(
-    monkeypatch, protocol, status
-) -> None:
+async def test_anthropic_does_not_retry_non_catalog_errors(monkeypatch, protocol, status) -> None:
     visited: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:

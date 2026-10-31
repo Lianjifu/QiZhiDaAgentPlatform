@@ -23,6 +23,9 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from qzdap.modules.agent_runtime.application.one_shot_turn import (
+    OneShotTurnService,
+)
 from qzdap_kernel.contextvars import current_trace_id
 from qzdap_kernel.errors import AppError
 from qzdap_schema.ids import (
@@ -31,10 +34,6 @@ from qzdap_schema.ids import (
     TenantId,
     UserId,
     WorkspaceId,
-)
-
-from qzdap.modules.agent_runtime.application.one_shot_turn import (
-    OneShotTurnService,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,8 +79,7 @@ class SubAgentAdapter:
     ) -> SubAgentResult:
         if self._one_shot_factory is None or self._maker is None:
             raise AppError(
-                "SubAgentAdapter is not wired (one-shot factory or "
-                "session maker missing)",
+                "SubAgentAdapter is not wired (one-shot factory or session maker missing)",
                 code="SUB_AGENT_UNAVAILABLE",
                 status=503,
             )

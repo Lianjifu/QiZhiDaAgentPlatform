@@ -9,11 +9,12 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from qzdap_persistence.base import Base, TenantScopedMixin, make_composite_index
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
+
+from qzdap_persistence.base import Base, TenantScopedMixin, make_composite_index
 
 
 class TenantORM(TenantScopedMixin, Base):
@@ -33,9 +34,7 @@ class TenantORM(TenantScopedMixin, Base):
     )
 
     __table_args__ = (
-        CheckConstraint(
-            "status IN ('active','suspended','archived')", name="status_enum"
-        ),
+        CheckConstraint("status IN ('active','suspended','archived')", name="status_enum"),
     )
 
 
@@ -82,9 +81,7 @@ class UserORM(TenantScopedMixin, Base):
     __table_args__ = (
         Index("uq_users_tenant_email", "tenant_id", "email", unique=True),
         make_composite_index("status"),
-        CheckConstraint(
-            "status IN ('active','suspended','deleted')", name="status_enum"
-        ),
+        CheckConstraint("status IN ('active','suspended','deleted')", name="status_enum"),
     )
 
 
@@ -105,12 +102,8 @@ class APIKeyORM(TenantScopedMixin, Base):
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", server_default=text("'active'")
     )
-    expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    last_used_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("uq_api_keys_prefix", "prefix", unique=True),
@@ -124,12 +117,8 @@ class UserWorkspaceORM(Base):
 
     __tablename__ = "user_workspaces"
 
-    id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), primary_key=True, default=uuid4
-    )
-    tenant_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     user_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
@@ -156,12 +145,8 @@ class UserSessionORM(Base):
 
     __tablename__ = "user_sessions"
 
-    id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), primary_key=True, default=uuid4
-    )
-    tenant_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     user_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
@@ -169,12 +154,8 @@ class UserSessionORM(Base):
     issued_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    revoked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
 

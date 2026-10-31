@@ -13,9 +13,8 @@ adapter module ``credential_cipher`` is the only place that touches
 
 from __future__ import annotations
 
-from qzdap_vault.crypto import aes_gcm
-
 from qzdap.modules.model.application.ports import CredentialCipher
+from qzdap_vault.crypto import aes_gcm
 
 
 def build_cipher_from_env(
@@ -29,16 +28,12 @@ def build_cipher_from_env(
     """Build a ``CredentialCipher`` from one of three key sources."""
     if master_key_raw is not None:
         if len(master_key_raw) not in (16, 24, 32):
-            raise ValueError(
-                f"master_key_raw must be 16/24/32 bytes; got {len(master_key_raw)}"
-            )
+            raise ValueError(f"master_key_raw must be 16/24/32 bytes; got {len(master_key_raw)}")
         return _AesGcmCipher(key=master_key_raw, key_version=key_version)
     if master_key_hex:
         raw = bytes.fromhex(master_key_hex)
         if len(raw) not in (16, 24, 32):
-            raise ValueError(
-                f"master_key_hex decodes to {len(raw)} bytes; expected 16/24/32"
-            )
+            raise ValueError(f"master_key_hex decodes to {len(raw)} bytes; expected 16/24/32")
         return _AesGcmCipher(key=raw, key_version=key_version)
     if passphrase and salt:
         return _AesGcmCipher(
@@ -46,8 +41,7 @@ def build_cipher_from_env(
             key_version=key_version,
         )
     raise ValueError(
-        "build_cipher_from_env: provide master_key_raw, master_key_hex, "
-        "or (passphrase + salt)"
+        "build_cipher_from_env: provide master_key_raw, master_key_hex, or (passphrase + salt)"
     )
 
 

@@ -230,8 +230,10 @@ class KnowledgeService:
             return []
         limit = max(1, top_k)
         modes = {kb.retrieval for kb in kbs.values()}
-        use_vector = self._embedding is not None and self._vectors is not None and (
-            "semantic" in modes or "hybrid" in modes
+        use_vector = (
+            self._embedding is not None
+            and self._vectors is not None
+            and ("semantic" in modes or "hybrid" in modes)
         )
         keyword_hits = await self._keyword_hits(
             workspace_id=workspace_id, kbs=kbs, query=query, top_k=limit * 4

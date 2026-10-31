@@ -6,6 +6,10 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
+
+from qzdap.composition.container import Container
+from qzdap.composition.lifespan import lifespan
+from qzdap.composition.settings import get_settings
 from qzdap_auth.dependencies import (
     AuthenticatedPrincipal,
     require_authenticated,
@@ -17,10 +21,6 @@ from qzdap_http.middleware import build_default_middleware_chain
 from qzdap_http.rate_limit import RateLimitPolicy
 from qzdap_persistence.tenant_guard import install_tenant_loader
 from qzdap_vault.actor import ActorContext
-
-from qzdap.composition.container import Container
-from qzdap.composition.lifespan import lifespan
-from qzdap.composition.settings import get_settings
 
 
 def create_app() -> FastAPI:
@@ -34,9 +34,7 @@ def create_app() -> FastAPI:
     if _resolved:
         import logging
 
-        logging.getLogger(__name__).info(
-            "boot: resolved %d QZDAP_*_REF env vars", _resolved
-        )
+        logging.getLogger(__name__).info("boot: resolved %d QZDAP_*_REF env vars", _resolved)
 
     settings = get_settings()
     container = Container(settings)
@@ -180,12 +178,8 @@ def create_app() -> FastAPI:
     app.dependency_overrides[_require_actor] = _resolve_actor
     app.dependency_overrides[_require_admin] = _resolve_admin
     app.dependency_overrides[make_policy_service] = lambda: container.policy_service()
-    app.dependency_overrides[make_approval_service] = lambda: (
-        container.approval_service()
-    )
-    app.dependency_overrides[make_policy_evaluator] = lambda: (
-        container.policy_evaluator()
-    )
+    app.dependency_overrides[make_approval_service] = lambda: container.approval_service()
+    app.dependency_overrides[make_policy_evaluator] = lambda: container.policy_evaluator()
 
     # A4 self_evolution module — /v1/evolve/candidates/*
     from qzdap.modules.self_evolution.adapter.http.factory import (
@@ -204,9 +198,7 @@ def create_app() -> FastAPI:
     app.include_router(evolution_router)
     app.dependency_overrides[evolution_require_actor] = _resolve_actor
     app.dependency_overrides[evolution_require_admin] = _resolve_admin
-    app.dependency_overrides[make_evolution_service] = lambda: (
-        container.evolution_service()
-    )
+    app.dependency_overrides[make_evolution_service] = lambda: container.evolution_service()
 
     # Model catalog — /api/admin/models
     from qzdap.modules.model.adapter.http.router import (
@@ -249,9 +241,7 @@ def create_app() -> FastAPI:
         cors=build_cors_config(
             {
                 "QZDAP_CORS_ALLOW_ORIGINS": settings.cors_allow_origins,
-                "QZDAP_CORS_ALLOW_CREDENTIALS": str(
-                    settings.cors_allow_credentials
-                ).lower(),
+                "QZDAP_CORS_ALLOW_CREDENTIALS": str(settings.cors_allow_credentials).lower(),
                 "QZDAP_CORS_ALLOW_METHODS": settings.cors_allow_methods,
                 "QZDAP_CORS_ALLOW_HEADERS": settings.cors_allow_headers,
             }
@@ -265,9 +255,7 @@ def create_app() -> FastAPI:
         auth_verifier=container.jwt_verifier(),
         # 没有 token 就没有绑定的租户 —— ORM 的租户过滤会退化成空操作,
         # 路由就会去信调用方自己填的 X-Tenant-Id. 除公开端点外一律要 token.
-        public_paths=tuple(
-            p.strip() for p in settings.public_paths.split(",") if p.strip()
-        ),
+        public_paths=tuple(p.strip() for p in settings.public_paths.split(",") if p.strip()),
     )
 
     # ── boot-time sanity check ────────────────────────────────────────

@@ -18,7 +18,6 @@ from itertools import count
 from typing import Any
 
 import httpx
-from qzdap_vault.actor import ActorContext
 
 from qzdap.modules.tool.adapter.adapters.openapi_runtime import (
     SecretsResolver,
@@ -26,6 +25,7 @@ from qzdap.modules.tool.adapter.adapters.openapi_runtime import (
     _no_op_secrets_resolver,
 )
 from qzdap.modules.tool.domain import AuthConfig, AuthConfigType
+from qzdap_vault.actor import ActorContext
 
 
 def _parse_sse_jsonrpc(text: str) -> dict[str, Any]:
@@ -62,9 +62,7 @@ class MCPRuntimeAdapter:
     ) -> None:
         self._http = http
         self._secrets = (
-            _adapter(secrets_resolver)
-            if secrets_resolver is not None
-            else _no_op_secrets_resolver
+            _adapter(secrets_resolver) if secrets_resolver is not None else _no_op_secrets_resolver
         )
 
     async def list_tools(
@@ -142,14 +140,10 @@ class MCPRuntimeAdapter:
             "Accept": "application/json, text/event-stream",
         }
         if auth is not None:
-            ctx = actor or ActorContext.anonymous(
-                tenant_id=__import__("uuid").UUID(int=0)
-            )
+            ctx = actor or ActorContext.anonymous(tenant_id=__import__("uuid").UUID(int=0))
             headers.update(await self._inject_auth(auth, ctx))
 
-        resp = await self._http.post(
-            server_url, json=envelope, headers=headers, timeout=timeout
-        )
+        resp = await self._http.post(server_url, json=envelope, headers=headers, timeout=timeout)
         resp.raise_for_status()
         ctype = resp.headers.get("content-type", "")
         if ctype.startswith("text/event-stream"):
@@ -159,9 +153,7 @@ class MCPRuntimeAdapter:
             raise httpx.HTTPError(f"MCP server returned error: {body['error']}")
         return body
 
-    async def _inject_auth(
-        self, auth: AuthConfig, actor: ActorContext
-    ) -> dict[str, str]:
+    async def _inject_auth(self, auth: AuthConfig, actor: ActorContext) -> dict[str, str]:
         headers: dict[str, str] = {}
         if auth.type is AuthConfigType.NONE or not auth.secrets_ref:
             return headers

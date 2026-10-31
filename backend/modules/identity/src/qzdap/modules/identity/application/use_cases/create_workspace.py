@@ -30,17 +30,13 @@ class CreateWorkspaceUseCase:
         self._workspaces = workspaces
         self._limit = workspace_limit
 
-    async def execute(
-        self, *, tenant_id: UUID, slug: str, display_name: str
-    ) -> Workspace:
+    async def execute(self, *, tenant_id: UUID, slug: str, display_name: str) -> Workspace:
         tenant = await self._tenants.get(tenant_id)
         if tenant is None:
             raise TenantNotFound(f"tenant {tenant_id} not found")
 
         if await self._workspaces.count_for_tenant(tenant_id) >= self._limit:
-            raise WorkspaceLimitReached(
-                f"workspace limit ({self._limit}) reached for tenant"
-            )
+            raise WorkspaceLimitReached(f"workspace limit ({self._limit}) reached for tenant")
 
         existing = await self._workspaces.list_for_tenant(tenant_id, limit=1, offset=0)
         if any(w.slug == slug for w in existing):

@@ -83,9 +83,7 @@ class ToolService:
             max_attempts=self.max_attempts,
         )
 
-    def batch_invoke_tools(
-        self, service_factory: ToolServiceFactory
-    ) -> BatchInvokeToolsUseCase:
+    def batch_invoke_tools(self, service_factory: ToolServiceFactory) -> BatchInvokeToolsUseCase:
         """Build a batch use case that opens a fresh service per item.
 
         The caller supplies a `ToolServiceFactory` (typically the

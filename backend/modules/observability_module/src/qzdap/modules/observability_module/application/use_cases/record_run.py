@@ -9,13 +9,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from qzdap_kernel.errors import BusinessRuleError
-
 from qzdap.modules.observability_module.domain.entities import RunRecord
 from qzdap.modules.observability_module.domain.value_objects import (
     RunStatus,
     RunType,
 )
+from qzdap_kernel.errors import BusinessRuleError
 
 if TYPE_CHECKING:
     from qzdap.modules.observability_module.application.services import (

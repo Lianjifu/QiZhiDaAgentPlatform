@@ -21,15 +21,15 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import delete, func, select, text, update
+
+from qzdap.modules.agent_runtime.adapter.persistence.models import SessionEventORM
 from qzdap_agent_runtime.outbox import (
     IM_REPLY_EVENT_TYPE,
     MAX_DELIVERY_ATTEMPTS,
     OutboundMessage,
     OutboxEvent,
 )
-from sqlalchemy import delete, func, select, text, update
-
-from qzdap.modules.agent_runtime.adapter.persistence.models import SessionEventORM
 
 _log = logging.getLogger("qzdap.agent_runtime.outbox")
 
@@ -117,9 +117,7 @@ class PostgresOutboxRepository:
                 .values(delivery_status="delivered", delivered_at=func.now())
             )
 
-    async def mark_failed(
-        self, turn_id: str, seq: int, attempts: int, last_error: str
-    ) -> None:
+    async def mark_failed(self, turn_id: str, seq: int, attempts: int, last_error: str) -> None:
         """投递失败 —— 记次数 ✓（worker 下一轮还会取它 ✓）。
 
         ⚠️ **最后一次错误**写进 payload ✓ —— 死信表只记最后一次 ✓，

@@ -14,15 +14,14 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.gateway.normalizer import resolve_idempotency_key
-from qzdap_agent_runtime.gateway.types import ChannelType
-from qzdap_agent_runtime.session.completion import TurnCompletion, drain_to_completion
-from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
-
 from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
 from qzdap.modules.agent_runtime.application.use_cases.create_session import (
     CreateSessionUseCase,
 )
+from qzdap_agent_runtime.gateway.normalizer import resolve_idempotency_key
+from qzdap_agent_runtime.gateway.types import ChannelType
+from qzdap_agent_runtime.session.completion import TurnCompletion, drain_to_completion
+from qzdap_schema.ids import AgentId, TenantId, UserId, WorkspaceId
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,9 +74,7 @@ class OneShotTurnService:
             model=model,
         )
         if close_session:
-            await self._copilot.close_session(
-                tenant_id=tenant_id, session_id=session.id
-            )
+            await self._copilot.close_session(tenant_id=tenant_id, session_id=session.id)
         return OneShotTurn(session_id=session.id, completion=completion)
 
     async def run_on_session(

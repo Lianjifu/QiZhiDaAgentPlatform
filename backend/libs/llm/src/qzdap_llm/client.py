@@ -69,9 +69,7 @@ class LLMClient:
     async def chat(self, req: ChatRequest) -> ChatResponse:  # pragma: no cover
         raise NotImplementedError
 
-    async def stream(
-        self, req: ChatRequest
-    ) -> AsyncIterator[LLMChunk]:  # pragma: no cover
+    async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:  # pragma: no cover
         raise NotImplementedError
         yield
 

@@ -6,8 +6,6 @@ from uuid import uuid4
 
 import jwt
 import pytest
-from qzdap_kernel.errors import AuthenticationError, ForbiddenError
-from qzdap_kernel.principal import PrincipalType
 
 from qzdap_auth.api_key import ApiKeyHasher, hash_api_key, verify_api_key
 from qzdap_auth.dependencies import (
@@ -17,6 +15,8 @@ from qzdap_auth.dependencies import (
     require_scope,
 )
 from qzdap_auth.jwt import JWTConfig, JWTIssuer, JWTVerifier
+from qzdap_kernel.errors import AuthenticationError, ForbiddenError
+from qzdap_kernel.principal import PrincipalType
 
 
 @pytest.fixture
@@ -64,9 +64,7 @@ def test_verify_rejects_expired(verifier: JWTVerifier) -> None:
         "roles": [],
         "scopes": [],
     }
-    token = jwt.encode(
-        payload, "unit-test-secret-not-for-production-use", algorithm="HS256"
-    )
+    token = jwt.encode(payload, "unit-test-secret-not-for-production-use", algorithm="HS256")
     with pytest.raises(AuthenticationError) as exc:
         verifier.verify(token)
     assert exc.value.code == "TOKEN_EXPIRED"
@@ -92,9 +90,7 @@ def test_get_principal_parses_claims(issuer: JWTIssuer, verifier: JWTVerifier) -
     assert ap.principal.type is PrincipalType.USER
 
 
-def test_require_role_blocks_wrong_role(
-    issuer: JWTIssuer, verifier: JWTVerifier
-) -> None:
+def test_require_role_blocks_wrong_role(issuer: JWTIssuer, verifier: JWTVerifier) -> None:
     token, _ = issuer.issue_access_token(
         principal_id=uuid4(),
         tenant_id=uuid4(),
@@ -106,9 +102,7 @@ def test_require_role_blocks_wrong_role(
         require_role("platform_admin")(ap)
 
 
-def test_require_scope_blocks_missing_scope(
-    issuer: JWTIssuer, verifier: JWTVerifier
-) -> None:
+def test_require_scope_blocks_missing_scope(issuer: JWTIssuer, verifier: JWTVerifier) -> None:
     token, _ = issuer.issue_access_token(
         principal_id=uuid4(),
         tenant_id=uuid4(),

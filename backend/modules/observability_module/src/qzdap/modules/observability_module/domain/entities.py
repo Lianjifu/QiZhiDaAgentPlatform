@@ -22,18 +22,17 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap.modules.observability_module.domain.value_objects import (
+    CostType,
+    RunStatus,
+    RunType,
+)
 from qzdap_schema.ids import (
     CostRecordId,
     RunRecordId,
     TenantId,
     UserId,
     WorkspaceId,
-)
-
-from qzdap.modules.observability_module.domain.value_objects import (
-    CostType,
-    RunStatus,
-    RunType,
 )
 
 

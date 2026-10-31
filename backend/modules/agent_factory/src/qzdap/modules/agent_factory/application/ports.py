@@ -9,6 +9,11 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
+from qzdap.modules.agent_factory.domain.entities import (
+    AgentTemplate,
+    AgentVersion,
+    Release,
+)
 from qzdap_schema.ids import (
     AgentTemplateId,
     AgentVersionId,
@@ -16,12 +21,6 @@ from qzdap_schema.ids import (
     ReleaseId,
     TenantId,
     WorkspaceId,
-)
-
-from qzdap.modules.agent_factory.domain.entities import (
-    AgentTemplate,
-    AgentVersion,
-    Release,
 )
 
 __all__ = [
@@ -44,9 +43,7 @@ class AgentTemplateRepository(Protocol):
         self, *, tenant_id: TenantId, template_id: AgentTemplateId
     ) -> AgentTemplate | None: ...
 
-    async def get_by_name(
-        self, *, tenant_id: TenantId, name: str
-    ) -> AgentTemplate | None: ...
+    async def get_by_name(self, *, tenant_id: TenantId, name: str) -> AgentTemplate | None: ...
 
     async def list(
         self,
@@ -107,9 +104,7 @@ class AgentVersionRepository(Protocol):
 class ReleaseRepository(Protocol):
     """Persistence for :class:`Release`."""
 
-    async def get(
-        self, *, tenant_id: TenantId, release_id: ReleaseId
-    ) -> Release | None: ...
+    async def get(self, *, tenant_id: TenantId, release_id: ReleaseId) -> Release | None: ...
 
     async def list_for_template(
         self,

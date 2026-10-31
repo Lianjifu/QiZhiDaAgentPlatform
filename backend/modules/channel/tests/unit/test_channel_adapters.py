@@ -42,6 +42,7 @@ def _ctx(channel_type: ChannelType) -> NormalizerContext:
         capabilities=capabilities_for(channel_type),
     )
 
+
 # ── Feishu ────────────────────────────────────────────────────────────────
 
 
@@ -54,9 +55,7 @@ def test_feishu_parses_text_message() -> None:
         b'"message_type":"text","content":"{\\"text\\":\\"hello\\"}"},'
         b'"tenant_key":"t1"}}'
     )
-    msg = FeishuInboundAdapter().normalize(
-        body=body, headers={}, context=_ctx(ChannelType.FEISHU)
-    )
+    msg = FeishuInboundAdapter().normalize(body=body, headers={}, context=_ctx(ChannelType.FEISHU))
     assert msg.external_user_id == "u_42"
     assert msg.external_chat_id == "c_1"
     assert msg.external_message_id == "om_1"
@@ -66,9 +65,7 @@ def test_feishu_parses_text_message() -> None:
 
 def test_feishu_parses_url_verification() -> None:
     body = b'{"type":"url_verification","challenge":"abc123","token":"t"}'
-    msg = FeishuInboundAdapter().normalize(
-        body=body, headers={}, context=_ctx(ChannelType.FEISHU)
-    )
+    msg = FeishuInboundAdapter().normalize(body=body, headers={}, context=_ctx(ChannelType.FEISHU))
     assert msg.raw_metadata["kind"] == "url_verification"
     assert msg.text == "abc123"
 
@@ -86,9 +83,7 @@ def test_feishu_handles_plain_string_content() -> None:
         b'{"event":{"sender":{"sender_id":{"user_id":"u"}},"message":'
         b'{"message_id":"m1","chat_id":"c","content":"plain text"}}}'
     )
-    msg = FeishuInboundAdapter().normalize(
-        body=body, headers={}, context=_ctx(ChannelType.FEISHU)
-    )
+    msg = FeishuInboundAdapter().normalize(body=body, headers={}, context=_ctx(ChannelType.FEISHU))
     assert msg.text == "plain text"
 
 
@@ -177,9 +172,7 @@ def test_dingtalk_decrypts_aes_cbc_stream_payload() -> None:
     body = json.dumps({"encrypt": base64.b64encode(frame).decode("ascii")}).encode()
 
     adapter = DingTalkInboundAdapter(app_secret=secret)
-    msg = adapter.normalize(
-        body=body, headers={}, context=_ctx(ChannelType.DINGTALK)
-    )
+    msg = adapter.normalize(body=body, headers={}, context=_ctx(ChannelType.DINGTALK))
     assert msg.raw_metadata["kind"] == "decrypted"
     assert msg.external_user_id == "staff-1"
     assert msg.external_chat_id == "conv-9"
@@ -224,9 +217,7 @@ def test_wechatwork_decrypts_aes_cbc_json_payload() -> None:
     body = json.dumps({"encrypt": base64.b64encode(ciphertext).decode("ascii")}).encode()
 
     adapter = WeChatWorkInboundAdapter(encoding_aes_key=eak)
-    msg = adapter.normalize(
-        body=body, headers={}, context=_ctx(ChannelType.DINGTALK)
-    )
+    msg = adapter.normalize(body=body, headers={}, context=_ctx(ChannelType.DINGTALK))
     assert msg.raw_metadata["kind"] == "decrypted"
     assert msg.external_user_id == "UserID1"
     assert msg.external_chat_id == "chat-1"
@@ -246,9 +237,7 @@ def test_wechatwork_handles_empty() -> None:
 
 def test_web_parses_json_envelope() -> None:
     body = b'{"external_user_id":"u","external_chat_id":"c","text":"hi","metadata":{"k":"v"}}'
-    msg = WebInboundAdapter().normalize(
-        body=body, headers={}, context=_ctx(ChannelType.WEB)
-    )
+    msg = WebInboundAdapter().normalize(body=body, headers={}, context=_ctx(ChannelType.WEB))
     assert msg.external_user_id == "u"
     assert msg.external_chat_id == "c"
     assert msg.text == "hi"
@@ -256,9 +245,7 @@ def test_web_parses_json_envelope() -> None:
 
 
 def test_web_handles_missing_fields() -> None:
-    msg = WebInboundAdapter().normalize(
-        body=b"{}", headers={}, context=_ctx(ChannelType.WEB)
-    )
+    msg = WebInboundAdapter().normalize(body=b"{}", headers={}, context=_ctx(ChannelType.WEB))
     assert msg.external_user_id == ""
     assert msg.text == ""
 
@@ -385,7 +372,7 @@ def test_wechatwork_send_happy_path() -> None:
                 ),
                 httpx.Response(
                     200,
-                    text='<xml><ErrorCode>0</ErrorCode><ErrorMsg>ok</ErrorMsg><MsgId>mm_42</MsgId></xml>',
+                    text="<xml><ErrorCode>0</ErrorCode><ErrorMsg>ok</ErrorMsg><MsgId>mm_42</MsgId></xml>",
                 ),
             ]
         )

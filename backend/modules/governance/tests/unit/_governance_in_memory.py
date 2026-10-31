@@ -109,21 +109,14 @@ class InMemoryApprovalRepository(ApprovalRepository):
         out.sort(key=lambda a: a.created_at)
         return out[:limit]
 
-    async def list_by_status(
-        self, *, tenant_id, status: ApprovalStatus, limit: int = 100
-    ):
-        return [
-            a
-            for a in self._rows.values()
-            if a.tenant_id == tenant_id and a.status is status
-        ][:limit]
+    async def list_by_status(self, *, tenant_id, status: ApprovalStatus, limit: int = 100):
+        return [a for a in self._rows.values() if a.tenant_id == tenant_id and a.status is status][
+            :limit
+        ]
 
     async def get_by_correlation_id(self, *, tenant_id, correlation_id):
         for a in self._rows.values():
-            if (
-                a.tenant_id == tenant_id
-                and a.correlation_id == correlation_id
-            ):
+            if a.tenant_id == tenant_id and a.correlation_id == correlation_id:
                 return a
         return None
 

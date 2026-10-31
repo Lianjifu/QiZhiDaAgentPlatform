@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +31,7 @@ from qzdap.modules.identity.application.ports import (
     WorkspaceRepository,
 )
 from qzdap.modules.identity.domain import APIKey, Tenant, User, Workspace
+from qzdap_persistence.tenant_guard import current_tenant_id
 
 
 def _cross_tenant(o: object) -> bool:
@@ -99,9 +99,7 @@ class SqlWorkspaceRepository(WorkspaceRepository):
             return None
         return workspace_orm_to_domain(o)
 
-    async def list_for_tenant(
-        self, tenant_id: UUID, limit: int, offset: int
-    ) -> list[Workspace]:
+    async def list_for_tenant(self, tenant_id: UUID, limit: int, offset: int) -> list[Workspace]:
         q = (
             select(WorkspaceORM)
             .where(WorkspaceORM.tenant_id == tenant_id)
@@ -146,9 +144,7 @@ class SqlUserRepository(UserRepository):
         return user_orm_to_domain(o)
 
     async def get_by_email(self, tenant_id: UUID, email: str) -> User | None:
-        q = select(UserORM).where(
-            UserORM.tenant_id == tenant_id, UserORM.email == email.lower()
-        )
+        q = select(UserORM).where(UserORM.tenant_id == tenant_id, UserORM.email == email.lower())
         o = (await self._s.execute(q)).scalar_one_or_none()
         return user_orm_to_domain(o) if o else None
 
@@ -202,11 +198,7 @@ class SqlAPIKeyRepository(APIKeyRepository):
         )
         rows = (await self._s.execute(q)).scalars().all()
         bound = current_tenant_id()
-        return [
-            api_key_orm_to_domain(o)
-            for o in rows
-            if bound is None or o.tenant_id == bound
-        ]
+        return [api_key_orm_to_domain(o) for o in rows if bound is None or o.tenant_id == bound]
 
     async def update(self, api_key: APIKey) -> None:
         # Existing-row update path used by revoke.

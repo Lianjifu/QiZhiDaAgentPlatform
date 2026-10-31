@@ -12,6 +12,38 @@ from uuid import UUID, uuid4
 
 from opentelemetry import context as _otel_context
 from opentelemetry import trace as _trace
+
+from qzdap.modules.agent_runtime.adapter.context.summary_adapter import (
+    LLMSummaryAdapter,
+)
+from qzdap.modules.agent_runtime.adapter.graph.agent_loop import (
+    AgentToolsReader,
+    ModuleToolRuntime,
+    RuntimeLLMPort,
+    RuntimeModelResolver,
+    SessionAgentRouter,
+    to_base_messages,
+    to_dict_messages,
+    to_runtime_actor,
+)
+from qzdap.modules.agent_runtime.adapter.graph.state import LoopState, estimate_tokens
+from qzdap.modules.agent_runtime.adapter.graph.tools import (
+    execute_tool,
+    result_text,
+)
+from qzdap.modules.agent_runtime.adapter.tools.tool_binding_adapter import (
+    ToolBindingAdapter,
+)
+from qzdap.modules.agent_runtime.application.ports import (
+    CatalogModelResolver,
+    KnowledgePort,
+    LLMPort,
+    MemoryPort,
+    SandboxPort,
+    SkillPort,
+    ToolPort,
+)
+from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 from qzdap_agent_runtime.agent_loop.evaluate import HARD_MAX_STEPS, Evaluator
 from qzdap_agent_runtime.agent_loop.expert import ExpertAssembler, ExpertInstance
 from qzdap_agent_runtime.agent_loop.observe import Observer
@@ -57,38 +89,6 @@ from qzdap_schema.dtos.turn import (
 )
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
-
-from qzdap.modules.agent_runtime.adapter.context.summary_adapter import (
-    LLMSummaryAdapter,
-)
-from qzdap.modules.agent_runtime.adapter.graph.agent_loop import (
-    AgentToolsReader,
-    ModuleToolRuntime,
-    RuntimeLLMPort,
-    RuntimeModelResolver,
-    SessionAgentRouter,
-    to_base_messages,
-    to_dict_messages,
-    to_runtime_actor,
-)
-from qzdap.modules.agent_runtime.adapter.graph.state import LoopState, estimate_tokens
-from qzdap.modules.agent_runtime.adapter.graph.tools import (
-    execute_tool,
-    result_text,
-)
-from qzdap.modules.agent_runtime.adapter.tools.tool_binding_adapter import (
-    ToolBindingAdapter,
-)
-from qzdap.modules.agent_runtime.application.ports import (
-    CatalogModelResolver,
-    KnowledgePort,
-    LLMPort,
-    MemoryPort,
-    SandboxPort,
-    SkillPort,
-    ToolPort,
-)
-from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
 
 _tracer = get_tracer("qzdap.agent_runtime")
 _log = logging.getLogger(__name__)
@@ -302,7 +302,11 @@ class SessionGraphRunner:
             pending = state.get("pending_approval")
             if pending and pending.get("decision") == "approved":
                 extra, state = await self._finish_pending(
-                    state, pending, turn_id, seq, whitelist,
+                    state,
+                    pending,
+                    turn_id,
+                    seq,
+                    whitelist,
                     session_id=session_id,
                 )
                 for chunk in extra:
@@ -316,7 +320,7 @@ class SessionGraphRunner:
                     "tool_call_id": pending.get("tool_call_id"),
                     "content": "SKILL_DENIED",
                 }
-                state["messages"] = list(state.get("messages") or []) + [denied]
+                state["messages"] = [*list(state.get("messages") or []), denied]
                 state["pending_approval"] = None
                 yield ToolResultChunk(
                     turn_id=turn_id,
@@ -405,7 +409,7 @@ class SessionGraphRunner:
         model_id = str((expert.decision.get("model") or {}).get("model_id") or "") or None
         bound_tools = [
             BoundTool(tool=tool, binding=binding)
-            for tool, binding in zip(expert.tools, expert.bindings)
+            for tool, binding in zip(expert.tools, expert.bindings, strict=False)
         ]
         loop = AgentLoopRunner(
             reasoner=Reasoner(expert.model),
@@ -420,9 +424,7 @@ class SessionGraphRunner:
         # ⚠️ **把轮次的 span 设为当前** ✓ —— 模型 / 工具的子 span 挂在它
         # 下面 ✓（观测树不变 ✓ —— ``agent.turn`` → ``agent.llm`` /
         # ``agent.tool`` ✓）。
-        span_token = (
-            _otel_context.attach(span_ctx) if span_ctx is not None else None
-        )
+        span_token = _otel_context.attach(span_ctx) if span_ctx is not None else None
         try:
             async for event in loop.run(
                 messages=to_base_messages(list(state.get("messages") or [])),
@@ -558,7 +560,11 @@ class SessionGraphRunner:
                 _otel_context.detach(span_token)
         rolling_summary = summary_box["summary"]
         cost_usd = cost_box["usd"]
-        self.last_loop_state = {**dict(state), "pending_approval": None, "rolling_summary": rolling_summary}
+        self.last_loop_state = {
+            **dict(state),
+            "pending_approval": None,
+            "rolling_summary": rolling_summary,
+        }
         final = str(state.get("final") or "")
         # ⚠️ **摘要写新列** ✓（Context 方案 §5.1 ✓）—— 旧的
         # `metadata['rolling_summary']` 是**旧副本** ✓（它的写入点归零 ✓
@@ -597,7 +603,9 @@ class SessionGraphRunner:
         yield DoneChunk(turn_id=turn_id, seq=seq, final_message=final)
         _ = rolling_summary
 
-    def export_loop_state(self, pending: dict[str, Any] | None, messages: list[dict[str, Any]], step: int) -> dict[str, Any]:
+    def export_loop_state(
+        self, pending: dict[str, Any] | None, messages: list[dict[str, Any]], step: int
+    ) -> dict[str, Any]:
         return {"pending_approval": pending, "messages": messages, "step": step}
 
     async def _assemble_context(
@@ -697,13 +705,9 @@ class SessionGraphRunner:
         store = self._context_manifest_store
         if store is None or session_id is None:
             return
-        payload = self._manifest_payload(
-            assembled=assembled, messages=messages
-        )
+        payload = self._manifest_payload(assembled=assembled, messages=messages)
         degraded = {
-            "recall_degraded": bool(
-                assembled.degraded_flags.get("recall_degraded")
-            ),
+            "recall_degraded": bool(assembled.degraded_flags.get("recall_degraded")),
             "compaction_degraded": bool(compaction_degraded),
         }
         await store.save_manifest(
@@ -733,7 +737,7 @@ class SessionGraphRunner:
         # → 从前往后找同一条 ✓（重复内容也不会错位 ✓ —— 游标只前进 ✓）。
         entries: list[dict[str, Any]] = []
         cursor = 0
-        for message, entry in zip(assembled.messages, assembled.manifest.entries):
+        for message, entry in zip(assembled.messages, assembled.manifest.entries, strict=False):
             content = str(message.get("content") or "")
             role = str(message.get("role") or "")
             match = None
@@ -837,9 +841,9 @@ class SessionGraphRunner:
         if not prices:
             return 0.0
         price_in, price_out = prices
-        return (input_tokens / 1000.0) * float(price_in) + (
-            output_tokens / 1000.0
-        ) * float(price_out)
+        return (input_tokens / 1000.0) * float(price_in) + (output_tokens / 1000.0) * float(
+            price_out
+        )
 
     async def _whitelist(self, agent: CatalogAgent | None) -> dict[str, dict[str, Any]]:
         """Tools the model may call.
@@ -862,7 +866,7 @@ class SessionGraphRunner:
             try:
                 for item in await self._skill_port.list_executable():
                     allowed[str(item.get("name"))] = {**item, "kind": "skill"}
-            except Exception:  # noqa: BLE001, S110
+            except Exception:  # noqa: S110
                 pass
         catalog: dict[str, dict[str, Any]] = {}
         if self._tool_port is not None:
@@ -871,7 +875,7 @@ class SessionGraphRunner:
                     name = str(item.get("name") or "")
                     if name:
                         catalog[name] = {**item, "kind": "tool"}
-            except Exception:  # noqa: BLE001
+            except Exception:
                 catalog = {}
         if agent is None:
             return allowed
@@ -906,18 +910,14 @@ class SessionGraphRunner:
         —— 但那仍然是**取值链的输入** ✓ 不是运行时「挑」✗✗）。
         """
         _ = owner_id
-        assembler = self._expert_assembler or self._fallback_assembler(
-            agent, tenant_id=tenant_id
-        )
+        assembler = self._expert_assembler or self._fallback_assembler(agent, tenant_id=tenant_id)
         classification = DEFAULT_CLASSIFIER.classify(
             message_count=history_count,
             tools_count=len(agent.tools) if agent is not None else 0,
             message_text=user_input,
             agent_config=AgentRouteConfig(
                 agent_id=str(agent.id) if agent is not None else "",
-                deep_research=bool(
-                    (agent.profile or {}).get("deep_research")
-                )
+                deep_research=bool((agent.profile or {}).get("deep_research"))
                 if agent is not None
                 else False,
             ),
@@ -1130,17 +1130,21 @@ class SessionGraphRunner:
             inner = result["result"]
             action = inner.get("_pending_frontend_action")
             if action in {
-                "show_question_card", "toast", "render_plan",
-                "render_todo_list", "delegate_agent",
+                "show_question_card",
+                "toast",
+                "render_plan",
+                "render_todo_list",
+                "delegate_agent",
             }:
-                out.append(InteractiveActionChunk(
-                    turn_id=turn_id,
-                    seq=next_seq + 1,
-                    call_id=str(pending.get("call_id") or ""),
-                    action=action,
-                    payload={k: v for k, v in inner.items()
-                              if k != "_pending_frontend_action"},
-                ))
+                out.append(
+                    InteractiveActionChunk(
+                        turn_id=turn_id,
+                        seq=next_seq + 1,
+                        call_id=str(pending.get("call_id") or ""),
+                        action=action,
+                        payload={k: v for k, v in inner.items() if k != "_pending_frontend_action"},
+                    )
+                )
         return out, state
 
 
@@ -1233,9 +1237,7 @@ def _memory_policy(agent: CatalogAgent | None) -> MemoryPolicy:
         return PolicyBinding().to_policy()
     return PolicyBinding(
         raw=dict(agent.memory_policy),
-        refs=tuple(
-            ref for ref in agent.knowledge_refs if isinstance(ref, dict)
-        ),
+        refs=tuple(ref for ref in agent.knowledge_refs if isinstance(ref, dict)),
     ).to_policy()
 
 
@@ -1281,9 +1283,7 @@ def _build_synthetic_chunk(raw: dict[str, Any], *, turn_id: UUID, seq: int) -> T
         if kind == "artifact_ready":
             payload = dict(raw)
             payload.pop("_kind", None)
-            return ArtifactReadyChunk.model_validate(
-                {**payload, "turn_id": turn_id, "seq": seq}
-            )
+            return ArtifactReadyChunk.model_validate({**payload, "turn_id": turn_id, "seq": seq})
         if kind == "attachment_ready":
             return AttachmentReadyChunk(
                 turn_id=turn_id,
@@ -1336,7 +1336,7 @@ def _build_synthetic_chunk(raw: dict[str, Any], *, turn_id: UUID, seq: int) -> T
                 citations=list(raw.get("citations") or []),
                 degraded=bool(raw.get("degraded") or False),
             )
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
     return None
 

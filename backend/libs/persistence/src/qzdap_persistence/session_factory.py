@@ -67,7 +67,7 @@ class SessionFactory:
         try:
             async with self.engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
         return True
 

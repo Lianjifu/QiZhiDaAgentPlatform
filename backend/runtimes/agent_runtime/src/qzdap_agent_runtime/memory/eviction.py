@@ -80,9 +80,7 @@ class EvictionReport:
 class EvictionPort(Protocol):
     """**淘汰要用的存储能力** ✓（实现在模块侧 ✓ —— 它要碰库 ✓）。"""
 
-    async def list_candidates(
-        self, *, workspace_id: UUID, layer: str
-    ) -> list[EvictionCandidate]:
+    async def list_candidates(self, *, workspace_id: UUID, layer: str) -> list[EvictionCandidate]:
         """**候选** ✓（确认状态的 ✓ —— 只处理活着的 ✓）。"""
         ...
 
@@ -147,9 +145,7 @@ class Evictor:
         if not victims:
             return EvictionReport(kept=len(candidates))
 
-        await self._store.retire(
-            workspace_id=workspace_id, item_ids=tuple(victims)
-        )
+        await self._store.retire(workspace_id=workspace_id, item_ids=tuple(victims))
         await self._store.delete_vectors(tuple(victims))
         by_ttl = sum(1 for reason in victims.values() if reason == "ttl")
         by_max = sum(1 for reason in victims.values() if reason == "max_items")
@@ -165,10 +161,7 @@ class Evictor:
             by_storage=by_storage,
             vectors_deleted=len(victims),
             kept=len(candidates) - len(victims),
-            details=[
-                {"id": str(item_id), "reason": reason}
-                for item_id, reason in victims.items()
-            ],
+            details=[{"id": str(item_id), "reason": reason} for item_id, reason in victims.items()],
         )
 
 

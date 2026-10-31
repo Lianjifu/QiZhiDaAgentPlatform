@@ -15,13 +15,13 @@ from uuid import uuid4
 
 import pytest
 from langchain_core.messages import AIMessageChunk, HumanMessage
-from qzdap_llm.client import ChatRequest, LLMChunk
-from qzdap_schema.ids import ModelId
 
 from qzdap_agent_runtime.agent_loop import Reasoner, ToolCallAccumulator
 from qzdap_agent_runtime.execution import QZDAPChatModel
 from qzdap_agent_runtime.execution.llm_client import LLMCaller
 from qzdap_agent_runtime.ports import ActorContext
+from qzdap_llm.client import ChatRequest, LLMChunk
+from qzdap_schema.ids import ModelId
 
 TENANT = uuid4()
 WORKSPACE = uuid4()
@@ -229,12 +229,7 @@ class TestReasoner:
             ]
         )
         reasoner = Reasoner(QZDAPChatModel(llm=llm, model_name="demo"))
-        chunks = [
-            chunk
-            async for chunk in reasoner.reason(
-                messages=[HumanMessage(content="你好")]
-            )
-        ]
+        chunks = [chunk async for chunk in reasoner.reason(messages=[HumanMessage(content="你好")])]
         assert [chunk.content for chunk in chunks] == ["我", "在"]
 
     @pytest.mark.asyncio
@@ -245,9 +240,7 @@ class TestReasoner:
                 LLMChunk(
                     model="demo",
                     delta="",
-                    tool_calls=[
-                        {"id": "call-1", "index": 0, "name": "sea", "arguments": ""}
-                    ],
+                    tool_calls=[{"id": "call-1", "index": 0, "name": "sea", "arguments": ""}],
                 ),
                 LLMChunk(
                     model="demo",
@@ -265,10 +258,7 @@ class TestReasoner:
         )
         reasoner = Reasoner(QZDAPChatModel(llm=llm, model_name="demo"))
         chunks = [
-            chunk
-            async for chunk in reasoner.reason(
-                messages=[HumanMessage(content="搜一下")]
-            )
+            chunk async for chunk in reasoner.reason(messages=[HumanMessage(content="搜一下")])
         ]
         assembled = [call for chunk in chunks for call in chunk.tool_calls]
         assert len(assembled) == 1
@@ -290,12 +280,7 @@ class TestReasoner:
             ]
         )
         reasoner = Reasoner(QZDAPChatModel(llm=llm, model_name="demo"))
-        chunks = [
-            chunk
-            async for chunk in reasoner.reason(
-                messages=[HumanMessage(content="你好")]
-            )
-        ]
+        chunks = [chunk async for chunk in reasoner.reason(messages=[HumanMessage(content="你好")])]
         assert chunks[0].usage_metadata == {
             "input_tokens": 7,
             "output_tokens": 3,
@@ -312,17 +297,12 @@ class TestChatModelToolTranslation:
                 LLMChunk(
                     model="demo",
                     delta="",
-                    tool_calls=[
-                        {"id": "call-1", "index": 0, "name": "sea", "arguments": "{"}
-                    ],
+                    tool_calls=[{"id": "call-1", "index": 0, "name": "sea", "arguments": "{"}],
                 )
             ]
         )
         model = QZDAPChatModel(llm=llm, model_name="demo")
-        chunks = [
-            chunk
-            async for chunk in model.astream([HumanMessage(content="搜一下")])
-        ]
+        chunks = [chunk async for chunk in model.astream([HumanMessage(content="搜一下")])]
         raw = chunks[0].tool_call_chunks
         assert raw and raw[0]["name"] == "sea"
         assert raw[0]["args"] == "{"

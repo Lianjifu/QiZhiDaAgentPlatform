@@ -9,9 +9,10 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import jwt
+
 from qzdap_kernel.errors import AuthenticationError
 from qzdap_schema.dtos.errors import ErrorCode
 
@@ -79,18 +80,10 @@ class JWTVerifier:
                 options={"require": ["exp", "iat", "iss", "aud", "sub"]},
             )
         except jwt.ExpiredSignatureError as e:
-            raise AuthenticationError(
-                "token expired", code=ErrorCode.TOKEN_EXPIRED.value
-            ) from e
+            raise AuthenticationError("token expired", code=ErrorCode.TOKEN_EXPIRED.value) from e
         except jwt.InvalidTokenError as e:
-            raise AuthenticationError(
-                "invalid token", code=ErrorCode.TOKEN_INVALID.value
-            ) from e
+            raise AuthenticationError("invalid token", code=ErrorCode.TOKEN_INVALID.value) from e
 
 
 def issue_access_token(issuer: JWTIssuer, **kwargs: Any) -> str:
     return issuer.issue_access_token(**kwargs)[0]
-
-
-# Imported at top of file; kept here for lazy use in callers
-from uuid import uuid4

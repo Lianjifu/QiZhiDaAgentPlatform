@@ -22,6 +22,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+
 from qzdap_agent_runtime.session.completion import TurnCompletion, TurnFailedError
 from qzdap_kernel.errors import AppError
 
@@ -217,9 +218,7 @@ async def test_parent_session_not_found() -> None:
 
 async def test_cross_tenant_parent() -> None:
     tid, wid, uid = _ids()
-    parent = _FakeParentSession(
-        tenant_id=uuid4(), workspace_id=wid, owner_id=uid
-    )
+    parent = _FakeParentSession(tenant_id=uuid4(), workspace_id=wid, owner_id=uid)
     target = _FakeTargetAgent(tenant_id=tid)
     usecase, *_ = _wire(parent=parent, target=target)
     result = await usecase.execute(
@@ -322,9 +321,7 @@ async def test_app_error_is_reported() -> None:
     usecase, *_ = _wire(
         parent=parent,
         target=target,
-        one_shot=_FakeOneShot(
-            raise_exc=AppError("挂了", code="SOMETHING_BROKE", status=500)
-        ),
+        one_shot=_FakeOneShot(raise_exc=AppError("挂了", code="SOMETHING_BROKE", status=500)),
     )
     result = await usecase.execute(
         parent_session_id=parent.id,

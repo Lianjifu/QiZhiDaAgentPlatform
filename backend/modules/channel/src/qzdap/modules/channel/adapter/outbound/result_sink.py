@@ -34,9 +34,7 @@ class ChannelResultSink:
     def __init__(self, *, outbound_registry: Mapping[ChannelType, OutboundAdapter]) -> None:
         self._registry = dict(outbound_registry)
 
-    async def deliver(
-        self, event: ResultEvent, *, target: OutboundTarget
-    ) -> DeliveryOutcome:
+    async def deliver(self, event: ResultEvent, *, target: OutboundTarget) -> DeliveryOutcome:
         """编码一条事件并投给目标渠道。
 
         **不抛异常**：投递失败返回 ``status="failed"`` —— 由调用方决定重试还是
@@ -103,8 +101,7 @@ class ChannelResultSink:
         渠道侧的重放是另一回事（把消息再发一遍给用户），本阶段不做。
         """
         raise NotImplementedError(
-            "outbound replay needs session_events (Session Stage 4); "
-            "Gateway Stage 4b enables it"
+            "outbound replay needs session_events (Session Stage 4); Gateway Stage 4b enables it"
         )
         yield  # pragma: no cover — keeps the async-generator typing
 

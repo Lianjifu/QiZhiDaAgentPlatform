@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID
 
-from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +21,7 @@ from qzdap.modules.memory.domain.entities import (
     PromotionEvent,
     RetentionPolicy,
 )
+from qzdap_persistence.tenant_guard import current_tenant_id
 
 
 def _cross_tenant(row: object) -> bool:
@@ -190,9 +190,7 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
             return None
         return _l2(row)
 
-    async def list_l2(
-        self, workspace_id: UUID, *, user_id: UUID | None = None
-    ) -> list[L2Fact]:
+    async def list_l2(self, workspace_id: UUID, *, user_id: UUID | None = None) -> list[L2Fact]:
         # user_id 不为 None 时按用户过滤 —— **归属不明的行（user_id IS NULL）
         # 会被排除**：宁可不可见，也不要把别人的记忆召回给当前用户。
         stmt = select(MemoryL2ORM).where(MemoryL2ORM.workspace_id == workspace_id)
@@ -272,9 +270,7 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
             return None
         return _l2(row)
 
-    async def list_l2_updated_since(
-        self, since: datetime, *, limit: int = 100
-    ) -> list[L2Fact]:
+    async def list_l2_updated_since(self, since: datetime, *, limit: int = 100) -> list[L2Fact]:
         """**最近更新过的 L2** ✓（兜底补写的来源 ✓ —— §5.4 ✓）。
 
         ⚠️ **不比对向量表** ✓ —— 全表扫描代价太大 ✗✗；代价是**重复补写** ✓
@@ -402,11 +398,9 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
         """**有策略的工作区** ✓（淘汰器按工作区跑 ✓ —— 跨租户扫描 ✓）。"""
         stmt = select(MemoryPolicyORM.workspace_id).distinct()
         result = await self._s.execute(stmt)
-        return [row for row in result.scalars().all()]
+        return list(result.scalars().all())
 
-    async def usage_by_day(
-        self, workspace_id: UUID, *, since: datetime
-    ) -> list[tuple[date, int]]:
+    async def usage_by_day(self, workspace_id: UUID, *, since: datetime) -> list[tuple[date, int]]:
         """**每天被用过的记忆条数** ✓（真实使用趋势 ✓ —— C7 ✓）。
 
         ⚠️ **按天分组在 SQL 里做** ✓（拉到 Python 再数 = 全量扫描 ✗✗）。
@@ -432,9 +426,7 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
 
     async def list_promotions(self, workspace_id: UUID) -> list[PromotionEvent]:
         result = await self._s.execute(
-            select(MemoryPromotionORM).where(
-                MemoryPromotionORM.workspace_id == workspace_id
-            )
+            select(MemoryPromotionORM).where(MemoryPromotionORM.workspace_id == workspace_id)
         )
         return [
             PromotionEvent(
@@ -477,13 +469,9 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
         result = await self._s.execute(
             select(MemoryPolicyORM).where(MemoryPolicyORM.workspace_id == workspace_id)
         )
-        return [
-            _policy(row) for row in result.scalars().all() if not _cross_tenant(row)
-        ]
+        return [_policy(row) for row in result.scalars().all() if not _cross_tenant(row)]
 
-    async def get_policy_by_label(
-        self, workspace_id: UUID, label: str
-    ) -> RetentionPolicy | None:
+    async def get_policy_by_label(self, workspace_id: UUID, label: str) -> RetentionPolicy | None:
         result = await self._s.execute(
             select(MemoryPolicyORM).where(
                 MemoryPolicyORM.workspace_id == workspace_id,

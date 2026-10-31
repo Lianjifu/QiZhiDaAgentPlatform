@@ -58,8 +58,9 @@ def _build_app(openapi_client: httpx.AsyncClient, mcp_client: httpx.AsyncClient)
         events=events,
     )
     app = FastAPI(title="tool-roundtrip-test")
-    from qzdap_http.error_envelope import error_envelope_middleware
     from starlette.middleware.base import BaseHTTPMiddleware
+
+    from qzdap_http.error_envelope import error_envelope_middleware
 
     app.add_middleware(BaseHTTPMiddleware, dispatch=error_envelope_middleware)  # type: ignore[arg-type]
     app.include_router(build_router())
@@ -218,9 +219,7 @@ async def test_mcp_tool_sse_response() -> None:
             'data: {"jsonrpc":"2.0","id":1,"result":{"progress":0.5}}\n\n'
             'data: {"jsonrpc":"2.0","id":1,"result":{"final":true}}\n\n'
         )
-        return httpx.Response(
-            200, text=sse, headers={"content-type": "text/event-stream"}
-        )
+        return httpx.Response(200, text=sse, headers={"content-type": "text/event-stream"})
 
     openapi_client = _client_with_handler(_handler)
     mcp_client = _client_with_handler(_handler)

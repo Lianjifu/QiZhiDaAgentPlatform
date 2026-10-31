@@ -7,6 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+
 class RegisterChannelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

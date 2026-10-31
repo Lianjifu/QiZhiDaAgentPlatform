@@ -40,15 +40,11 @@ class TurnClaimPort(Protocol):
         """
         ...
 
-    async def release(
-        self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID
-    ) -> None:
+    async def release(self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID) -> None:
         """释放执行权 —— **只释放自己占的那个**（别人的不动 ✓）。"""
         ...
 
-    async def current_turn_status(
-        self, *, tenant_id: UUID, session_id: UUID
-    ) -> TurnStatus | None:
+    async def current_turn_status(self, *, tenant_id: UUID, session_id: UUID) -> TurnStatus | None:
         """当前轮次的状态 —— **没有在飞的轮次就是 ``None``** ✓。
 
         用于「这一轮是不是真的在跑」（取消 / 展示）—— 不再问

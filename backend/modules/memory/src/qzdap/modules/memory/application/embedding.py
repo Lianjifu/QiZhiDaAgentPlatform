@@ -16,7 +16,6 @@ import logging
 from uuid import UUID
 
 from qzdap.composition.unavailable_providers import ProviderUnavailable
-
 from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
     VectorSearchPort,

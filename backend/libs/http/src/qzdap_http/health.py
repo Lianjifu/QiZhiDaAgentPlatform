@@ -29,7 +29,7 @@ async def readyz(request: Request) -> dict:
             deps["db"] = "ok" if await sf.healthcheck() else "down"
         else:
             deps["db"] = "skipped"
-    except Exception:  # noqa: BLE001
+    except Exception:
         deps["db"] = "down"
 
     try:
@@ -39,7 +39,7 @@ async def readyz(request: Request) -> dict:
             deps["redis"] = "ok"
         else:
             deps["redis"] = "skipped"
-    except Exception:  # noqa: BLE001
+    except Exception:
         deps["redis"] = "down"
 
     all_ok = all(v in {"ok", "skipped"} for v in deps.values())

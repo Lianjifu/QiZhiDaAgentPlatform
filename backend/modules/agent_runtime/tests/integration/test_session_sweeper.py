@@ -91,9 +91,7 @@ async def sweeper_ctx():
             await conn.execute(text(statement.replace("{schema}", schema)))
         await conn.commit()
 
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
+    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     from qzdap_persistence.session_factory import SessionFactory
 
     factory = SessionFactory(engine)
@@ -190,12 +188,8 @@ async def test_a_zombie_turn_is_taken_over(sweeper_ctx) -> None:  # type: ignore
 async def test_expired_inbox_rows_are_deleted(sweeper_ctx) -> None:  # type: ignore[no-untyped-def]
     """**Gateway 的硬依赖** —— 过期行不清，表会无限膨胀 ✗。"""
     sweeper, factory, _schema = sweeper_ctx
-    expired = await _insert_inbox(
-        factory, expires_at=datetime.now(UTC) - timedelta(hours=1)
-    )
-    alive = await _insert_inbox(
-        factory, expires_at=datetime.now(UTC) + timedelta(hours=1)
-    )
+    expired = await _insert_inbox(factory, expires_at=datetime.now(UTC) - timedelta(hours=1))
+    alive = await _insert_inbox(factory, expires_at=datetime.now(UTC) + timedelta(hours=1))
 
     report = await sweeper.sweep(now=datetime.now(UTC))
     assert report.expired_idempotency_rows == 1

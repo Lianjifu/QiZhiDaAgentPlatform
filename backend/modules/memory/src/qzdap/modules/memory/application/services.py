@@ -18,6 +18,19 @@ from datetime import UTC, datetime
 from logging import getLogger
 from uuid import UUID
 
+from qzdap.modules.memory.adapter.candidates import (
+    LexicalCandidateAdapter,
+    PinnedCandidateAdapter,
+    VectorCandidateAdapter,
+)
+from qzdap.modules.memory.adapter.eviction import SqlEvictionStore
+from qzdap.modules.memory.adapter.write_adapter import MemoryWriteAdapter
+from qzdap.modules.memory.application.embedding import embed_item
+from qzdap.modules.memory.application.ports import (
+    EmbeddingPort,
+    MemoryCatalogRepository,
+    VectorSearchPort,
+)
 from qzdap_agent_runtime.memory.eviction import (
     EvictionPolicy,
     EvictionReport,
@@ -37,20 +50,6 @@ from qzdap_agent_runtime.memory.scope import MemoryScope
 from qzdap_agent_runtime.memory.vectorize import VectorWriteQueuePort
 from qzdap_agent_runtime.memory.writer import WriteOutcome, WriterPipeline
 from qzdap_agent_runtime.ports import RecallHit
-
-from qzdap.modules.memory.adapter.candidates import (
-    LexicalCandidateAdapter,
-    PinnedCandidateAdapter,
-    VectorCandidateAdapter,
-)
-from qzdap.modules.memory.adapter.eviction import SqlEvictionStore
-from qzdap.modules.memory.adapter.write_adapter import MemoryWriteAdapter
-from qzdap.modules.memory.application.embedding import embed_item
-from qzdap.modules.memory.application.ports import (
-    EmbeddingPort,
-    MemoryCatalogRepository,
-    VectorSearchPort,
-)
 
 _log = getLogger(__name__)
 
@@ -92,9 +91,7 @@ class MemoryRuntimeService:
         self._last_recall_degraded = False
         self._last_recall_reason = ""
         #: ⚠️ **淘汰器** ✓（C4 ✓ —— §6 ✓）—— 策略第一次有执行者 ✓。
-        self._evictor = Evictor(
-            store=SqlEvictionStore(catalog, vectors=vectors)
-        )
+        self._evictor = Evictor(store=SqlEvictionStore(catalog, vectors=vectors))
         # ⚠️ **写入的编排归契约层** ✓ —— 这里只提供落库端口 ✓（§4.1 ✓）。
         self._writer_pipeline = WriterPipeline(
             extractor=RuleFactExtractor(),
@@ -159,7 +156,7 @@ class MemoryRuntimeService:
         """
         try:
             policy = await self._catalog.get_policy_by_label(workspace_id, label)
-        except Exception:  # noqa: BLE001
+        except Exception:
             _log.warning("memory retention policy lookup failed", extra={"label": label})
             return None
         if policy is None:
@@ -237,9 +234,7 @@ class MemoryRuntimeService:
                 entry.hits_trend = [*(entry.hits_trend or [])[-29:], entry.hits]
                 await self._catalog.update_l3(entry)
 
-    async def refine_buffers(
-        self, *, now: datetime, limit: int = 100
-    ) -> RefineReport:
+    async def refine_buffers(self, *, now: datetime, limit: int = 100) -> RefineReport:
         """**会话缓冲的提炼** ✓（M-29 ✓ —— 由 sweeper 触发 ✓）。
 
         ⚠️ **没有缓冲或没有活跃度端口就什么都不做** ✓（不猜 ✓）——
@@ -309,7 +304,7 @@ class MemoryRuntimeService:
         # ✓（召回已经成功了 ✗✗ —— 统计只是附加信息 ✓）。
         try:
             await self._record_usage(hits)
-        except Exception:  # noqa: BLE001
+        except Exception:
             _log.warning("memory usage stats update failed", exc_info=True)
         return hits
 

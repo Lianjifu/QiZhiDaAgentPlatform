@@ -83,9 +83,7 @@ async def test_migration_shared_credentials_and_rollback():
         pytest.skip("local development PostgreSQL is not configured")
     parsed = make_url(url)
     if parsed.host not in {"localhost", "127.0.0.1"} or parsed.port not in {9153, 5499}:
-        pytest.skip(
-            "this integration test only permits the local development PostgreSQL"
-        )
+        pytest.skip("this integration test only permits the local development PostgreSQL")
     engine = create_async_engine(url)
     try:
         async with engine.connect() as connection:
@@ -100,9 +98,7 @@ async def test_migration_shared_credentials_and_rollback():
                     RouteORM.__table__,
                     HealthEventORM.__table__,
                 ]:
-                    await connection.run_sync(
-                        lambda conn, table=table: table.create(conn)
-                    )
+                    await connection.run_sync(lambda conn, table=table: table.create(conn))
                 # Exercise the real migration, including a pre-existing legacy name.
                 await connection.execute(
                     text("ALTER TABLE admin_models DROP COLUMN upstream_model")
@@ -175,9 +171,7 @@ async def test_migration_shared_credentials_and_rollback():
                         == "db-secret-1234"
                     )
                     assert (
-                        await session.execute(
-                            select(func.count()).select_from(ProviderORM)
-                        )
+                        await session.execute(select(func.count()).select_from(ProviderORM))
                     ).scalar_one() == 2
             finally:
                 await (

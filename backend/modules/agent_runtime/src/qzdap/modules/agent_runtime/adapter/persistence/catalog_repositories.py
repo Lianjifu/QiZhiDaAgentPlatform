@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +14,7 @@ from qzdap.modules.agent_runtime.application.catalog_ports import (
     CatalogAgentUserStateRepository,
 )
 from qzdap.modules.agent_runtime.domain.catalog import CatalogAgent
+from qzdap_persistence.tenant_guard import current_tenant_id
 
 
 def _cross_tenant(row: object) -> bool:
@@ -125,9 +125,7 @@ class SqlCatalogAgentRepository(CatalogAgentRepository):
         result = await self._s.execute(
             select(CatalogAgentORM).where(CatalogAgentORM.workspace_id == workspace_id)
         )
-        return [
-            _to_domain(row) for row in result.scalars().all() if not _cross_tenant(row)
-        ]
+        return [_to_domain(row) for row in result.scalars().all() if not _cross_tenant(row)]
 
     async def update(self, agent: CatalogAgent) -> None:
         row = await self._s.get(CatalogAgentORM, agent.id)

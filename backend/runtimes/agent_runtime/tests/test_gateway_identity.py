@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
-from qzdap_kernel.errors import AuthenticationError
 
 from qzdap_agent_runtime.gateway.identity import (
     REASON_CREDENTIALS_MISSING,
@@ -26,6 +25,7 @@ from qzdap_agent_runtime.gateway.identity import (
     JwtIdentityVerifier,
     ServiceAccount,
 )
+from qzdap_kernel.errors import AuthenticationError
 
 _SECRET = b"topsecret"
 _BODY = b'{"text":"hello"}'
@@ -77,10 +77,7 @@ def test_service_account_returns_none_for_missing_or_broken_config() -> None:
     assert ServiceAccount.from_mapping(None) is None
     assert ServiceAccount.from_mapping({}) is None
     assert ServiceAccount.from_mapping({"user_id": "not-a-uuid"}) is None
-    assert (
-        ServiceAccount.from_mapping({"user_id": str(uuid4()), "agent_id": "nope"})
-        is None
-    )
+    assert ServiceAccount.from_mapping({"user_id": str(uuid4()), "agent_id": "nope"}) is None
 
 
 def test_service_account_round_trips_through_a_mapping() -> None:
@@ -229,9 +226,7 @@ async def test_a_valid_jwt_yields_a_user_actor() -> None:
             }
         )
     )
-    identity = await verifier.verify(
-        _request(headers={"authorization": f"Bearer {uuid4()}"})
-    )
+    identity = await verifier.verify(_request(headers={"authorization": f"Bearer {uuid4()}"}))
     assert identity.actor is not None
     assert identity.actor.actor_id == user_id
     assert identity.actor.tenant_id == tenant_id

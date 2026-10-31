@@ -7,12 +7,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from qzdap_agent_runtime.gateway.replay import StoredEvent
-from qzdap_agent_runtime.session.state import TurnStatus
-from qzdap_kernel.events import DomainEvent
-from qzdap_llm.client import ChatRequest, LLMChunk, Usage
-from qzdap_schema.ids import SessionId, TenantId, TurnId, WorkspaceId
-
 from qzdap.modules.agent_runtime.application.ports import (
     EventPublisher,
     LLMPort,
@@ -22,6 +16,11 @@ from qzdap.modules.agent_runtime.application.ports import (
 )
 from qzdap.modules.agent_runtime.domain import Session, Turn
 from qzdap.modules.agent_runtime.domain import TurnStatus as DomainTurnStatus
+from qzdap_agent_runtime.gateway.replay import StoredEvent
+from qzdap_agent_runtime.session.state import TurnStatus
+from qzdap_kernel.events import DomainEvent
+from qzdap_llm.client import ChatRequest, LLMChunk, Usage
+from qzdap_schema.ids import SessionId, TenantId, TurnId, WorkspaceId
 
 
 class InMemoryTurnClaim:
@@ -40,15 +39,11 @@ class InMemoryTurnClaim:
         self._held[session_id] = turn_id
         return True
 
-    async def release(
-        self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID
-    ) -> None:
+    async def release(self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID) -> None:
         if self._held.get(session_id) == turn_id:
             self._held.pop(session_id, None)
 
-    async def current_turn_status(
-        self, *, tenant_id: UUID, session_id: UUID
-    ) -> TurnStatus | None:
+    async def current_turn_status(self, *, tenant_id: UUID, session_id: UUID) -> TurnStatus | None:
         return TurnStatus.RUNNING if session_id in self._held else None
 
     def is_held(self, session_id: UUID) -> bool:
@@ -89,9 +84,7 @@ class InMemorySessionRepository(SessionRepository):
         # 「是否在飞」问执行权（不再看 wait_status —— 台账 R3 已清理）✓
         live = self._claim.is_held(session_id) if self._claim is not None else False
         await self.update(
-            session.with_runtime(
-                metadata={**session.metadata, "cancel_requested": True}
-            )
+            session.with_runtime(metadata={**session.metadata, "cancel_requested": True})
         )
         return live
 
@@ -306,9 +299,7 @@ class InMemorySessionJournal(SessionJournal):
             row["finished_at"] = datetime.now(UTC)
             row["cost_usd"] = cost_usd
 
-    async def write_pending_approval(
-        self, *, turn_id: UUID, pending: dict[str, Any]
-    ) -> None:
+    async def write_pending_approval(self, *, turn_id: UUID, pending: dict[str, Any]) -> None:
         row = self.turns.get(turn_id)
         if row is not None:
             row["pending_approval"] = pending
@@ -425,11 +416,10 @@ def make_copilot(*, agent: Any, llm: Any = None, tool_port: Any = None) -> Any:
     ⚠️ 这是**唯一 turn 实现**那条链的单测入口 ✓ —— 旧的 ``AgentRuntimeService``
     门面已删（Session Stage 5b）✓。
     """
-    from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
-    from qzdap_agent_runtime.session.turn_runner import TurnRunner  # noqa: F401
-
     from qzdap.modules.agent_runtime.adapter.graph.runner import SessionGraphRunner
     from qzdap.modules.agent_runtime.application.copilot import CopilotSessionService
+    from qzdap_agent_runtime.gateway.idempotency import IdempotencyGuard
+    from qzdap_agent_runtime.session.turn_runner import TurnRunner  # noqa: F401
 
     deps = make_dependencies()
     messages = InMemoryMessages()
@@ -472,14 +462,13 @@ def make_turn_runner(
     （生命周期 / 会话状态 / 取消）✓，所以单测**仍然覆盖编排** ✓
     （不是「fake 掉编排」✗）。
     """
-    from qzdap_agent_runtime.session.turn_runner import TurnRunner
-
     from qzdap.modules.agent_runtime.adapter.turn.cancel import SqlCancelProbe
     from qzdap.modules.agent_runtime.adapter.turn.executor import (
         SessionGraphExecutor,
     )
     from qzdap.modules.agent_runtime.adapter.turn.lifecycle import TurnLifecycle
     from qzdap.modules.agent_runtime.adapter.turn.session_state import SqlSessionState
+    from qzdap_agent_runtime.session.turn_runner import TurnRunner
 
     return TurnRunner(
         executor=SessionGraphExecutor(graph),
@@ -582,9 +571,7 @@ class InMemoryIdempotencyStore:
             expires_at=row["expires_at"],
         )
 
-    async def mark_completed(
-        self, row_id: UUID, *, turn_id: UUID | None = None
-    ) -> None:
+    async def mark_completed(self, row_id: UUID, *, turn_id: UUID | None = None) -> None:
         for row in [*self._rows.values(), *self._weak_rows]:
             if row["id"] == row_id:
                 row["status"] = "completed"

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_persistence.base import Base, TenantScopedMixin
 from sqlalchemy import (
     Boolean,
     Float,
@@ -17,13 +16,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from qzdap_persistence.base import Base, TenantScopedMixin
+
 
 class CatalogAgentORM(TenantScopedMixin, Base):
     __tablename__ = "admin_agents"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     description: Mapped[str] = mapped_column(
         Text, nullable=False, default="", server_default=text("''")
@@ -46,9 +45,7 @@ class CatalogAgentORM(TenantScopedMixin, Base):
     tone: Mapped[str] = mapped_column(
         String(16), nullable=False, default="brand", server_default=text("'brand'")
     )
-    calls: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default=text("0")
-    )
+    calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
     success_rate: Mapped[float] = mapped_column(
         Float, nullable=False, default=0, server_default=text("0")
     )
@@ -132,21 +129,13 @@ class CatalogAgentORM(TenantScopedMixin, Base):
 class CatalogAgentUserStateORM(TenantScopedMixin, Base):
     __tablename__ = "admin_agent_user_state"
 
-    workspace_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
-    user_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
-    agent_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), nullable=False, index=True
-    )
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
+    user_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
+    agent_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
     favorited: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "user_id", "agent_id", name="uq_admin_agent_user_state"
-        ),
+        UniqueConstraint("tenant_id", "user_id", "agent_id", name="uq_admin_agent_user_state"),
     )

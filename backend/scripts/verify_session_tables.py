@@ -121,9 +121,7 @@ async def _run(url: str) -> int:
     try:
         async with engine.connect() as conn:
             for title, sql in _queries():
-                rows = (
-                    await conn.execute(text(sql))
-                ).all()
+                rows = (await conn.execute(text(sql))).all()
                 # 「新表有、旧表没有」在双写期是**正常**的（新表先写 ✓）——
                 # 但它说明「旧表不是完整的真相」✗ → 报出来，但不算差异 ✗。
                 informational = title.startswith("新表有、旧表没有")

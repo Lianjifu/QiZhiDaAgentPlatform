@@ -15,6 +15,10 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from qzdap.modules.agent_runtime.adapter.persistence.models import SessionORM
 from qzdap_agent_runtime.session.manager import (
     AgentBinding,
     CloseReason,
@@ -22,10 +26,6 @@ from qzdap_agent_runtime.session.manager import (
     SessionRef,
 )
 from qzdap_agent_runtime.session.state import SessionStatus
-from sqlalchemy import select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-from qzdap.modules.agent_runtime.adapter.persistence.models import SessionORM
 
 
 class PostgresSessionStore:

@@ -44,7 +44,7 @@ class TrustLevel(StrEnum):
 
     VERIFIED_HMAC = "verified_hmac"
     JWT = "jwt"
-    SIGNED_TOKEN = "signed_token"
+    SIGNED_TOKEN = "signed_token"  # noqa: S105 —— 事件类型名 ✓ 不是口令 ✓
     INTERNAL = "internal"
 
 
@@ -203,9 +203,7 @@ class InboundMessage(DomainEvent):
         return {
             "actor": {
                 "tenant_id": str(self.actor.tenant_id),
-                "workspace_id": (
-                    str(self.actor.workspace_id) if self.actor.workspace_id else None
-                ),
+                "workspace_id": (str(self.actor.workspace_id) if self.actor.workspace_id else None),
                 "actor_id": str(self.actor.actor_id),
                 "roles": list(self.actor.roles),
                 "actor_kind": self.actor.actor_kind,
@@ -214,9 +212,7 @@ class InboundMessage(DomainEvent):
             "channel_id": str(self.channel_id) if self.channel_id else None,
             "external_chat_id": self.external_chat_id,
             "external_user_id": self.external_user_id,
-            "explicit_agent_id": (
-                str(self.explicit_agent_id) if self.explicit_agent_id else None
-            ),
+            "explicit_agent_id": (str(self.explicit_agent_id) if self.explicit_agent_id else None),
             "idempotency": {
                 "value": self.idempotency.value,
                 "source": str(self.idempotency.source),
@@ -282,9 +278,7 @@ class InboundMessage(DomainEvent):
                 expires_at=datetime.fromisoformat(str(idem_raw["expires_at"])),
             ),
             external_message_id=(
-                str(payload["external_message_id"])
-                if payload.get("external_message_id")
-                else None
+                str(payload["external_message_id"]) if payload.get("external_message_id") else None
             ),
             payload_hash=str(payload.get("payload_hash") or ""),
             trace_id=str(payload.get("trace_id") or ""),

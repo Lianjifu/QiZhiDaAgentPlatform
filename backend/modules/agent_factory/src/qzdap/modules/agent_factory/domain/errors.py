@@ -64,9 +64,7 @@ class AgentFactoryPolicyDenied(AgentFactoryError, ForbiddenError):
 
 
 # Re-export for callers — keeps them out of ``qzdap_kernel`` direct deps.
-EvalGateFailed = (
-    BusinessRuleError  # signature: (message, *, code="EVAL_GATE_FAILED", status=422)
-)
+EvalGateFailed = BusinessRuleError  # signature: (message, *, code="EVAL_GATE_FAILED", status=422)
 
 
 __all__ = [

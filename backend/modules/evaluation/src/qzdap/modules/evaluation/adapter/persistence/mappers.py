@@ -5,17 +5,6 @@ Pure functions; SQL repositories call these from inside the session.
 
 from __future__ import annotations
 
-from qzdap_schema.ids import (
-    AgentTemplateId,
-    AgentVersionId,
-    EvalCaseId,
-    EvalDatasetId,
-    EvalRunId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.evaluation.adapter.persistence.models import (
     EvalCaseORM,
     EvalDatasetORM,
@@ -30,6 +19,16 @@ from qzdap.modules.evaluation.domain.value_objects import (
     EvalDatasetKind,
     EvalDatasetStatus,
     EvalRunStatus,
+)
+from qzdap_schema.ids import (
+    AgentTemplateId,
+    AgentVersionId,
+    EvalCaseId,
+    EvalDatasetId,
+    EvalRunId,
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 # ── EvalDataset ──────────────────────────────────────────────────────────

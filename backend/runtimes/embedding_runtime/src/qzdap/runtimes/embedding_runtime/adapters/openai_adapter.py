@@ -36,9 +36,7 @@ class OpenAIAdapter:
         if not texts:
             return []
         if len(texts) > self.max_batch:
-            raise ValueError(
-                f"batch too large: {len(texts)} > max_batch={self.max_batch}"
-            )
+            raise ValueError(f"batch too large: {len(texts)} > max_batch={self.max_batch}")
 
         client = self._ensure_client()
         resp = await client.post(
@@ -49,9 +47,7 @@ class OpenAIAdapter:
         body = resp.json()
         data = body["data"]
         if len(data) != len(texts):
-            raise RuntimeError(
-                f"OpenAI returned {len(data)} embeddings for {len(texts)} inputs"
-            )
+            raise RuntimeError(f"OpenAI returned {len(data)} embeddings for {len(texts)} inputs")
         data.sort(key=lambda d: d["index"])
         return [d["embedding"] for d in data]
 

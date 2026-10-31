@@ -27,9 +27,7 @@ class SkillRepository(ABC):
 
 class SkillUserStateRepository(ABC):
     @abstractmethod
-    async def get(
-        self, *, user_id: UUID, skill_id: UUID
-    ) -> tuple[bool, str | None]: ...
+    async def get(self, *, user_id: UUID, skill_id: UUID) -> tuple[bool, str | None]: ...
 
     @abstractmethod
     async def set_favorite(

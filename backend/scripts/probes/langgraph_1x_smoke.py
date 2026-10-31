@@ -25,7 +25,6 @@ from langgraph.graph.message import add_messages
 from langgraph.types import Command, interrupt
 from typing_extensions import TypedDict
 
-
 # ---------------------------------------------------------------------------
 # 1. StateGraph 1.x API 验证
 # ---------------------------------------------------------------------------
@@ -119,6 +118,7 @@ async def _run_smoke() -> dict[str, Any]:
 def main() -> int:
     result = asyncio.run(_run_smoke())
     import json
+
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
     # 验收

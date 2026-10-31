@@ -112,9 +112,7 @@ class PendingApproval:
                 arguments_digest=str(raw["arguments_digest"]),
                 session_id=UUID(str(raw["session_id"])),
                 turn_id=UUID(str(raw["turn_id"])),
-                created_at=created_at
-                if created_at.tzinfo
-                else created_at.replace(tzinfo=UTC),
+                created_at=created_at if created_at.tzinfo else created_at.replace(tzinfo=UTC),
             )
         except (KeyError, TypeError, ValueError):
             return None

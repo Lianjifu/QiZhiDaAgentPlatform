@@ -13,14 +13,13 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-from qzdap_kernel.events import DomainEvent
-
 from qzdap.modules.tool.domain import (
     AuthConfig,
     SpecOperation,
     Tool,
     ToolCall,
 )
+from qzdap_kernel.events import DomainEvent
 
 
 class ToolRepository(ABC):

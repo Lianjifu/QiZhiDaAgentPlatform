@@ -3,6 +3,7 @@
 测试 AlertService 在不同 incident 计数下输出正确的 AlertDecision,
 并验证 cooldown 抑制.
 """
+
 from __future__ import annotations
 
 import time
@@ -53,9 +54,7 @@ class FakeHealthRepository(HealthRepository):
     async def get(self, *args: Any, **kwargs: Any) -> HealthEvent | None:
         return None
 
-    async def list_for_workspace(
-        self, workspace_id: UUID, limit: int = 50
-    ) -> list[HealthEvent]:
+    async def list_for_workspace(self, workspace_id: UUID, limit: int = 50) -> list[HealthEvent]:
         return [e for e in self._events if e.workspace_id == workspace_id][:limit]
 
     async def delete(self, *args: Any, **kwargs: Any) -> None:
@@ -77,9 +76,7 @@ async def test_no_incidents_returns_ok(fixed_now: float) -> None:
     repo = FakeHealthRepository()
     svc = AlertService(repo, clock=lambda: 1000.0)
     t, w, p = uuid4(), uuid4(), uuid4()
-    d = await svc.evaluate(
-        tenant_id=t, workspace_id=w, provider_id=p, now_epoch=fixed_now
-    )
+    d = await svc.evaluate(tenant_id=t, workspace_id=w, provider_id=p, now_epoch=fixed_now)
     assert d.level == "ok"
     assert d.incident_count == 0
     assert d.cooldown_remaining == 0.0
@@ -98,9 +95,7 @@ async def test_below_threshold_returns_degraded(fixed_now: float) -> None:
             message=f"err{i}",
             seconds_ago=10 + i,
         )
-    d = await svc.evaluate(
-        tenant_id=t, workspace_id=w, provider_id=p, now_epoch=fixed_now
-    )
+    d = await svc.evaluate(tenant_id=t, workspace_id=w, provider_id=p, now_epoch=fixed_now)
     assert d.level == "degraded"
     assert d.incident_count == 2
     assert d.cooldown_remaining == 0.0
@@ -119,9 +114,7 @@ async def test_at_threshold_fires_down(fixed_now: float) -> None:
             message=f"err{i}",
             seconds_ago=5 + i,
         )
-    d = await svc.evaluate(
-        tenant_id=t, workspace_id=w, provider_id=p, now_epoch=fixed_now
-    )
+    d = await svc.evaluate(tenant_id=t, workspace_id=w, provider_id=p, now_epoch=fixed_now)
     assert d.level == "down"
     assert d.incident_count == 3
     assert d.cooldown_remaining == 0.0  # 第一次允许发
@@ -146,24 +139,16 @@ async def test_cooldown_suppresses_repeat_alerts() -> None:
     )
     t, w, p = uuid4(), uuid4(), uuid4()
     for i in range(3):
-        repo.add_event(
-            tenant_id=t, workspace_id=w, provider_id=p, seconds_ago=5 + i
-        )
+        repo.add_event(tenant_id=t, workspace_id=w, provider_id=p, seconds_ago=5 + i)
     # 第一次 (mono=1000, 真实 now)
-    d1 = await svc.evaluate(
-        tenant_id=t, workspace_id=w, provider_id=p, now_epoch=time.time()
-    )
+    d1 = await svc.evaluate(tenant_id=t, workspace_id=w, provider_id=p, now_epoch=time.time())
     assert d1.level == "down"
     assert d1.cooldown_remaining == 0.0
     # 再加 3 个 incident (现在窗口里), mono 走 100s, 仍在 cooldown 600s 内
     mono["t"] = 1100.0
     for i in range(3, 6):
-        repo.add_event(
-            tenant_id=t, workspace_id=w, provider_id=p, seconds_ago=5 + i
-        )
-    d2 = await svc.evaluate(
-        tenant_id=t, workspace_id=w, provider_id=p, now_epoch=time.time()
-    )
+        repo.add_event(tenant_id=t, workspace_id=w, provider_id=p, seconds_ago=5 + i)
+    d2 = await svc.evaluate(tenant_id=t, workspace_id=w, provider_id=p, now_epoch=time.time())
     assert d2.level == "down"
     assert d2.cooldown_remaining > 0  # 还在冷却期 (600 - 100 = 500s)
 
@@ -181,21 +166,13 @@ async def test_cooldown_releases_after_window() -> None:
     )
     t, w, p = uuid4(), uuid4(), uuid4()
     for i in range(3):
-        repo.add_event(
-            tenant_id=t, workspace_id=w, provider_id=p, seconds_ago=5 + i
-        )
-    await svc.evaluate(
-        tenant_id=t, workspace_id=w, provider_id=p, now_epoch=time.time()
-    )
+        repo.add_event(tenant_id=t, workspace_id=w, provider_id=p, seconds_ago=5 + i)
+    await svc.evaluate(tenant_id=t, workspace_id=w, provider_id=p, now_epoch=time.time())
     # 跨过 cooldown: mono 走 700s (> 600)
     mono["t"] = 1700.0
     for i in range(3, 6):
-        repo.add_event(
-            tenant_id=t, workspace_id=w, provider_id=p, seconds_ago=5 + i
-        )
-    d = await svc.evaluate(
-        tenant_id=t, workspace_id=w, provider_id=p, now_epoch=time.time()
-    )
+        repo.add_event(tenant_id=t, workspace_id=w, provider_id=p, seconds_ago=5 + i)
+    d = await svc.evaluate(tenant_id=t, workspace_id=w, provider_id=p, now_epoch=time.time())
     assert d.level == "down"
     assert d.cooldown_remaining == 0.0  # cooldown 已过, 又允许发
 
@@ -205,18 +182,12 @@ async def test_old_incidents_outside_window_excluded() -> None:
     repo = FakeHealthRepository()
     # 用真实 time.time() 当 now_epoch — 与 add_event 的 occurred_at 一致
     real_now = time.time()
-    svc = AlertService(
-        repo, incident_threshold=3, incident_window_seconds=60, clock=lambda: 1000.0
-    )
+    svc = AlertService(repo, incident_threshold=3, incident_window_seconds=60, clock=lambda: 1000.0)
     t, w, p = uuid4(), uuid4(), uuid4()
     # 3 个 10 分钟前的事件 (window=60s 全过期)
     for i in range(3):
-        repo.add_event(
-            tenant_id=t, workspace_id=w, provider_id=p, seconds_ago=600 + i
-        )
-    d = await svc.evaluate(
-        tenant_id=t, workspace_id=w, provider_id=p, now_epoch=real_now
-    )
+        repo.add_event(tenant_id=t, workspace_id=w, provider_id=p, seconds_ago=600 + i)
+    d = await svc.evaluate(tenant_id=t, workspace_id=w, provider_id=p, now_epoch=real_now)
     assert d.level == "ok"
     assert d.incident_count == 0
 
@@ -228,12 +199,8 @@ async def test_other_providers_incidents_ignored(fixed_now: float) -> None:
     t, w, p1, p2 = uuid4(), uuid4(), uuid4(), uuid4()
     # p2 有 3 个 incident
     for i in range(3):
-        repo.add_event(
-            tenant_id=t, workspace_id=w, provider_id=p2, seconds_ago=5 + i
-        )
-    d = await svc.evaluate(
-        tenant_id=t, workspace_id=w, provider_id=p1, now_epoch=fixed_now
-    )
+        repo.add_event(tenant_id=t, workspace_id=w, provider_id=p2, seconds_ago=5 + i)
+    d = await svc.evaluate(tenant_id=t, workspace_id=w, provider_id=p1, now_epoch=fixed_now)
     assert d.level == "ok"
     assert d.incident_count == 0
 
@@ -252,7 +219,5 @@ async def test_recovery_event_does_not_count_as_incident(fixed_now: float) -> No
             type="recovery",
             seconds_ago=5 + i,
         )
-    d = await svc.evaluate(
-        tenant_id=t, workspace_id=w, provider_id=p, now_epoch=fixed_now
-    )
+    d = await svc.evaluate(tenant_id=t, workspace_id=w, provider_id=p, now_epoch=fixed_now)
     assert d.level == "ok"

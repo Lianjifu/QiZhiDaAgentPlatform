@@ -9,11 +9,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from qzdap.modules.tool.application.ports import EventPublisher
 from qzdap_kernel.events import DomainEvent
 from qzdap_messaging.bus import EventBus
 from qzdap_messaging.domain_event import EventEnvelope
-
-from qzdap.modules.tool.application.ports import EventPublisher
 
 
 class ToolEventPublisher(EventPublisher):

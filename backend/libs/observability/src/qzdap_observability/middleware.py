@@ -10,7 +10,6 @@ from qzdap_kernel.contextvars import (
     current_trace_id,
     reset_trace_id,
 )
-
 from qzdap_observability.logging import get_logger
 from qzdap_observability.metrics import record_http_request
 

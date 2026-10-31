@@ -31,9 +31,7 @@ class SqlEvolutionCandidateRepository(EvolutionCandidateRepository):
             session.add(candidate_to_orm(candidate))
             await session.commit()
 
-    async def get(
-        self, *, tenant_id: UUID, candidate_id: UUID
-    ) -> EvolveCandidate | None:
+    async def get(self, *, tenant_id: UUID, candidate_id: UUID) -> EvolveCandidate | None:
         async with self._sf() as session:
             row = await session.get(EvolveCandidateORM, candidate_id)
             if row is None or row.tenant_id != tenant_id:
@@ -48,9 +46,7 @@ class SqlEvolutionCandidateRepository(EvolutionCandidateRepository):
                 .where(EvolveCandidateORM.tenant_id == UUID(str(candidate.tenant_id)))
                 .values(
                     status=candidate.status.value,
-                    approver_id=UUID(str(candidate.approver_id))
-                    if candidate.approver_id
-                    else None,
+                    approver_id=UUID(str(candidate.approver_id)) if candidate.approver_id else None,
                     reviewed_at=candidate.reviewed_at,
                     applied_at=candidate.applied_at,
                     payload=dict(candidate.payload),

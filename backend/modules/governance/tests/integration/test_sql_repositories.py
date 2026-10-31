@@ -25,12 +25,6 @@ from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
-from qzdap_schema.ids import (
-    DecisionEventId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
 from sqlalchemy import text
 
 from qzdap.modules.governance.adapter.persistence.repositories import (
@@ -58,6 +52,12 @@ from qzdap.modules.governance.domain.value_objects import (
     ApprovalStatus,
     PolicyEffect,
     PolicySubject,
+)
+from qzdap_schema.ids import (
+    DecisionEventId,
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 # ── Fakes ──────────────────────────────────────────────────────────────
@@ -96,9 +96,7 @@ class RecordingPublisher:
 async def _truncate(session_factory):
     """Clear governance tables before each test for hermetic isolation."""
     async with session_factory() as session:
-        await session.execute(
-            text("TRUNCATE policies, approvals, decision_events, audit_log")
-        )
+        await session.execute(text("TRUNCATE policies, approvals, decision_events, audit_log"))
         await session.commit()
     yield
 
@@ -306,9 +304,7 @@ async def test_approval_list_pending(approval_repo):
     await approval_repo.add(ap1)
     await approval_repo.add(ap2)
 
-    pending = await approval_repo.list_pending(
-        tenant_id=TENANT_A, now=datetime.now(UTC)
-    )
+    pending = await approval_repo.list_pending(tenant_id=TENANT_A, now=datetime.now(UTC))
     assert {a.action for a in pending} == {
         "tool:execute:reverse",
         "tool:execute:clock",

@@ -141,9 +141,7 @@ async def test_sticky_binding_without_an_explicit_agent_records_no_override() ->
     strategy = _strategy([_agent(AGENT_A)])
 
     decision = await strategy.decide(
-        _request(
-            sticky_agent=AgentTarget(agent_id=AGENT_A, agent_version="v1", name="a")
-        )
+        _request(sticky_agent=AgentTarget(agent_id=AGENT_A, agent_version="v1", name="a"))
     )
 
     assert decision.source == "sticky"
@@ -323,15 +321,11 @@ async def test_the_strategy_records_which_rule_matched() -> None:
     from qzdap_observability.metrics import ROUTER_ROUTE_TOTAL
 
     strategy = _strategy([_agent(AGENT_A, profile={"routing": {"default": True}})])
-    before = ROUTER_ROUTE_TOTAL.labels(
-        strategy="fallback", outcome="fallback"
-    )._value.get()
+    before = ROUTER_ROUTE_TOTAL.labels(strategy="fallback", outcome="fallback")._value.get()
 
     await strategy.decide(_request())
 
-    after = ROUTER_ROUTE_TOTAL.labels(
-        strategy="fallback", outcome="fallback"
-    )._value.get()
+    after = ROUTER_ROUTE_TOTAL.labels(strategy="fallback", outcome="fallback")._value.get()
     assert after == before + 1
 
 
@@ -340,14 +334,10 @@ async def test_a_rejected_route_is_also_counted() -> None:
     from qzdap_observability.metrics import ROUTER_ROUTE_TOTAL
 
     strategy = _strategy([_agent(AGENT_A)])
-    before = ROUTER_ROUTE_TOTAL.labels(
-        strategy="unmatched", outcome="rejected"
-    )._value.get()
+    before = ROUTER_ROUTE_TOTAL.labels(strategy="unmatched", outcome="rejected")._value.get()
 
     with pytest.raises(RoutingUnavailable):
         await strategy.decide(_request())
 
-    after = ROUTER_ROUTE_TOTAL.labels(
-        strategy="unmatched", outcome="rejected"
-    )._value.get()
+    after = ROUTER_ROUTE_TOTAL.labels(strategy="unmatched", outcome="rejected")._value.get()
     assert after == before + 1

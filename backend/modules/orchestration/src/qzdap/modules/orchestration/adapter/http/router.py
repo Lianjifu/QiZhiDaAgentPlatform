@@ -18,8 +18,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
-from qzdap_auth.workspace_guard_dep import _require_active_workspace
 from qzdap.modules.orchestration.application.services import OrchestrationService
+from qzdap_auth.workspace_guard_dep import _require_active_workspace
 
 
 def _owner_id(request: Request, fallback: UUID) -> UUID:
@@ -51,10 +51,10 @@ def build_router() -> APIRouter:
 
     @router.get("/api/admin/workflows")
     async def list_admin_workflows(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         status: str = Query(default="all"),
         q: str = Query(default=""),
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_admin(workspace_id=x_workspace_id, status_filter=status, q=q)
 
@@ -65,18 +65,16 @@ def build_router() -> APIRouter:
     )
     async def create_admin_workflow(
         body: dict[str, Any],
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),  # noqa: B008
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> dict[str, Any]:
-        return await svc.create(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
-        )
+        return await svc.create(tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body)
 
     @router.get("/api/admin/workflows/{workflow_id}")
     async def get_admin_workflow(
         workflow_id: UUID,
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> dict[str, Any]:
         return await svc.get_admin(workflow_id)
 
@@ -88,8 +86,8 @@ def build_router() -> APIRouter:
         workflow_id: UUID,
         body: dict[str, Any],
         request: Request,
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> dict[str, Any]:
         actor = str(_owner_id(request, x_user_id))
         return await svc.update(workflow_id=workflow_id, body=body, actor=actor)
@@ -100,23 +98,23 @@ def build_router() -> APIRouter:
     )
     async def delete_admin_workflow(
         workflow_id: UUID,
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> dict[str, Any]:
         return await svc.delete(workflow_id)
 
     @router.get("/api/catalog/workflows")
     async def list_catalog_workflows(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_catalog(workspace_id=x_workspace_id)
 
     @router.get("/api/catalog/workflows/__runs__")
     async def list_catalog_runs(
         request: Request,
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> list[dict[str, Any]]:
         user_id = _owner_id(request, x_user_id)
         return await svc.list_runs(workspace_id=x_workspace_id, user_id=user_id)
@@ -129,8 +127,8 @@ def build_router() -> APIRouter:
         workflow_id: UUID,
         body: dict[str, Any],
         request: Request,
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> dict[str, Any]:
         user_id = _owner_id(request, x_user_id)
         return await svc.set_favorite(
@@ -145,8 +143,8 @@ def build_router() -> APIRouter:
         workflow_id: UUID,
         body: dict[str, Any],
         request: Request,
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> dict[str, Any]:
         user_id = _owner_id(request, x_user_id)
         note = body.get("note") if isinstance(body, dict) else None
@@ -158,17 +156,17 @@ def build_router() -> APIRouter:
 
     @router.get("/api/user/automations")
     async def list_user_automations_alias(
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> list[dict[str, Any]]:
         return await svc.list_catalog(workspace_id=x_workspace_id)
 
     @router.get("/api/user/automations/__runs__")
     async def list_user_automation_runs_alias(
         request: Request,
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),  # noqa: B008
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> list[dict[str, Any]]:
         user_id = _owner_id(request, x_user_id)
         return await svc.list_runs(workspace_id=x_workspace_id, user_id=user_id)
@@ -181,8 +179,8 @@ def build_router() -> APIRouter:
         workflow_id: UUID,
         body: dict[str, Any],
         request: Request,
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> dict[str, Any]:
         user_id = _owner_id(request, x_user_id)
         return await svc.set_favorite(
@@ -197,8 +195,8 @@ def build_router() -> APIRouter:
         workflow_id: UUID,
         body: dict[str, Any],
         request: Request,
-        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),  # noqa: B008
-        svc: OrchestrationService = Depends(orchestration_dependency),  # noqa: B008
+        x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        svc: OrchestrationService = Depends(orchestration_dependency),
     ) -> dict[str, Any]:
         user_id = _owner_id(request, x_user_id)
         note = body.get("note") if isinstance(body, dict) else None

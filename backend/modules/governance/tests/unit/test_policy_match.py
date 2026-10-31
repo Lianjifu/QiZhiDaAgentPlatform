@@ -13,9 +13,6 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from qzdap_schema.ids import PolicyId, TenantId, WorkspaceId
-from qzdap_vault.actor import ActorContext
-
 from qzdap.modules.governance.domain.entities import PolicyRule
 from qzdap.modules.governance.domain.policy_match import (
     _glob_match,
@@ -25,6 +22,8 @@ from qzdap.modules.governance.domain.policy_match import (
     match,
 )
 from qzdap.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
+from qzdap_schema.ids import PolicyId, TenantId, WorkspaceId
+from qzdap_vault.actor import ActorContext
 
 TID = TenantId(UUID("00000000-0000-0000-0000-000000000001"))
 WID = WorkspaceId(UUID("00000000-0000-0000-0000-000000000002"))
@@ -32,9 +31,7 @@ PID = PolicyId(UUID("00000000-0000-0000-0000-000000000003"))
 USER = UUID("00000000-0000-0000-0000-00000000000a")
 
 
-def _actor(
-    *, roles=("workspace_member",), workspace_id=None, principal_id=USER
-) -> ActorContext:
+def _actor(*, roles=("workspace_member",), workspace_id=None, principal_id=USER) -> ActorContext:
     return ActorContext(
         tenant_id=TID,
         workspace_id=workspace_id,
@@ -151,9 +148,7 @@ def test_resource_match_workspace_scoped_miss():
 def test_match_full_positive():
     actor = _actor(roles={"workspace_member"})
     rule = _rule()
-    assert (
-        match(actor, rule, "tool:execute:reverse", {"workspace_id": str(WID)}) is True
-    )
+    assert match(actor, rule, "tool:execute:reverse", {"workspace_id": str(WID)}) is True
 
 
 def test_match_disabled_rule_excluded():

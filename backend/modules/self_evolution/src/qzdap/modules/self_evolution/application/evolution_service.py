@@ -12,13 +12,6 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from qzdap_schema.ids import (
-    EvolveCandidateId,
-    TenantId,
-    UserId,
-    WorkspaceId,
-)
-
 from qzdap.modules.self_evolution.application.apply_guard import (
     ApplyGuard,
     ApplyOutcome,
@@ -43,6 +36,12 @@ from qzdap.modules.self_evolution.domain.value_objects import (
     EvolveKind,
     EvolveStatus,
     is_terminal,
+)
+from qzdap_schema.ids import (
+    EvolveCandidateId,
+    TenantId,
+    UserId,
+    WorkspaceId,
 )
 
 
@@ -97,9 +96,7 @@ class EvolutionCandidateService:
 
     # ── reads ──────────────────────────────────────────────────────────
 
-    async def get(
-        self, *, tenant_id: TenantId, candidate_id: EvolveCandidateId
-    ) -> EvolveCandidate:
+    async def get(self, *, tenant_id: TenantId, candidate_id: EvolveCandidateId) -> EvolveCandidate:
         cand = await self._repo.get(tenant_id=tenant_id, candidate_id=candidate_id)
         if cand is None:
             raise EvolveCandidateNotFound(
@@ -109,9 +106,7 @@ class EvolutionCandidateService:
             )
         return cand
 
-    async def list_pending(
-        self, *, tenant_id: TenantId, limit: int = 200
-    ) -> list[EvolveCandidate]:
+    async def list_pending(self, *, tenant_id: TenantId, limit: int = 200) -> list[EvolveCandidate]:
         return await self._repo.list_pending(
             tenant_id=tenant_id, now=self._clock.now(), limit=limit
         )
@@ -123,9 +118,7 @@ class EvolutionCandidateService:
         status: EvolveStatus,
         limit: int = 100,
     ) -> list[EvolveCandidate]:
-        return await self._repo.list_by_status(
-            tenant_id=tenant_id, status=status, limit=limit
-        )
+        return await self._repo.list_by_status(tenant_id=tenant_id, status=status, limit=limit)
 
     # ── transitions ────────────────────────────────────────────────────
 

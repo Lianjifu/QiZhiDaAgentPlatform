@@ -80,15 +80,15 @@ class TestPlan:
         assert plan.created_at == now
 
     def test_code_too_long_rejected(self) -> None:
-        with pytest.raises(ValueError, match="1..64"):
+        with pytest.raises(ValueError, match=r"1\.\.64"):
             Plan.create(code="x" * 65, display_name="X")
 
     def test_empty_code_rejected(self) -> None:
-        with pytest.raises(ValueError, match="1..64"):
+        with pytest.raises(ValueError, match=r"1\.\.64"):
             Plan.create(code="", display_name="X")
 
     def test_display_name_too_long_rejected(self) -> None:
-        with pytest.raises(ValueError, match="1..256"):
+        with pytest.raises(ValueError, match=r"1\.\.256"):
             Plan.create(code="ok", display_name="x" * 257)
 
     def test_negative_price_rejected(self) -> None:
@@ -138,9 +138,7 @@ class TestSubscription:
         assert sub.metadata == {"source": "sales"}
 
     def test_is_frozen(self) -> None:
-        sub = Subscription.assign(
-            tenant_id=_tenant_id(), plan_id=_plan_id(), plan_code="free"
-        )
+        sub = Subscription.assign(tenant_id=_tenant_id(), plan_id=_plan_id(), plan_code="free")
         with pytest.raises((AttributeError, Exception)):
             sub.status = SubscriptionStatus.CANCELLED  # type: ignore[misc]
 
@@ -180,11 +178,11 @@ class TestTenantSetting:
         assert setting.updated_at >= created
 
     def test_empty_key_rejected(self) -> None:
-        with pytest.raises(ValueError, match="1..128"):
+        with pytest.raises(ValueError, match=r"1\.\.128"):
             TenantSetting.upsert(tenant_id=_tenant_id(), key="", value=1)
 
     def test_key_too_long_rejected(self) -> None:
-        with pytest.raises(ValueError, match="1..128"):
+        with pytest.raises(ValueError, match=r"1\.\.128"):
             TenantSetting.upsert(tenant_id=_tenant_id(), key="k" * 129, value=1)
 
     def test_is_frozen(self) -> None:
@@ -213,9 +211,7 @@ class TestErrors:
         )
 
         assert PlanAlreadyExists("x").code == "PLAN_ALREADY_EXISTS"
-        assert (
-            SubscriptionInvalidTransition("x").code == "SUBSCRIPTION_INVALID_TRANSITION"
-        )
+        assert SubscriptionInvalidTransition("x").code == "SUBSCRIPTION_INVALID_TRANSITION"
         assert TenantSettingNotFound("x").code == "TENANT_SETTING_NOT_FOUND"
         assert TenantSettingConflict("x").code == "TENANT_SETTING_CONFLICT"
 

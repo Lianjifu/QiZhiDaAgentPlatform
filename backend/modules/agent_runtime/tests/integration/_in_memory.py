@@ -6,10 +6,6 @@ from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
-from qzdap_agent_runtime.session.state import TurnStatus
-from qzdap_kernel.events import DomainEvent
-from qzdap_llm.client import ChatRequest, LLMChunk, Usage
-
 from qzdap.modules.agent_runtime.application.ports import (
     EventPublisher,
     LLMPort,
@@ -17,6 +13,9 @@ from qzdap.modules.agent_runtime.application.ports import (
     TurnRepository,
 )
 from qzdap.modules.agent_runtime.domain import Session, Turn
+from qzdap_agent_runtime.session.state import TurnStatus
+from qzdap_kernel.events import DomainEvent
+from qzdap_llm.client import ChatRequest, LLMChunk, Usage
 
 
 class InMemoryTurnClaim:
@@ -25,23 +24,17 @@ class InMemoryTurnClaim:
     def __init__(self) -> None:
         self._held: dict[UUID, UUID] = {}
 
-    async def claim(
-        self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID
-    ) -> bool:
+    async def claim(self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID) -> bool:
         if session_id in self._held:
             return False
         self._held[session_id] = turn_id
         return True
 
-    async def release(
-        self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID
-    ) -> None:
+    async def release(self, *, tenant_id: UUID, session_id: UUID, turn_id: UUID) -> None:
         if self._held.get(session_id) == turn_id:
             self._held.pop(session_id, None)
 
-    async def current_turn_status(
-        self, *, tenant_id: UUID, session_id: UUID
-    ) -> TurnStatus | None:
+    async def current_turn_status(self, *, tenant_id: UUID, session_id: UUID) -> TurnStatus | None:
         return TurnStatus.RUNNING if session_id in self._held else None
 
     def is_held(self, session_id: UUID) -> bool:

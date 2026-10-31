@@ -6,7 +6,6 @@ import asyncio
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from qzdap_llm.providers import get_provider_spec
 
 from qzdap.modules.model.adapter.llm.connectivity_tester import (
     PublicNetworkTransport,
@@ -16,6 +15,7 @@ from qzdap.modules.model.application.ports import (
     CatalogDiscoveryUnsupported,
     CatalogProber,
 )
+from qzdap_llm.providers import get_provider_spec
 
 ANTHROPIC_VERSION = "2023-06-01"
 _MAX_PAGES = 50
@@ -25,9 +25,7 @@ class HttpCatalogProber(CatalogProber):
     def __init__(self, *, timeout_seconds: float = 12.0) -> None:
         self._timeout = timeout_seconds
 
-    async def list_models(
-        self, *, api_key: str, base_url: str, protocol: str
-    ) -> list[str]:
+    async def list_models(self, *, api_key: str, base_url: str, protocol: str) -> list[str]:
         protocol = protocol.lower()
         spec = get_provider_spec(protocol)
         base_url = base_url.strip() or spec.default_base_url
@@ -49,9 +47,7 @@ class HttpCatalogProber(CatalogProber):
                     return await self._anthropic(client, api_key, base_url, protocol)
                 return await self._openai(client, api_key, base_url)
 
-    async def _openai(
-        self, client: httpx.AsyncClient, key: str, base: str
-    ) -> list[str]:
+    async def _openai(self, client: httpx.AsyncClient, key: str, base: str) -> list[str]:
         data = await _get_json(
             client, _endpoint(base, "/models"), {"Authorization": f"Bearer {key}"}
         )
@@ -91,9 +87,7 @@ class HttpCatalogProber(CatalogProber):
             params["after_id"] = last_id
         raise ValueError("catalog exceeds pagination budget")
 
-    async def _google(
-        self, client: httpx.AsyncClient, key: str, base: str
-    ) -> list[str]:
+    async def _google(self, client: httpx.AsyncClient, key: str, base: str) -> list[str]:
         models: list[str] = []
         params = {"pageSize": "100"}
         seen: set[str] = set()
@@ -149,9 +143,7 @@ class HttpCatalogProber(CatalogProber):
                 },
             )
             output = data.get("output") if isinstance(data, dict) else None
-            if not isinstance(output, dict) or not isinstance(
-                output.get("models"), list
-            ):
+            if not isinstance(output, dict) or not isinstance(output.get("models"), list):
                 raise TypeError("invalid catalog")
             items = output["models"]
             models.extend(_extract_ids(items, id_keys=("model",)))
@@ -181,9 +173,7 @@ def _endpoint(base: str, suffix: str) -> str:
     return urlunsplit(parts._replace(path=parts.path.rstrip("/") + suffix))
 
 
-def _extract_ids(
-    items: object, *, id_keys: tuple[str, ...] = ("id", "name")
-) -> list[str]:
+def _extract_ids(items: object, *, id_keys: tuple[str, ...] = ("id", "name")) -> list[str]:
     if not isinstance(items, list):
         raise TypeError("invalid catalog")
     names: list[str] = []

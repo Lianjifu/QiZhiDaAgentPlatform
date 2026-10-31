@@ -10,16 +10,14 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from uuid import UUID, uuid4
+from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
-from qzdap_agent_runtime.memory.policy import MemoryPolicy
-from qzdap_kernel.errors import ConflictError, ValidationError
 
 from qzdap.modules.memory.application.admin_service import MemoryAdminService
 from qzdap.modules.memory.application.services import MemoryRuntimeService
-from qzdap.modules.memory.domain.entities import L2Fact
+from qzdap_kernel.errors import ConflictError, ValidationError
 from tests.unit.test_memory_catalog import InMemoryCatalog
 from tests.unit.test_memory_policy_binding import TENANT, USER, WORKSPACE, _l2
 

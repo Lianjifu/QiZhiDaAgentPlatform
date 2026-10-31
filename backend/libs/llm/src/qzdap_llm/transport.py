@@ -6,25 +6,21 @@ import json
 from collections.abc import AsyncGenerator, AsyncIterator
 
 import httpx
-from qzdap_kernel.errors import ExternalServiceError
 
+from qzdap_kernel.errors import ExternalServiceError
 from qzdap_llm.client import LLMClient
 
 
 class ProviderTransportError(ExternalServiceError):
     """Safe upstream failure; status_code is diagnostic data, not envelope status."""
 
-    def __init__(
-        self, *, status_code: int | None = None, code: str = "LLM_UPSTREAM_ERROR"
-    ):
+    def __init__(self, *, status_code: int | None = None, code: str = "LLM_UPSTREAM_ERROR"):
         super().__init__("LLM provider request failed", code=code)
         self.status_code = status_code
 
 
 def transport_error(exc: httpx.HTTPError) -> ProviderTransportError:
-    status = (
-        exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
-    )
+    status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
     return ProviderTransportError(status_code=status)
 
 
@@ -68,9 +64,7 @@ class HTTPProviderClient(LLMClient):
         self._headers = headers
         self._timeout = timeout_seconds
         self._owns_http = http is None
-        self._http = (
-            http if http is not None else httpx.AsyncClient(timeout=timeout_seconds)
-        )
+        self._http = http if http is not None else httpx.AsyncClient(timeout=timeout_seconds)
 
     def _url(self, path: str) -> str:
         return f"{self._base_url}/{path.lstrip('/')}"
@@ -88,9 +82,7 @@ class HTTPProviderClient(LLMClient):
         except httpx.HTTPError as exc:
             raise transport_error(exc) from None
 
-    async def _events(
-        self, path: str, payload: dict
-    ) -> AsyncGenerator[tuple[str, dict]]:
+    async def _events(self, path: str, payload: dict) -> AsyncGenerator[tuple[str, dict]]:
         try:
             async with self._http.stream(
                 "POST",

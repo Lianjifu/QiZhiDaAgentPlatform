@@ -10,9 +10,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class CreateTenantRequest(BaseModel):
-    slug: str = Field(
-        min_length=3, max_length=40, pattern=r"^[a-z0-9][a-z0-9-]+[a-z0-9]$"
-    )
+    slug: str = Field(min_length=3, max_length=40, pattern=r"^[a-z0-9][a-z0-9-]+[a-z0-9]$")
     display_name: str = Field(min_length=1, max_length=120)
     metadata: dict = Field(default_factory=dict)
 

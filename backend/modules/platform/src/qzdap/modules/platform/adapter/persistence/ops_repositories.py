@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID, uuid4
 
-from qzdap_persistence.tenant_guard import current_tenant_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from qzdap.modules.platform.adapter.persistence.models import AdminOpsDocORM
+from qzdap_persistence.tenant_guard import current_tenant_id
 
 
 def _cross_tenant(row: AdminOpsDocORM) -> bool:
@@ -85,9 +85,7 @@ class SqlAdminOpsRepository:
         await self._session.flush()
         return dict(row.payload)
 
-    async def delete_doc(
-        self, *, workspace_id: UUID, collection: str, doc_key: str
-    ) -> bool:
+    async def delete_doc(self, *, workspace_id: UUID, collection: str, doc_key: str) -> bool:
         row = await self._session.scalar(
             select(AdminOpsDocORM).where(
                 AdminOpsDocORM.workspace_id == workspace_id,

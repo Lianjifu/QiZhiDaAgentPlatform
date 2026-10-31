@@ -17,11 +17,6 @@ from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
 
-from qzdap_agent_runtime.memory.promotion import KnowledgePromotionPort
-from qzdap_agent_runtime.memory.redaction import RuleRedactor
-from qzdap_kernel.errors import ConflictError, ValidationError
-from qzdap_observability.metrics import record_legacy_call
-
 from qzdap.modules.memory.application.embedding import embed_item
 from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
@@ -37,6 +32,10 @@ from qzdap.modules.memory.domain.entities import (
     RetentionPolicy,
 )
 from qzdap.modules.memory.domain.errors import MemoryNotFound
+from qzdap_agent_runtime.memory.promotion import KnowledgePromotionPort
+from qzdap_agent_runtime.memory.redaction import RuleRedactor
+from qzdap_kernel.errors import ConflictError, ValidationError
+from qzdap_observability.metrics import record_legacy_call
 
 _log = getLogger(__name__)
 
@@ -205,9 +204,7 @@ class MemoryAdminService:
         if not facts:
             raise ValidationError("没有可晋升的长期记忆")
         if self._knowledge is None:
-            raise ValidationError(
-                "团队知识候选未接线（knowledge 模块不可用）—— 提升走不了"
-            )
+            raise ValidationError("团队知识候选未接线（knowledge 模块不可用）—— 提升走不了")
         now = datetime.now(UTC)
         content = "\n".join(fact.value for fact in facts)
         candidate = await self._knowledge.create_candidate(
@@ -279,9 +276,7 @@ class MemoryAdminService:
         # ⚠️ **L3 表在用** ✓（台账 X15 —— 决策 #1：L3 退役 ✓）→ 打点 ✓
         record_legacy_call("X15")
         await self._catalog.add_l3(entry)
-        await self._embed_item(
-            entry.id, "l3", entry.recall_text(), tenant_id, workspace_id
-        )
+        await self._embed_item(entry.id, "l3", entry.recall_text(), tenant_id, workspace_id)
         return entry.to_admin_dict()
 
     async def update_l3(
@@ -309,12 +304,8 @@ class MemoryAdminService:
         items.sort(key=lambda item: item.created_at, reverse=True)
         return [item.to_admin_dict() for item in items]
 
-    async def list_policies(
-        self, *, tenant_id: UUID, workspace_id: UUID
-    ) -> list[dict[str, Any]]:
-        items = await self._ensure_policies(
-            tenant_id=tenant_id, workspace_id=workspace_id
-        )
+    async def list_policies(self, *, tenant_id: UUID, workspace_id: UUID) -> list[dict[str, Any]]:
+        items = await self._ensure_policies(tenant_id=tenant_id, workspace_id=workspace_id)
         return [item.to_admin_dict() for item in items]
 
     async def get_policy(self, *, workspace_id: UUID, label: str) -> dict[str, Any]:
@@ -323,9 +314,7 @@ class MemoryAdminService:
             raise MemoryNotFound(f"policy {label} not found")
         return item.to_admin_dict()
 
-    async def trend(
-        self, *, workspace_id: UUID, range: str = "7d"
-    ) -> dict[str, list[int]]:
+    async def trend(self, *, workspace_id: UUID, range: str = "7d") -> dict[str, list[int]]:
         """**真实使用趋势** ✓（C7 ✓ —— M-33 ✓）。
 
         ⚠️ **不再编序列** ✓（旧的 ``_series(n)`` 是拿条目数编出来的 ✗✗ ——
@@ -337,14 +326,9 @@ class MemoryAdminService:
         today = datetime.now(UTC).date()
         # ⚠️ **参数名叫 ``range``** ✓（前端那个字段 ✓）→ 这里的 ``range``
         # 是**字符串** ✗✗ → 用 ``builtins.range`` ✓（别被遮蔽了 ✓）。
-        buckets = {
-            today - timedelta(days=offset): 0
-            for offset in builtins.range(days - 1, -1, -1)
-        }
+        buckets = {today - timedelta(days=offset): 0 for offset in builtins.range(days - 1, -1, -1)}
         since = datetime.now(UTC) - timedelta(days=days)
-        for day, hits in await self._catalog.usage_by_day(
-            workspace_id, since=since
-        ):
+        for day, hits in await self._catalog.usage_by_day(workspace_id, since=since):
             if day in buckets:
                 buckets[day] = hits
         series = [buckets[day] for day in sorted(buckets)]
@@ -367,9 +351,7 @@ class MemoryAdminService:
         items = await self._catalog.list_policies(workspace_id)
         if items:
             return items
-        seeded = RetentionPolicy.defaults(
-            tenant_id=tenant_id, workspace_id=workspace_id
-        )
+        seeded = RetentionPolicy.defaults(tenant_id=tenant_id, workspace_id=workspace_id)
         for item in seeded:
             await self._catalog.add_policy(item)
         return seeded

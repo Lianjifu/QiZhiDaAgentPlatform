@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from qzdap_vector.pg_vector import PgVectorStore
-from qzdap_vector.store import VectorItem
-
 from qzdap.modules.knowledge.application.ports import VectorHit, VectorSearchPort
 from qzdap.modules.knowledge.domain.entities import IndexedChunk
+from qzdap_vector.pg_vector import PgVectorStore
+from qzdap_vector.store import VectorItem
 
 
 class PgKnowledgeVectorAdapter(VectorSearchPort):

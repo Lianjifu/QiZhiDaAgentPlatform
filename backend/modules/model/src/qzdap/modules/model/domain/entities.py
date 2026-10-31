@@ -10,12 +10,14 @@ from uuid import UUID
 ModelStatus = Literal["active", "graying", "draft", "retired"]
 ProviderStatus = Literal["healthy", "degraded", "down"]
 RouteStrategy = Literal[
-    "quality-first", "cost-first", "latency-first", "fallback",
-    "round-robin", "weighted",
+    "quality-first",
+    "cost-first",
+    "latency-first",
+    "fallback",
+    "round-robin",
+    "weighted",
 ]
-TaskType = Literal[
-    "reasoning", "generation", "classification", "embedding", "summarization"
-]
+TaskType = Literal["reasoning", "generation", "classification", "embedding", "summarization"]
 ModelTier = Literal["premium", "balanced", "economy"]
 HealthEventType = Literal["incident", "latency", "quota", "recovery"]
 ModelProtocol = Literal[
@@ -37,9 +39,7 @@ PROVIDER_STATUSES = frozenset({"healthy", "degraded", "down"})
 ROUTE_STRATEGIES = frozenset(
     {"quality-first", "cost-first", "latency-first", "fallback", "round-robin", "weighted"}
 )
-TASK_TYPES = frozenset(
-    {"reasoning", "generation", "classification", "embedding", "summarization"}
-)
+TASK_TYPES = frozenset({"reasoning", "generation", "classification", "embedding", "summarization"})
 MODEL_TIERS = frozenset({"premium", "balanced", "economy"})
 HEALTH_TYPES = frozenset({"incident", "latency", "quota", "recovery"})
 PROTOCOLS = frozenset(
@@ -112,9 +112,7 @@ class Provider:
         api_version: str = "",
     ) -> Self:
         now = _utcnow()
-        proto: ModelProtocol = (
-            protocol if protocol in PROTOCOLS else "openai-compatible"
-        )
+        proto: ModelProtocol = protocol if protocol in PROTOCOLS else "openai-compatible"
         return cls(
             id=id,
             tenant_id=tenant_id,
@@ -235,9 +233,7 @@ class Model:
         if "priceOut" in patch:
             data["price_out"] = float(patch["priceOut"] or 0)
         if "task" in patch and isinstance(patch["task"], list):
-            data["task"] = [
-                item for item in patch["task"] if item in TASK_TYPES
-            ] or list(self.task)
+            data["task"] = [item for item in patch["task"] if item in TASK_TYPES] or list(self.task)
         if "tags" in patch and isinstance(patch["tags"], list):
             data["tags"] = [str(item) for item in patch["tags"]]
         data["updated_at"] = _utcnow()

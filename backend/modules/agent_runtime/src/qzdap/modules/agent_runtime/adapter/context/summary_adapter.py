@@ -14,12 +14,11 @@ from __future__ import annotations
 
 import logging
 
+from qzdap.modules.agent_runtime.application.ports import LLMPort
 from qzdap_agent_runtime.context.compressor import SummaryModelPort
 from qzdap_llm.client import ChatMessage, ChatRequest
 from qzdap_schema.ids import ModelId
 from qzdap_vault.actor import ActorContext
-
-from qzdap.modules.agent_runtime.application.ports import LLMPort
 
 _log = logging.getLogger(__name__)
 
@@ -55,9 +54,7 @@ class LLMSummaryAdapter(SummaryModelPort):
             max_tokens=SUMMARY_MAX_TOKENS,
         )
         if self._model_id is not None:
-            stream = self._llm.stream(
-                request, model_id=self._model_id, actor=self._actor
-            )
+            stream = self._llm.stream(request, model_id=self._model_id, actor=self._actor)
         else:
             stream = self._llm.stream(request)
         parts: list[str] = []

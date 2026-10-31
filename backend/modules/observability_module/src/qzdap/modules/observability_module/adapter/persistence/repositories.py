@@ -18,12 +18,6 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from qzdap_schema.ids import (
-    CostRecordId,
-    RunRecordId,
-    TenantId,
-    WorkspaceId,
-)
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +43,12 @@ from qzdap.modules.observability_module.domain.value_objects import (
     CostType,
     RunType,
 )
+from qzdap_schema.ids import (
+    CostRecordId,
+    RunRecordId,
+    TenantId,
+    WorkspaceId,
+)
 
 # ── RunRecordRepository ───────────────────────────────────────────────────
 
@@ -63,9 +63,7 @@ class SqlRunRecordRepository(RunRecordRepository):
         await self._session.flush()
         return run_record_to_domain(row)
 
-    async def get(
-        self, *, tenant_id: TenantId, run_id: RunRecordId
-    ) -> RunRecord | None:
+    async def get(self, *, tenant_id: TenantId, run_id: RunRecordId) -> RunRecord | None:
         result = await self._session.execute(
             select(RunRecordORM).where(
                 RunRecordORM.tenant_id == tenant_id,
@@ -114,9 +112,7 @@ class SqlCostRecordRepository(CostRecordRepository):
         await self._session.flush()
         return cost_record_to_domain(row)
 
-    async def get(
-        self, *, tenant_id: TenantId, cost_id: CostRecordId
-    ) -> CostRecord | None:
+    async def get(self, *, tenant_id: TenantId, cost_id: CostRecordId) -> CostRecord | None:
         result = await self._session.execute(
             select(CostRecordORM).where(
                 CostRecordORM.tenant_id == tenant_id,
@@ -180,8 +176,7 @@ class SqlCostRecordRepository(CostRecordRepository):
             stmt = stmt.where(CostRecordORM.created_at <= until)
         result = await self._session.execute(stmt)
         return [
-            {"cost_type": ct, "total_usd": _decimal_to_str(total)}
-            for ct, total in result.all()
+            {"cost_type": ct, "total_usd": _decimal_to_str(total)} for ct, total in result.all()
         ]
 
     async def sum_by_workspace(

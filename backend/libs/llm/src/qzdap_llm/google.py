@@ -26,10 +26,7 @@ def _finish(candidate: dict) -> str | None:
     if reason == "STOP":
         return (
             "tool_calls"
-            if any(
-                "functionCall" in p
-                for p in candidate.get("content", {}).get("parts", [])
-            )
+            if any("functionCall" in p for p in candidate.get("content", {}).get("parts", []))
             else "stop"
         )
     if reason is None:
@@ -97,9 +94,7 @@ def _payload(req: ChatRequest) -> dict:
             raise ValueError("Unsupported Google response format")
         generation["responseMimeType"] = "application/json"
         if kind == "json_schema":
-            generation["responseJsonSchema"] = req.response_format["json_schema"][
-                "schema"
-            ]
+            generation["responseJsonSchema"] = req.response_format["json_schema"]["schema"]
     out = {"contents": contents, "generationConfig": generation}
     if systems:
         out["systemInstruction"] = {"parts": systems}
@@ -110,9 +105,7 @@ def _payload(req: ChatRequest) -> dict:
                     {
                         "name": t["function"]["name"],
                         "description": t["function"].get("description", ""),
-                        "parametersJsonSchema": t["function"].get(
-                            "parameters", {"type": "object"}
-                        ),
+                        "parametersJsonSchema": t["function"].get("parameters", {"type": "object"}),
                     }
                     for t in req.tools
                 ]
@@ -121,11 +114,7 @@ def _payload(req: ChatRequest) -> dict:
     if req.tool_choice is not None:
         choice = req.tool_choice
         config = (
-            {
-                "mode": {"auto": "AUTO", "none": "NONE", "required": "ANY"}.get(
-                    choice, "AUTO"
-                )
-            }
+            {"mode": {"auto": "AUTO", "none": "NONE", "required": "ANY"}.get(choice, "AUTO")}
             if isinstance(choice, str)
             else {"mode": "ANY", "allowedFunctionNames": [choice["function"]["name"]]}
         )
@@ -196,9 +185,7 @@ class GoogleClient(HTTPProviderClient):
                 try:
                     if not data.get("candidates"):
                         if data.get("usageMetadata"):
-                            yield LLMChunk(
-                                req.model, "", usage=_usage(data["usageMetadata"])
-                            )
+                            yield LLMChunk(req.model, "", usage=_usage(data["usageMetadata"]))
                             continue
                         raise ProviderTransportError(code="LLM_INVALID_RESPONSE")
                     parsed = _parse(data, req.model, tool_offset=tool_count)

@@ -13,6 +13,7 @@ tenants strictly separated:
 每个测试独立, 用 fixture 创建独立的 tenant + workspace + 配 admin_models, 不依赖
 外部状态.
 """
+
 from __future__ import annotations
 
 import os
@@ -21,15 +22,15 @@ from typing import Any
 
 import asyncpg
 import pytest
+
 from qzdap.composition.container import Container
 from qzdap.composition.settings import Settings
-from qzdap_llm import ChatMessage, ChatRequest, ProviderTransportError
-from qzdap_vault.actor import ActorContext
-
 from qzdap.modules.model.adapter.crypto.credential_cipher import (
     build_cipher_from_env,
 )
 from qzdap.modules.model.domain.errors import QuotaExceeded
+from qzdap_llm import ChatMessage, ChatRequest, ProviderTransportError
+from qzdap_vault.actor import ActorContext
 
 
 def _qzdap_db() -> str:
@@ -60,21 +61,29 @@ async def isolated_tenants() -> Any:
     model_id_a = uuid.uuid4()
     model_id_b = uuid.uuid4()
     try:
-        for i, (t, w, u) in enumerate(zip(ts, ws, users)):
+        for i, (t, w, u) in enumerate(zip(ts, ws, users, strict=False)):
             await pg.execute(
                 "INSERT INTO tenants (id, slug, display_name, status, tenant_id) "
                 "VALUES ($1, $2, $3, 'active', $1) ON CONFLICT (id) DO NOTHING",
-                t, f"test-tenant-{i}", f"Test Tenant {i}",
+                t,
+                f"test-tenant-{i}",
+                f"Test Tenant {i}",
             )
             await pg.execute(
                 "INSERT INTO workspaces (id, tenant_id, slug, display_name, status) "
                 "VALUES ($1, $2, $3, $4, 'active') ON CONFLICT (id) DO NOTHING",
-                w, t, f"test-ws-{i}", f"Test WS {i}",
+                w,
+                t,
+                f"test-ws-{i}",
+                f"Test WS {i}",
             )
             await pg.execute(
                 "INSERT INTO users (id, tenant_id, email, display_name, status) "
                 "VALUES ($1, $2, $3, $4, 'active') ON CONFLICT (id) DO NOTHING",
-                u, t, f"test{i}@example.com", f"Test User {i}",
+                u,
+                t,
+                f"test{i}@example.com",
+                f"Test User {i}",
             )
             provider_id = uuid.uuid4()
             # 用测试 master key 加密 placeholder api_key (需要 AAD protocol+base_url)
@@ -85,14 +94,24 @@ async def isolated_tenants() -> Any:
                 "INSERT INTO admin_model_providers (id, tenant_id, workspace_id, name, region, status, base_url, protocol, api_key_masked, encrypted_payload) "
                 "VALUES ($1, $2, $3, $4, 'global', 'healthy', 'https://api.test/v1', 'openai', '****', $5) "
                 "ON CONFLICT (id) DO NOTHING",
-                provider_id, t, w, f"test-prov-{i}", encrypted,
+                provider_id,
+                t,
+                w,
+                f"test-prov-{i}",
+                encrypted,
             )
             mid = model_id_a if i == 0 else model_id_b
             await pg.execute(
                 "INSERT INTO admin_models (id, tenant_id, workspace_id, name, provider_id, provider_name, status, tier, upstream_model) "
                 "VALUES ($1, $2, $3, $4, $5, $6, 'active', 'balanced', $7) "
                 "ON CONFLICT (id) DO NOTHING",
-                mid, t, w, f"test-model-{i}", provider_id, f"test-prov-{i}", f"test-model-{i}",
+                mid,
+                t,
+                w,
+                f"test-model-{i}",
+                provider_id,
+                f"test-prov-{i}",
+                f"test-model-{i}",
             )
         yield {
             "tenants": ts,
@@ -153,7 +172,10 @@ async def test_quota_isolated_between_tenants(isolated_tenants: Any) -> None:
         await pg.execute(
             "INSERT INTO model_quotas (id, tenant_id, workspace_id, model_id, period, max_requests, enabled) "
             "VALUES ($1, $2, $3, $4, 'minute', 1, true) ON CONFLICT DO NOTHING",
-            uuid.uuid4(), data["tenants"][0], data["workspaces"][0], data["model_ids"][0],
+            uuid.uuid4(),
+            data["tenants"][0],
+            data["workspaces"][0],
+            data["model_ids"][0],
         )
     finally:
         await pg.close()

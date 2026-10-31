@@ -189,7 +189,9 @@ def _svc() -> tuple[KnowledgeService, InMemoryCatalog, InMemoryVectors]:
     catalog = InMemoryCatalog()
     vectors = InMemoryVectors()
     return (
-        KnowledgeService(catalog, embedding=HashEmbedding(), vectors=vectors, chunk_size=40, chunk_overlap=8),
+        KnowledgeService(
+            catalog, embedding=HashEmbedding(), vectors=vectors, chunk_size=40, chunk_overlap=8
+        ),
         catalog,
         vectors,
     )
@@ -253,7 +255,12 @@ async def test_catalog_only_indexed_visible_parsed_docs() -> None:
     ingested = await svc.ingest_doc(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
-        body={"kbId": open_kb["id"], "name": "业务术语.md", "type": "faq", "content": "智能体即 Agent"},
+        body={
+            "kbId": open_kb["id"],
+            "name": "业务术语.md",
+            "type": "faq",
+            "content": "智能体即 Agent",
+        },
     )
     catalog_rows = await svc.list_catalog(workspace_id=WORKSPACE)
     assert len(catalog_rows) == 1
@@ -324,8 +331,6 @@ async def test_keyword_mode_ignores_unrelated_vector_neighbor() -> None:
     )
     stored = await catalog.get_kb(UUID(kb["id"]))
     assert stored is not None
-    hits = await svc.search_query(
-        tenant_id=TENANT, workspace_id=WORKSPACE, query="迟到", top_k=3
-    )
+    hits = await svc.search_query(tenant_id=TENANT, workspace_id=WORKSPACE, query="迟到", top_k=3)
     assert hits
     assert "迟到" in hits[0]["content"]

@@ -19,21 +19,15 @@ from qzdap.modules.governance.application.policy_service import PolicyService
 
 def make_policy_service() -> PolicyService:
     """Real dependency — overridden by composition root via Depends overrides."""
-    raise RuntimeError(
-        "PolicyService dependency not wired; composition root must override"
-    )
+    raise RuntimeError("PolicyService dependency not wired; composition root must override")
 
 
 def make_approval_service() -> ApprovalService:
-    raise RuntimeError(
-        "ApprovalService dependency not wired; composition root must override"
-    )
+    raise RuntimeError("ApprovalService dependency not wired; composition root must override")
 
 
 def make_policy_evaluator() -> PolicyEvaluator:
-    raise RuntimeError(
-        "PolicyEvaluator dependency not wired; composition root must override"
-    )
+    raise RuntimeError("PolicyEvaluator dependency not wired; composition root must override")
 
 
 __all__ = [

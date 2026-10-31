@@ -18,12 +18,11 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
+from qzdap_auth.dependencies import get_principal
+from qzdap_auth.jwt import JWTVerifier
 from qzdap_kernel.contextvars import bind_trace_id_token, reset_trace_id
 from qzdap_kernel.errors import AuthenticationError
 from qzdap_persistence.tenant_guard import bind_tenant_to_session, reset_tenant_to_session
-
-from qzdap_auth.dependencies import get_principal
-from qzdap_auth.jwt import JWTVerifier
 
 
 class AuthMiddleware:

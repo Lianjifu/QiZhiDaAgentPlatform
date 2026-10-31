@@ -12,9 +12,7 @@ from dataclasses import dataclass, field
 @dataclass(slots=True)
 class SBERTAdapter:
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
-    dim: int = (
-        384  # MiniLM is 384-dim; doc 12 keeps 1536 default for text-embedding-3-small
-    )
+    dim: int = 384  # MiniLM is 384-dim; doc 12 keeps 1536 default for text-embedding-3-small
     _model: object = field(default=None, init=False, repr=False)
 
     async def embed(self, texts: list[str]) -> list[list[float]]:

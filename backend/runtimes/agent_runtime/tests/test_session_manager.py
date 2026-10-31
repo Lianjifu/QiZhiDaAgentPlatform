@@ -15,6 +15,7 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 import pytest
+
 from qzdap_agent_runtime.session.manager import (
     AgentBinding,
     CloseReason,
@@ -53,8 +54,8 @@ class _Store:
         if self.conflict_once:
             self.conflict_once = False
             if self.visible_after_conflict:
-                self.rows[(identity.tenant_id, identity.channel_session_key)] = (
-                    self._ref(identity, agent, session_id=uuid4())
+                self.rows[(identity.tenant_id, identity.channel_session_key)] = self._ref(
+                    identity, agent, session_id=uuid4()
                 )
             return None
         ref = self._ref(identity, agent, session_id=uuid4())
@@ -161,9 +162,7 @@ async def test_close_and_archive_delegate_to_the_store() -> None:
     manager = _manager(store)
     session_id = uuid4()
 
-    await manager.close(
-        session_id=session_id, tenant_id=TENANT, reason=CloseReason.USER
-    )
+    await manager.close(session_id=session_id, tenant_id=TENANT, reason=CloseReason.USER)
     await manager.archive(session_id=session_id, tenant_id=TENANT)
 
     assert store.closed == [(session_id, CloseReason.USER)]

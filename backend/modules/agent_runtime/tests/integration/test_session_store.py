@@ -16,16 +16,16 @@ import uuid
 from uuid import UUID, uuid4
 
 import pytest
-from qzdap_agent_runtime.session.manager import (
-    AgentBinding,
-    CloseReason,
-    SessionIdentity,
-)
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from qzdap.modules.agent_runtime.adapter.persistence.session_store import (
     PostgresSessionStore,
+)
+from qzdap_agent_runtime.session.manager import (
+    AgentBinding,
+    CloseReason,
+    SessionIdentity,
 )
 
 _DDL = [
@@ -78,9 +78,7 @@ async def store_ctx():
             await conn.execute(text(statement.replace("{schema}", schema)))
         await conn.commit()
 
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
+    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     from qzdap_persistence.session_factory import SessionFactory
 
     factory = SessionFactory(engine)
@@ -118,9 +116,7 @@ async def test_a_new_session_is_found_by_its_channel_key(store_ctx) -> None:  # 
         )
         assert created is not None
 
-        found = await store.find_by_channel_key(
-            tenant_id=tenant, channel_session_key="k1"
-        )
+        found = await store.find_by_channel_key(tenant_id=tenant, channel_session_key="k1")
         assert found is not None
         assert found.tenant_id == tenant
         assert found.session_id == created
@@ -162,10 +158,7 @@ async def test_an_unknown_key_is_not_found(store_ctx) -> None:  # type: ignore[n
     async with store_ctx.session() as session, session.begin():
         store = PostgresSessionStore(session)
         assert (
-            await store.find_by_channel_key(
-                tenant_id=uuid4(), channel_session_key="nope"
-            )
-            is None
+            await store.find_by_channel_key(tenant_id=uuid4(), channel_session_key="nope") is None
         )
 
 
@@ -181,15 +174,9 @@ async def test_closing_is_terminal_and_idempotent(store_ctx) -> None:  # type: i
 
     async with store_ctx.session() as session:
         store = PostgresSessionStore(session)
-        await store.close_session(
-            session_id=created, tenant_id=tenant, reason=CloseReason.USER
-        )
-        await store.close_session(
-            session_id=created, tenant_id=tenant, reason=CloseReason.USER
-        )
-        found = await store.find_by_channel_key(
-            tenant_id=tenant, channel_session_key="k1"
-        )
+        await store.close_session(session_id=created, tenant_id=tenant, reason=CloseReason.USER)
+        await store.close_session(session_id=created, tenant_id=tenant, reason=CloseReason.USER)
+        found = await store.find_by_channel_key(tenant_id=tenant, channel_session_key="k1")
         assert found is not None
         assert found.status.value == "closed"
 

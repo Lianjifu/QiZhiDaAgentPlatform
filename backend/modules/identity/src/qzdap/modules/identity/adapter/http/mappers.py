@@ -81,9 +81,7 @@ def user_orm_to_domain(o: UserORM) -> User:
     )
 
 
-def user_domain_to_response(
-    u: User, *, workspace_id: UUID | None = None
-) -> UserResponse:
+def user_domain_to_response(u: User, *, workspace_id: UUID | None = None) -> UserResponse:
     return UserResponse(
         id=u.id,
         tenant_id=u.tenant_id,

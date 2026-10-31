@@ -70,9 +70,7 @@ async def manifest_ctx():
             await conn.execute(text(statement.replace("{schema}", schema)))
         await conn.commit()
 
-    engine = create_async_engine(
-        url, connect_args={"server_settings": {"search_path": schema}}
-    )
+    engine = create_async_engine(url, connect_args={"server_settings": {"search_path": schema}})
     try:
         yield engine, schema
     finally:
@@ -193,9 +191,7 @@ async def test_a_different_step_is_a_different_row(manifest_ctx) -> None:  # typ
     async with engine.connect() as conn:
         count = (
             await conn.execute(
-                text(
-                    "SELECT count(*) FROM session_context_manifests WHERE turn_id = :t"
-                ),
+                text("SELECT count(*) FROM session_context_manifests WHERE turn_id = :t"),
                 {"t": turn_id},
             )
         ).scalar_one()
@@ -234,9 +230,7 @@ async def test_another_tenant_cannot_write_the_summary(manifest_ctx) -> None:  #
 
     async with AsyncSession(engine) as session, session.begin():
         store = PostgresContextManifestStore(session)
-        await store.save_rolling_summary(
-            tenant_id=other, session_id=session_id, summary="越权写入"
-        )
+        await store.save_rolling_summary(tenant_id=other, session_id=session_id, summary="越权写入")
 
     async with engine.connect() as conn:
         value = (

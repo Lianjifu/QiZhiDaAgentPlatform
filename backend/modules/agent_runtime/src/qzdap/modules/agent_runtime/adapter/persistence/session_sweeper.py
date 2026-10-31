@@ -16,17 +16,17 @@ from datetime import datetime, timedelta
 from logging import getLogger
 from typing import Any
 
-from qzdap_agent_runtime.session.state import (
-    TurnStatus,
-    assert_turn_transition,
-)
-from qzdap_agent_runtime.session.sweeper import SweepReport
 from sqlalchemy import update
 
 from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
     CLAIM_STALE_MINUTES,
 )
 from qzdap.modules.agent_runtime.adapter.persistence.models import SessionTurnORM
+from qzdap_agent_runtime.session.state import (
+    TurnStatus,
+    assert_turn_transition,
+)
+from qzdap_agent_runtime.session.sweeper import SweepReport
 
 _log = getLogger(__name__)
 
@@ -71,7 +71,7 @@ class PostgresSessionSweeper:
             return 0
         try:
             return int(await self._expire_approvals(now))
-        except Exception:  # noqa: BLE001
+        except Exception:
             # ⚠️ **一类失败不影响另一类** ✓（清扫器整体还要跑 ✓）。
             _log.exception("approval expiry sweep failed")
             return 0

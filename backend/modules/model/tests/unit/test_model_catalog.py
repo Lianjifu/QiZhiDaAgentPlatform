@@ -5,9 +5,6 @@ from __future__ import annotations
 from uuid import UUID
 
 import pytest
-from qzdap_llm.client import ChatMessage, ChatRequest, ChatResponse, Usage
-from qzdap_schema.ids import ModelId
-from qzdap_vault.actor import ActorContext
 
 from qzdap.modules.model.application.ports import (
     CatalogProber,
@@ -20,6 +17,9 @@ from qzdap.modules.model.application.ports import (
 from qzdap.modules.model.application.services import ModelService
 from qzdap.modules.model.domain.entities import HealthEvent, Model, Provider, RouteRule
 from qzdap.modules.model.domain.errors import ModelDisabled, ModelNotFound
+from qzdap_llm.client import ChatMessage, ChatRequest, ChatResponse, Usage
+from qzdap_schema.ids import ModelId
+from qzdap_vault.actor import ActorContext
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
 WORKSPACE = UUID("00000000-0000-0000-0000-000000000002")
@@ -36,9 +36,7 @@ class _MemModels(ModelRepository):
         return self.rows.get(model_id)
 
     async def list_for_workspace(self, workspace_id: UUID) -> list[Model]:
-        return [
-            item for item in self.rows.values() if item.workspace_id == workspace_id
-        ]
+        return [item for item in self.rows.values() if item.workspace_id == workspace_id]
 
     async def update(self, model: Model) -> None:
         self.rows[model.id] = model
@@ -50,10 +48,7 @@ class _MemModels(ModelRepository):
         self, *, workspace_id: UUID, upstream_model: str
     ) -> Model | None:
         for item in self.rows.values():
-            if (
-                item.workspace_id == workspace_id
-                and item.upstream_model == upstream_model
-            ):
+            if item.workspace_id == workspace_id and item.upstream_model == upstream_model:
                 return item
         return None
 
@@ -69,9 +64,7 @@ class _MemProviders(ProviderRepository):
         return self.rows.get(provider_id)
 
     async def list_for_workspace(self, workspace_id: UUID) -> list[Provider]:
-        return [
-            item for item in self.rows.values() if item.workspace_id == workspace_id
-        ]
+        return [item for item in self.rows.values() if item.workspace_id == workspace_id]
 
     async def update(self, provider: Provider) -> None:
         self.rows[provider.id] = provider
@@ -88,9 +81,7 @@ class _MemRoutes(RouteRepository):
         return self.rows.get(route_id)
 
     async def list_for_workspace(self, workspace_id: UUID) -> list[RouteRule]:
-        return [
-            item for item in self.rows.values() if item.workspace_id == workspace_id
-        ]
+        return [item for item in self.rows.values() if item.workspace_id == workspace_id]
 
     async def update(self, route: RouteRule) -> None:
         self.rows[route.id] = route
@@ -106,9 +97,7 @@ class _MemHealth(HealthRepository):
     async def add(self, event: HealthEvent) -> None:
         self.rows.insert(0, event)
 
-    async def list_for_workspace(
-        self, workspace_id: UUID, limit: int = 50
-    ) -> list[HealthEvent]:
+    async def list_for_workspace(self, workspace_id: UUID, limit: int = 50) -> list[HealthEvent]:
         return [item for item in self.rows if item.workspace_id == workspace_id][:limit]
 
 
@@ -158,9 +147,7 @@ class _FakeProber(CatalogProber):
         self.models = models if models is not None else ["gpt-4o", "gpt-4o-mini"]
         self.raise_exc = raise_exc
 
-    async def list_models(
-        self, *, api_key: str, base_url: str, protocol: str
-    ) -> list[str]:
+    async def list_models(self, *, api_key: str, base_url: str, protocol: str) -> list[str]:
         _ = (api_key, base_url, protocol)
         if self.raise_exc is not None:
             raise self.raise_exc
@@ -169,9 +156,7 @@ class _FakeProber(CatalogProber):
 
 def _svc(*, prober: CatalogProber | None = None) -> ModelService:
     if prober is None:
-        prober = _FakeProber(
-            ["gpt-4o", "gpt-4o-mini", "text-embedding-3-large", "qwen-max"]
-        )
+        prober = _FakeProber(["gpt-4o", "gpt-4o-mini", "text-embedding-3-large", "qwen-max"])
     return ModelService(
         _MemModels(),
         _MemProviders(),

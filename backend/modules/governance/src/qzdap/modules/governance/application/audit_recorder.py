@@ -42,9 +42,7 @@ _log = logging.getLogger(__name__)
 
 
 def extract_actor_id(payload: dict[str, Any]) -> UserId | None:
-    raw = (
-        payload.get("actor_id") or payload.get("user_id") or payload.get("principal_id")
-    )
+    raw = payload.get("actor_id") or payload.get("user_id") or payload.get("principal_id")
     if raw is None:
         return None
     try:
@@ -116,7 +114,7 @@ class AuditRecorder:
                 event_type=event_type,
                 payload=_scrub(payload),
             )
-        except Exception as exc:  # noqa: BLE001 — audit must not raise
+        except Exception as exc:
             _log.warning(
                 "audit append failed topic=%s tenant=%s err=%s",
                 event_type,
@@ -147,10 +145,10 @@ def _scrub(payload: dict[str, Any]) -> dict[str, Any]:
     ``secrets_ref`` (a pointer into the vault) and the recorder keeps
     only that reference.
     """
-    SENSITIVE = {"password", "api_key", "secret", "token", "authorization"}
+    sensitive = {"password", "api_key", "secret", "token", "authorization"}
     out: dict[str, Any] = {}
     for k, v in payload.items():
-        if k.lower() in SENSITIVE and not k.endswith("_ref"):
+        if k.lower() in sensitive and not k.endswith("_ref"):
             out[k + "_redacted"] = "***"
         else:
             out[k] = v
@@ -271,9 +269,7 @@ def actor_from_payload(
         roles = ()
     return ActorContext(
         tenant_id=tenant_id,
-        workspace_id=workspace_id
-        if isinstance(workspace_id, type(tenant_id))
-        else None,
+        workspace_id=workspace_id if isinstance(workspace_id, type(tenant_id)) else None,
         principal_id=principal_id,
         roles=frozenset(roles),
     )
