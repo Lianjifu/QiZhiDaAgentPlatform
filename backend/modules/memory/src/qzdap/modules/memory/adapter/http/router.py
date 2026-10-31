@@ -243,7 +243,9 @@ def build_router() -> APIRouter:
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         range: str = Query(default="7d"),
         svc: MemoryAdminService = Depends(memory_dependency),
-    ) -> dict[str, list[int]]:
+    ) -> dict[str, Any]:
+        # ⚠️ **值有两种** ✓ —— 趋势序列（list ✓）与计数（int ✓）——
+        # 标成 ``dict[str, list[int]]`` 会让 FastAPI **校验失败** ✗✗（500 ✓）。
         return await svc.trend(workspace_id=x_workspace_id, range=range)
 
     return router
