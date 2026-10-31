@@ -23,7 +23,7 @@ from qzdap.modules.knowledge.domain.entities import (
     KnowledgeSource,
     KnowledgeTask,
 )
-from qzdap.modules.knowledge.domain.errors import KnowledgeNotFound
+from qzdap.modules.knowledge.domain.errors import KnowledgeNotFound, KnowledgeValidationError
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
 WORKSPACE = UUID("00000000-0000-0000-0000-000000000002")
@@ -440,3 +440,55 @@ async def test_get_doc_returns_one_document() -> None:
     assert fetched["name"] == "退款话术模板"
     with pytest.raises(KnowledgeNotFound):
         await svc.get_doc(UUID("00000000-0000-0000-0000-0000000000ff"))
+
+
+@pytest.mark.asyncio
+async def test_update_doc_publishes_and_retires() -> None:
+    """**发布 / 下线** ✓ —— 发布态是**一根独立的轴** ✓（M-47 ✓）。"""
+    svc, _catalog, _vectors = _svc()
+    kb = await svc.create_kb(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"name": "客服团队", "description": "话术", "scope": "部门"},
+        owner="客服一组",
+    )
+    doc = await svc.ingest_doc(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={
+            "kbId": kb["id"],
+            "name": "退款话术模板",
+            "content": "5 类退款场景的标准回复模板",
+            "publishState": "draft",
+        },
+    )
+    published = await svc.update_doc(UUID(doc["id"]), {"publishState": "published"})
+    assert published["publishState"] == "published"
+    retired = await svc.update_doc(UUID(doc["id"]), {"publishState": "retired"})
+    assert retired["publishState"] == "retired"
+    with pytest.raises(KnowledgeValidationError):
+        await svc.update_doc(UUID(doc["id"]), {"publishState": "archived"})
+
+
+@pytest.mark.asyncio
+async def test_update_doc_keeps_the_body_when_only_the_state_changes() -> None:
+    """**只改发布态时正文不能被切块重写** ✓（否则正文会变成标题 ✗✗）。"""
+    svc, _catalog, _vectors = _svc()
+    kb = await svc.create_kb(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"name": "客服团队", "description": "话术", "scope": "部门"},
+        owner="客服一组",
+    )
+    doc = await svc.ingest_doc(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={
+            "kbId": kb["id"],
+            "name": "退款话术模板",
+            "content": "5 类退款场景的标准回复模板, 带情绪分级.",
+        },
+    )
+    updated = await svc.update_doc(UUID(doc["id"]), {"publishState": "draft"})
+    assert updated["chunks"] >= 1
+    assert "退款场景" in (updated.get("chunksPreview") or [{"snippet": ""}])[0]["snippet"]

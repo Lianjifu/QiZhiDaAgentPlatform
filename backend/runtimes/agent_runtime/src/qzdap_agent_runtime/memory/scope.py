@@ -20,7 +20,7 @@ class MemoryScope(StrEnum):
     |---|---|
     | ``SESSION`` | 仅当前会话 ✓ |
     | ``USER`` | 仅该用户 ✓（L2 个人事实 ✓） |
-    | ``WORKSPACE`` | 工作区全体 ✓（L3 团队知识 ✓，受 ACL 约束 ✓） |
+    | ``WORKSPACE`` | 工作区全体 ✓（团队知识 ✓ —— L3 已退役 ✓ —— 归 knowledge ✓） |
     """
 
     SESSION = "session"
@@ -30,9 +30,7 @@ class MemoryScope(StrEnum):
 
 #: 层级 → 作用域的默认映射 ✓（§3.2 ✓）。
 LAYER_SCOPES: dict[str, MemoryScope] = {
-    "l1": MemoryScope.SESSION,
     "l2": MemoryScope.USER,
-    "l3": MemoryScope.WORKSPACE,
 }
 
 

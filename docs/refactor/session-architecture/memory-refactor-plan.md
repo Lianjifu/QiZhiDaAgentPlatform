@@ -1300,7 +1300,7 @@ ALTER TABLE admin_memory_policies
 |---|---|---|
 | **删 `runtimes/.../memory/layered.py`**（**317 行** ✓） | ⚠️ **未删** ✓ | 它还被新 runtime 的 `engine.py` 与 19 节点图的 `nodes.py` import ✓ —— 那两处都是**没有生产调用方的死代码** ✓ → 删除归 **Agent Stage 7** ✓（连它们一起删 ✓） |
 | **删 `graph/nodes.py` 的 `remember` 节点** | ⚠️ **未删** ✓ | 同上 —— `nodes.py` 整体归 **Agent Stage 7** ✓ |
-| **退役 `admin_memory_l1` / `admin_memory_l3` 两张表** | ⚠️ **L1 已 DROP ✓，L3 未 DROP** ✓ | ① L1：**✅ 已完成** ✓（**M-46** ✓ —— 2026-10-31 —— 管理端 4 个 L1 端点**改读会话缓冲** ✓（`session_memory_buffer` ✓ —— 契约没变 ✓ —— 前端那套 `L1Session` 形状照旧 ✓）+ 迁移 **0057** DROP ✓ + ORM / 实体 / 端口 / 演示种子全删 ✓ → 台账 **X13 已清理** ✓）；② L3：决策 #1 的**数据要先迁到 `modules/knowledge`** ✓（团队知识不能直接丢 ✗✗）→ 归「未接管」✓ |
+| **退役 `admin_memory_l1` / `admin_memory_l3` 两张表** | ✅ **两张都 DROP 了** ✓ | ① L1：**✅ 已完成** ✓（**M-46** ✓ —— 2026-10-31 —— 管理端 4 个 L1 端点**改读会话缓冲** ✓（`session_memory_buffer` ✓ —— 契约没变 ✓ —— 前端那套 `L1Session` 形状照旧 ✓）+ 迁移 **0057** DROP ✓ + ORM / 实体 / 端口 / 演示种子全删 ✓ → 台账 **X13 已清理** ✓）；② L3：**✅ 已完成** ✓（**M-47** ✓ —— 2026-10-31 —— **先上新** ✓：迁移 **0058** 把 L3 逐行搬进 knowledge（**team → KB** ✓ / **summary → chunk** ✓ / **doc id 沿用 L3 的 id** ✓）+ knowledge 加 `category` / `publish_state` / `contributor` / `origin` 四列 ✓；**再清旧** ✓：5 个 L3 端点删 ✓、召回不再查 L3 ✓（→ **双份注入没了** ✓）、ORM / 实体 / 端口 / 仓储 / 候选 / 契约层全删 ✓ + 迁移 **0059** DROP ✓ + **X15 打点撤除** ✓ → 台账 **X15 已清理** ✓） |
 
 ### 阶段与「旧代码减少」对照
 

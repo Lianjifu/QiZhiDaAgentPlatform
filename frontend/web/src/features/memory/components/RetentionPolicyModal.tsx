@@ -23,7 +23,7 @@ export function RetentionPolicyModal({ open, onClose, policy, onSave }: {
             <label className="block">
               <span className="text-xs font-semibold">TTL (分钟)</span>
               <input type="number" min={1} value={draft.ttlMinutes} onChange={(event) => setDraft({ ...draft, ttlMinutes: Number(event.target.value) })} className="mt-1 h-10 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-1)] px-3 text-sm outline-none focus:border-[var(--brand)]" />
-              <p className="mt-1 text-[10px] text-[var(--text-muted)]">{policy.layer === 'l1' ? '建议 30-1440 分钟' : policy.layer === 'l2' ? '建议 1-180 天' : '建议 30-365 天'}</p>
+              <p className="mt-1 text-[10px] text-[var(--text-muted)]">建议 1-180 天</p>
             </label>
             <label className="block">
               <span className="text-xs font-semibold">最大条目</span>

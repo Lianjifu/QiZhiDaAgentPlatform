@@ -43,20 +43,20 @@ export default function PolicyDetailPage() {
   const { data: l2Facts } = useL2Facts();
   const { data: l3Entries } = useL3Entries();
 
+  // ⚠️ **保留策略只有 L2 了** ✓ —— L1（M-46 ✓）/ L3（M-47 ✓）都退役了 ✓。
   const layerCount = useMemo(() => {
     if (!policy) return null;
-    if (policy.layer === 'l1') return l1Sessions?.filter((s) => s.status !== 'expired').length ?? 0;
-    if (policy.layer === 'l2') return l2Facts?.filter((f) => f.status !== 'retired').length ?? 0;
-    return l3Entries?.filter((k) => k.status === 'published').length ?? 0;
-  }, [policy, l1Sessions, l2Facts, l3Entries]);
+    return l2Facts?.filter((f) => f.status !== 'retired').length ?? 0;
+  }, [policy, l2Facts]);
 
   const otherLayers = useMemo(() => {
     if (!policy) return [] as Array<{ key: string; label: string; count: number | undefined }>;
-    const items: Array<{ key: string; label: string; count: number | undefined }> = [];
-    if (policy.layer !== 'l1') items.push({ key: 'l1', label: '短期记忆', count: l1Sessions?.filter((s) => s.status !== 'expired').length });
-    if (policy.layer !== 'l2') items.push({ key: 'l2', label: '长期记忆', count: l2Facts?.filter((f) => f.status !== 'retired').length });
-    if (policy.layer !== 'l3') items.push({ key: 'l3', label: '知识记忆', count: l3Entries?.filter((k) => k.status === 'published').length });
-    return items;
+    const items: Array<{ key: string; label: string; count: number | undefined }> = [
+      { key: 'l1', label: '短期记忆', count: l1Sessions?.filter((s) => s.status !== 'expired').length },
+      { key: 'l2', label: '长期记忆', count: l2Facts?.filter((f) => f.status !== 'retired').length },
+      { key: 'l3', label: '知识记忆', count: l3Entries?.filter((k) => k.status === 'published').length },
+    ];
+    return items.filter((item) => item.key !== policy.layer);
   }, [policy, l1Sessions, l2Facts, l3Entries]);
 
 

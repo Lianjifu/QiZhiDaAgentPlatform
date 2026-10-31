@@ -99,38 +99,6 @@ class MemoryL2ORM(TenantScopedMixin, Base):
     )
 
 
-class MemoryL3ORM(TenantScopedMixin, Base):
-    __tablename__ = "admin_memory_l3"
-
-    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
-    team: Mapped[str] = mapped_column(
-        String(128), nullable=False, default="", server_default=text("''")
-    )
-    title: Mapped[str] = mapped_column(String(256), nullable=False)
-    summary: Mapped[str] = mapped_column(
-        Text, nullable=False, default="", server_default=text("''")
-    )
-    category: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="", server_default=text("''")
-    )
-    hits: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
-    contributor: Mapped[str] = mapped_column(
-        String(128), nullable=False, default="", server_default=text("''")
-    )
-    status: Mapped[str] = mapped_column(
-        String(16),
-        nullable=False,
-        default="published",
-        server_default=text("'published'"),
-    )
-    hits_trend: Mapped[list] = mapped_column(
-        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
-    )
-    promoted_from_l2_ids: Mapped[list] = mapped_column(
-        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
-    )
-
-
 class SessionMemoryBufferORM(TenantScopedMixin, Base):
     """**会话缓冲** ✓（决策 #5 ✓ —— L1 退役的落点 ✓）。
 

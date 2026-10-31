@@ -26,7 +26,6 @@ from qzdap.modules.memory.application.ports import (
 from qzdap.modules.memory.application.services import MemoryRuntimeService
 from qzdap.modules.memory.domain.entities import (
     L2Fact,
-    L3Entry,
     PromotionEvent,
     RetentionPolicy,
 )
@@ -127,7 +126,6 @@ class InMemoryVectors(VectorSearchPort):
 class InMemoryCatalog(MemoryCatalogRepository):
     def __init__(self) -> None:
         self.l2: dict[UUID, L2Fact] = {}
-        self.l3: dict[UUID, L3Entry] = {}
         self.promotions: dict[UUID, PromotionEvent] = {}
         self.policies: dict[UUID, RetentionPolicy] = {}
 
@@ -145,15 +143,6 @@ class InMemoryCatalog(MemoryCatalogRepository):
 
     async def update_l2(self, item: L2Fact) -> None:
         self.l2[item.id] = item
-
-    async def add_l3(self, item: L3Entry) -> None:
-        self.l3[item.id] = item
-
-    async def get_l3(self, item_id: UUID) -> L3Entry | None:
-        return self.l3.get(item_id)
-
-    async def list_l3(self, workspace_id: UUID) -> list[L3Entry]:
-        return [item for item in self.l3.values() if item.workspace_id == workspace_id]
 
     async def find_l2_by_hash(
         self,
@@ -207,28 +196,6 @@ class InMemoryCatalog(MemoryCatalogRepository):
             and any(token in item.key.lower() or token in item.value.lower() for token in tokens)
         ]
         return rows[:limit]
-
-    async def search_l3_by_keyword(
-        self,
-        workspace_id: UUID,
-        *,
-        keyword: str,
-        limit: int,
-    ) -> list[L3Entry]:
-        tokens = [part for part in keyword.strip().lower().split() if part]
-        rows = [
-            item
-            for item in self.l3.values()
-            if item.workspace_id == workspace_id
-            and item.status == "published"
-            and any(
-                token in item.title.lower() or token in item.summary.lower() for token in tokens
-            )
-        ]
-        return rows[:limit]
-
-    async def update_l3(self, item: L3Entry) -> None:
-        self.l3[item.id] = item
 
     async def add_promotion(self, item: PromotionEvent) -> None:
         self.promotions[item.id] = item

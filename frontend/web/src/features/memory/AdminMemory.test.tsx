@@ -9,15 +9,41 @@ import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import {
   mockL1Sessions, mockL2Facts, mockL3Entries, mockPromotions, mockRetentionPolicies,
 } from './fixtures';
+import type { Doc } from '@/features/knowledge/schema';
 import MemoryPage from './index';
 import PolicyDetailPage from './PolicyDetailPage';
 
 afterEach(() => cleanup());
 
+/**
+ * ⚠️ **团队知识来自 knowledge** ✓ —— L3 表退役了 ✓（M-47 ✓）→
+ * 记忆页读的是 **knowledge 的文档** ✓（同一份数据 ✓ —— 不是第二份 ✓）。
+ */
+const mockDocs: Doc[] = mockL3Entries.map((entry) => ({
+  id: entry.id,
+  name: entry.title,
+  type: 'manual',
+  kbId: entry.kbId,
+  status: 'parsed',
+  sizeKb: 1,
+  chunks: entry.chunks,
+  chunksPreview: [{ index: 1, snippet: entry.summary, citations: 0, tokens: 8 }],
+  updatedAt: entry.updatedAt,
+  citations: 0,
+  category: entry.category,
+  publishState: entry.status,
+  contributor: entry.contributor,
+}));
+
+const mockBases = [
+  { id: 'kb-产品团队', name: '产品团队', description: '', owner: '产品团队', scope: '部门', status: 'indexed', docCount: 1, vectorCount: 1, updatedAt: '刚刚', tags: [], tone: 'info', evalHitRate: 0 },
+];
+
 const seeds = [
   { key: pageQueryKey(qk.admin.memory.l1), data: mockL1Sessions },
   { key: pageQueryKey(qk.admin.memory.l2), data: mockL2Facts },
-  { key: pageQueryKey(qk.admin.memory.l3), data: mockL3Entries },
+  { key: pageQueryKey([...qk.admin.knowledge.root, 'docs']), data: mockDocs },
+  { key: pageQueryKey([...qk.admin.knowledge.root, 'kbs']), data: mockBases },
   { key: pageQueryKey(qk.admin.memory.promotions), data: mockPromotions },
   { key: pageQueryKey(qk.admin.memory.policies), data: mockRetentionPolicies },
 ];
@@ -39,8 +65,8 @@ function renderApp() {
       initialEntries: ['/admin/memory'],
       seeds: [
         ...seeds,
-        { key: pageQueryKey([...qk.admin.memory.policies, '短期记忆']), data: mockRetentionPolicies[0] },
-        { key: pageQueryKey([...qk.admin.memory.policies, '长期记忆']), data: mockRetentionPolicies[1] },
+        // ⚠️ **只剩「长期记忆」一条策略** ✓ —— L1 / L3 的都退役了 ✓（M-46 / M-47 ✓）。
+        { key: pageQueryKey([...qk.admin.memory.policies, '长期记忆']), data: mockRetentionPolicies[0] },
       ],
     },
   );
@@ -57,7 +83,8 @@ describe('AdminMemory', () => {
     expect(within(nav).getByRole('button', { name: /知识记忆/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /记忆总览/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /保留策略与评测/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /策略配置/ })).toBeTruthy();
+    // ⚠️ **默认在「短期记忆」tab** ✓ —— 那层没有保留策略了 ✓ → 不给入口 ✓。
+    expect(screen.queryByRole('button', { name: /策略配置/ })).toBeNull();
     expect(screen.getByText('全部 flush')).toBeTruthy();
   });
 
@@ -88,6 +115,9 @@ describe('AdminMemory', () => {
 
   it('策略配置进入当前层策略详情', async () => {
     renderApp();
+    // ⚠️ **只有「长期记忆」有保留策略了** ✓ —— L1 / L3 的都退役了 ✓。
+    const nav = screen.getByLabelText('子模块导航');
+    fireEvent.click(within(nav).getByRole('button', { name: /长期记忆/ }));
     fireEvent.click(screen.getByRole('button', { name: /策略配置/ }));
     await waitFor(() => {
       expect(screen.getByRole('link', { name: /返回记忆管理/ })).toBeTruthy();

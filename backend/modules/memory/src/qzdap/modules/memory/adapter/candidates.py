@@ -18,7 +18,7 @@ from qzdap.modules.memory.application.ports import (
     MemoryCatalogRepository,
     VectorSearchPort,
 )
-from qzdap.modules.memory.domain.entities import L2Fact, L3Entry
+from qzdap.modules.memory.domain.entities import L2Fact
 from qzdap_agent_runtime.memory.retrieval import Candidate
 
 
@@ -53,20 +53,6 @@ def _l2_candidate(fact: L2Fact, score: float) -> Candidate:
     )
 
 
-def _l3_candidate(entry: L3Entry, score: float) -> Candidate:
-    """L3 行 → 候选 ✓（工作区级 ✓ —— 决策 #1 ✓）。"""
-    return Candidate(
-        ref_id=str(entry.id),
-        layer="l3",
-        content=entry.recall_text(),
-        score=score,
-        scope="workspace",
-        used_count=int(getattr(entry, "hits", 0) or 0),
-        version="1",
-        created_at=entry.created_at.isoformat() if entry.created_at else "",
-    )
-
-
 class LexicalCandidateAdapter:
     """词法候选 ✓ —— **过滤与截断在 SQL 里** ✓。"""
 
@@ -94,15 +80,10 @@ class LexicalCandidateAdapter:
             limit=limit,
             session_id=session_id,
         )
-        entries = await self._catalog.search_l3_by_keyword(
-            workspace_id, keyword=needle, limit=limit
-        )
+        # ⚠️ **不再查 L3** ✓ —— L3 退役 ✓（决策 #1 ✓ —— M-47 ✓）→
+        # 团队知识走 **knowledge** 的检索 ✓（不再双份注入 ✗✗ —— 台账 X15 ✓）。
         candidates = [
             _l2_candidate(fact, keyword_score(needle, fact.recall_text().lower())) for fact in facts
-        ]
-        candidates += [
-            _l3_candidate(entry, keyword_score(needle, entry.recall_text().lower()))
-            for entry in entries
         ]
         candidates.sort(key=lambda item: item.score, reverse=True)
         return candidates[:limit]
@@ -151,7 +132,7 @@ class VectorCandidateAdapter:
                 layer=hit.layer,
                 content=hit.content,
                 score=float(hit.score),
-                scope="workspace" if hit.layer == "l3" else "user",
+                scope="user",
             )
             for hit in hits
         ]
@@ -187,10 +168,6 @@ class PinnedCandidateAdapter:
                 if user_id is not None and fact.user_id != user_id:
                     continue
                 candidates.append(_l2_candidate(fact, 1.0))
-                continue
-            entry = await self._catalog.get_l3(item_id)
-            if entry is not None:
-                candidates.append(_l3_candidate(entry, 1.0))
         return candidates
 
 

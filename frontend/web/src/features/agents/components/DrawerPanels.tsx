@@ -1078,7 +1078,7 @@ export function DrawerPanelMemory({ draft, onChange }: { draft: AgentEntry; onCh
       <section className="grid gap-3 sm:grid-cols-4">
         <PanelStat label="L1 会话" value={`${l1.length}`} hint="来自记忆管理" />
         <PanelStat label="L2 事实" value={`${l2.length}`} hint="来自记忆管理" tone="info" />
-        <PanelStat label="L3 知识" value={`${l3.length}`} hint="来自记忆管理" tone="purple" />
+        <PanelStat label="团队知识" value={`${l3.length}`} hint="来自知识管理" tone="purple" />
         <PanelStat label="保留策略" value={`${policies.length}`} hint="源策略数" />
       </section>
       <section className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4">

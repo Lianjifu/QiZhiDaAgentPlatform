@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -15,6 +16,7 @@ from qzdap.modules.knowledge.application.ports import (
 )
 from qzdap.modules.knowledge.domain.entities import (
     KB_SCOPES,
+    PUBLISH_STATES,
     RETRIEVAL_MODES,
     SOURCE_TYPES,
     DocChunk,
@@ -24,7 +26,7 @@ from qzdap.modules.knowledge.domain.entities import (
     KnowledgeSource,
     is_workspace_visible,
 )
-from qzdap.modules.knowledge.domain.errors import KnowledgeNotFound
+from qzdap.modules.knowledge.domain.errors import KnowledgeNotFound, KnowledgeValidationError
 
 
 class KnowledgeService:
@@ -105,6 +107,49 @@ class KnowledgeService:
         items = await self._catalog.list_docs(workspace_id)
         items.sort(key=lambda item: item.updated_at, reverse=True)
         return [item.to_admin_dict() for item in items]
+
+    async def update_doc(self, doc_id: UUID, body: dict[str, Any]) -> dict[str, Any]:
+        """**改一条文档** ✓（发布 / 下线 / 改标题 ✓）。
+
+        ⚠️ **没给正文就不重新切块** ✓ —— 重新切块会把正文换成标题 ✗✗
+        （只改发布态时正文必须原样留着 ✓）。
+        ⚠️ **给了正文才重新切块 + 重新向量化** ✓（走 ingest 的更新分支 ✓）。
+        """
+        doc = await self._catalog.get_doc(doc_id)
+        if doc is None:
+            raise KnowledgeNotFound(f"knowledge doc {doc_id} not found")
+        content = str(body.get("content") or "").strip()
+        if content:
+            doc = await self.ingest_doc(
+                tenant_id=doc.tenant_id,
+                workspace_id=doc.workspace_id,
+                body={
+                    "id": str(doc.id),
+                    "kbId": str(doc.kb_id),
+                    "name": str(body.get("name") or doc.name),
+                    "type": str(body.get("type") or doc.type),
+                    "content": content,
+                    "category": str(body.get("category", doc.category)),
+                    "publishState": str(body.get("publishState", doc.publish_state)),
+                    "contributor": str(body.get("contributor", doc.contributor)),
+                    "sourceId": doc.source_id or "",
+                },
+            )
+            return doc
+        if body.get("name"):
+            doc.name = str(body["name"]).strip() or doc.name
+        if body.get("category") is not None:
+            doc.category = str(body["category"])
+        if body.get("contributor") is not None:
+            doc.contributor = str(body["contributor"])
+        if body.get("publishState") is not None:
+            state = str(body["publishState"]).strip().lower()
+            if state not in PUBLISH_STATES:
+                raise KnowledgeValidationError(f"unknown publish state {state}")
+            doc.publish_state = state
+        doc.updated_at = datetime.now(UTC)
+        await self._catalog.update_doc(doc)
+        return doc.to_admin_dict()
 
     async def get_doc(self, doc_id: UUID) -> dict[str, Any]:
         """**取一条文档** ✓（查不到就抛**找不到** ✓ —— 不猜 ✓）。"""

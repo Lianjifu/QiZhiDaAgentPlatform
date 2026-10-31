@@ -2,7 +2,7 @@
 
 验收覆盖 ✓：
 
-- **解析** ✓ —— ``enabled`` / ``scope`` / ``policyLabel`` / ``l3EntryIds`` /
+- **解析** ✓ —— ``enabled`` / ``scope`` / ``policyLabel`` /
   ``knowledge_refs`` ✓（六个字段**运行时真的读** ✓）；
 - **作用域真的生效** ✓ —— 会话级 → 只召回本会话 ✓；
 - **显式绑定的条目一定被召回** ✓（绕过阈值 ✓）；
@@ -60,32 +60,30 @@ def _candidate(ref_id: str, score: float, **kwargs) -> Candidate:  # type: ignor
 
 
 class TestTheBindingIsParsed:
-    def test_all_six_fields_are_read(self) -> None:
-        """**六个字段都读** ✓（§1.7 的问题 ✓）。"""
+    def test_all_five_fields_are_read(self) -> None:
+        """**字段都读** ✓（§1.7 的问题 ✓）。
+
+        ⚠️ **不再有 ``l3EntryIds``** ✓ —— L3 退役 ✓（决策 #1 ✓ —— M-47 ✓）→
+        团队知识走 **knowledge** 的知识库绑定 ✓。
+        """
         policy = PolicyBinding(
             raw={
                 "enabled": False,
                 "scope": "session",
                 "policyLabel": "keep-forever",
-                "l3EntryIds": ["l3-1", "l3-2"],
             },
             refs=(
                 {"type": "memory", "id": "l2-9"},
-                {"type": "l3", "id": "l3-3"},
                 {"type": "knowledge", "id": "kb-1"},
             ),
         ).to_policy()
         assert policy.enabled is False
         assert policy.scope is MemoryScope.SESSION
         assert policy.policy_label == "keep-forever"
-        assert policy.l3_entry_ids == ("l3-1", "l3-2")
-        # ⚠️ **只有 memory / l3 是记忆引用** ✓ —— 知识库不是 ✓。
-        assert policy.knowledge_refs == (
-            MemoryRef(kind=MemoryRefKind.MEMORY, ref_id="l2-9"),
-            MemoryRef(kind=MemoryRefKind.L3, ref_id="l3-3"),
-        )
-        # ⚠️ **被 pin 的 id 合并去重** ✓（L3 条目 + 引用 ✓）。
-        assert set(policy.pinned_ids) == {"l3-1", "l3-2", "l2-9", "l3-3"}
+        # ⚠️ **只有 memory 是记忆引用** ✓ —— 知识库不是 ✓。
+        assert policy.knowledge_refs == (MemoryRef(kind=MemoryRefKind.MEMORY, ref_id="l2-9"),)
+        # ⚠️ **被 pin 的 id 就是那些引用** ✓。
+        assert set(policy.pinned_ids) == {"l2-9"}
 
     def test_the_defaults_stay_conservative(self) -> None:
         """**缺省按最保守的来** ✓（与旧路径一致 ✓）。"""
@@ -132,7 +130,7 @@ class TestTheScopeTakesEffect:
             workspace_id=uuid4(),
             user_id=uuid4(),
             query="报销",
-            extra_l3_entry_ids=("p1",),
+            pinned_ids=("p1",),
         )
         assert "p1" in [hit["ref_id"] for hit in outcome.hits]
         # ⚠️ **绑定的排前面** ✓（管理端指定的东西优先 ✓）。

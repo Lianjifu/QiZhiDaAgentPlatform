@@ -6,7 +6,6 @@ from uuid import UUID
 
 from qzdap.modules.memory.domain.entities import (
     L2Fact,
-    L3Entry,
     PromotionEvent,
     RetentionPolicy,
 )
@@ -80,15 +79,6 @@ class MemoryCatalogRepository(ABC):
         ...
 
     @abstractmethod
-    async def add_l3(self, item: L3Entry) -> None: ...
-
-    @abstractmethod
-    async def get_l3(self, item_id: UUID) -> L3Entry | None: ...
-
-    @abstractmethod
-    async def list_l3(self, workspace_id: UUID) -> list[L3Entry]: ...
-
-    @abstractmethod
     async def list_l2_updated_since(self, since: datetime, *, limit: int = 100) -> list[L2Fact]:
         """**最近更新过的 L2** ✓（兜底补写的来源 ✓ —— §5.4 ✓）。"""
         ...
@@ -109,20 +99,6 @@ class MemoryCatalogRepository(ABC):
         （1 万条 L2 时召回延迟随 N 线性增长 ✗）。
         """
         ...
-
-    @abstractmethod
-    async def search_l3_by_keyword(
-        self,
-        workspace_id: UUID,
-        *,
-        keyword: str,
-        limit: int,
-    ) -> list[L3Entry]:
-        """L3 的词法候选 ✓ —— 同样**下推到 SQL** ✓。"""
-        ...
-
-    @abstractmethod
-    async def update_l3(self, item: L3Entry) -> None: ...
 
     @abstractmethod
     async def add_promotion(self, item: PromotionEvent) -> None: ...

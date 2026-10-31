@@ -18,7 +18,6 @@ from qzdap.modules.memory.application.ports import (
 from qzdap.modules.memory.application.services import MemoryRuntimeService
 from qzdap.modules.memory.domain.entities import (
     L2Fact,
-    L3Entry,
     PromotionEvent,
     RetentionPolicy,
 )
@@ -120,7 +119,6 @@ class InMemoryVectors(VectorSearchPort):
 class InMemoryCatalog(MemoryCatalogRepository):
     def __init__(self) -> None:
         self.l2: dict[UUID, L2Fact] = {}
-        self.l3: dict[UUID, L3Entry] = {}
         self.promotions: dict[UUID, PromotionEvent] = {}
         self.policies: dict[UUID, RetentionPolicy] = {}
 
@@ -138,15 +136,6 @@ class InMemoryCatalog(MemoryCatalogRepository):
 
     async def update_l2(self, item: L2Fact) -> None:
         self.l2[item.id] = item
-
-    async def add_l3(self, item: L3Entry) -> None:
-        self.l3[item.id] = item
-
-    async def get_l3(self, item_id: UUID) -> L3Entry | None:
-        return self.l3.get(item_id)
-
-    async def list_l3(self, workspace_id: UUID) -> list[L3Entry]:
-        return [item for item in self.l3.values() if item.workspace_id == workspace_id]
 
     async def find_l2_by_hash(
         self,
@@ -200,28 +189,6 @@ class InMemoryCatalog(MemoryCatalogRepository):
             and any(token in item.key.lower() or token in item.value.lower() for token in tokens)
         ]
         return rows[:limit]
-
-    async def search_l3_by_keyword(
-        self,
-        workspace_id: UUID,
-        *,
-        keyword: str,
-        limit: int,
-    ) -> list[L3Entry]:
-        tokens = [part for part in keyword.strip().lower().split() if part]
-        rows = [
-            item
-            for item in self.l3.values()
-            if item.workspace_id == workspace_id
-            and item.status == "published"
-            and any(
-                token in item.title.lower() or token in item.summary.lower() for token in tokens
-            )
-        ]
-        return rows[:limit]
-
-    async def update_l3(self, item: L3Entry) -> None:
-        self.l3[item.id] = item
 
     async def add_promotion(self, item: PromotionEvent) -> None:
         self.promotions[item.id] = item
@@ -421,37 +388,35 @@ async def test_the_lists_and_policies_are_readable() -> None:
     detail = await admin.get_l2(UUID(l2[0]["id"]))
     assert detail["value"].find("精简") >= 0
     policies = await admin.list_policies(tenant_id=TENANT, workspace_id=WORKSPACE)
-    assert len(policies) == 3
-    short = await admin.get_policy(workspace_id=WORKSPACE, label="短期记忆")
-    assert short["layer"] == "l1"
+    # ⚠️ **只剩 L2 一条默认策略** ✓ —— 「短期记忆」（L1 ✓ —— M-46 ✓）与
+    # 「知识记忆」（L3 ✓ —— M-47 ✓）都退役了 ✓。
+    assert len(policies) == 1
+    keep = await admin.get_policy(workspace_id=WORKSPACE, label="长期记忆")
+    assert keep["layer"] == "l2"
     trend = await admin.trend(workspace_id=WORKSPACE)
     # ⚠️ **真实使用趋势** ✓（M-33 ✓）—— 12 天 ✓（不再编序列 ✓）。
     assert len(trend["l1Active"]) == 12
 
 
 @pytest.mark.asyncio
-async def test_the_retiring_tables_are_measured() -> None:
-    """**要退役的表在用** → 打点 ✓（台账 §3.2：没有打点就没有清理判据 ✓）。
+async def test_the_retired_tables_are_not_touched_anymore() -> None:
+    """**退役的表不再有打点** ✓（台账 §3.2：没有打点就没有清理判据 ✓）。
 
-    X15 = ``admin_memory_l3``（决策 #1 退役 ✓）—— 指标非零才说明「还没退干净」✓。
-    ⚠️ **X13（``admin_memory_l1``）的写侧已退役** ✓（决策 #5 ✓ —— 旧写入
-    点随旧循环的删除一起没了 ✓）→ **不再有 X13 打点** ✓（指标归零 ✓ =
-    「写侧清干净了」✓ —— 表本身还在 ✓，只剩管理端的读侧 ✗）。
+    ⚠️ **X15（``admin_memory_l3``）已退役** ✓（决策 #1 ✓ —— M-47 ✓）→
+    **不再有 X15 打点** ✓（指标归零 ✓ = 「表不用了」✓）。
+    ⚠️ **X13（``admin_memory_l1``）同样退役** ✓（决策 #5 ✓ —— M-46 ✓）✓。
     """
     from qzdap_observability.metrics import LEGACY_CALLS_TOTAL
 
-    _, admin, _catalog, _buffer = _svc()
-    l3_before = LEGACY_CALLS_TOTAL.labels(entry="X15")._value.get()
+    _, _admin, catalog, _buffer = _svc()
+    x15_before = LEGACY_CALLS_TOTAL.labels(entry="X15")._value.get()
+    x13_before = LEGACY_CALLS_TOTAL.labels(entry="X13")._value.get()
 
-    await admin.create_l3(
-        tenant_id=TENANT,
-        workspace_id=WORKSPACE,
-        team="平台",
-        title="团队知识",
-        summary="摘要",
-    )
+    # ⚠️ **记忆面只有 L2** ✓ —— 没有 L3 的入口了 ✓。
+    await _seed_l2(catalog, content="退款 7 天内申请", key="退款规则", workspace_id=WORKSPACE)
 
-    assert LEGACY_CALLS_TOTAL.labels(entry="X15")._value.get() == l3_before + 1
+    assert LEGACY_CALLS_TOTAL.labels(entry="X15")._value.get() == x15_before
+    assert LEGACY_CALLS_TOTAL.labels(entry="X13")._value.get() == x13_before
 
 
 @pytest.mark.asyncio
@@ -474,13 +439,6 @@ async def test_recall_ranks_matching_fact() -> None:
     )
     assert hits
     assert "退款" in hits[0].content
-
-
-@pytest.mark.asyncio
-async def test_missing_l3_raises() -> None:
-    _, admin, _catalog, _buffer = _svc()
-    with pytest.raises(MemoryNotFound):
-        await admin.get_l3(UUID("00000000-0000-0000-0000-000000000099"))
 
 
 @pytest.mark.asyncio
@@ -559,8 +517,8 @@ async def test_promote_l2_creates_a_knowledge_candidate_and_marks_facts() -> Non
     assert candidate["target"] == "knowledge"
     assert candidate["title"] == "退款规则"
     assert candidate["promoted"] == 1
-    # ⚠️ **L3 表不再被写** ✓（L3 已定退役 ✓ —— 台账 X15 ✓）。
-    assert catalog.l3 == {}
+    # ⚠️ **L3 表不再被写** ✓（L3 已定退役 ✓ —— 台账 X15 ✓）——
+    # 候选落在 **knowledge** ✓（由窄端口接的 ✓ —— 这里断言不到 ✓）。
     assert (await admin.get_l2(fact_id))["promotedToL3"] is True
     events = await admin.list_promotions(workspace_id=WORKSPACE)
     assert any(event["layer"] == "l2→knowledge" for event in events)
@@ -579,62 +537,4 @@ async def test_promote_l2_rejects_empty_selection() -> None:
             team="售后组",
             title="空",
             summary="空",
-        )
-
-
-@pytest.mark.asyncio
-async def test_create_l3_publishes_entry() -> None:
-    _, admin, _catalog, _buffer = _svc()
-    entry = await admin.create_l3(
-        tenant_id=TENANT,
-        workspace_id=WORKSPACE,
-        team="增长组",
-        title="定价口径",
-        summary="新客首单 8 折",
-        contributor="李明",
-    )
-    assert entry["status"] == "published"
-    assert entry["hits"] == 0
-    listed = await admin.list_l3(workspace_id=WORKSPACE)
-    assert [item["id"] for item in listed] == [entry["id"]]
-
-
-@pytest.mark.asyncio
-async def test_create_l3_rejects_unknown_status() -> None:
-    _, admin, _catalog, _buffer = _svc()
-    with pytest.raises(ValidationError):
-        await admin.create_l3(
-            tenant_id=TENANT,
-            workspace_id=WORKSPACE,
-            team="增长组",
-            title="定价口径",
-            summary="",
-            status="archived",
-        )
-
-
-@pytest.mark.asyncio
-async def test_update_l3_publishes_and_retires() -> None:
-    _, admin, _catalog, _buffer = _svc()
-    entry = await admin.create_l3(
-        tenant_id=TENANT,
-        workspace_id=WORKSPACE,
-        team="增长组",
-        title="定价口径",
-        summary="新客首单 8 折",
-    )
-    item_id = UUID(entry["id"])
-    published = await admin.update_l3(
-        item_id, workspace_id=WORKSPACE, patch={"status": "published"}
-    )
-    assert published["status"] == "published"
-    retired = await admin.update_l3(item_id, workspace_id=WORKSPACE, patch={"status": "retired"})
-    assert retired["status"] == "retired"
-    with pytest.raises(ValidationError):
-        await admin.update_l3(item_id, workspace_id=WORKSPACE, patch={"status": "unknown"})
-    with pytest.raises(MemoryNotFound):
-        await admin.update_l3(
-            item_id,
-            workspace_id=UUID("00000000-0000-0000-0000-0000000000ff"),
-            patch={"status": "published"},
         )

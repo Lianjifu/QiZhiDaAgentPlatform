@@ -20,7 +20,7 @@ from qzdap.modules.agent_runtime.adapter.persistence.catalog_repositories import
 )
 from qzdap.modules.agent_runtime.application.catalog import AgentCatalogService
 from qzdap.modules.memory.adapter.http.router import build_router as memory_router
-from qzdap.modules.memory.adapter.persistence.models import MemoryL3ORM, MemoryPolicyORM
+from qzdap.modules.memory.adapter.persistence.models import MemoryPolicyORM
 from qzdap.modules.memory.adapter.persistence.repositories import SqlMemoryCatalogRepository
 from qzdap.modules.memory.application.admin_service import MemoryAdminService
 from qzdap.modules.memory.application.services import MemoryRuntimeService
@@ -37,7 +37,7 @@ async def catalog_db():
         transaction = await connection.begin()
         await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
         await connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
-        for table in [CatalogAgentORM.__table__, MemoryL3ORM.__table__, MemoryPolicyORM.__table__]:
+        for table in [CatalogAgentORM.__table__, MemoryPolicyORM.__table__]:
             await connection.run_sync(lambda conn, table=table: table.create(conn))
 
         @asynccontextmanager
@@ -138,14 +138,13 @@ async def test_catalog_version_and_execution_http_persist(catalog_db):
 
 
 async def test_memory_relationships_are_saved_explicit_references(catalog_db):
+    """**agent ↔ 保留策略的绑定要落库并查得到** ✓。
+
+    ⚠️ **不再有 L3 关联** ✓ —— L3 退役 ✓（决策 #1 ✓ —— M-47 ✓）→
+    团队知识归 **knowledge** ✓（这条链路查的是**保留策略** ✓）。
+    """
     client, sessions, tenant, workspace = catalog_db
-    memory_id = uuid4()
     async with sessions() as db:
-        db.add(
-            MemoryL3ORM(
-                id=memory_id, tenant_id=tenant, workspace_id=workspace, title="shared knowledge"
-            )
-        )
         db.add(
             MemoryPolicyORM(tenant_id=tenant, workspace_id=workspace, label="长期记忆", layer="l2")
         )
@@ -156,18 +155,15 @@ async def test_memory_relationships_are_saved_explicit_references(catalog_db):
         headers=headers,
         json={
             "name": "memory-agent",
-            "memoryPolicy": {"enabled": True, "scope": "user", "l3EntryIds": [str(memory_id)]},
+            "memoryPolicy": {"enabled": True, "scope": "user", "policyLabel": "长期记忆"},
         },
     )
     aid = response.json()["id"]
-    related = await client.get(f"/api/admin/memory/l3/{memory_id}/agents", headers=headers)
-    assert related.status_code == 200, related.text
-    assert [a["id"] for a in related.json()] == [aid]
     policy = await client.get("/api/admin/memory/policies/长期记忆/agents", headers=headers)
     assert policy.status_code == 200, policy.text
     assert [a["id"] for a in policy.json()] == [aid]
     foreign = await client.get(
-        f"/api/admin/memory/l3/{memory_id}/agents",
+        "/api/admin/memory/policies/长期记忆/agents",
         headers={**headers, "X-Workspace-Id": str(uuid4())},
     )
     assert foreign.status_code == 404

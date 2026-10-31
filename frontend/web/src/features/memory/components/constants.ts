@@ -37,9 +37,12 @@ export const L3_STATUS_BADGE: Record<L3Status, { label: string; className: strin
   retired: { label: '已下线', className: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200' },
 };
 
-export const LAYER_META: Record<MemoryLayer, { label: string; tone: Tone; icon: LucideIcon; tagline: string }> = {
+export const LAYER_META: Record<MemoryLayer, { label: string; tone: Tone; icon: LucideIcon; tagline: string; policyLabel?: string }> = {
+  // ⚠️ **L1 没有保留策略了** ✓ —— 表退役了 ✓（决策 #5 ✓ —— M-46 ✓）。
   l1: { label: '短期记忆', tone: 'info', icon: Zap, tagline: '当前会话上下文,会话结束 TTL 到期后清理' },
-  l2: { label: '长期记忆', tone: 'purple', icon: Brain, tagline: '跨会话保留的用户偏好与事实' },
+  l2: { label: '长期记忆', tone: 'purple', icon: Brain, tagline: '跨会话保留的用户偏好与事实', policyLabel: '长期记忆' },
+  // ⚠️ **L3 没有保留策略了** ✓ —— 表退役了 ✓（决策 #1 ✓ —— M-47 ✓）→
+  // 团队知识的保留归 **knowledge** ✓。
   l3: { label: '知识记忆', tone: 'brand', icon: BookOpen, tagline: '团队级共享知识,所有智能体可检索' },
 };
 

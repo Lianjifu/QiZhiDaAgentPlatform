@@ -169,12 +169,7 @@ def test_demo_kb_specs_carry_team_knowledge() -> None:
     ⚠️ **类别 / 发布态 / 贡献者都要带着** ✓ —— 它们是 L3 迁过来时的字段 ✓
     （丢了就等于**没迁** ✗✗）。
     """
-    team_docs = [
-        doc
-        for kb in DEMO_KB_SPECS
-        for doc in kb.get("docs", [])
-        if doc.get("category")
-    ]
+    team_docs = [doc for kb in DEMO_KB_SPECS for doc in kb.get("docs", []) if doc.get("category")]
     assert len(team_docs) >= 2
     for doc in team_docs:
         assert doc["name"] and doc["content"]

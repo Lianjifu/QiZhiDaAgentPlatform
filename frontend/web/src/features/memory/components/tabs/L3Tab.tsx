@@ -61,7 +61,7 @@ export function L3Tab({
         ]}
         action={{ label: '新建知识', onClick: onCreate }}
       />
-      <AdminListHeader hasCheckbox={false} hasStar={false} metrics={<AdminListHeaderMetrics labels={['类别', '命中', '更新']} />} />
+      <AdminListHeader hasCheckbox={false} hasStar={false} metrics={<AdminListHeaderMetrics labels={['类别', '切片', '更新']} />} />
       <div className="divide-y divide-[var(--border)]">
         {entries.map((k) => (
           <L3Card key={k.id} entry={k} onOpen={() => onOpen(k)} onRetire={() => onRetire(k.id)} onPublish={() => onPublish(k.id)} />

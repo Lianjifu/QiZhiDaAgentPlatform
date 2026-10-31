@@ -25,24 +25,36 @@ export interface L2Fact {
   usageHistory?: string[];
 }
 
+/**
+ * **团队知识** ✓ —— L3 表退役了 ✓（决策 #1 ✓ —— M-47 ✓）→
+ * 现在的来源是 **knowledge 的文档** ✓（一个团队一个知识库 ✓ —— team = 库名 ✓）。
+ */
 export interface L3Entry {
   id: string; team: string; title: string; summary: string; category: string;
-  hits: number; updatedAt: string; contributor: string; status: L3Status;
-  /** 8 期命中数(由旧到新),可选 */
-  hitsTrend?: number[];
+  /** ⚠️ **切片数** ✓ —— 不是命中数 ✓（L3 的命中统计随表一起退役了 ✓）。 */
+  chunks: number; updatedAt: string; contributor: string; status: L3Status;
+  /** **所属知识库 id** ✓（团队 = 知识库 ✓ —— M-47 ✓）。 */
+  kbId: string;
+  /** **切片预览** ✓（正文按块切 ✓ —— 详情页展示用 ✓）。 */
+  chunkPreview?: Array<{ index: number; snippet: string; heading?: string }>;
   /** 晋升来源 L2 fact id,可选 */
   promotedFromL2Ids?: string[];
 }
 
 export interface PromotionEvent {
-  id: string; layer: 'l1→l2' | 'l2→l3';
+  /** ⚠️ **L2 → 团队知识** ✓ —— 终点是 knowledge 的文档 ✓（不再是 L3 条目 ✓）。 */
+  id: string; layer: 'l1→l2' | 'l2→knowledge';
   label: string; at: string; operator: string;
-  /** 晋升结果实体 id(l1→l2 → L2 fact id,l2→l3 → L3 entry id) */
+  /** 晋升结果实体 id(l1→l2 → L2 fact id,l2→knowledge → knowledge doc id) */
   targetId: string;
 }
 
 export interface RetentionPolicy {
-  layer: MemoryLayer; label: string; description: string;
+  /**
+   * ⚠️ **只有 L2 了** ✓ —— 「短期记忆」(L1 ✓ —— M-46 ✓ 已退役)与
+   * 「知识记忆」(L3 ✓ —— M-47 ✓ 已退役)都没有了 ✓。
+   */
+  layer: 'l2'; label: string; description: string;
   ttlMinutes: number; maxItems: number; storageMb: number;
   eviction: EvictionStrategy; hitRate: number;
 }
@@ -55,5 +67,5 @@ export interface MemoryStats {
 export interface MemoryTrend {
   l1Active: number[];
   l2Hits: number[];
-  l3Hits: number[];
+  /** ⚠️ **没有 L3 了** ✓ —— 团队知识的趋势归 knowledge ✓（不在这儿编 ✓）。 */
 }

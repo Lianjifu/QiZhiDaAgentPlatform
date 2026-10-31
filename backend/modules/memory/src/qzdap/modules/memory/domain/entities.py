@@ -9,18 +9,19 @@ from uuid import UUID, uuid4
 
 EMBEDDING_DIM = 1536
 
-MemoryLayer = Literal["l1", "l2", "l3"]
+#: ⚠️ **只有 L2 了** ✓ —— L1 退役（决策 #5 ✓ —— M-46 ✓）、
+#: L3 退役（决策 #1 ✓ —— M-47 ✓）→ 记忆的用户级那一层 ✓。
+MemoryLayer = Literal["l2"]
 L2Status = Literal["pending", "confirmed", "retired"]
-L3Status = Literal["draft", "published", "retired"]
 L2Category = Literal["preference", "fact", "style", "context"]
 EvictionStrategy = Literal["lru", "fifo", "confidence"]
-PromotionLayer = Literal["l1→l2", "l2→l3"]
+#: ⚠️ **提升的终点是 knowledge** ✓ —— 不再有 L3 ✓（决策 #1 ✓ —— M-47 ✓）。
+PromotionLayer = Literal["l1→l2", "l2→knowledge"]
 
 L2_STATUSES = frozenset({"pending", "confirmed", "retired"})
-L3_STATUSES = frozenset({"draft", "published", "retired"})
 L2_CATEGORIES = frozenset({"preference", "fact", "style", "context"})
 EVICTIONS = frozenset({"lru", "fifo", "confidence"})
-LAYERS = frozenset({"l1", "l2", "l3"})
+LAYERS = frozenset({"l2"})
 
 
 def _utcnow() -> datetime:
@@ -105,77 +106,6 @@ class L2Fact:
 
 
 @dataclass(slots=True)
-class L3Entry:
-    id: UUID
-    tenant_id: UUID
-    workspace_id: UUID
-    team: str
-    title: str
-    summary: str
-    category: str
-    hits: int
-    contributor: str
-    status: L3Status
-    updated_at: datetime
-    created_at: datetime
-    hits_trend: list[int] = field(default_factory=list)
-    promoted_from_l2_ids: list[str] = field(default_factory=list)
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        team: str,
-        title: str,
-        summary: str,
-        category: str = "knowledge",
-        contributor: str = "管理员",
-        status: L3Status = "published",
-        promoted_from_l2_ids: list[str] | None = None,
-    ) -> Self:
-        now = _utcnow()
-        return cls(
-            id=uuid4(),
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            team=team,
-            title=title,
-            summary=summary,
-            category=category,
-            hits=0,
-            contributor=contributor,
-            status=status,
-            updated_at=now,
-            created_at=now,
-            hits_trend=[],
-            promoted_from_l2_ids=list(promoted_from_l2_ids or []),
-        )
-
-    def recall_text(self) -> str:
-        return f"{self.title}: {self.summary}".strip()
-
-    def to_admin_dict(self) -> dict[str, Any]:
-        out: dict[str, Any] = {
-            "id": str(self.id),
-            "team": self.team,
-            "title": self.title,
-            "summary": self.summary,
-            "category": self.category,
-            "hits": self.hits,
-            "updatedAt": format_last_update(self.updated_at),
-            "contributor": self.contributor,
-            "status": self.status,
-        }
-        if self.hits_trend:
-            out["hitsTrend"] = list(self.hits_trend)
-        if self.promoted_from_l2_ids:
-            out["promotedFromL2Ids"] = list(self.promoted_from_l2_ids)
-        return out
-
-
-@dataclass(slots=True)
 class PromotionEvent:
     id: UUID
     tenant_id: UUID
@@ -237,10 +167,10 @@ class RetentionPolicy:
     @classmethod
     def defaults(cls, *, tenant_id: UUID, workspace_id: UUID) -> list[Self]:
         now = _utcnow()
+        # ⚠️ **只有 L2** ✓ —— 「短期记忆」（L1 ✓ —— M-46 ✓ 已退役）与
+        # 「知识记忆」（L3 ✓ —— M-47 ✓ 已退役）都没有了 ✓。
         specs: list[tuple[MemoryLayer, str, str, int, int, int, EvictionStrategy, float]] = [
-            ("l1", "短期记忆", "会话上下文窗口", 60, 50, 8, "fifo", 0.94),
             ("l2", "长期记忆", "用户偏好与事实", 60 * 24 * 90, 200, 32, "lru", 0.88),
-            ("l3", "知识记忆", "团队级共享知识", 60 * 24 * 365, 500, 128, "lru", 0.92),
         ]
 
         return [
@@ -266,7 +196,6 @@ class RetentionPolicy:
 __all__ = [
     "EMBEDDING_DIM",
     "L2Fact",
-    "L3Entry",
     "PromotionEvent",
     "RetentionPolicy",
     "format_last_update",

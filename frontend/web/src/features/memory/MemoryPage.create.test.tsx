@@ -1,5 +1,8 @@
 /**
- * MemoryPage L3 新建 — 走真实的 useApiMutation 链路。
+ * MemoryPage 团队知识新建 — 走真实的 useApiMutation 链路。
+ *
+ * ⚠️ **团队知识现在归 knowledge** ✓ —— L3 表退役了 ✓（决策 #1 ✓ —— M-47 ✓）
+ * → 列表读 `/api/admin/knowledge/docs` ✓，新建写 `/api/admin/knowledge/docs` ✓。
  *
  * 这里注入一个内存 store 当 ApiClient(而不是预置 query 缓存), 因为新建是一次
  * 写操作:只有真的发出去、真的回填列表,才算验证了「按钮 → 端点 → 刷新」。
@@ -12,14 +15,35 @@ import MemoryPage from './index';
 import {
   mockL1Sessions, mockL2Facts, mockL3Entries, mockPromotions, mockRetentionPolicies,
 } from './fixtures';
-import type { L3Entry } from './schema';
+import type { Doc } from '@/features/knowledge/schema';
 
 const calls: Array<{ method: string; path: string; body: unknown }> = [];
+
+const bases = [
+  { id: 'kb-产品团队', name: '产品团队', description: '', owner: '产品团队', scope: '部门', status: 'indexed', docCount: 1, vectorCount: 1, updatedAt: '刚刚', tags: [], tone: 'info', evalHitRate: 0 },
+];
+
+/** 记忆页看到的团队知识 ← **knowledge 的文档** ✓（同一份数据 ✓）。 */
+const toDoc = (entry: (typeof mockL3Entries)[number]): Doc => ({
+  id: entry.id,
+  name: entry.title,
+  type: 'manual',
+  kbId: entry.kbId,
+  status: 'parsed',
+  sizeKb: 1,
+  chunks: entry.chunks,
+  chunksPreview: [{ index: 1, snippet: entry.summary, citations: 0, tokens: 8 }],
+  updatedAt: entry.updatedAt,
+  citations: 0,
+  category: entry.category,
+  publishState: entry.status,
+  contributor: entry.contributor,
+});
 
 const store = {
   l1: [...mockL1Sessions],
   l2: [...mockL2Facts],
-  l3: [...mockL3Entries],
+  docs: mockL3Entries.map(toDoc),
 };
 
 const memoryMock = async (path: string, opts: any = {}) => {
@@ -28,26 +52,31 @@ const memoryMock = async (path: string, opts: any = {}) => {
   if (method === 'GET') {
     if (path === '/api/admin/memory/l1') return store.l1;
     if (path === '/api/admin/memory/l2') return store.l2;
-    if (path === '/api/admin/memory/l3') return store.l3;
+    if (path === '/api/admin/knowledge/docs') return store.docs;
+    if (path === '/api/admin/knowledge/kbs') return bases;
     if (path === '/api/admin/memory/promotions') return mockPromotions;
     if (path === '/api/admin/memory/policies') return mockRetentionPolicies;
     return undefined;
   }
-  if (method === 'POST' && path === '/api/admin/memory/l3') {
-    const body = (opts?.body ?? {}) as Partial<L3Entry>;
-    const entry: L3Entry = {
+  if (method === 'POST' && path === '/api/admin/knowledge/docs') {
+    const body = (opts?.body ?? {}) as Partial<Doc> & { content?: string };
+    const doc: Doc = {
       id: 'k-new',
-      team: body.team ?? '产品团队',
-      title: body.title ?? '',
-      summary: body.summary ?? '',
-      category: body.category ?? '流程',
-      hits: 0,
+      name: body.name ?? '',
+      type: 'manual',
+      kbId: body.kbId ?? 'kb-产品团队',
+      status: 'parsed',
+      sizeKb: 1,
+      chunks: 1,
+      chunksPreview: [{ index: 1, snippet: body.content ?? '', citations: 0, tokens: 8 }],
       updatedAt: '刚刚',
+      citations: 0,
+      category: body.category ?? '流程',
+      publishState: (body.publishState as Doc['publishState']) ?? 'published',
       contributor: '管理员',
-      status: body.status ?? 'published',
     };
-    store.l3 = [entry, ...store.l3];
-    return entry;
+    store.docs = [doc, ...store.docs];
+    return doc;
   }
   return undefined;
 };
@@ -61,7 +90,7 @@ afterEach(() => {
   calls.length = 0;
   store.l1 = [...mockL1Sessions];
   store.l2 = [...mockL2Facts];
-  store.l3 = [...mockL3Entries];
+  store.docs = mockL3Entries.map(toDoc);
 });
 
 function renderPage() {
@@ -74,7 +103,7 @@ async function openL3Tab() {
   await screen.findByText('业务术语对照表');
 }
 
-describe('MemoryPage L3 新建', () => {
+describe('MemoryPage 团队知识新建', () => {
   it('打开新建对话框', async () => {
     renderPage();
     await openL3Tab();
@@ -95,7 +124,7 @@ describe('MemoryPage L3 新建', () => {
     expect((screen.getByRole('button', { name: /创建/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('提交后调用 POST /api/admin/memory/l3 并刷新列表', async () => {
+  it('提交后调用 POST /api/admin/knowledge/docs 并刷新列表', async () => {
     renderPage();
     await openL3Tab();
     fireEvent.click(screen.getByRole('button', { name: '新建知识' }));
@@ -108,11 +137,12 @@ describe('MemoryPage L3 新建', () => {
     });
     expect(calls).toHaveLength(1);
     expect(calls[0].method).toBe('POST');
-    expect(calls[0].path).toBe('/api/admin/memory/l3');
+    expect(calls[0].path).toBe('/api/admin/knowledge/docs');
     expect(calls[0].body).toMatchObject({
-      title: '新的团队知识',
-      summary: '这是一条新建的团队知识',
-      status: 'published',
+      name: '新的团队知识',
+      content: '这是一条新建的团队知识',
+      publishState: 'published',
+      kbId: 'kb-产品团队',
     });
     // 写成功后列表重新拉取,新条目出现
     await waitFor(() => {

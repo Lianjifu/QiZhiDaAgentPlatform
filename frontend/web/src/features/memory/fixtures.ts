@@ -1,5 +1,8 @@
 /**
- * AdminMemory fixtures — 10 L1 sessions / 14 L2 facts / 12 L3 entries / 8 promotions / 3 policies。
+ * AdminMemory fixtures — 10 L1 sessions / 14 L2 facts / 12 团队知识 / 8 promotions / 1 policy。
+ *
+ * ⚠️ **团队知识来自 knowledge** ✓ —— L3 表退役了 ✓（M-47 ✓）→ 这里只是
+ * **记忆页视角** ✓（同一份文档 ✓ —— `kbId` 指向它所属的知识库 ✓）。
  */
 import type {
   L1Session, L2Fact, L3Entry, MemoryTrend, PromotionEvent, RetentionPolicy,
@@ -36,39 +39,36 @@ export const mockL2Facts: L2Fact[] = [
 ];
 
 export const mockL3Entries: L3Entry[] = [
-  { id: 'k-1', team: '产品团队', title: '业务术语对照表', summary: '内部术语、缩写、产品代号的官方解释,所有 Agent 引用时优先检索。', category: '术语表', hits: 1280, updatedAt: '本周', contributor: '产品团队', status: 'published', hitsTrend: [920, 1020, 1080, 1120, 1180, 1220, 1260, 1280], promotedFromL2Ids: ['f-2'] },
-  { id: 'k-2', team: '客服团队', title: '价格折扣规则', summary: '标准折扣、审批阈值、对外口径,所有客服 Agent 必须遵循。', category: '流程', hits: 842, updatedAt: '今天', contributor: '客服一组', status: 'published', hitsTrend: [620, 680, 720, 740, 780, 800, 820, 842], promotedFromL2Ids: ['f-3'] },
-  { id: 'k-3', team: '研发团队', title: 'API 设计规范', summary: 'REST 命名、错误码、版本策略;新智能体工程助手输出代码需符合。', category: '规范', hits: 612, updatedAt: '上周', contributor: '研发架构组', status: 'published', hitsTrend: [380, 420, 480, 520, 560, 580, 600, 612], promotedFromL2Ids: ['f-6'] },
-  { id: 'k-4', team: '财务团队', title: '报销审批流程', summary: '差旅、采购、超额审批的分级权限说明。', category: '流程', hits: 248, updatedAt: '本周', contributor: '财务团队', status: 'published' },
-  { id: 'k-5', team: '法务团队', title: '合同条款红线', summary: '不可对外承诺的条款清单,销售合同审阅 Agent 自动校验。', category: '合规', hits: 184, updatedAt: '上周', contributor: '法务团队', status: 'published' },
-  { id: 'k-6', team: '客服团队', title: '退款话术模板', summary: '5 类退款场景的标准回复模板,带情绪分级。', category: '话术', hits: 524, updatedAt: '3 天前', contributor: '客服一组', status: 'published' },
-  { id: 'k-7', team: '产品团队', title: '发布检查清单', summary: '产品发布前 38 项检查项,灰度 / 上线 / 回滚动作。', category: '流程', hits: 96, updatedAt: '昨天', contributor: '产品团队', status: 'published' },
-  { id: 'k-8', team: '研发团队', title: '部署 runbook', summary: '各环境部署命令、回滚步骤、值班联系方式。', category: '流程', hits: 412, updatedAt: '本周', contributor: '运维团队', status: 'published' },
-  { id: 'k-9', team: '人力资源', title: '员工入职清单', summary: '新员工入职第一周的 18 项动作与负责人。', category: '流程', hits: 76, updatedAt: '上周', contributor: '人力资源', status: 'published' },
-  { id: 'k-10', team: '战略团队', title: '竞品对照表', summary: '主要竞品的定价、核心功能、市场份额,调研 Agent 优先引用。', category: '市场', hits: 318, updatedAt: '本周', contributor: '战略团队', status: 'published', hitsTrend: [180, 210, 240, 260, 280, 300, 312, 318] },
-  { id: 'k-11', team: '客服团队', title: '常见投诉应对草稿', summary: '正在编写的统一投诉应对指南,未发布。', category: '话术', hits: 0, updatedAt: '今天', contributor: '客服一组', status: 'draft' },
-  { id: 'k-12', team: '财务团队', title: '旧版报销规则', summary: '已被新规则取代,保留作历史参考。', category: '流程', hits: 12, updatedAt: '2 周前', contributor: '财务团队', status: 'retired' },
+  { id: 'k-1', team: '产品团队', kbId: 'kb-产品团队', title: '业务术语对照表', summary: '内部术语、缩写、产品代号的官方解释,所有 Agent 引用时优先检索。', category: '术语表', chunks: 1280, updatedAt: '本周', contributor: '产品团队', status: 'published', promotedFromL2Ids: ['f-2'] },
+  { id: 'k-2', team: '客服团队', kbId: 'kb-客服团队', title: '价格折扣规则', summary: '标准折扣、审批阈值、对外口径,所有客服 Agent 必须遵循。', category: '流程', chunks: 842, updatedAt: '今天', contributor: '客服一组', status: 'published', promotedFromL2Ids: ['f-3'] },
+  { id: 'k-3', team: '研发团队', kbId: 'kb-研发团队', title: 'API 设计规范', summary: 'REST 命名、错误码、版本策略;新智能体工程助手输出代码需符合。', category: '规范', chunks: 612, updatedAt: '上周', contributor: '研发架构组', status: 'published', promotedFromL2Ids: ['f-6'] },
+  { id: 'k-4', team: '财务团队', kbId: 'kb-财务团队', title: '报销审批流程', summary: '差旅、采购、超额审批的分级权限说明。', category: '流程', chunks: 248, updatedAt: '本周', contributor: '财务团队', status: 'published' },
+  { id: 'k-5', team: '法务团队', kbId: 'kb-法务团队', title: '合同条款红线', summary: '不可对外承诺的条款清单,销售合同审阅 Agent 自动校验。', category: '合规', chunks: 184, updatedAt: '上周', contributor: '法务团队', status: 'published' },
+  { id: 'k-6', team: '客服团队', kbId: 'kb-客服团队', title: '退款话术模板', summary: '5 类退款场景的标准回复模板,带情绪分级。', category: '话术', chunks: 524, updatedAt: '3 天前', contributor: '客服一组', status: 'published' },
+  { id: 'k-7', team: '产品团队', kbId: 'kb-产品团队', title: '发布检查清单', summary: '产品发布前 38 项检查项,灰度 / 上线 / 回滚动作。', category: '流程', chunks: 96, updatedAt: '昨天', contributor: '产品团队', status: 'published' },
+  { id: 'k-8', team: '研发团队', kbId: 'kb-研发团队', title: '部署 runbook', summary: '各环境部署命令、回滚步骤、值班联系方式。', category: '流程', chunks: 412, updatedAt: '本周', contributor: '运维团队', status: 'published' },
+  { id: 'k-9', team: '人力资源', kbId: 'kb-人力资源', title: '员工入职清单', summary: '新员工入职第一周的 18 项动作与负责人。', category: '流程', chunks: 76, updatedAt: '上周', contributor: '人力资源', status: 'published' },
+  { id: 'k-10', team: '战略团队', kbId: 'kb-战略团队', title: '竞品对照表', summary: '主要竞品的定价、核心功能、市场份额,调研 Agent 优先引用。', category: '市场', chunks: 318, updatedAt: '本周', contributor: '战略团队', status: 'published' },
+  { id: 'k-11', team: '客服团队', kbId: 'kb-客服团队', title: '常见投诉应对草稿', summary: '正在编写的统一投诉应对指南,未发布。', category: '话术', chunks: 0, updatedAt: '今天', contributor: '客服一组', status: 'draft' },
+  { id: 'k-12', team: '财务团队', kbId: 'kb-财务团队', title: '旧版报销规则', summary: '已被新规则取代,保留作历史参考。', category: '流程', chunks: 12, updatedAt: '2 周前', contributor: '财务团队', status: 'retired' },
 ];
 
 export const mockPromotions: PromotionEvent[] = [
   { id: 'p-1', layer: 'l1→l2', label: '张文佳 · 答复风格: 喜欢精简答复', at: '今天 15:48', operator: '系统自动提炼', targetId: 'f-1' },
-  { id: 'p-2', layer: 'l2→l3', label: '客服团队 · 价格折扣规则发布', at: '今天 15:30', operator: '管理员', targetId: 'k-2' },
+  { id: 'p-2', layer: 'l2→knowledge', label: '客服团队 · 价格折扣规则发布', at: '今天 15:30', operator: '管理员', targetId: 'k-2' },
   { id: 'p-3', layer: 'l1→l2', label: '王晓阳 · 关注指标: 日活/留存/转化漏斗', at: '今天 15:12', operator: '系统自动提炼', targetId: 'f-5' },
   { id: 'p-4', layer: 'l1→l2', label: '陈雨晴 · 代码风格: 函数式优先', at: '今天 14:48', operator: '系统自动提炼', targetId: 'f-7' },
-  { id: 'p-5', layer: 'l2→l3', label: '研发团队 · API 设计规范发布', at: '今天 14:30', operator: '管理员', targetId: 'k-3' },
+  { id: 'p-5', layer: 'l2→knowledge', label: '研发团队 · API 设计规范发布', at: '今天 14:30', operator: '管理员', targetId: 'k-3' },
   { id: 'p-6', layer: 'l1→l2', label: '赵泽宇 · 语言禁用: 中文优先', at: '今天 14:18', operator: '系统自动提炼', targetId: 'f-14' },
   { id: 'p-7', layer: 'l1→l2', label: '李楠 · 调研方法: 先公开数据后访谈', at: '今天 13:40', operator: '系统自动提炼', targetId: 'f-12' },
-  { id: 'p-8', layer: 'l2→l3', label: '产品团队 · 业务术语对照表发布', at: '今天 11:20', operator: '管理员', targetId: 'k-1' },
+  { id: 'p-8', layer: 'l2→knowledge', label: '产品团队 · 业务术语对照表发布', at: '今天 11:20', operator: '管理员', targetId: 'k-1' },
 ];
 
 export const mockRetentionPolicies: RetentionPolicy[] = [
-  { layer: 'l1', label: '短期记忆', description: '会话上下文窗口', ttlMinutes: 60, maxItems: 50, storageMb: 8, eviction: 'fifo', hitRate: 0.94 },
   { layer: 'l2', label: '长期记忆', description: '用户偏好与事实', ttlMinutes: 60 * 24 * 90, maxItems: 200, storageMb: 32, eviction: 'lru', hitRate: 0.88 },
-  { layer: 'l3', label: '知识记忆', description: '团队级共享知识', ttlMinutes: 60 * 24 * 365, maxItems: 500, storageMb: 128, eviction: 'lru', hitRate: 0.92 },
 ];
 
 export const mockMemoryTrend: MemoryTrend = {
   l1Active: [42, 48, 53, 50, 56, 61, 58, 64],
   l2Hits: [820, 940, 1020, 1100, 1180, 1240, 1320, 1380],
-  l3Hits: [1280, 1340, 1410, 1480, 1560, 1620, 1680, 1750],
 };

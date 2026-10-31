@@ -26,9 +26,7 @@ from qzdap.modules.memory.application.ports import (
 )
 from qzdap.modules.memory.domain.entities import (
     L2_STATUSES,
-    L3_STATUSES,
     L2Fact,
-    L3Entry,
     PromotionEvent,
     RetentionPolicy,
     format_last_update,
@@ -43,7 +41,6 @@ from qzdap_agent_runtime.memory.promotion import KnowledgePromotionPort
 from qzdap_agent_runtime.memory.refine import BufferPort, SessionBufferView
 from qzdap_agent_runtime.memory.session_info import SessionInfoPort
 from qzdap_kernel.errors import ConflictError, ValidationError
-from qzdap_observability.metrics import record_legacy_call
 
 _log = getLogger(__name__)
 
@@ -166,17 +163,6 @@ class MemoryAdminService:
         item = await self._catalog.get_l2(item_id)
         if item is None:
             raise MemoryNotFound(f"l2 fact {item_id} not found")
-        return item.to_admin_dict()
-
-    async def list_l3(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
-        items = await self._catalog.list_l3(workspace_id)
-        items.sort(key=lambda item: item.updated_at, reverse=True)
-        return [item.to_admin_dict() for item in items]
-
-    async def get_l3(self, item_id: UUID) -> dict[str, Any]:
-        item = await self._catalog.get_l3(item_id)
-        if item is None:
-            raise MemoryNotFound(f"l3 entry {item_id} not found")
         return item.to_admin_dict()
 
     async def flush_l1(self, item_id: UUID, *, workspace_id: UUID) -> dict[str, Any]:
@@ -340,57 +326,6 @@ class MemoryAdminService:
             "target": "knowledge",
         }
 
-    async def create_l3(
-        self,
-        *,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        team: str,
-        title: str,
-        summary: str,
-        category: str = "knowledge",
-        contributor: str = "管理员",
-        status: str = "published",
-    ) -> dict[str, Any]:
-        """手工新建一条 L3 团队知识。"""
-        if status not in L3_STATUSES:
-            raise ValidationError(f"unknown l3 status {status}")
-        entry = L3Entry.create(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            team=team,
-            title=title,
-            summary=summary,
-            category=category,
-            contributor=contributor,
-            status=status,  # type: ignore[arg-type]
-        )
-        # ⚠️ **L3 表在用** ✓（台账 X15 —— 决策 #1：L3 退役 ✓）→ 打点 ✓
-        record_legacy_call("X15")
-        await self._catalog.add_l3(entry)
-        await self._embed_item(entry.id, "l3", entry.recall_text(), tenant_id, workspace_id)
-        return entry.to_admin_dict()
-
-    async def update_l3(
-        self, item_id: UUID, *, workspace_id: UUID, patch: dict[str, Any]
-    ) -> dict[str, Any]:
-        """发布 / 下线一条 L3 知识。"""
-        item = await self._catalog.get_l3(item_id)
-        if item is None or item.workspace_id != workspace_id:
-            raise MemoryNotFound(f"l3 entry {item_id} not found")
-        status = patch.get("status")
-        if status is not None:
-            value = str(status)
-            if value not in L3_STATUSES:
-                raise ValidationError(f"unknown l3 status {value}")
-            item.status = value  # type: ignore[assignment]
-        for field in ("title", "summary", "team", "category"):
-            if patch.get(field) is not None:
-                setattr(item, field, str(patch[field]))
-        item.updated_at = datetime.now(UTC)
-        await self._catalog.update_l3(item)
-        return item.to_admin_dict()
-
     async def list_promotions(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
         items = await self._catalog.list_promotions(workspace_id)
         items.sort(key=lambda item: item.created_at, reverse=True)
@@ -468,16 +403,14 @@ class MemoryAdminService:
                 buckets[day] = hits
         series = [buckets[day] for day in sorted(buckets)]
         l2 = await self._catalog.list_l2(workspace_id)
-        l3 = await self._catalog.list_l3(workspace_id)
-        l3_hits = sum(item.hits for item in l3 if item.status == "published")
         return {
             # ⚠️ **活跃条目** ✓（真实计数 ✓ —— 不是编的 ✓）。
             "l1Active": series,
             # ⚠️ **被用过的记忆** ✓（真实使用趋势 ✓ —— C7 ✓）。
             "l2Hits": series,
-            "l3Hits": series,
             "l2Total": sum(1 for item in l2 if item.status != "retired"),
-            "l3HitsTotal": l3_hits,
+            # ⚠️ **没有 L3 了** ✓ —— L3 退役 ✓（决策 #1 ✓ —— M-47 ✓）→
+            # 团队知识的趋势归 **knowledge** ✓（不在这里编 ✗✗）。
         }
 
     async def _ensure_policies(

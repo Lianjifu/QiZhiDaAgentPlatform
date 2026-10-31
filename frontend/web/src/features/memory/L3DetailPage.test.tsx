@@ -1,5 +1,8 @@
 /**
- * L3DetailPage 测试 — happy-path + 404。
+ * L3DetailPage（**团队知识详情** ✓）测试 — happy-path + 404。
+ *
+ * ⚠️ **L3 表退役了** ✓（决策 #1 ✓ —— M-47 ✓）→ 页面展示的是
+ * **knowledge 的文档** ✓（切片数 ✓ —— 不是命中数 ✓）。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
@@ -11,33 +14,19 @@ vi.mock('./useMemory', () => ({
   useL2Facts: vi.fn(() => ({ data: [] })),
 }));
 
-/**
- * 「被引用 Agent」走真实 HTTP 通道 —— 桩掉 api client,让请求成功返回,
- * 否则 query 报错后 useApiQuery 会把 data 抹成 undefined(组件拿不到列表)。
- */
-vi.mock('@qzdap/web-api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@qzdap/web-api')>();
-  return {
-    ...actual,
-    getApiClient: () => ({
-      request: async () => mockReferencedAgents,
-    }),
-  };
-});
+/** 「引用了本团队知识库的 Agent」走 **智能体列表** ✓ —— 按知识库 id 过滤 ✓。 */
+vi.mock('@/features/agents/useAgents', () => ({
+  useAgentsList: vi.fn(() => ({ data: [] })),
+}));
 
 import { useL3Entry, useL3Entries, useL2Facts } from './useMemory';
+import { useAgentsList } from '@/features/agents/useAgents';
 import L3DetailPage from './L3DetailPage';
-import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
+import { renderWithProviders } from '@/test-utils/seed';
 
-/**
- * L3DetailPage 自己用 useApiQuery 拉「被引用 Agent」——
- * key 形如 ['memory','l3',<id>,'agents'],走的是 apiQueryKey 的完整形状。
- */
-const AGENTS_KEY = ['memory', 'l3', 'k-008', 'agents'] as const;
-
-const mockReferencedAgents = [
-  { id: 'ag-1', name: '客服助手', category: '客服一组' },
-  { id: 'ag-2', name: '研发助手', category: '研发架构' },
+const mockAgents = [
+  { id: 'ag-1', name: '客服助手', category: '客服一组', knowledgeRefs: [{ id: 'kb-产品团队', name: '产品团队', scope: '部门', enabled: true }] },
+  { id: 'ag-2', name: '研发助手', category: '研发架构', knowledgeRefs: [] },
 ];
 
 function renderAt(id: string | null) {
@@ -49,9 +38,6 @@ function renderAt(id: string | null) {
     </Routes>,
     {
       initialEntries: [id ? `/admin/memory/l3/${id}` : '/admin/memory'],
-      seeds: [
-        { key: pageQueryKey(AGENTS_KEY), data: mockReferencedAgents },
-      ],
     },
   );
 }
@@ -59,13 +45,14 @@ function renderAt(id: string | null) {
 describe('L3DetailPage', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('renders entry header + KPIs + hits trend + promoted-from + same-team', async () => {
+  it('renders entry header + KPIs + 切片预览 + promoted-from + same-team', async () => {
     (useL3Entry as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       data: {
         id: 'k-008', team: '产品团队', title: '业务术语对照表',
         summary: '内部术语、缩写、产品代号的官方解释',
-        category: '术语表', hits: 1280, updatedAt: '本周', contributor: '产品团队', status: 'published',
-        hitsTrend: [920, 1020, 1080, 1120, 1180, 1220, 1260, 1280],
+        category: '术语表', chunks: 12, updatedAt: '本周', contributor: '产品团队', status: 'published',
+        kbId: 'kb-产品团队',
+        chunkPreview: [{ index: 1, snippet: '内部术语、缩写、产品代号的官方解释' }],
         promotedFromL2Ids: ['f-3'],
       },
       isLoading: false,
@@ -76,10 +63,11 @@ describe('L3DetailPage', () => {
     });
     (useL3Entries as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       data: [
-        { id: 'k-7', team: '产品团队', title: '发布检查清单', summary: '...', category: '流程', hits: 96, updatedAt: '昨天', contributor: '产品团队', status: 'published' },
+        { id: 'k-7', team: '产品团队', title: '发布检查清单', summary: '...', category: '流程', chunks: 4, updatedAt: '昨天', contributor: '产品团队', status: 'published', kbId: 'kb-产品团队' },
       ],
       isLoading: false,
     });
+    (useAgentsList as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ data: mockAgents, isLoading: false });
 
     renderAt('k-008');
 
@@ -88,13 +76,16 @@ describe('L3DetailPage', () => {
     });
     expect(screen.getAllByText('已发布').length).toBeGreaterThan(0);
     expect(screen.getAllByText('术语表').length).toBeGreaterThan(0);
-    expect(screen.getByText('1280')).toBeTruthy();
-    expect(screen.getByText(/内部术语、缩写/)).toBeTruthy();
-    expect(screen.getAllByText('近 8 期').length).toBeGreaterThan(0);
+    // ⚠️ **切片数** ✓ —— 命中数随 L3 表一起退役了 ✓。
+    expect(screen.getByText('切片数')).toBeTruthy();
+    // ⚠️ **摘要与切片预览都会出现这段文字** ✓ → 用 getAllByText ✓。
+    expect(screen.getAllByText(/内部术语、缩写/).length).toBeGreaterThan(0);
+    expect(screen.getByText('第 1 块')).toBeTruthy();
     const promoLink = screen.getByRole('link', { name: /查看长期记忆 →/ });
     expect(promoLink.getAttribute('href')).toBe('/admin/memory/l2/f-3');
-    // 被引用 Agent —— 来自 useApiQuery(['memory','l3',id,'agents'])
+    // 引用了本团队知识库的 Agent —— 绑了同一个知识库的才算 ✓。
     expect(screen.getByText('客服助手')).toBeTruthy();
+    expect(screen.queryByText('研发助手')).toBeNull();
     const viewLinks = screen.getAllByRole('link', { name: /查看 →/ });
     const agentLink = viewLinks.find((a) => a.getAttribute('href') === '/admin/agents/ag-1');
     expect(agentLink).toBeTruthy();

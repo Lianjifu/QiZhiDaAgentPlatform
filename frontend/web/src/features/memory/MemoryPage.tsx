@@ -11,6 +11,7 @@ import {
   useL1Sessions, useL2Facts, useL3Entries, useMemoryStats, usePromotions,
   useFlushMemorySession, useFlushAllMemorySessions, useUpdateMemoryFact, usePromoteMemoryFacts, useUpdateMemoryEntry, useCreateL3Entry,
 } from './useMemory';
+import { useKnowledgeBases } from '@/features/knowledge/useKnowledge';
 import { normalizeError } from '@/api/shared/http-error';
 import type {
   L1Session, L2Category, L2Fact, L3Entry, L3Status, MemoryRange, MemoryTabId,
@@ -53,6 +54,11 @@ export default function MemoryPage() {
   const [promoteIds, setPromoteIds] = useState<string[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
 
+  const basesQueryRemote = useKnowledgeBases();
+  const bases = useMemo(
+    () => (basesQueryRemote.data ?? []).map((kb) => ({ id: kb.id, name: kb.name })),
+    [basesQueryRemote.data],
+  );
   const l1QueryRemote = useL1Sessions();
   const l2QueryRemote = useL2Facts();
   const l3QueryRemote = useL3Entries();
@@ -131,8 +137,8 @@ export default function MemoryPage() {
       onError: failure,
     });
   };
-  const submitCreate = (input: { team: string; title: string; summary: string; category: string; status: 'draft' | 'published' }) => {
-    createEntry.mutate(input, {
+  const submitCreate = (input: { kbId: string; name: string; content: string; category: string; publishState: 'draft' | 'published' }) => {
+    createEntry.mutate({ ...input, type: 'manual' }, {
       onSuccess: () => { setCreateOpen(false); setNotice('已创建团队知识'); },
       onError: failure,
     });
@@ -177,14 +183,18 @@ export default function MemoryPage() {
           })}
         </nav>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigate(`/admin/memory/policies/${encodeURIComponent(LAYER_META[tab].label)}`)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-3 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
-          >
-            <Settings className="h-3.5 w-3.5" />
-            策略配置
-          </button>
+          {/* ⚠️ **只有有保留策略的层才给入口** ✓ —— L1 / L3 的策略都退役了 ✓
+              （M-46 ✓ / M-47 ✓）—— 点了也是死链 ✗✗。 */}
+          {LAYER_META[tab].policyLabel ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/admin/memory/policies/${encodeURIComponent(LAYER_META[tab].policyLabel!)}`)}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-3 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
+            >
+              <Settings className="h-3.5 w-3.5" />
+              策略配置
+            </button>
+          ) : null}
           <TimeRangeDropdown value={range} onChange={setRange} />
         </div>
       </div>
@@ -243,7 +253,7 @@ export default function MemoryPage() {
       <PromoteMemoryModal open={promoteOpen} factIds={promoteIds} onClose={() => setPromoteOpen(false)} onConfirm={submitPromote} />
       <CreateMemoryEntryModal
         open={createOpen}
-        teams={allTeams}
+        bases={bases}
         submitting={createEntry.isPending}
         onClose={() => setCreateOpen(false)}
         onConfirm={submitCreate}

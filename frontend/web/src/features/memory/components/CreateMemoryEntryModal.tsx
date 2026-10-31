@@ -1,32 +1,39 @@
 /**
- * CreateMemoryEntryModal — 手工新建一条 L3 团队知识。
+ * CreateMemoryEntryModal — 手工新建一条**团队知识** ✓。
  *
- * 与 PromoteMemoryModal 的区别:那条是 L2 → L3 的批量晋升(写草稿待审核),
+ * ⚠️ **L3 表退役了** ✓（决策 #1 ✓ —— M-47 ✓）→ 这条知识落在
+ * **knowledge 的文档** ✓（**一个团队一个知识库** ✓ —— 团队 = 选一个库 ✓）。
+ *
+ * 与 PromoteMemoryModal 的区别:那条是 L2 → 团队知识的批量晋升,
  * 这条是管理员直接建一条团队共享知识,默认直接发布。
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 
-const DEFAULT_TEAMS = ['产品团队', '客服团队', '研发团队', '财务团队', '法务团队', '人力资源', '战略团队'];
 const DEFAULT_CATEGORIES = ['流程', '规范', '话术', '术语表', '市场', '合规'];
 
 export function CreateMemoryEntryModal({
-  open, teams, onClose, onConfirm, submitting = false,
+  open, bases, onClose, onConfirm, submitting = false,
 }: {
   open: boolean;
-  teams: string[];
+  /** **可选的团队知识库** ✓（按 id 选 ✓ —— 库名 = 团队名 ✓）。 */
+  bases: Array<{ id: string; name: string }>;
   onClose: () => void;
-  onConfirm: (input: { team: string; title: string; summary: string; category: string; status: 'draft' | 'published' }) => void;
+  onConfirm: (input: { kbId: string; name: string; content: string; category: string; publishState: 'draft' | 'published' }) => void;
   submitting?: boolean;
 }) {
-  const [team, setTeam] = useState(DEFAULT_TEAMS[0]);
+  const [kbId, setKbId] = useState(bases[0]?.id ?? '');
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
   const [category, setCategory] = useState(DEFAULT_CATEGORIES[0]);
   const [status, setStatus] = useState<'draft' | 'published'>('published');
 
+  // ⚠️ **库是异步到的** ✓ —— 第一次渲染时可能还没有 ✓ → 选中第一个 ✓。
+  useEffect(() => {
+    if (!kbId && bases.length > 0) setKbId(bases[0].id);
+  }, [bases, kbId]);
+
   if (!open) return null;
-  const options = teams.length > 0 ? Array.from(new Set([...teams, ...DEFAULT_TEAMS])) : DEFAULT_TEAMS;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 p-4 sm:items-center sm:p-8" role="dialog" aria-modal="true" aria-label="新建团队知识" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -37,12 +44,13 @@ export function CreateMemoryEntryModal({
         </div>
         <div className="space-y-4 overflow-y-auto px-6 py-6">
           <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-app)] p-3 text-xs text-[var(--text-secondary)]">
-            这条知识会写入 L3 团队记忆层,发布后立即参与召回。
+            这条知识会写入**所选团队知识库**,发布后立即参与召回。
+            {bases.length === 0 ? '（还没有团队知识库 —— 先到「知识管理」建一个）' : ''}
           </div>
           <label className="block">
-            <span className="text-xs font-semibold">所属团队</span>
-            <select value={team} onChange={(event) => setTeam(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-1)] px-3 text-sm outline-none focus:border-[var(--brand)]">
-              {options.map((t) => <option key={t}>{t}</option>)}
+            <span className="text-xs font-semibold">所属团队知识库</span>
+            <select value={kbId} onChange={(event) => setKbId(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-1)] px-3 text-sm outline-none focus:border-[var(--brand)]">
+              {bases.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>
           <label className="block">
@@ -73,8 +81,8 @@ export function CreateMemoryEntryModal({
           <button type="button" onClick={onClose} className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold hover:border-[var(--brand)]">取消</button>
           <button
             type="button"
-            disabled={!title.trim() || !summary.trim() || submitting}
-            onClick={() => onConfirm({ team, title: title.trim(), summary: summary.trim(), category, status })}
+            disabled={!kbId || !title.trim() || !summary.trim() || submitting}
+            onClick={() => onConfirm({ kbId, name: title.trim(), content: summary.trim(), category, publishState: status })}
             className="inline-flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
           >
             <Plus className="h-3.5 w-3.5" />{submitting ? '创建中…' : '创建'}

@@ -134,7 +134,7 @@ export function L3Card({ entry, onOpen, onRetire, onPublish }: {
       </AdminListIdentity>
       <AdminListMetrics cols={3}>
         <AdminListMetric>{entry.category}</AdminListMetric>
-        <AdminListMetric>{entry.hits} 命中</AdminListMetric>
+        <AdminListMetric>{entry.chunks} 切片</AdminListMetric>
         <AdminListMetric>{entry.updatedAt}</AdminListMetric>
       </AdminListMetrics>
       <AdminListActions>

@@ -1,30 +1,39 @@
 /**
- * L3 团队知识详情 — 路由 /admin/memory/l3/:id
- * Wave 5:4 KPI(去「引用方式」占位)+ 引用趋势 + 晋升来源 + 被引用 Agent + 相关知识(同团队)。
+ * **团队知识详情** — 路由 /admin/memory/l3/:id
+ *
+ * ⚠️ **L3 表退役了** ✓（决策 #1 ✓ —— M-47 ✓）→ 数据源是
+ * **knowledge 的文档** ✓（**一个团队一个知识库** ✓ —— team = 库名 ✓）。
+ * ⚠️ **命中统计没了** ✓ —— L3 的 hits / hits_trend 随表一起退役 ✓
+ * → 这里展示**切片** ✓（knowledge 的正文切块 ✓）。
  */
 import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  ArrowUp, BookOpen, Bot, Calendar, Hash, Layers, TrendingUp, User,
+  ArrowUp, BookOpen, Bot, Calendar, Hash, Layers, Scissors, User,
 } from 'lucide-react';
 import { useL3Entry, useL3Entries, useL2Facts } from './useMemory';
 import {
   DetailShell, DetailHeader, DetailStatGrid, DetailStat,
   DetailSection, DetailField, DetailNotFound, DetailSkeleton,
 } from '@/features/knowledge/components/DetailLayout';
-import { useApiQuery } from '@/services/query';
-import type { AgentEntry } from '@/features/agents/schema';
+import { useAgentsList } from '@/features/agents/useAgents';
 import { L3_STATUS_BADGE, LAYER_META } from './components/constants';
 
 export default function L3DetailPage() {
   const { id = '' } = useParams<{ id: string }>();
   const decoded = useMemo(() => decodeURIComponent(id), [id]);
-  const { data: referencedAgents = [] } = useApiQuery<AgentEntry[]>(['memory', 'l3', decoded, 'agents'], `/api/admin/memory/l3/${encodeURIComponent(decoded)}/agents`, undefined, { enabled: Boolean(decoded) });
   const { data: entry, isLoading } = useL3Entry(decoded || null);
   const { data: allL3 } = useL3Entries();
   const { data: allL2 } = useL2Facts();
+  const { data: agents = [] } = useAgentsList();
   const meta = LAYER_META.l3;
   const Icon = meta.icon;
+
+  // ⚠️ **引用的是「团队知识库」** ✓ —— agent 绑的是库 ✓（不是某一条文档 ✓）。
+  const referencedAgents = useMemo(() => {
+    if (!entry) return [];
+    return agents.filter((a) => (a.knowledgeRefs ?? []).some((ref) => ref.id === entry.kbId));
+  }, [agents, entry]);
 
   const sameTeamEntries = useMemo(() => {
     if (!entry) return [];
@@ -56,7 +65,6 @@ export default function L3DetailPage() {
   }
 
   const status = L3_STATUS_BADGE[entry.status];
-  const trendMax = entry.hitsTrend && entry.hitsTrend.length > 0 ? Math.max(...entry.hitsTrend) : 0;
 
   return (
     <DetailShell backTo="/admin/memory" backLabel="返回记忆管理">
@@ -73,7 +81,7 @@ export default function L3DetailPage() {
       />
 
       <DetailStatGrid columns={4}>
-        <DetailStat label="命中次数" value={entry.hits} tone={entry.hits > 100 ? 'success' : 'info'} hint={`累计 ${entry.hits.toLocaleString()} 次`} />
+        <DetailStat label="切片数" value={entry.chunks} tone="info" hint="正文按块切,检索按块命中" />
         <DetailStat label="状态" value={status.label} tone={entry.status === 'published' ? 'success' : entry.status === 'draft' ? 'warn' : 'danger'} />
         <DetailStat label="团队" value={entry.team} tone="brand" />
         <DetailStat label="分类" value={entry.category} />
@@ -83,32 +91,18 @@ export default function L3DetailPage() {
         <p className="text-sm leading-7 text-[var(--text-secondary)]">{entry.summary}</p>
       </DetailSection>
 
-      <DetailSection title="引用趋势" icon={TrendingUp}>
-        {entry.hitsTrend && entry.hitsTrend.length > 0 ? (
-          <div className="space-y-2">
-            <div className="flex h-16 items-end gap-1.5">
-              {entry.hitsTrend.map((v, idx) => {
-                const heightPct = trendMax === 0 ? 0 : Math.max(8, Math.round((v / trendMax) * 100));
-                const isLatest = idx === entry.hitsTrend!.length - 1;
-                return (
-                  <div key={idx} className="group relative flex flex-1 flex-col items-center justify-end">
-                    <span className={`mb-1 text-[10px] tabular-nums ${isLatest ? 'font-semibold text-[var(--brand)]' : 'text-[var(--text-muted)]'}`}>{v.toLocaleString()}</span>
-                    <div
-                      className={`w-full rounded-t ${isLatest ? 'bg-[var(--brand)]' : 'bg-[var(--bg-elevated)] group-hover:bg-[var(--brand-light)]'}`}
-                      style={{ height: `${heightPct}%`, minHeight: '4px' }}
-                      aria-label={`第 ${idx + 1} 期 ${v} 次`}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
-              <span>近 {entry.hitsTrend.length} 期</span>
-              <span>峰值 {trendMax.toLocaleString()} · 当前 {entry.hitsTrend[entry.hitsTrend.length - 1]?.toLocaleString()}</span>
-            </div>
-          </div>
+      <DetailSection title="切片预览" icon={Scissors}>
+        {entry.chunkPreview && entry.chunkPreview.length > 0 ? (
+          <ul className="grid grid-cols-1 gap-2">
+            {entry.chunkPreview.map((c) => (
+              <li key={c.index} className="rounded-xl border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-xs">
+                <span className="mb-0.5 block text-[10px] font-semibold text-[var(--text-muted)]">第 {c.index} 块</span>
+                <span className="block leading-6 text-[var(--text-secondary)]">{c.snippet}</span>
+              </li>
+            ))}
+          </ul>
         ) : (
-          <p className="text-xs text-[var(--text-muted)]">暂无命中数据</p>
+          <p className="text-xs text-[var(--text-muted)]">暂无切片</p>
         )}
       </DetailSection>
 
@@ -134,18 +128,22 @@ export default function L3DetailPage() {
         )}
       </DetailSection>
 
-      <DetailSection title="被引用 Agent" icon={Bot}>
-        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {referencedAgents.map((a) => (
-            <li key={a.id} className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-xs">
-              <span className="min-w-0 flex-1 truncate">
-                <span className="block font-medium">{a.name}</span>
-                <span className="mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">{a.category}</span>
-              </span>
-              <Link to={`/admin/agents/${a.id}`} className="shrink-0 text-[var(--brand)] hover:underline">查看 →</Link>
-            </li>
-          ))}
-        </ul>
+      <DetailSection title="引用了本团队知识库的 Agent" icon={Bot}>
+        {referencedAgents.length === 0 ? (
+          <p className="text-xs text-[var(--text-muted)]">还没有智能体绑定这个团队知识库</p>
+        ) : (
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {referencedAgents.map((a) => (
+              <li key={a.id} className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-xs">
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="block font-medium">{a.name}</span>
+                  <span className="mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">{a.category}</span>
+                </span>
+                <Link to={`/admin/agents/${a.id}`} className="shrink-0 text-[var(--brand)] hover:underline">查看 →</Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </DetailSection>
 
       <DetailSection title="相关知识(同团队)" icon={BookOpen}>
@@ -159,7 +157,7 @@ export default function L3DetailPage() {
                 <li key={k.id} className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-xs">
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{k.title}</span>
-                    <span className="mt-0.5 block text-[11px] text-[var(--text-muted)]">命中 {k.hits.toLocaleString()} · {k.updatedAt}</span>
+                    <span className="mt-0.5 block text-[11px] text-[var(--text-muted)]">{k.chunks} 切片 · {k.updatedAt}</span>
                   </span>
                   <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${sb.className}`}>{sb.label}</span>
                   <Link to={`/admin/memory/l3/${k.id}`} className="shrink-0 text-[var(--brand)] hover:underline">查看 →</Link>

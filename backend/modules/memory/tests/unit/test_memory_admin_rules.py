@@ -182,7 +182,6 @@ async def test_the_published_config_is_what_the_runtime_parses() -> None:
         enabled=False,
         scope="session",
         retention_days=30,
-        l3_entry_ids=("l3-1",),
     )
     raw = config.to_agent_policy(label="长期记忆")
     policy = PolicyBinding(raw=raw).to_policy()
@@ -190,7 +189,8 @@ async def test_the_published_config_is_what_the_runtime_parses() -> None:
     assert policy.scope.value == "session"
     assert policy.policy_label == "长期记忆"
     assert policy.retention_days == 30
-    assert policy.l3_entry_ids == ("l3-1",)
+    # ⚠️ **不再有 ``l3EntryIds``** ✓ —— L3 退役 ✓（决策 #1 ✓ —— M-47 ✓）。
+    assert "l3EntryIds" not in raw
     # ⚠️ **用户级是默认** ✓（发布没写 scope 时不该变成别的 ✓）。
     assert (
         PolicyBinding(raw=MemoryPolicyConfig().to_agent_policy(label="x")).to_policy().scope.value

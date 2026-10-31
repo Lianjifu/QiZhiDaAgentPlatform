@@ -4,9 +4,12 @@
 
 ⚠️ **这一层是契约层** —— 纯解析 ✓（无 IO ✓）。
 
-⚠️ **运行时必须真的消费这六个字段** ✓（§1.7 的问题 ✓）——
-``enabled`` / ``scope`` / ``policyLabel`` / ``l3EntryIds`` /
-``knowledge_refs`` / ``retentionDays`` —— 否则「管理端能看、运行时读不到」✗✗。
+⚠️ **运行时必须真的消费这五个字段** ✓（§1.7 的问题 ✓）——
+``enabled`` / ``scope`` / ``policyLabel`` / ``knowledge_refs`` /
+``retentionDays`` —— 否则「管理端能看、运行时读不到」✗✗。
+
+⚠️ **不再有 ``l3EntryIds``** ✓ —— L3 退役 ✓（决策 #1 ✓ —— M-47 ✓）→
+团队知识归 **knowledge** ✓（agent 绑知识库走 ``knowledge_refs`` ✓）。
 """
 
 from __future__ import annotations
@@ -39,12 +42,14 @@ class RetentionPolicyView:
 
 
 class MemoryRefKind(StrEnum):
-    """**被显式引用**的记忆条目的种类 ✓（§7.1 的 ``knowledge_refs`` ✓）。"""
+    """**被显式引用**的记忆条目的种类 ✓（§7.1 的 ``knowledge_refs`` ✓）。
+
+    ⚠️ **只剩 L2 了** ✓ —— L3 团队知识退役 ✓（决策 #1 ✓ —— M-47 ✓）→
+    团队知识走 **knowledge** 的知识库绑定 ✓（不在这里 ✓）。
+    """
 
     #: L2 个人记忆 ✓。
     MEMORY = "memory"
-    #: L3 团队知识 ✓。
-    L3 = "l3"
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,7 +65,7 @@ class MemoryRef:
 
     @property
     def layer(self) -> str:
-        return "l3" if self.kind is MemoryRefKind.L3 else "l2"
+        return "l2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,8 +80,6 @@ class MemoryPolicy:
     policy_label: str = ""
     #: 绑定的保留策略 ✓（**运行时解析出来的** ✓ —— 模块侧查 ✓）。
     retention: RetentionPolicyView | None = None
-    #: 额外纳入的 L3 条目 ✓（召回时一起带上 ✓）。
-    l3_entry_ids: tuple[str, ...] = ()
     #: agent 显式引用的记忆 / 知识 ✓（召回时一起带上 ✓ —— §7.1 ✓）。
     knowledge_refs: tuple[MemoryRef, ...] = ()
     #: 自动沉淀 ✓（**目前无实现** ✗ —— 见 §10.4 ✓）。
@@ -111,23 +114,21 @@ class MemoryPolicy:
 
     @property
     def pinned_ids(self) -> tuple[str, ...]:
-        """**召回时必须额外纳入的条目 id** ✓（``l3EntryIds`` + 引用 ✓）。
+        """**召回时必须额外纳入的条目 id** ✓（显式引用 ✓）。
 
         ⚠️ **引用指向 L2 时也要带上** ✓（``knowledge_refs.type == "memory"`` ✓
         —— 那是「引用一条个人记忆」✓ —— 漏了它 = 绑定失效 ✗✗）。
         """
-        ids = list(self.l3_entry_ids)
-        ids.extend(ref.ref_id for ref in self.knowledge_refs)
+        ids = [ref.ref_id for ref in self.knowledge_refs]
         return tuple(dict.fromkeys(ids))
 
     @property
     def pinned_layer(self) -> str:
         """**被 pin 的条目在哪一层** ✓。
 
-        ⚠️ **同一层** ✓ —— L3 引用与 L2 引用混在一起时**按层分开取** ✓
-        （取的时候按 id 逐个判层 ✓ —— 这里只给「默认层」✓）。
+        ⚠️ **只有 L2 了** ✓ —— L3 退役 ✓（决策 #1 ✓ —— M-47 ✓）。
         """
-        return "l3" if self.l3_entry_ids else "l2"
+        return "l2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,12 +151,10 @@ class PolicyBinding:
             scope = MemoryScope(scope_raw) if scope_raw else MemoryScope.USER
         except ValueError:
             scope = MemoryScope.USER
-        l3_ids = raw.get("l3EntryIds") or raw.get("l3_entry_ids") or []
         return MemoryPolicy(
             enabled=bool(raw.get("enabled", True)),
             scope=scope,
             policy_label=str(raw.get("policyLabel") or raw.get("policy_label") or ""),
-            l3_entry_ids=tuple(str(item) for item in l3_ids),
             knowledge_refs=_parse_refs(self.refs),
             auto_summarize=bool(raw.get("autoSummarize") or raw.get("auto_summarize")),
             retention_days=raw.get("retentionDays") or raw.get("retention_days"),
@@ -165,7 +164,7 @@ class PolicyBinding:
 def _parse_refs(refs: Sequence[Mapping[str, Any]]) -> tuple[MemoryRef, ...]:
     """``admin_agents.knowledge_refs`` → **契约层的引用** ✓。
 
-    ⚠️ **只认 ``type ∈ {memory, l3}``** ✓（§1.7 ✓）—— 其它类型（知识库
+    ⚠️ **只认 ``type == "memory"``** ✓（§1.7 ✓）—— 其它类型（知识库
     之类的）**不是记忆引用** ✓ → 忽略 ✓（否则会把知识库 id 当成记忆 id ✗✗）。
     """
     parsed: list[MemoryRef] = []
@@ -213,8 +212,6 @@ class MemoryPolicyConfig:
     retention_days: int | None = None
     #: 自动沉淀 ✓（**目前无实现** ✗ —— §10.4 ✓）。
     auto_summarize: bool = False
-    #: 额外纳入的 L3 条目 ✓。
-    l3_entry_ids: tuple[str, ...] = ()
     #: agent 显式引用的记忆 / 知识 ✓（``type`` + ``id`` ✓）。
     knowledge_refs: tuple[Mapping[str, Any], ...] = ()
 
@@ -231,7 +228,6 @@ class MemoryPolicyConfig:
             "policyLabel": label,
             "retentionDays": self.retention_days,
             "autoSummarize": self.auto_summarize,
-            "l3EntryIds": list(self.l3_entry_ids),
         }
 
 

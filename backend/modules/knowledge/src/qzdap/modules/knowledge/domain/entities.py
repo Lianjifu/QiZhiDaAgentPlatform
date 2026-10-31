@@ -22,6 +22,9 @@ KnowledgeKind = Literal["制度", "项目", "指南"]
 
 KB_STATUSES = frozenset({"indexed", "indexing", "paused", "failed"})
 DOC_STATUSES = frozenset({"parsed", "parsing", "pending", "failed"})
+#: **发布态** ✓（``draft`` / ``published`` / ``retired`` ✓）——
+#: ⚠️ **不是 ``status``** ✓ —— 那是**处理**状态 ✓（两根轴 ✓ —— M-47 ✓）。
+PUBLISH_STATES = frozenset({"draft", "published", "retired"})
 DOC_TYPES = frozenset({"manual", "policy", "meeting", "contract", "faq"})
 SOURCE_TYPES = frozenset(
     {"notion", "slack", "web", "postgres", "s3", "api", "folder", "confluence"}

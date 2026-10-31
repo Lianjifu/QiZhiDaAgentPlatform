@@ -19,9 +19,8 @@ from qzdap_agent_runtime.memory.writer import WriteOutcome
 
 class TestScope:
     def test_layers_map_to_scopes(self) -> None:
-        assert scope_of_layer("l1") is MemoryScope.SESSION
+        # ⚠️ **只有 L2 了** ✓ —— L1 退役（M-46 ✓）/ L3 退役（M-47 ✓）✓。
         assert scope_of_layer("l2") is MemoryScope.USER
-        assert scope_of_layer("l3") is MemoryScope.WORKSPACE
 
     def test_an_unknown_layer_falls_back_to_the_narrowest(self) -> None:
         """未知层级 → **用户级** ✓（最窄 ✓）—— 放宽可见性会泄漏 ✗✗。"""
@@ -36,7 +35,6 @@ class TestPolicy:
                 "enabled": False,
                 "scope": "workspace",
                 "policyLabel": "长期记忆",
-                "l3EntryIds": ["a", "b"],
                 "autoSummarize": True,
                 "retentionDays": 30,
             }
@@ -44,7 +42,6 @@ class TestPolicy:
         assert policy.enabled is False
         assert policy.scope is MemoryScope.WORKSPACE
         assert policy.policy_label == "长期记忆"
-        assert policy.l3_entry_ids == ("a", "b")
         assert policy.auto_summarize is True
         assert policy.retention_days == 30
 

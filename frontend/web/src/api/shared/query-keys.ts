@@ -131,7 +131,6 @@ export const qk = {
       root: ['admin', 'memory'] as const,
       l1: ['admin', 'memory', 'l1'] as const,
       l2: ['admin', 'memory', 'l2'] as const,
-      l3: ['admin', 'memory', 'l3'] as const,
       l1Detail: (id: string) => ['admin', 'memory', 'l1', 'detail', id] as const,
       l2Detail: (id: string) => ['admin', 'memory', 'l2', 'detail', id] as const,
       l3Detail: (id: string) => ['admin', 'memory', 'l3', 'detail', id] as const,

@@ -120,6 +120,17 @@ def build_router() -> APIRouter:
     ) -> dict[str, Any]:
         return await svc.get_doc(doc_id)
 
+    @router.patch(
+        "/api/admin/knowledge/docs/{doc_id}",
+        dependencies=[Depends(_require_active_workspace)],
+    )
+    async def update_doc(
+        doc_id: UUID,
+        body: dict[str, Any],
+        svc: KnowledgeService = Depends(knowledge_dependency),
+    ) -> dict[str, Any]:
+        return await svc.update_doc(doc_id, body)
+
     @router.post(
         "/api/admin/knowledge/docs",
         status_code=201,

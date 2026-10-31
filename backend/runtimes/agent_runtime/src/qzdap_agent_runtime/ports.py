@@ -78,7 +78,8 @@ class ToolRegistry(Protocol):
 # ---------------------------------------------------------------------------
 
 
-RecallLayer = Literal["l1", "l2", "l3"]
+#: ⚠️ **只有 L2 了** ✓ —— L1 退役（M-46 ✓）/ L3 退役（M-47 ✓）✓。
+RecallLayer = Literal["l2"]
 
 
 @dataclass(frozen=True, slots=True)

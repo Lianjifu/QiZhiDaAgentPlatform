@@ -132,10 +132,20 @@ def upgrade() -> None:
           ON kb.tenant_id = l3.tenant_id
          AND kb.workspace_id = l3.workspace_id
          AND kb.name = l3.team
+        ON CONFLICT (id) DO NOTHING
         """
     )
 
     # ⚠️ **正文进 chunk** ✓ —— 检索走的就是 chunk ✓（knowledge 的召回路径 ✓）。
+    # ⚠️ **先删掉这些文档的旧 chunk** ✓ —— 重跑升级不能留下**两份正文** ✗✗。
+    op.execute(
+        """
+        DELETE FROM admin_knowledge_chunks
+        WHERE doc_id IN (
+            SELECT id FROM admin_knowledge_docs WHERE origin = 'memory_l3'
+        )
+        """
+    )
     op.execute(
         """
         INSERT INTO admin_knowledge_chunks (
@@ -195,6 +205,19 @@ def downgrade() -> None:
         WHERE d.origin = 'memory_l3'
         """
     )
+
+    # ⚠️ **迁过去的文档要删掉** ✓ —— 否则**再 upgrade 会撞主键** ✗✗
+    # （文档 id 沿用 L3 的 id ✓ —— 同一个 id 插两次 = UniqueViolation ✓）。
+    op.execute(
+        """
+        DELETE FROM admin_knowledge_chunks
+        WHERE doc_id IN (SELECT id FROM admin_knowledge_docs WHERE origin = 'memory_l3')
+        """
+    )
+    op.execute("DELETE FROM admin_knowledge_docs WHERE origin = 'memory_l3'")
+
+    # ⚠️ **迁出来的知识库留着** ✓ —— 它现在是**一个真的知识库** ✓
+    # （再 upgrade 时 ``ON CONFLICT DO NOTHING`` 会复用它 ✓ —— 不冲突 ✓）。
 
     op.drop_column("admin_knowledge_docs", "origin")
     op.drop_column("admin_knowledge_docs", "contributor")

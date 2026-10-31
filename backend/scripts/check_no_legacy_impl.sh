@@ -175,8 +175,8 @@ build_system_prompt;modules/;X10;C;on
 layered.py;modules/;X12;M;on
 layered.py;runtimes/;X12;M;on
 _remember;modules/;X11;M;on
-admin_memory_l1;modules/;X13;M;off
-admin_memory_l3;modules/;X15;M;off
+admin_memory_l1;modules/;X13;M;on
+admin_memory_l3;modules/;X15;M;on
 class MemoryService\b;modules/;X16;M;on
 memory_l2_embeddings;modules/;X19;M;on
 compile_loop_graph;modules/;X5;A;on

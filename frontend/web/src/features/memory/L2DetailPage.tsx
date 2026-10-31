@@ -58,7 +58,7 @@ export default function L2DetailPage() {
         badges={[
           { label: status.label, className: status.className },
           { label: catLabel, className: 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]' },
-          ...(fact.promotedToL3 ? [{ label: '已晋升到知识记忆', className: 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300' }] : []),
+          ...(fact.promotedToL3 ? [{ label: '已晋升为团队知识', className: 'bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300' }] : []),
         ]}
       />
 

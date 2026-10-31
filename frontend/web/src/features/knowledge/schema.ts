@@ -61,6 +61,12 @@ export interface Doc {
   chunksPreview?: DocChunk[];
   updatedAt: string;
   citations: number;
+  /** 类别(自由文本) —— L3 迁过来时带着(M-47) */
+  category?: string;
+  /** 发布态 —— ⚠️ 不是 status(status 是处理状态) */
+  publishState?: 'draft' | 'published' | 'retired';
+  /** 贡献者 */
+  contributor?: string;
 }
 
 export interface Source {

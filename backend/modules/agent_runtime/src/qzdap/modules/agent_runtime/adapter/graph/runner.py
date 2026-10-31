@@ -66,7 +66,7 @@ from qzdap_agent_runtime.context.persistence import ContextManifestStore
 from qzdap_agent_runtime.context.tokens import estimate_tokens as estimate_text_tokens
 from qzdap_agent_runtime.context.types import AssembledContext, ManifestEntry
 from qzdap_agent_runtime.memory.policy import MemoryPolicy, PolicyBinding
-from qzdap_observability.metrics import record_legacy_call, record_new_call
+from qzdap_observability.metrics import record_new_call
 from qzdap_observability.tracing import get_tracer
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
@@ -670,14 +670,10 @@ class SessionGraphRunner:
             session_id=session_id,
         )
         knowledge = list(assembled.recalled.get("knowledge") or [])
-        memories = list(assembled.recalled.get("memory") or [])
         record_new_call("X8")  # 新的上下文组装已接管
-        if memories:
-            # ⚠️ **X15 的打点跟着搬家** ✓ —— L3 内容进「相关记忆」、knowledge
-            # 另进「相关知识」→ **运行时双份注入** ✗（决策 #1 归 Memory
-            # Stage 7 ✓）。⚠️ **旧路径是「有记忆就记」** ✓ —— 口径保持一致
-            # ✓（否则指标中途变义 ✗✗）。
-            record_legacy_call("X15")
+        # ⚠️ **不再打 X15** ✓ —— L3 退役 ✓（决策 #1 ✓ —— M-47 ✓）→
+        # 记忆里**不再有团队知识** ✓ → 「运行时双份注入」**没有了** ✓
+        # （团队知识只从 knowledge 进「相关知识」✓ —— 台账 **X15 已清理** ✓）。
         return assembled, knowledge
 
     async def _save_rolling_summary(

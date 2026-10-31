@@ -51,7 +51,7 @@ class Retrieval(Protocol):
         query: str,
         top_k: int = 8,
         session_id: UUID | None = None,
-        extra_l3_entry_ids: tuple[str, ...] = (),
+        pinned_ids: tuple[str, ...] = (),
     ) -> RetrievalOutcome:
         """按作用域检索 ✓ —— **过滤下推到存储层** ✓（§3.1 ✓）。"""
         ...
@@ -216,7 +216,7 @@ class RetrievalPipeline:
         query: str,
         top_k: int = 8,
         session_id: UUID | None = None,
-        extra_l3_entry_ids: tuple[str, ...] = (),
+        pinned_ids: tuple[str, ...] = (),
     ) -> RetrievalOutcome:
         """跑一次检索 ✓ —— 返回**统一形状** ✓。
 
@@ -272,7 +272,7 @@ class RetrievalPipeline:
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             user_id=user_id,
-            ids=extra_l3_entry_ids,
+            ids=pinned_ids,
         )
         candidates = [*pinned_candidates, *candidates]
 

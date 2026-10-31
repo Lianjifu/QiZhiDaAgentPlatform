@@ -226,13 +226,6 @@ class MemoryRuntimeService:
                     now.isoformat(),
                 ]
                 await self._catalog.update_l2(fact)
-            elif hit.layer == "l3":
-                entry = await self._catalog.get_l3(item_id)
-                if entry is None:
-                    continue
-                entry.hits = int(entry.hits or 0) + 1
-                entry.hits_trend = [*(entry.hits_trend or [])[-29:], entry.hits]
-                await self._catalog.update_l3(entry)
 
     async def refine_buffers(self, *, now: datetime, limit: int = 100) -> RefineReport:
         """**会话缓冲的提炼** ✓（M-29 ✓ —— 由 sweeper 触发 ✓）。
@@ -281,7 +274,7 @@ class MemoryRuntimeService:
             query=query,
             top_k=max(1, top_k),
             session_id=effective_session,
-            extra_l3_entry_ids=policy.pinned_ids if policy is not None else (),
+            pinned_ids=policy.pinned_ids if policy is not None else (),
         )
         self._last_recall_degraded = outcome.degraded
         self._last_recall_reason = outcome.degraded_reason
@@ -363,7 +356,7 @@ def _hit(
         source_id=str(item_id),
         citation=None,
         metadata={},
-        scope="workspace" if layer == "l3" else "user",
+        scope="user",
         used_count=used_count,
         ref_id=str(item_id),
         version=version,

@@ -8,14 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from qzdap.modules.memory.adapter.persistence.models import (
     MemoryL2ORM,
-    MemoryL3ORM,
     MemoryPolicyORM,
     MemoryPromotionORM,
 )
 from qzdap.modules.memory.application.ports import MemoryCatalogRepository
 from qzdap.modules.memory.domain.entities import (
     L2Fact,
-    L3Entry,
     PromotionEvent,
     RetentionPolicy,
 )
@@ -67,25 +65,6 @@ def _l2(row: MemoryL2ORM) -> L2Fact:
         used_count=int(row.used_count or 0),
         confidence_source=str(row.confidence_source or "rule"),
         version=int(row.version or 1),
-    )
-
-
-def _l3(row: MemoryL3ORM) -> L3Entry:
-    return L3Entry(
-        id=row.id,
-        tenant_id=row.tenant_id,
-        workspace_id=row.workspace_id,
-        team=row.team,
-        title=row.title,
-        summary=row.summary,
-        category=row.category,
-        hits=row.hits,
-        contributor=row.contributor,
-        status=row.status,  # type: ignore[arg-type]
-        updated_at=row.updated_at,
-        created_at=row.created_at,
-        hits_trend=list(row.hits_trend or []),
-        promoted_from_l2_ids=list(row.promoted_from_l2_ids or []),
     )
 
 
@@ -155,38 +134,6 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
         row.used_count = item.used_count
         row.confidence_source = item.confidence_source
         row.version = item.version
-
-    async def add_l3(self, item: L3Entry) -> None:
-        self._s.add(
-            MemoryL3ORM(
-                id=item.id,
-                tenant_id=item.tenant_id,
-                workspace_id=item.workspace_id,
-                team=item.team,
-                title=item.title,
-                summary=item.summary,
-                category=item.category,
-                hits=item.hits,
-                contributor=item.contributor,
-                status=item.status,
-                hits_trend=list(item.hits_trend),
-                promoted_from_l2_ids=list(item.promoted_from_l2_ids),
-                created_at=item.created_at,
-                updated_at=item.updated_at,
-            )
-        )
-
-    async def get_l3(self, item_id: UUID) -> L3Entry | None:
-        row = await self._s.get(MemoryL3ORM, item_id)
-        if row is None or _cross_tenant(row):
-            return None
-        return _l3(row)
-
-    async def list_l3(self, workspace_id: UUID) -> list[L3Entry]:
-        result = await self._s.execute(
-            select(MemoryL3ORM).where(MemoryL3ORM.workspace_id == workspace_id)
-        )
-        return [_l3(row) for row in result.scalars().all() if not _cross_tenant(row)]
 
     async def find_l2_by_hash(
         self,
@@ -266,53 +213,6 @@ class SqlMemoryCatalogRepository(MemoryCatalogRepository):
         stmt = stmt.order_by(MemoryL2ORM.updated_at.desc()).limit(max(1, limit))
         result = await self._s.execute(stmt)
         return [_l2(row) for row in result.scalars().all() if not _cross_tenant(row)]
-
-    async def search_l3_by_keyword(
-        self,
-        workspace_id: UUID,
-        *,
-        keyword: str,
-        limit: int,
-    ) -> list[L3Entry]:
-        """L3 的词法候选 ✓ —— 同样下推到 SQL ✓。
-
-        ⚠️ **L3 不按用户过滤** ✓ —— 它是**工作区级的团队知识** ✓（决策 #1 ✓）。
-        """
-        tokens = _keyword_tokens(keyword)
-        if not tokens:
-            return []
-        stmt = (
-            select(MemoryL3ORM)
-            .where(MemoryL3ORM.workspace_id == workspace_id)
-            .where(MemoryL3ORM.status == "published")
-            .where(
-                or_(
-                    *(
-                        or_(
-                            MemoryL3ORM.title.ilike(f"%{token}%"),
-                            MemoryL3ORM.summary.ilike(f"%{token}%"),
-                        )
-                        for token in tokens
-                    )
-                )
-            )
-            .order_by(MemoryL3ORM.updated_at.desc())
-            .limit(max(1, limit))
-        )
-        result = await self._s.execute(stmt)
-        return [_l3(row) for row in result.scalars().all() if not _cross_tenant(row)]
-
-    async def update_l3(self, item: L3Entry) -> None:
-        row = await self._s.get(MemoryL3ORM, item.id)
-        if row is None or _cross_tenant(row):
-            return
-        row.team = item.team
-        row.title = item.title
-        row.summary = item.summary
-        row.category = item.category
-        row.status = item.status
-        row.hits = item.hits
-        row.updated_at = item.updated_at
 
     async def add_promotion(self, item: PromotionEvent) -> None:
         self._s.add(

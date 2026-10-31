@@ -4,7 +4,7 @@
 
 - ``enabled=False`` → **一条不写** ✓；
 - ``scope=session`` → **只召回本会话的记忆** ✓；
-- ``l3EntryIds`` → **那条 L3 一定被召回** ✓（哪怕关键词不匹配 ✓）；
+- ``knowledgeRefs`` → **那条记忆一定被召回** ✓（哪怕关键词不匹配 ✓）；
 - ``policyLabel`` → **保留策略被解析出来** ✓（绑定看得见 ✓）。
 """
 
@@ -16,7 +16,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from qzdap.modules.memory.application.services import MemoryRuntimeService
-from qzdap.modules.memory.domain.entities import L2Fact, L3Entry, RetentionPolicy
+from qzdap.modules.memory.domain.entities import L2Fact, RetentionPolicy
 from qzdap_agent_runtime.memory.policy import MemoryPolicy, MemoryRef, MemoryRefKind
 from qzdap_agent_runtime.memory.refine import BufferRow
 from qzdap_agent_runtime.memory.scope import MemoryScope
@@ -47,24 +47,6 @@ def _l2(*, session_id: UUID, value: str = "我在上海办公") -> L2Fact:
         usage_history=[],
         content_hash=None,
         version=1,
-    )
-
-
-def _l3(*, title: str) -> L3Entry:
-    now = datetime.now(UTC)
-    return L3Entry(
-        id=uuid4(),
-        tenant_id=TENANT,
-        workspace_id=WORKSPACE,
-        team="平台组",
-        title=title,
-        summary="团队知识摘要",
-        category="policy",
-        status="published",
-        hits=0,
-        contributor="管理员",
-        updated_at=now,
-        created_at=now,
     )
 
 
@@ -165,10 +147,14 @@ async def test_the_session_scope_only_recalls_that_session() -> None:
 
 @pytest.mark.asyncio
 async def test_the_pinned_entry_is_always_recalled() -> None:
-    """**显式绑定的 L3 一定被召回** ✓（哪怕关键词不匹配 ✓）。"""
+    """**显式绑定的记忆一定被召回** ✓（哪怕关键词不匹配 ✓）。
+
+    ⚠️ **绑的是 L2** ✓ —— L3 退役 ✓（决策 #1 ✓ —— M-47 ✓）→
+    团队知识走 **knowledge** 的知识库绑定 ✓（不在这里 ✓）。
+    """
     catalog = InMemoryCatalog()
-    entry = _l3(title="差旅报销标准")
-    catalog.l3[entry.id] = entry
+    fact = _l2(session_id=uuid4(), value="差旅报销标准")
+    catalog.l2[fact.id] = fact
     service = MemoryRuntimeService(catalog)
     hits = await service.recall(
         tenant_id=TENANT,
@@ -176,11 +162,10 @@ async def test_the_pinned_entry_is_always_recalled() -> None:
         user_id=USER,
         query="完全无关的问题",
         policy=MemoryPolicy(
-            l3_entry_ids=(str(entry.id),),
-            knowledge_refs=(MemoryRef(kind=MemoryRefKind.L3, ref_id=str(entry.id)),),
+            knowledge_refs=(MemoryRef(kind=MemoryRefKind.MEMORY, ref_id=str(fact.id)),),
         ),
     )
-    assert [hit.source_id for hit in hits] == [str(entry.id)]
+    assert [hit.source_id for hit in hits] == [str(fact.id)]
 
 
 @pytest.mark.asyncio
