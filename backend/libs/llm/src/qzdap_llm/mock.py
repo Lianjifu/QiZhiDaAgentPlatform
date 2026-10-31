@@ -9,7 +9,6 @@ import asyncio
 import re
 import uuid
 from collections.abc import AsyncIterator
-from pathlib import Path
 from typing import Any
 
 from qzdap_llm.client import (
@@ -145,10 +144,6 @@ class MockLLMClient(LLMClient):
 
     def __init__(self, config: LLMConfig | None = None) -> None:
         self._cfg = config or LLMConfig()
-        # 触发生成的产物落本地 (前端通过 download_path 拉取); 单进程内足够.
-        # 本地 mock 的产物目录 ✓ —— 不是密钥 ✓
-        self._artifact_dir = Path("/tmp/qzdap-mock-artifacts")  # noqa: S108
-        self._artifact_dir.mkdir(parents=True, exist_ok=True)
 
     async def chat(self, req: ChatRequest) -> ChatResponse:
         await asyncio.sleep(self._cfg.mock_latency_ms / 1000)
@@ -233,9 +228,8 @@ class MockLLMClient(LLMClient):
             elif kind == "artifact":
                 name_value, mime, body = _ARTIFACT_TEMPLATES[hash(text) % len(_ARTIFACT_TEMPLATES)]
                 artifact_id = str(uuid.uuid4())
-                # 落本地, 暴露给前端 blob 端点
-                file_path = self._artifact_dir / f"{artifact_id}.md"
-                file_path.write_text(body, encoding="utf-8")
+                # ⚠️ **内容随 chunk 走** ✓ —— **落库归会话层** ✓（同一张表 ✓
+                # —— 同一个下载端点 ✓）—— 不再写本地临时目录 ✓（进程一退就没了 ✗✗）。
                 chunks.append(
                     {
                         "_kind": "artifact_ready",
@@ -244,10 +238,10 @@ class MockLLMClient(LLMClient):
                         "name": name_value,
                         "mime": mime,
                         "size_bytes": len(body.encode("utf-8")),
-                        "download_path": f"/api/artifacts/{artifact_id}/content",
+                        "download_path": "",
                         "preview_path": None,
                         "snippet": body[:800],
-                        "_local_path": str(file_path),
+                        "content": body,
                     }
                 )
             elif kind == "workflow":

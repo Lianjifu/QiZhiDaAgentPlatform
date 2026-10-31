@@ -25,6 +25,7 @@ from qzdap.modules.memory.adapter.persistence.models import MemoryPolicyORM
 from qzdap.modules.memory.adapter.persistence.repositories import SqlMemoryCatalogRepository
 from qzdap.modules.memory.application.admin_service import MemoryAdminService
 from qzdap.modules.memory.application.services import MemoryRuntimeService
+from qzdap_http.error_envelope import error_envelope_middleware
 
 
 @pytest.fixture
@@ -111,6 +112,9 @@ async def catalog_db():
 
         app.include_router(build_catalog_router())
         app.include_router(memory_router())
+        # ⚠️ **错误信封中间件** ✓ —— 生产里也装着 ✓（AppError → 对应状态码 ✓）
+        # —— 不装的话「找不到」会变成 500 ✗✗（而不是 404 ✓）。
+        app.middleware("http")(error_envelope_middleware)
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:

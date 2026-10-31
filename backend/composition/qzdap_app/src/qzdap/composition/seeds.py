@@ -312,7 +312,7 @@ DEMO_AGENT_SPECS: tuple[dict[str, Any], ...] = (
         "tags": ["工单应答", "知识检索"],
         "tone": "info",
         "dataAccess": "产品知识库与历史工单",
-        "tools": ["web_search", "http_fetch", "notify_user"],
+        "tools": ["web_search", "http_fetch", "notify_user", "write_artifact"],
         "prompts": {
             "soul": "你是一名资深客服支持工程师，语气耐心、条理清楚。",
             "prompt": (
@@ -350,7 +350,7 @@ DEMO_AGENT_SPECS: tuple[dict[str, Any], ...] = (
         "tags": ["文案生成", "多渠道改写"],
         "tone": "purple",
         "dataAccess": "产品卖点与目标客群画像",
-        "tools": ["convert_format", "write_file", "echo"],
+        "tools": ["convert_format", "write_file", "write_artifact", "echo"],
         "prompts": {
             "soul": "你是一名资深品牌文案，讲究节奏、画面感和克制的夸张。",
             "prompt": (

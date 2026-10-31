@@ -39,9 +39,16 @@ ACTOR = ActorContext(
 class _RecordingRuntime:
     """工具运行时端口的替身 ✓。"""
 
-    def __init__(self, *, ok: bool = True, output: str = "done") -> None:
+    def __init__(
+        self,
+        *,
+        ok: bool = True,
+        output: str = "done",
+        artifact: dict | None = None,
+    ) -> None:
         self._ok = ok
         self._output = output
+        self._artifact = artifact
         self.calls: list[tuple[ToolInvocation, ActorContext]] = []
 
     async def invoke(
@@ -50,7 +57,7 @@ class _RecordingRuntime:
         self.calls.append((invocation, actor))
         if not self._ok:
             return ToolInvocationResult(ok=False, error_code="TOOL_FAILED")
-        return ToolInvocationResult(ok=True, output=self._output)
+        return ToolInvocationResult(ok=True, output=self._output, artifact=self._artifact)
 
 
 def _binding(**kwargs) -> ToolBinding:
@@ -219,9 +226,29 @@ class TestActor:
             result = await tools[0].ainvoke({"text": "hi"})
         finally:
             reset_current_actor(token)
-        assert result == "回显: hi"
+        assert result.text == "回显: hi"
+        assert result.artifact is None
         assert runtime.calls[0][1] is ACTOR
         assert runtime.calls[0][0].arguments == {"text": "hi"}
+
+    @pytest.mark.asyncio
+    async def test_an_artifact_travels_beside_the_text(self) -> None:
+        """⚠️ **产物不进文本** ✓（文本要回灌给模型 ✓）—— 另带一格 ✓。"""
+        artifact = {
+            "name": "报告.md",
+            "kind": "markdown",
+            "mime": "text/markdown",
+            "content": "# 报告",
+        }
+        runtime = _RecordingRuntime(output="已产出产物", artifact=artifact)
+        tools = ToolBindingResolver(runtime).resolve([_binding()])
+        token = set_current_actor(ACTOR)
+        try:
+            result = await tools[0].ainvoke({"text": "hi"})
+        finally:
+            reset_current_actor(token)
+        assert result.text == "已产出产物"
+        assert result.artifact == artifact
 
     @pytest.mark.asyncio
     async def test_a_failing_tool_raises_with_the_error_code(self) -> None:

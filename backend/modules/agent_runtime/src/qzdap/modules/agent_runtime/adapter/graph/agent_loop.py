@@ -31,7 +31,7 @@ from langchain_core.messages import (
 )
 from opentelemetry import trace as _trace
 
-from qzdap.modules.agent_runtime.adapter.graph.tools import execute_tool
+from qzdap.modules.agent_runtime.adapter.graph.tools import execute_tool, take_artifact
 from qzdap.modules.agent_runtime.application.ports import (
     CatalogModelResolver,
     LLMPort,
@@ -191,7 +191,8 @@ class ModuleToolRuntime(ToolRuntimePort):
             span.set_attribute("tool.latency_ms", int((monotonic() - started) * 1000))
             span.end()
         span.set_attribute("tool.ok", result.get("ok") is not False)
-        return _to_result(result)
+        artifact, result = take_artifact(result)
+        return _to_result(result, artifact=artifact)
 
 
 class SessionAgentRouter(AgentRouterPort):
@@ -379,7 +380,9 @@ def to_dict_messages(messages: list[BaseMessage]) -> list[dict[str, Any]]:
     return result
 
 
-def _to_result(result: dict[str, Any]) -> ToolInvocationResult:
+def _to_result(
+    result: dict[str, Any], *, artifact: dict[str, Any] | None = None
+) -> ToolInvocationResult:
     """**模块侧的结果 → runtime 的结果** ✓（形状对齐 §5.4 ✓）。"""
     ok = result.get("ok") is not False
     return ToolInvocationResult(
@@ -389,6 +392,7 @@ def _to_result(result: dict[str, Any]) -> ToolInvocationResult:
         error_message=str(result.get("error_message") or ""),
         is_error=not ok,
         latency_ms=int(result.get("latency_ms") or 0),
+        artifact=artifact,
     )
 
 

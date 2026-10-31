@@ -300,6 +300,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 KnowledgeServiceAdapter,
             )
             from qzdap.modules.agent_runtime.adapter.memory import MemoryServiceAdapter
+            from qzdap.modules.agent_runtime.adapter.persistence.artifact_store import (
+                PostgresArtifactStore,
+            )
             from qzdap.modules.agent_runtime.adapter.persistence.context_manifest_store import (
                 PostgresContextManifestStore,
             )
@@ -362,6 +365,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 # 调用一条 ✓（Context 方案 §5.1.1 ✓）—— 与轮次**同事务** ✓
                 # （同一个 session ✓）。
                 context_manifest_store=PostgresContextManifestStore(session),
+                # ⚠️ **产物的落库口** ✓ —— 产物（模型 / 工具的输出 ✓）落
+                # ``session_artifacts`` ✓（迁移 0064 ✓）—— **跟着会话走** ✓
+                # —— 与轮次**同事务** ✓（同一个 session ✓）。
+                artifact_store=PostgresArtifactStore(session),
             )
             _ = (TenantId, UserId, WorkspaceId)
             sessions_repo = SqlSessionRepository(session)
@@ -759,6 +766,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         built_in_invoke_reverse,
         built_in_invoke_todo_write,
         built_in_invoke_web_search,
+        built_in_invoke_write_artifact,
         built_in_invoke_write_file,
     )
     from qzdap.modules.tool.adapter.events import ToolEventPublisher
@@ -814,6 +822,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     custom_invoker.register("plan_submit", built_in_invoke_plan_submit)
     custom_invoker.register("todo_write", built_in_invoke_todo_write)
     custom_invoker.register("delegate_to_agent", built_in_invoke_delegate_to_agent)
+    # ⚠️ **产物工具** ✓ —— 产出内容交给会话层落库 ✓（工具层不碰会话表 ✓）。
+    custom_invoker.register("write_artifact", built_in_invoke_write_artifact)
 
     # ⚠️ **熔断器是进程内共享的单例** ✓ —— 每请求新建一个 = **永远不熔断** ✗✗
     # （那是「有熔断代码但没熔断」✗）。

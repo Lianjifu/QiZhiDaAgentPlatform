@@ -17,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -217,4 +218,45 @@ class SessionEventORM(Base):
         nullable=False,
         server_default=text("now()"),
         onupdate=text("now()"),
+    )
+
+
+class SessionArtifactORM(TenantScopedMixin, Base):
+    """**产物**（报告 / 代码 / html / json）✓ —— 模型的输出 ✓（迁移 0064 ✓）。
+
+    ⚠️ **不是附件** ✓ —— 附件（``copilot_attachments``）是**用户上传的输入** ✓，
+    产物是**模型生成的输出** ✓（归属 / 生命周期 / 大小边界都不同 ✓）。
+    ⚠️ **字节进库** ✓ —— 之前产物只在 ``/tmp`` ✓（进程一退就没了 ✓）→
+    真实模式**没有任何存储** ✓ → 端点一律 404 ✓。
+    ⚠️ **有上限** ✓ —— 产物进 SSE 事件流 ✓（``artifact_ready`` chunk ✓）→
+    必须是有界的 ✓（1 MiB ✓ —— 与附件同口径 ✓）。
+    """
+
+    __tablename__ = "session_artifacts"
+
+    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
+    session_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("agent_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    owner_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
+    #: ⚠️ **可空** ✓ —— 产物可能不是某一轮产出的 ✓（补投 / 批量导入 ✓）。
+    turn_id: Mapped[UUID | None] = mapped_column(PgUUID(as_uuid=True), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="text", server_default=text("'text'")
+    )
+    mime: Mapped[str] = mapped_column(
+        String(120), nullable=False, default="text/plain", server_default=text("'text/plain'")
+    )
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: 前 800 字预览 ✓ —— 供前端直接渲染 ✓（不用下载整个文件 ✓）。
+    snippet: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=text("''")
+    )
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

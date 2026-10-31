@@ -35,7 +35,13 @@ from typing import Any
 
 from langchain_core.tools import BaseTool, StructuredTool
 
-from ..ports import ActorContext, ToolBinding, ToolInvocation, ToolRuntimePort
+from ..ports import (
+    ActorContext,
+    ToolBinding,
+    ToolCallOutput,
+    ToolInvocation,
+    ToolRuntimePort,
+)
 
 #: 风险等级 ✓（与 ``ports.ToolMeta`` 的 ``Risk`` 同口径 ✓）。
 RISK_ORDER: tuple[str, ...] = ("low", "medium", "high")
@@ -122,7 +128,7 @@ class ToolBindingResolver:
     def _to_base_tool(self, binding: ToolBinding) -> BaseTool:
         """**一种来源 → 一个 ``BaseTool``** ✓（§5.3.1 规则 5 ✓）。"""
 
-        async def _invoke(**arguments: Any) -> str:
+        async def _invoke(**arguments: Any) -> ToolCallOutput:
             """**执行走 `ToolRuntimePort`** ✓ —— 不在这里直接调工具 ✗。
 
             ⚠️ **没有 runtime 就明确报错** ✓（而不是悄悄返回空 ✗✗ —— 那会
@@ -148,7 +154,8 @@ class ToolBindingResolver:
                     code=result.error_code or "TOOL_FAILED",
                     message=result.error_message or result.output,
                 )
-            return result.output
+            # ⚠️ **产物另带一格** ✓（不进文本 ✓ —— 文本要回灌给模型 ✓）。
+            return ToolCallOutput(text=result.output, artifact=result.artifact)
 
         schema = _args_schema(binding.spec)
         return StructuredTool.from_function(

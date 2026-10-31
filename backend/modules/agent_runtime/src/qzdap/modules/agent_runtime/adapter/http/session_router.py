@@ -7,7 +7,6 @@ import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -178,11 +177,15 @@ async def routing_strategy_dependency(
 
 def build_session_router() -> APIRouter:
     router = APIRouter(tags=["sessions"])
+    from qzdap.modules.agent_runtime.adapter.http.artifacts import (
+        build_artifact_router,
+    )
     from qzdap.modules.agent_runtime.adapter.http.attachments import (
         build_attachment_router,
     )
 
     router.include_router(build_attachment_router())
+    router.include_router(build_artifact_router())
 
     @router.get("/api/sessions")
     async def list_sessions(
@@ -644,40 +647,6 @@ def build_session_router() -> APIRouter:
             payload={"session_id": str(session_id), "plan_id": str(plan_id)},
         )
         return {"ok": True, "plan_id": str(plan_id), "decision": "denied"}
-
-    @router.get("/api/artifacts/{artifact_id}/content")
-    async def download_artifact(
-        artifact_id: UUID,
-        request: Request,
-    ) -> Response:
-        """下载 **mock 模式**生成的产物.
-
-        这条路由只服务于 ``QZDAP_ENV=test`` 下的 ``MockLLMClient`` ——
-        它把产物写进 ``/tmp/qzdap-mock-artifacts``, 前端再按
-        ``download_path`` 来取.
-
-        其它环境一律 404: 真实模式的产物走 ``session_artifacts`` 表,
-        不该再从一个 mock 目录里读. 之前这里是"目录不存在就 404",
-        看起来像是坏了; 现在是**明确地**不支持.
-        """
-        container = getattr(request.app.state, "container", None)
-        env = getattr(getattr(container, "settings", None), "env", "")
-        if env != "test":
-            raise HTTPException(
-                status_code=404,
-                detail="artifact content is only available in mock (test) mode",
-            )
-        # 防 path traversal: artifact_id 是 UUID
-        root = Path("/tmp/qzdap-mock-artifacts").resolve()  # noqa: S108, ASYNC240 —— mock 产物目录 ✓
-        target = (root / f"{artifact_id}.md").resolve()
-        if not str(target).startswith(str(root)) or not target.exists():
-            raise HTTPException(status_code=404, detail="artifact not found")
-        data = target.read_bytes()
-        return Response(
-            content=data,
-            media_type="text/markdown; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="{artifact_id}.md"'},
-        )
 
     # ⚠️ **旧的 `GET /v1/sessions` 列表别名已删除**（Gateway Stage 5，台账 G8）——
     # API owner 已确认**无仓外调用方**（方案 §9.4 的前置 P-11）→ 兼容保留期归零。

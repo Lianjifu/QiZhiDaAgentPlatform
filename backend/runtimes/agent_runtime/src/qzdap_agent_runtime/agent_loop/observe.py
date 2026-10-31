@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from langchain_core.messages import ToolMessage
 
@@ -23,6 +24,9 @@ class ToolOutcome:
     name: str
     output: str
     is_error: bool = False
+    #: ⚠️ **这次调用产出了产物** ✓（``{"name","kind","mime","content"}`` ✓）——
+    #: **不进 ``output``** ✓（产物可能 1 MiB ✓ —— 回灌给模型会被截断 ✗✗）。
+    artifact: dict[str, Any] | None = None
 
 
 class Observer:

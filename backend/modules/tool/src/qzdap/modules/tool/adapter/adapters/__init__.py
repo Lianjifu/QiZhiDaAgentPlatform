@@ -19,6 +19,7 @@ from qzdap.modules.tool.adapter.adapters.builtin_extra_tools import (
     built_in_invoke_pdf_read,
     built_in_invoke_plan_submit,
     built_in_invoke_todo_write,
+    built_in_invoke_write_artifact,
 )
 from qzdap.modules.tool.adapter.adapters.custom_invoker import (
     CustomInvokerRegistry,
@@ -86,6 +87,7 @@ __all__ = [
     "built_in_invoke_reverse",
     "built_in_invoke_todo_write",
     "built_in_invoke_web_search",
+    "built_in_invoke_write_artifact",
     "built_in_invoke_write_file",
     "ensure_workspace_dir",
     "is_protected_prefix",

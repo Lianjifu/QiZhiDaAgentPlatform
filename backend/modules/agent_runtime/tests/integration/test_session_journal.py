@@ -344,6 +344,7 @@ async def test_a_turn_written_by_the_copilot_replays_with_the_same_digest(
         catalog=_Catalog(agent),  # type: ignore[arg-type]
         events=events,
         journal=journal,
+        graph=runner,
         turn_entry=make_turn_entry(
             sessions=sessions,
             messages=messages,

@@ -112,4 +112,42 @@ def result_text(result: dict[str, Any]) -> str:
     return str(output)[:8000]
 
 
-__all__ = ["execute_tool", "needs_confirm", "parse_arguments", "result_text"]
+#: 工具结果里带产物的键 ✓ —— 工具层的约定 ✓（``write_artifact`` ✓）。
+ARTIFACT_KEY = "_artifact"
+
+
+def take_artifact(result: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """**把工具结果里的产物摘出来** ✓ —— 返回 ``(产物, 摘过的结果)`` ✓。
+
+    ⚠️ **内容不进模型上下文** ✓ —— 产物可能 1 MiB ✓ —— 塞进文本会被截断
+    ✗✗（截断的 JSON 还是坏的 ✗）→ **摘掉** ✓ → 只回一句摘要给模型 ✓。
+    ⚠️ **落库不在这里** ✓ —— 落库归会话层 ✓（它有归属 / 事务 ✓）。
+    """
+    payload = result.get(ARTIFACT_KEY)
+    if not isinstance(payload, dict):
+        return None, result
+    content = payload.get("content")
+    name = str(payload.get("name") or "").strip()
+    if not isinstance(content, str) or not content or not name:
+        return None, result
+    artifact = {
+        "name": name,
+        "kind": str(payload.get("kind") or "text"),
+        "mime": str(payload.get("mime") or "text/plain"),
+        "content": content,
+    }
+    rest = {k: v for k, v in result.items() if k != ARTIFACT_KEY}
+    rest["output"] = (
+        f"已产出产物「{name}」（{len(content.encode('utf-8'))} 字节）—— 用户可在对话里下载。"
+    )
+    return artifact, rest
+
+
+__all__ = [
+    "ARTIFACT_KEY",
+    "execute_tool",
+    "needs_confirm",
+    "parse_arguments",
+    "result_text",
+    "take_artifact",
+]

@@ -37,7 +37,13 @@ from ..execution.tool_binding import (
     set_current_actor,
     set_current_tool_scope,
 )
-from ..ports import ActorContext, PolicyGuard, ToolBinding, ToolMeta
+from ..ports import (
+    ActorContext,
+    PolicyGuard,
+    ToolBinding,
+    ToolCallOutput,
+    ToolMeta,
+)
 from .evaluate import Evaluator, Termination, apply_stall_guard
 from .observe import Observer, ToolOutcome
 from .reason import Reasoner
@@ -199,6 +205,9 @@ class AgentLoopRunner:
                         "name": outcome.name,
                         "output": outcome.output,
                         "is_error": outcome.is_error,
+                        # ⚠️ **产物走独立的键** ✓（不进 ``output`` ✓）——
+                        # 模块侧据此落库 ✓（契约层不碰 DB ✓）。
+                        "artifact": outcome.artifact,
                     },
                 )
             state.tool_results = [
@@ -349,6 +358,16 @@ class AgentLoopRunner:
         finally:
             reset_current_tool_scope(scope_token)
             reset_current_actor(actor_token)
+        # ⚠️ **工具回的是「文本 + 产物」** ✓（``ToolCallOutput`` ✓）——
+        # 产物**另带一格** ✓（不进文本 ✓ —— 文本要回灌给模型 ✓）。
+        if isinstance(result, ToolCallOutput):
+            return ToolOutcome(
+                tool_call_id=call_id,
+                name=bound.tool.name,
+                output=result.text,
+                is_error=False,
+                artifact=result.artifact,
+            )
         return ToolOutcome(
             tool_call_id=call_id,
             name=bound.tool.name,

@@ -412,6 +412,28 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
         },
         "risk": "low",
     },
+    "write_artifact": {
+        "description": (
+            "产出一个可下载的文件（报告 / 代码 / html / json）。"
+            "内容存进会话产物表，用户可在对话里下载与预览。"
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": _p(type="string", description="文件名（含扩展名），必填。"),
+                "content": _p(type="string", description="文件内容（UTF-8 文本），必填。"),
+                "kind": _p(
+                    type="string",
+                    description="类别：markdown / code / html / json / image / text。",
+                    enum=["markdown", "code", "html", "json", "image", "text"],
+                ),
+                "mime": _p(type="string", description="MIME 类型，缺省按 kind 推断。"),
+            },
+            "required": ["name", "content"],
+        },
+        "idempotent": False,
+        "risk": "low",
+    },
     "delegate_to_agent": {
         "description": "把一个子任务委派给另一个智能体，子会话跑完后回传结果。",
         "parameters": {

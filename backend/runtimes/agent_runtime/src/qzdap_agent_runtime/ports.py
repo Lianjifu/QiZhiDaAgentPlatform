@@ -358,11 +358,30 @@ class ToolInvocationResult:
     error_code: str | None = None
     error_message: str = ""
     is_error: bool = False
+    #: ⚠️ **这次调用产出了产物** ✓（``{"name","kind","mime","content"}`` ✓）——
+    #: **内容只走这条通道** ✓（不进 ``output`` ✓ —— 否则被 8000 字截断 ✗✗
+    #: —— 产物可能 1 MiB ✓）。
+    #: ⚠️ **落库不在这里做** ✓ —— 契约层不碰 DB ✓（模块侧落 ✓）。
+    artifact: dict[str, Any] | None = None
     #: 建议的重试等待 ✓（熔断 / 限流时给出 ✓ —— 调用方据此退避 ✓）。
     retry_after_ms: int = 0
     latency_ms: int = 0
     #: **实际尝试了几次** ✓（幂等命中 → 1 ✓；重试 → >1 ✓）。
     attempts: int = 1
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCallOutput:
+    """**一次工具调用交给循环的东西** ✓（文本 ✓ + 产物 ✓）。
+
+    ⚠️ **为什么不是裸字符串** ✓ —— LangChain 的 ``BaseTool`` 只能回一个值 ✓，
+    而产物可能 1 MiB ✓ —— 塞进字符串会被截断 ✗✗ → 只能**另带一格** ✓。
+    """
+
+    text: str
+    #: ⚠️ **这次调用产出了产物** ✓（``{"name","kind","mime","content"}`` ✓）——
+    #: **不进 ``text``** ✓（文本要回灌给模型 ✓ —— 不能被产物撑爆 ✗✗）。
+    artifact: dict[str, Any] | None = None
 
 
 @runtime_checkable

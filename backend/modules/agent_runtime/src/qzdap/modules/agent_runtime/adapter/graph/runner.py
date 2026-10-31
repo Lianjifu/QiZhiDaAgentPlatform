@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import sys as _sys
@@ -30,6 +31,12 @@ from qzdap.modules.agent_runtime.adapter.graph.state import LoopState, estimate_
 from qzdap.modules.agent_runtime.adapter.graph.tools import (
     execute_tool,
     result_text,
+    take_artifact,
+)
+from qzdap.modules.agent_runtime.adapter.persistence.artifact_store import (
+    ARTIFACT_KINDS,
+    ArtifactStore,
+    artifact_download_path,
 )
 from qzdap.modules.agent_runtime.adapter.tools.tool_binding_adapter import (
     ToolBindingAdapter,
@@ -111,6 +118,10 @@ class SessionGraphRunner:
         # Phase 1.5: agent.model (str) → ModelId (UUID) 解析器.
         # 让前端 chat (无 body.model) 也能在 graph 里查 admin_models.
         catalog_model_resolver: CatalogModelResolver | None = None,
+        # ⚠️ **产物的落库口** ✓ —— 产物（模型 / 工具的输出 ✓）落
+        # ``session_artifacts`` ✓（迁移 0064 ✓）—— **跟着会话走** ✓。
+        # ⚠️ **没有它就不落库** ✓（测试里没有库 ✓ → 产物卡片不发 ✓）。
+        artifact_store: ArtifactStore | None = None,
     ) -> None:
         self._llm = llm
         self._skill_port = skill_port
@@ -121,6 +132,7 @@ class SessionGraphRunner:
         self._approval_factory = approval_factory
         self._catalog_model_resolver = catalog_model_resolver
         self._context_manifest_store = context_manifest_store
+        self._artifact_store = artifact_store
         # ⚠️ **专家装配器** ✓（Agent Stage 4 ✓）—— **请求作用域** ✓ ——
         # 绑定集与工具运行时都绑着租户 / 工作区 / 用户 ✓ → **按请求装配** ✓
         # （不是全局单例 ✗ —— 那样会串租户 ✗✗）。
@@ -331,6 +343,9 @@ class SessionGraphRunner:
                     seq,
                     whitelist,
                     session_id=session_id,
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    owner_id=owner_id,
                 )
                 for chunk in extra:
                     seq = chunk.seq
@@ -401,6 +416,10 @@ class SessionGraphRunner:
                 compaction_degraded=outcome.degraded,
             )
 
+        # ⚠️ **本轮已发过的 mock 产物** ✓（每步都会再问一次 mock ✓ ——
+        # 同一个产物不该发两张卡片 ✓）。
+        emitted_artifacts: set[str] = set()
+
         async def _after_step(loop_state):  # type: ignore[no-untyped-def]
             """**每步推理之后** ✓（manifest ✓ / 成本 ✓ / 旁路事件 ✓）。"""
             cost_box["usd"] += await self._price_of(
@@ -411,7 +430,18 @@ class SessionGraphRunner:
                 output_tokens=int(loop_state.step_output_tokens),
             )
             for raw in await self._llm.synthetic_chunks(user_input, turn_id=turn_id):
-                chunk = _build_synthetic_chunk(raw, turn_id=turn_id, seq=0)
+                absorbed = await self._absorb_mock_artifact(
+                    raw,
+                    emitted=emitted_artifacts,
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    owner_id=owner_id,
+                    session_id=session_id,
+                    turn_id=turn_id,
+                )
+                if absorbed is None:
+                    continue
+                chunk = _build_synthetic_chunk(absorbed, turn_id=turn_id, seq=0)
                 if chunk is not None:
                     yield chunk
 
@@ -518,6 +548,21 @@ class SessionGraphRunner:
                             action=action[0],
                             payload=action[1],
                         )
+                    # ⚠️ **产物另走一条** ✓（不在 ``output`` 里 ✓）——
+                    # 落库 + 出卡片 ✓。
+                    artifact = result.get("artifact")
+                    if isinstance(artifact, dict):
+                        card = await self._persist_artifact(
+                            artifact,
+                            tenant_id=tenant_id,
+                            workspace_id=workspace_id,
+                            owner_id=owner_id,
+                            session_id=session_id,
+                            turn_id=turn_id,
+                        )
+                        if card is not None:
+                            seq += 1
+                            yield card.model_copy(update={"seq": seq})
                 elif event.kind == "approval_required":
                     approval = event.approval or {}
                     approval_id = await self._request_approval(
@@ -704,6 +749,114 @@ class SessionGraphRunner:
             session_id=session_id,
             summary=summary,
         )
+
+    async def _persist_artifact(
+        self,
+        payload: dict[str, Any],
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        owner_id: UUID,
+        session_id: UUID | None,
+        turn_id: UUID,
+    ) -> ArtifactReadyChunk | None:
+        """**产物落库 + 出一张卡片** ✓。
+
+        ⚠️ **落库失败不打断这一轮** ✓ —— 产物是**附加品** ✓（这一轮该说的话
+        还没说完 ✗✗ —— 不能因为一张卡片挂掉 ✗）。
+        ⚠️ **没有会话就没有归属** ✓ —— 产物属于会话 ✓（不落 ✓）。
+        """
+        store = self._artifact_store
+        if store is None or session_id is None:
+            return None
+        content = str(payload.get("content") or "").encode("utf-8")
+        name = str(payload.get("name") or "").strip()
+        if not content or not name:
+            return None
+        kind = str(payload.get("kind") or "text").strip().lower()
+        if kind not in ARTIFACT_KINDS:
+            kind = "text"
+        try:
+            record = await store.save(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                session_id=session_id,
+                owner_id=owner_id,
+                turn_id=turn_id,
+                name=name,
+                kind=kind,
+                mime=str(payload.get("mime") or "text/plain"),
+                content=content,
+            )
+        except Exception:
+            _log.exception("artifact save failed name=%s session=%s", name, session_id)
+            return None
+        return ArtifactReadyChunk(
+            turn_id=turn_id,
+            seq=0,
+            artifact_id=record.id,
+            kind_=kind,
+            name=record.name,
+            mime=record.mime,
+            size_bytes=record.size_bytes,
+            download_path=artifact_download_path(session_id, record.id),
+            preview_path=None,
+            snippet=record.snippet,
+        )
+
+    async def _absorb_mock_artifact(
+        self,
+        raw: dict[str, Any],
+        *,
+        emitted: set[str],
+        tenant_id: UUID,
+        workspace_id: UUID,
+        owner_id: UUID,
+        session_id: UUID | None,
+        turn_id: UUID,
+    ) -> dict[str, Any] | None:
+        """**mock 的产物 → 真落库** ✓（同一张表 ✓ —— 同一个下载端点 ✓）。
+
+        ⚠️ **之前产物只在 ``/tmp``** ✓（mock 专用目录 ✓ —— 进程一退就没了
+        ✓ → 真实模式**没有任何存储** ✓ → 下载端点一律 404 ✓）。
+        ⚠️ **同一轮只发一次** ✓（每步都会再问一次 mock ✓ —— 同一个产物不该
+        发两张卡片 ✓）。
+        """
+        if str(raw.get("_kind") or "") != "artifact_ready":
+            return raw
+        content = raw.get("content")
+        if not isinstance(content, str) or not content:
+            return raw
+        key = str(raw.get("artifact_id") or "") or hashlib.sha256(content.encode()).hexdigest()
+        if key in emitted:
+            return None
+        card = await self._persist_artifact(
+            {
+                "name": str(raw.get("name") or "artifact.md"),
+                "kind": str(raw.get("kind_") or "text"),
+                "mime": str(raw.get("mime") or "text/plain"),
+                "content": content,
+            },
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_id=owner_id,
+            session_id=session_id,
+            turn_id=turn_id,
+        )
+        if card is None:
+            return raw
+        emitted.add(key)
+        return {
+            **raw,
+            "artifact_id": str(card.artifact_id),
+            "download_path": card.download_path,
+            "preview_path": card.preview_path,
+            "snippet": card.snippet,
+            "size_bytes": card.size_bytes,
+            "mime": card.mime,
+            "kind_": card.kind_,
+            "content": None,
+        }
 
     async def _save_manifest(
         self,
@@ -1076,6 +1229,9 @@ class SessionGraphRunner:
         whitelist: dict[str, dict[str, Any]],
         *,
         session_id: UUID | None = None,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        owner_id: UUID,
     ) -> tuple[list[Any], LoopState]:
         _ = whitelist
         pending_tool = str(pending.get("tool_name"))
@@ -1125,6 +1281,8 @@ class SessionGraphRunner:
                     tool_call_id=call_id,
                 )
             )
+        # ⚠️ **产物从结果里摘走** ✓ —— 内容不进模型上下文 ✓（可能 1 MiB ✓）。
+        artifact_payload, result = take_artifact(result)
         text = result_text(result)
         messages = list(state.get("messages") or [])
         messages.append(
@@ -1146,6 +1304,18 @@ class SessionGraphRunner:
             latency_ms=0,
         )
         out.append(chunk)
+        # ⚠️ **产物另走一条** ✓（内容不进模型上下文 ✓）—— 落库 + 出卡片 ✓。
+        if artifact_payload is not None:
+            card = await self._persist_artifact(
+                artifact_payload,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_id=owner_id,
+                session_id=session_id,
+                turn_id=turn_id,
+            )
+            if card is not None:
+                out.append(card.model_copy(update={"seq": next_seq + 1}))
         # Stub tools (frontend-coupled) carry `_pending_frontend_action` in
         # their result. Emit a sibling `interactive_action` chunk so the
         # client knows to render the matching UI (modal/toast/drawer).

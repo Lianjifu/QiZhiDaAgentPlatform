@@ -1455,6 +1455,67 @@ async def built_in_invoke_delegate_to_agent(
     }
 
 
+# ── 产物（会话的输出） ────────────────────────────────────────────────
+#
+# ⚠️ **这里只产出，不落库** ✓ —— 落库归**会话层** ✓（``session_artifacts``
+# ✓ —— 产物是**会话的输出** ✓ —— 工具层不该知道会话表 ✓）。
+# ⚠️ **内容不进模型上下文** ✓ —— 调用方（模块侧）会把 ``_artifact`` 摘走 ✓
+# （只把摘要回灌给模型 ✓ —— 产物可能 1 MiB ✓ —— 塞进文本会被截断 ✗✗）。
+
+#: 产物的字节上限 ✓ —— 与附件同口径 ✓（1 MiB ✓）。
+MAX_ARTIFACT_BYTES = 1024 * 1024
+
+#: 产物类别 ✓ —— 与前端 ``ArtifactKind`` 对齐 ✓（chunk schema 的枚举 ✓）。
+_ARTIFACT_KINDS: frozenset[str] = frozenset({"markdown", "code", "html", "json", "image", "text"})
+
+#: 类别 → MIME ✓（缺省按类别推断 ✓）。
+_ARTIFACT_MIME: dict[str, str] = {
+    "markdown": "text/markdown",
+    "code": "text/plain",
+    "html": "text/html",
+    "json": "application/json",
+    "image": "image/png",
+    "text": "text/plain",
+}
+
+
+async def built_in_invoke_write_artifact(
+    arguments: dict[str, Any],
+    *,
+    tenant_id: UUID,
+    workspace_id: UUID | None,
+    call_id: UUID,
+    actor_id: UUID,
+) -> dict[str, Any]:
+    """**产出一个可下载的文件** ✓（报告 / 代码 / html / json ✓）。
+
+    ⚠️ **不是「写工作区」** ✓ —— 那是 ``write_file`` ✓（产物是**给用户看**
+    的 ✓ —— 落会话产物表 ✓ —— 跟着会话走 ✓）。
+    """
+    _ = (tenant_id, workspace_id, call_id, actor_id)
+    name = str(arguments.get("name") or "").strip()
+    content = arguments.get("content")
+    if not name:
+        return {"error": "name is required"}
+    if not isinstance(content, str) or not content:
+        return {"error": "content is required"}
+    kind = str(arguments.get("kind") or "text").strip().lower()
+    if kind not in _ARTIFACT_KINDS:
+        kind = "text"
+    mime = str(arguments.get("mime") or "").strip() or _ARTIFACT_MIME[kind]
+    raw = content.encode("utf-8")
+    if len(raw) > MAX_ARTIFACT_BYTES:
+        return {"error": "artifact exceeds the 1 MiB limit"}
+    return {
+        "_artifact": {
+            "name": name[:255],
+            "kind": kind,
+            "mime": mime[:120],
+            "content": content,
+        }
+    }
+
+
 # ── Phase 14: 把 DelegateSubagentUseCase 句柄暴露给 stub, 沿用
 # bind_audit_recorder 同样的单例模式.
 
@@ -1492,4 +1553,5 @@ __all__ = [
     "built_in_invoke_pdf_read",
     "built_in_invoke_plan_submit",
     "built_in_invoke_todo_write",
+    "built_in_invoke_write_artifact",
 ]
