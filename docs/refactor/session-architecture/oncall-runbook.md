@@ -96,7 +96,7 @@
 | 库 | `127.0.0.1:9153/qzdap_dev` ✓ | `127.0.0.1:9153/qzdap_demo` ✓ |
 | 租户 | slug `dev` ✓（id **随机** ✓ —— `uuid4()` ✓） | slug `demo` ✓（id 固定 `00000000-…-0001` ✓） |
 | 管理员 | `admin@dev.qzdap.dev` / `dev-admin-password-change-me` ✓ | `admin@acme.com` / `demo-password-change-me` ✓ |
-| 成员 | **无** ✓ | `user@acme.com` / `demo-password-change-me` ✓ |
+| 成员（**用户侧** ✓） | `user@dev.qzdap.dev` / `dev-user-password-change-me` ✓（口令与管理员**不共用** ✓） | `user@acme.com` / `demo-password-change-me` ✓ |
 | 其它账号 | 验收样本（**只在 dev 库** ✓）：`qa-a-admin@example.invalid` / `qa-a-user@example.invalid`（租户 `qa-tenant-a` ✓）· `qa-b-admin@example.invalid` / `qa-b-user@example.invalid`（租户 `qa-tenant-b` ✓）—— 口令一律 `qa-local-samples-only` ✓ | 无 ✓ |
 | 种子内容 | 验收样本 ✓（无演示内容 ✓） | 演示智能体 5 ✓ / 工作流 3 ✓ / 知识库 ✓ / 演示会话 ✓ / 记忆 ✓ / 管理台 30 个集合 ✓ |
 | LLM 供应商 | **未配** ✓ → 发一轮必然 `TURN_FAILED` ✓ | **未配** ✓ → 同左 ✓（不是回归 ✓ —— 配了才通 ✓） |
@@ -113,6 +113,8 @@ curl -s -X POST http://127.0.0.1:9161/v1/identity/login \
 print(json.loads(base64.urlsafe_b64decode(t+'='*(-len(t)%4)))['tid'])"
 ```
 ⚠️ **demo 账号在 dev 栈上登录会 401** ✓（`INVALID_CREDENTIALS` ✓）—— 两套**彻底隔离** ✓。
+
+⚠️ **两种角色进的是**不同的**页面** ✓ —— **管理员只进管理台** ✓（`/admin/*` ✓），**成员进用户侧** ✓（工作台 / 对话 / 任务 / 知识库… ✓）→ 所以**两种角色都要有账号** ✓（只有管理员就看不到用户侧长什么样 ✗✗）→ 登录页的「一键登录」按运行模式给**两个**按钮 ✓。
 
 ⚠️ **起停** ✓：`bin/qzdap-stack/run-qzdap-stack.sh`（dev ✓）/ `run-qzdap-demo-stack.sh`（demo ✓）/ 对应的 `stop-*.sh` ✓ —— **改完代码要重启** ✓（否则跑的还是旧代码 ✓）。
 

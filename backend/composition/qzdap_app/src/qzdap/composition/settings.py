@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     dev_tenant_display_name: str = "Dev Tenant"
     dev_admin_email: str = "admin@dev.qzdap.dev"
     dev_admin_password: str = "dev-admin-password-change-me"  # noqa: S105
+    # ⚠️ **开发环境也要有「用户侧」账号** ✓（2026-11-01 ✓）——
+    # **管理员只进管理台** ✓（前端 ``roleRoutes`` ✓ —— 管理员登录后落到
+    # ``/admin/*`` ✓），**用户侧那套页面（工作台 / 对话 / 任务…）得另有一个
+    # 成员账号** ✓ —— 否则开发环境**只能看管理台** ✗✗。
+    # ⚠️ **口令与管理员的不共用** ✓（成员不该拿到管理员口令 ✓）。
+    dev_user_email: str = "user@dev.qzdap.dev"
+    dev_user_password: str = "dev-user-password-change-me"  # noqa: S105
 
     # ── LLM ──────────────────────────────────────────────────────────────
     # 历史: 之前这里有 llm_provider / llm_api_key / llm_base_url /

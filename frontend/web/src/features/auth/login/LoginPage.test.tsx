@@ -110,9 +110,14 @@ describe('Login', () => {
     expect(mutate).toHaveBeenCalledWith({ email: 'admin@dev.qzdap.dev', password: 'dev-admin-password-change-me' });
   });
 
-  it('does not offer demo accounts in development mode', () => {
+  it('offers the dev accounts, never the demo ones, in development mode', () => {
     renderLogin(['/login']);
-    expect(screen.queryByRole('button', { name: /普通用户登录/ })).toBeNull();
+    // ⚠️ **开发环境有自己的两种角色** ✓ —— 管理员进管理台 ✓、成员进用户侧 ✓
+    // （只有管理员的话就看得到管理台、看不到用户侧 ✗✗）。
+    expect(screen.queryByRole('button', { name: /普通用户登录/ })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /管理员登录/ })).not.toBeNull();
+    // 但**演示账号一个都不许出现** ✓（两套账号不混用 ✓ —— 具体邮箱在
+    // `quickLoginAccounts` 的单测里锁 ✓ —— 按钮上只显示角色名 ✓）。
     expect(screen.queryByText('admin@acme.com')).toBeNull();
     expect(screen.queryByText('user@acme.com')).toBeNull();
   });

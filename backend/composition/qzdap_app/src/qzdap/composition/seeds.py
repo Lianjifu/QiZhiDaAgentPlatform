@@ -28,7 +28,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -52,6 +53,10 @@ class SeedProfile:
     #: (email, display_name, role) —— role 是 workspace 角色.
     accounts: tuple[tuple[str, str, str], ...]
     password: str
+    #: **按账号覆盖口令** ✓（email → password ✓）—— 默认都用 ``password`` ✓。
+    #: 演示那两个账号同口令 ✓；**开发环境的管理员与成员分开** ✓
+    #: （成员不该拿到管理员口令 ✓）。
+    passwords: Mapping[str, str] = field(default_factory=dict)
 
 
 def demo_profile(settings: Any) -> SeedProfile:
@@ -80,8 +85,14 @@ def dev_profile(settings: Any) -> SeedProfile:
         tenant_display_name=settings.dev_tenant_display_name,
         workspace_slug="default",
         workspace_display_name="Default Workspace",
-        accounts=((settings.dev_admin_email, "Dev Admin", "admin"),),
+        accounts=(
+            (settings.dev_admin_email, "Dev Admin", "admin"),
+            # ⚠️ **用户侧账号** ✓（2026-11-01 ✓）—— 管理员只进管理台 ✓
+            # （前端按角色分流 ✓）→ 用户侧那套页面要另有一个成员账号 ✓。
+            (settings.dev_user_email, "Dev User", "member"),
+        ),
         password=settings.dev_admin_password,
+        passwords={settings.dev_user_email: settings.dev_user_password},
     )
 
 
@@ -175,10 +186,11 @@ async def seed_identity(
         )
 
     users_repo = SqlUserRepository(session)
-    hashed = hasher.hash(profile.password)
     seeded_logins: list[str] = []
     seeded_memberships: list[str] = []
     for email, display_name, role in profile.accounts:
+        # ⚠️ **按账号取口令** ✓（默认共用 ``profile.password`` ✓）。
+        hashed = hasher.hash(profile.passwords.get(email, profile.password))
         user = await users_repo.get_by_email_global(email)
         if user is None:
             user = User.create(
