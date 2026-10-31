@@ -46,8 +46,8 @@ from qzdap_agent_runtime.session.queue import (
     TurnQueuePort,
     wait_for_turn_slot,
 )
+from qzdap_kernel.error_codes import ErrorCode, project_error_message
 from qzdap_kernel.ids import ModelId
-from qzdap_schema.dtos.errors import project_error_message
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
     DoneChunk,
@@ -341,14 +341,14 @@ class TurnRunner:
                     await self._lifecycle.mark_delivered(turn_id=request.turn_id)
         except TurnCancelled as exc:
             await self._lifecycle.fail_turn(
-                turn_id=request.turn_id, code="TURN_CANCELLED", message=str(exc)
+                turn_id=request.turn_id, code=ErrorCode.TURN_CANCELLED.value, message=str(exc)
             )
             yield await self._publish_chunk(
                 turn_id=request.turn_id,
                 chunk=ErrorChunk(
                     turn_id=request.turn_id,
                     seq=0,
-                    code="TURN_CANCELLED",
+                    code=ErrorCode.TURN_CANCELLED.value,
                     message="已停止生成",
                     retriable=True,
                 ),
@@ -360,7 +360,9 @@ class TurnRunner:
             # 显示「执行中」.
             try:
                 await asyncio.shield(
-                    self._lifecycle.fail_turn(turn_id=request.turn_id, code="TURN_CANCELLED")
+                    self._lifecycle.fail_turn(
+                        turn_id=request.turn_id, code=ErrorCode.TURN_CANCELLED.value
+                    )
                 )
             except Exception:
                 _log.exception("failed to close cancelled turn")
@@ -368,7 +370,7 @@ class TurnRunner:
         except Exception as exc:  # 失败必须可见
             _log.warning("turn failed turn_id=%s", request.turn_id, exc_info=True)
             await self._lifecycle.fail_turn(
-                turn_id=request.turn_id, code="TURN_FAILED", message=str(exc)
+                turn_id=request.turn_id, code=ErrorCode.TURN_FAILED.value, message=str(exc)
             )
             if not emitted:
                 # 一个 chunk 都没产出 → 轮次根本没起来. 抛给 HTTP 层, 让状态码
@@ -379,7 +381,7 @@ class TurnRunner:
                 chunk=ErrorChunk(
                     turn_id=request.turn_id,
                     seq=0,
-                    code="TURN_FAILED",
+                    code=ErrorCode.TURN_FAILED.value,
                     # web 投放面：**没写消息的领域异常** → 用投影文案
                     # （别把 "EXTERNAL_SERVICE_ERROR" 甩到聊天气泡里）；
                     # 有具体消息的保留原样，技术细节留在日志 ✓。

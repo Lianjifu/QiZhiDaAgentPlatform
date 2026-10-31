@@ -9,6 +9,7 @@ from uuid import UUID
 from qzdap.runtimes.sandbox_runtime.executor import JobExecutor, safe_relpath
 from qzdap.runtimes.sandbox_runtime.jobs import JobLimits, JobResult, SandboxJob
 from qzdap.runtimes.sandbox_runtime.settings import Settings
+from qzdap_kernel.error_codes import ErrorCode
 
 
 class JobRejected(ValueError):
@@ -96,7 +97,7 @@ class JobService:
                 id=job.id,
                 status="cancelled",
                 runtime=getattr(self._executor, "runtime_name", "runsc"),
-                error_code="SANDBOX_CANCELLED",
+                error_code=ErrorCode.SANDBOX_CANCELLED.value,
             )
             raise
         finally:

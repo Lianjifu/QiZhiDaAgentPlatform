@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from qzdap.modules.observability_module.domain.entities import CostRecord
 from qzdap.modules.observability_module.domain.value_objects import CostType
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import BusinessRuleError
 
 if TYPE_CHECKING:
@@ -25,7 +26,7 @@ def build(service: ObservabilityService) -> Any:
         except (KeyError, ValueError) as exc:
             raise BusinessRuleError(
                 message=f"invalid cost_type: {exc}",
-                code="COST_TYPE_INVALID",
+                code=ErrorCode.COST_TYPE_INVALID.value,
             ) from exc
         try:
             record = CostRecord.create(
@@ -41,7 +42,7 @@ def build(service: ObservabilityService) -> Any:
                 metadata=cmd.get("metadata"),
             )
         except ValueError as exc:
-            raise BusinessRuleError(message=str(exc), code="COST_INVALID") from exc
+            raise BusinessRuleError(message=str(exc), code=ErrorCode.COST_INVALID.value) from exc
         return await service.cost_repo.add(record)
 
     return execute

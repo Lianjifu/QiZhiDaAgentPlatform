@@ -27,6 +27,7 @@ from qzdap.modules.agent_runtime.application.one_shot_turn import (
     OneShotTurnService,
 )
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError
 from qzdap_kernel.ids import (
     AgentId,
@@ -80,7 +81,7 @@ class SubAgentAdapter:
         if self._one_shot_factory is None or self._maker is None:
             raise AppError(
                 "SubAgentAdapter is not wired (one-shot factory or session maker missing)",
-                code="SUB_AGENT_UNAVAILABLE",
+                code=ErrorCode.SUB_AGENT_UNAVAILABLE.value,
                 status=503,
             )
 

@@ -7,6 +7,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 
 import httpx
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import ExternalServiceError
 from qzdap_llm.client import LLMClient
 
@@ -31,7 +32,7 @@ def decode_object(body: str) -> dict:
             raise TypeError
         return value
     except (ValueError, TypeError):
-        raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
+        raise ProviderTransportError(code=ErrorCode.LLM_INVALID_RESPONSE.value) from None
 
 
 async def iter_sse(resp: httpx.Response) -> AsyncIterator[tuple[str, str]]:
@@ -99,10 +100,10 @@ class HTTPProviderClient(LLMClient):
                         return
                     data = decode_object(body)
                     if event == "error" or "error" in data:
-                        raise ProviderTransportError(code="LLM_STREAM_ERROR")
+                        raise ProviderTransportError(code=ErrorCode.LLM_STREAM_ERROR.value)
                     yield event, data
                 if not received:
-                    raise ProviderTransportError(code="LLM_INVALID_RESPONSE")
+                    raise ProviderTransportError(code=ErrorCode.LLM_INVALID_RESPONSE.value)
         except httpx.HTTPError as exc:
             raise transport_error(exc) from None
 

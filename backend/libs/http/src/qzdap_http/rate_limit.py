@@ -48,7 +48,7 @@ class RateLimitMiddleware:
             await send(
                 {
                     "type": "http.response.body",
-                    "body": b'{"code":"RATE_LIMITED"}',
+                    "body": b'{"code":ErrorCode.RATE_LIMITED.value}',
                 }
             )
             return

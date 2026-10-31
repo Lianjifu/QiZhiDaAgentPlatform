@@ -23,6 +23,8 @@ from uuid import UUID
 
 from fastapi import Header, HTTPException, Request
 
+from qzdap_kernel.error_codes import ErrorCode
+
 # HTTP methods that don't mutate state — DB lookup is skipped.
 _READ_ONLY = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -63,7 +65,7 @@ async def _require_active_workspace(
         raise HTTPException(
             status_code=404,
             detail={
-                "code": "E_WORKSPACE_NOT_FOUND",
+                "code": ErrorCode.WORKSPACE_NOT_FOUND.value,
                 "message": (
                     f"workspace {x_workspace_id} not found or not active in tenant {tenant_id}"
                 ),

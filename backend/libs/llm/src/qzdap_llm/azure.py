@@ -6,6 +6,7 @@ from urllib.parse import quote
 
 import httpx
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_llm.config import LLMConfig
 from qzdap_llm.openai_compatible import OpenAICompatibleClient
 from qzdap_llm.transport import ProviderTransportError
@@ -42,4 +43,4 @@ class AzureOpenAIClient(OpenAICompatibleClient):
         try:
             return [item["embedding"] for item in data["data"]]
         except (KeyError, TypeError):
-            raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
+            raise ProviderTransportError(code=ErrorCode.LLM_INVALID_RESPONSE.value) from None

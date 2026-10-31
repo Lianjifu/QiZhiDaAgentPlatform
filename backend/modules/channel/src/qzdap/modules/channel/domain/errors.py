@@ -8,13 +8,13 @@ narrow subclass; the HTTP layer maps the status via
 
 from __future__ import annotations
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import (
     AppError,
     AuthenticationError,
     ForbiddenError,
     NotFoundError,
 )
-from qzdap_schema.dtos.errors import ErrorCode
 
 
 class ChannelError(AppError):

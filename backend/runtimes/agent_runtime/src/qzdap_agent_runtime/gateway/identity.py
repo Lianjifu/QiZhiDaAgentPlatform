@@ -26,8 +26,8 @@ from qzdap_agent_runtime.gateway.types import (
     AuthMethod,
     TrustLevel,
 )
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AuthenticationError
-from qzdap_schema.dtos.errors import ErrorCode
 
 # 时间戳容差（秒）—— 沿用旧路径 ``DEFAULT_TIMESTAMP_TOLERANCE_SECONDS``。
 DEFAULT_TIMESTAMP_TOLERANCE_SECONDS = 300

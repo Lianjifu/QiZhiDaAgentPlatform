@@ -3,12 +3,13 @@
 from collections.abc import AsyncIterator
 
 from qzdap.modules.memory.application.ports import EmbeddingPort
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError
 from qzdap_llm.client import ChatRequest, ChatResponse, LLMChunk, LLMClient
 
 
 class ProviderUnavailable(AppError):
-    code = "PROVIDER_UNAVAILABLE"
+    code = ErrorCode.PROVIDER_UNAVAILABLE.value
     status = 503
 
 

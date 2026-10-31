@@ -24,6 +24,7 @@ from qzdap.modules.evaluation.application.ports import (
     AgentFactoryQueryPort,
     SubAgentPort,
 )
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError
 from qzdap_kernel.ids import (
     AgentId,
@@ -68,7 +69,7 @@ class RealSubAgentPort(SubAgentPort):
         except (TypeError, ValueError) as exc:
             raise AppError(
                 f"agent_version {agent_version!r} is not a valid UUID",
-                code="EVAL_INVALID_VERSION",
+                code=ErrorCode.EVAL_INVALID_VERSION.value,
                 status=400,
             ) from exc
 
@@ -80,7 +81,7 @@ class RealSubAgentPort(SubAgentPort):
         if version is None:
             raise AppError(
                 f"agent version not published: template={agent_id} version={agent_version}",
-                code="EVAL_VERSION_NOT_PUBLISHED",
+                code=ErrorCode.EVAL_VERSION_NOT_PUBLISHED.value,
                 status=400,
             )
 

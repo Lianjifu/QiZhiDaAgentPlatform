@@ -23,6 +23,7 @@ from qzdap.modules.governance.domain.events import (
     PolicyUpdated,
 )
 from qzdap.modules.governance.domain.value_objects import PolicyEffect, PolicySubject
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import PolicyId, TenantId, UserId, WorkspaceId
 
 
@@ -88,7 +89,7 @@ class PolicyService:
         if rule is None:
             raise PolicyNotFound(
                 f"policy {rule_id} not found",
-                code="POLICY_NOT_FOUND",
+                code=ErrorCode.POLICY_NOT_FOUND.value,
                 details={"rule_id": str(rule_id)},
             )
         return rule
@@ -159,7 +160,7 @@ class PolicyService:
         if not deleted:
             raise PolicyNotFound(
                 f"policy {rule_id} not found",
-                code="POLICY_NOT_FOUND",
+                code=ErrorCode.POLICY_NOT_FOUND.value,
                 details={"rule_id": str(rule_id)},
             )
         now = self._clock.now()

@@ -12,27 +12,27 @@ from __future__ import annotations
 
 from typing import Any
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import (
     ActionDeniedError,
     AppError,
     ApprovalRequiredError,
     NotFoundError,
 )
-from qzdap_schema.dtos.errors import ErrorCode
 
 
 class SessionNotFound(NotFoundError):
-    code = "SESSION_NOT_FOUND"
+    code = ErrorCode.SESSION_NOT_FOUND.value
 
 
 class TurnNotFound(NotFoundError):
-    code = "TURN_NOT_FOUND"
+    code = ErrorCode.TURN_NOT_FOUND.value
 
 
 class SessionClosedError(AppError):
     """Raised when a turn is attempted on a closed session."""
 
-    code = "SESSION_CLOSED"
+    code = ErrorCode.SESSION_CLOSED.value
     status = 410
 
 
@@ -73,7 +73,7 @@ class SessionBusyError(AppError):
     the message sequence number, so the second one is rejected instead.
     """
 
-    code = "SESSION_BUSY"
+    code = ErrorCode.SESSION_BUSY.value
     status = 409
 
 

@@ -170,7 +170,7 @@ def test_an_error_is_told_to_the_user() -> None:
 
 def test_a_known_error_code_is_projected_into_the_im_copy() -> None:
     """im 投放面：已知码 → **投影文案**（同一个码永远说同一句话 ✓）。"""
-    from qzdap_schema.dtos.errors import ErrorCode, project_error
+    from qzdap_kernel.error_codes import ErrorCode, project_error
 
     event = _chunk(
         "error",

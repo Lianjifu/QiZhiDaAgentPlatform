@@ -40,7 +40,7 @@ from qzdap.modules.identity.adapter.http.mappers import (
     workspace_domain_to_response,
 )
 from qzdap.modules.identity.application.services import IdentityService
-from qzdap_schema.dtos.errors import ErrorCode
+from qzdap_kernel.error_codes import ErrorCode
 
 
 def get_service(request: Request) -> IdentityService:
@@ -178,7 +178,9 @@ def build_router() -> APIRouter:
         if body.workspace_id is not None:
             ws = await svc.workspaces.get(body.workspace_id)
             if ws is None or ws.tenant_id != x_tenant_id:
-                raise ForbiddenError("cross-tenant workspace", code="WORKSPACE_DENIED")
+                raise ForbiddenError(
+                    "cross-tenant workspace", code=ErrorCode.WORKSPACE_DENIED.value
+                )
         k, raw = await svc.issue_api_key().execute(
             owner_user_id=uid,
             name=body.name,

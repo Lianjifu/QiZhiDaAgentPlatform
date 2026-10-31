@@ -17,6 +17,7 @@ from typing import Any
 from qzdap.modules.governance.application.policy_evaluator import PolicyEvaluator
 from qzdap.modules.governance.domain.entities import DecisionRecord
 from qzdap.modules.governance.domain.value_objects import PolicyEffect
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import ActionDeniedError, ApprovalRequiredError
 from qzdap_vault.actor import ActorContext
 
@@ -36,7 +37,7 @@ class PolicyGuard:
         if rec.effect is PolicyEffect.DENY:
             raise ActionDeniedError(
                 reason=rec.reason,
-                code="ACTION_DENIED",
+                code=ErrorCode.ACTION_DENIED.value,
                 details={
                     "action": action,
                     "rule_id": str(rec.rule_id) if rec.rule_id else None,
@@ -45,7 +46,7 @@ class PolicyGuard:
         if rec.effect is PolicyEffect.REQUIRE_APPROVAL:
             raise ApprovalRequiredError(
                 approval_id=str(rec.approval_id) if rec.approval_id else "",  # type: ignore[arg-type]
-                code="APPROVAL_REQUIRED",
+                code=ErrorCode.APPROVAL_REQUIRED.value,
                 details={
                     "action": action,
                     "rule_id": str(rec.rule_id) if rec.rule_id else None,

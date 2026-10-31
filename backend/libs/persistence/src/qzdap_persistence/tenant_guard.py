@@ -16,7 +16,7 @@ from uuid import UUID
 from sqlalchemy import event
 from sqlalchemy.orm import with_loader_criteria
 
-from qzdap_schema.dtos.errors import ErrorCode
+from qzdap_kernel.error_codes import ErrorCode
 
 tenant_id_var: ContextVar[UUID | None] = ContextVar("qzdap_tenant_id", default=None)
 

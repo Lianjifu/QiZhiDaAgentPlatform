@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import BusinessRuleError
 from qzdap_kernel.ids import TenantId, WorkspaceId
 
@@ -39,7 +40,7 @@ def build(service: ObservabilityService) -> Any:
         if group_by not in _VALID_GROUP_BY:
             raise BusinessRuleError(
                 message=f"group_by must be one of {_VALID_GROUP_BY}",
-                code="GROUP_BY_INVALID",
+                code=ErrorCode.GROUP_BY_INVALID.value,
             )
         if group_by == "cost_type":
             return await service.cost_repo.sum_by_cost_type(

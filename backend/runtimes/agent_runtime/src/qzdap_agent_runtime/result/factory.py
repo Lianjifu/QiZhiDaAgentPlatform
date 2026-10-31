@@ -20,6 +20,7 @@ from collections.abc import Mapping
 from typing import Any, Literal
 from uuid import NAMESPACE_OID, UUID, uuid5
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
     ArtifactReadyChunk,
@@ -232,7 +233,7 @@ def to_chunk(
         )
     return ErrorChunk(
         **common,
-        code="INTERNAL_ERROR",
+        code=ErrorCode.INTERNAL_ERROR.value,
         message="未知事件类型",
         detailed=f"unknown event type: {event_type}",
     )

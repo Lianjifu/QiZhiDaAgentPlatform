@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_llm.client import (
     ChatMessage,
     ChatRequest,
@@ -37,7 +38,7 @@ class OpenAICompatibleClient(HTTPProviderClient):
         try:
             return _parse_chat_response(data)
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
-            raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
+            raise ProviderTransportError(code=ErrorCode.LLM_INVALID_RESPONSE.value) from None
 
     async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
         events = self._events(self._chat_path(req.model), _build_payload(req, stream=True))
@@ -46,7 +47,9 @@ class OpenAICompatibleClient(HTTPProviderClient):
                 try:
                     chunk = _parse_stream_chunk(data)
                 except (KeyError, IndexError, TypeError, ValueError, AttributeError):
-                    raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
+                    raise ProviderTransportError(
+                        code=ErrorCode.LLM_INVALID_RESPONSE.value
+                    ) from None
                 if chunk is not None:
                     yield chunk
         finally:
@@ -57,7 +60,7 @@ class OpenAICompatibleClient(HTTPProviderClient):
         try:
             return [item["embedding"] for item in data["data"]]
         except (KeyError, TypeError):
-            raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
+            raise ProviderTransportError(code=ErrorCode.LLM_INVALID_RESPONSE.value) from None
 
 
 def _build_payload(req: ChatRequest, *, stream: bool) -> dict:

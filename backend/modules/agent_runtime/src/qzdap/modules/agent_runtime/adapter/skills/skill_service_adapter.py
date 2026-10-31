@@ -17,6 +17,7 @@ from qzdap.modules.skill.domain.errors import (
     SkillNotFound,
     SkillSandboxUnavailable,
 )
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
 
@@ -49,35 +50,35 @@ class SkillServiceAdapter(SkillPort):
         except SkillNotFound:
             return {
                 "ok": False,
-                "error_code": "SKILL_NOT_FOUND",
+                "error_code": ErrorCode.SKILL_NOT_FOUND.value,
                 "error_message": f"skill {skill_name} not found",
                 "call_id": str(call_id),
             }
         except SkillDisabled:
             return {
                 "ok": False,
-                "error_code": "SKILL_DISABLED",
+                "error_code": ErrorCode.SKILL_DISABLED.value,
                 "error_message": f"skill {skill_name} is not published",
                 "call_id": str(call_id),
             }
         except SkillNeedsConfirm:
             return {
                 "ok": False,
-                "error_code": "SKILL_NEEDS_CONFIRM",
+                "error_code": ErrorCode.SKILL_NEEDS_CONFIRM.value,
                 "error_message": f"skill {skill_name} requires confirmation",
                 "call_id": str(call_id),
             }
         except SkillNotExecutable as exc:
             return {
                 "ok": False,
-                "error_code": "SKILL_NOT_EXECUTABLE",
+                "error_code": ErrorCode.SKILL_NOT_EXECUTABLE.value,
                 "error_message": str(exc),
                 "call_id": str(call_id),
             }
         except SkillSandboxUnavailable as exc:
             return {
                 "ok": False,
-                "error_code": "SANDBOX_UNAVAILABLE",
+                "error_code": ErrorCode.SANDBOX_UNAVAILABLE.value,
                 "error_message": str(exc),
                 "call_id": str(call_id),
             }

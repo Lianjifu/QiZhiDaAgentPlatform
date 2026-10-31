@@ -25,6 +25,7 @@ from qzdap.modules.governance.domain.errors import (
 )
 from qzdap.modules.governance.domain.events import ApprovalDecided
 from qzdap.modules.governance.domain.value_objects import ApprovalStatus
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import ApprovalId, TenantId, UserId
 
 
@@ -91,7 +92,7 @@ class ApprovalService:
         if approval is None:
             raise ApprovalNotFound(
                 f"approval {approval_id} not found",
-                code="APPROVAL_NOT_FOUND",
+                code=ErrorCode.APPROVAL_NOT_FOUND.value,
                 details={"approval_id": str(approval_id)},
             )
         return approval
@@ -105,7 +106,7 @@ class ApprovalService:
         if approver_id == approval.requester_id:
             raise ApproverMustDiffer(
                 "approver must differ from requester",
-                code="APPROVER_MUST_DIFFER",
+                code=ErrorCode.APPROVER_MUST_DIFFER.value,
             )
         decided = approval.approve(approver_id=approver_id, now=self._clock.now())
         await self._repo.update(decided)
@@ -126,7 +127,7 @@ class ApprovalService:
         if approver_id == approval.requester_id:
             raise ApproverMustDiffer(
                 "denier must differ from requester",
-                code="APPROVER_MUST_DIFFER",
+                code=ErrorCode.APPROVER_MUST_DIFFER.value,
             )
         decided = approval.deny(approver_id=approver_id, reason=reason, now=self._clock.now())
         await self._repo.update(decided)
@@ -199,14 +200,14 @@ class ApprovalService:
         if approval.status is not ApprovalStatus.PENDING:
             raise ApprovalAlreadyDecided(
                 f"approval {approval.id} already {approval.status.value}",
-                code="APPROVAL_ALREADY_DECIDED",
+                code=ErrorCode.APPROVAL_ALREADY_DECIDED.value,
             )
 
     def _ensure_not_expired(self, approval: Approval) -> None:
         if approval.expires_at <= self._clock.now():
             raise ApprovalExpired(
                 f"approval {approval.id} has expired",
-                code="APPROVAL_EXPIRED",
+                code=ErrorCode.APPROVAL_EXPIRED.value,
                 details={"expires_at": approval.expires_at.isoformat()},
             )
 

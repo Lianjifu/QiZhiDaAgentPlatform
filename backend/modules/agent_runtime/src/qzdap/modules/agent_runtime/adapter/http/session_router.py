@@ -26,9 +26,9 @@ from qzdap_agent_runtime.gateway.types import ChannelType, RawIngress
 from qzdap_agent_runtime.router.strategy import Strategy
 from qzdap_agent_runtime.router.types import RoutingRequest, RoutingUnavailable
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_observability.metrics import record_new_call
 from qzdap_observability.tracing import get_tracer
-from qzdap_schema.dtos.errors import ErrorCode
 
 _tracer = get_tracer("qzdap.agent_runtime")
 

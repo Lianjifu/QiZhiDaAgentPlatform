@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import ExternalServiceError
 from qzdap_llm.client import LLMClient
 
@@ -15,7 +16,9 @@ def set_default_client(client: LLMClient) -> None:
 
 def get_default_client() -> LLMClient:
     if _default is None:
-        raise ExternalServiceError("no default LLM client configured", code="LLM_NOT_CONFIGURED")
+        raise ExternalServiceError(
+            "no default LLM client configured", code=ErrorCode.LLM_NOT_CONFIGURED.value
+        )
     return _default
 
 

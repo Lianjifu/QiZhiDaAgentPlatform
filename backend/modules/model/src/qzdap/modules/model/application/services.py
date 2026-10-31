@@ -43,6 +43,7 @@ from qzdap.modules.model.domain.errors import (
     ModelNotFound,
     RouteNotFound,
 )
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import ModelId, TenantId, WorkspaceId
 from qzdap_llm import ChatRequest, ChatResponse, LLMChunk
 from qzdap_vault.actor import ActorContext
@@ -895,7 +896,7 @@ class ModelService:
                     yield chunk
                 if not yielded_any:
                     # 流开了但立即 EOF, 视作错误
-                    raise ProviderTransportError(code="LLM_STREAM_EMPTY")
+                    raise ProviderTransportError(code=ErrorCode.LLM_STREAM_EMPTY.value)
                 return
             except ProviderTransportError as exc:
                 last_exc = exc

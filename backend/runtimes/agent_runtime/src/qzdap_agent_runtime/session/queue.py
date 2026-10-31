@@ -48,12 +48,12 @@ from time import monotonic
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError
 from qzdap_observability.metrics import (
     record_router_concurrency_rejected,
     record_router_queue_wait,
 )
-from qzdap_schema.dtos.errors import ErrorCode
 
 #: **单会话排队上限** ✓（决策 #7 ✓ —— N = 5 条 ✓）。
 QUEUE_MAX_DEPTH = 5

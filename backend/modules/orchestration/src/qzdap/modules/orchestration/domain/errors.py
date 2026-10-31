@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError, NotFoundError
 
 
@@ -10,11 +11,11 @@ class WorkflowError(AppError):
 
 
 class WorkflowNotFound(WorkflowError, NotFoundError):
-    code = "WORKFLOW_NOT_FOUND"
+    code = ErrorCode.WORKFLOW_NOT_FOUND.value
 
 
 class WorkflowUnavailable(WorkflowError):
-    code = "WORKFLOW_UNAVAILABLE"
+    code = ErrorCode.WORKFLOW_UNAVAILABLE.value
     status = 400
 
 

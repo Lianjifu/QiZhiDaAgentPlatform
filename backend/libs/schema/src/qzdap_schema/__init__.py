@@ -3,7 +3,10 @@
 ⚠️ **品牌 ID 不在这里** ✓ —— 它们住在 :mod:`qzdap_kernel.ids` ✓（2026-10-31，
 P-13 ✓）—— 品牌 ID 是**最底层的值对象** ✓ → 住进零依赖的 base 层 ✓，
 **每一层**（libs / modules / composition / 契约层 ✓）都共用同一套品牌词汇 ✓。
-本包只留**线上的 DTO** ✓（chunk / 错误 / 分页 ✓）。
+⚠️ **错误码也不在这里** ✓ —— 它们住在 :mod:`qzdap_kernel.error_codes` ✓
+（2026-10-31 · G-02b 扩展 ✓）—— **错误码与错误层级是同一件事** ✓ →
+**词汇表与错误层级住在一起** ✓ → base 层不必反过来依赖上层 ✓。
+本包只留**线上的 DTO** ✓（chunk / 错误块 / 分页 ✓）。
 """
 
 from __future__ import annotations

@@ -25,6 +25,7 @@ from qzdap.modules.self_evolution.domain.value_objects import (
     EvolveKind,
     EvolveStatus,
 )
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import (
     EvolveCandidateId,
     TenantId,
@@ -91,22 +92,22 @@ class EvolveCandidate:
         if not 0.0 <= confidence <= 1.0:
             raise InvalidEvolveCandidate(
                 f"confidence {confidence} not in [0.0, 1.0]",
-                code="INVALID_EVOLVE_CANDIDATE",
+                code=ErrorCode.INVALID_EVOLVE_CANDIDATE.value,
             )
         if not trigger_reason or not trigger_reason.strip():
             raise InvalidEvolveCandidate(
                 "trigger_reason must be non-empty",
-                code="INVALID_EVOLVE_CANDIDATE",
+                code=ErrorCode.INVALID_EVOLVE_CANDIDATE.value,
             )
         if len(trigger_reason) > 256:
             raise InvalidEvolveCandidate(
                 f"trigger_reason length {len(trigger_reason)} > 256",
-                code="INVALID_EVOLVE_CANDIDATE",
+                code=ErrorCode.INVALID_EVOLVE_CANDIDATE.value,
             )
         if ttl_seconds <= 0:
             raise InvalidEvolveCandidate(
                 f"ttl_seconds {ttl_seconds} must be > 0",
-                code="INVALID_EVOLVE_CANDIDATE",
+                code=ErrorCode.INVALID_EVOLVE_CANDIDATE.value,
             )
         ts = now or _utcnow()
         fp = (
@@ -142,12 +143,12 @@ class EvolveCandidate:
         if self.status is not EvolveStatus.PENDING:
             raise EvolveCandidateAlreadyDecided(
                 f"candidate {self.id} already {self.status.value}",
-                code="EVOLVE_CANDIDATE_ALREADY_DECIDED",
+                code=ErrorCode.EVOLVE_CANDIDATE_ALREADY_DECIDED.value,
             )
         if self.requester_id is not None and approver_id == self.requester_id:
             raise SignerMustDiffer(
                 "approver must differ from requester",
-                code="EVOLVE_SIGNER_MUST_DIFFER",
+                code=ErrorCode.EVOLVE_SIGNER_MUST_DIFFER.value,
             )
         ts = now or _utcnow()
         return type(self)(
@@ -178,12 +179,12 @@ class EvolveCandidate:
         if self.status is not EvolveStatus.PENDING:
             raise EvolveCandidateAlreadyDecided(
                 f"candidate {self.id} already {self.status.value}",
-                code="EVOLVE_CANDIDATE_ALREADY_DECIDED",
+                code=ErrorCode.EVOLVE_CANDIDATE_ALREADY_DECIDED.value,
             )
         if self.requester_id is not None and approver_id == self.requester_id:
             raise SignerMustDiffer(
                 "denier must differ from requester",
-                code="EVOLVE_SIGNER_MUST_DIFFER",
+                code=ErrorCode.EVOLVE_SIGNER_MUST_DIFFER.value,
             )
         ts = now or _utcnow()
         return type(self)(
@@ -209,7 +210,7 @@ class EvolveCandidate:
         if self.status is not EvolveStatus.APPROVED:
             raise EvolveCandidateAlreadyDecided(
                 f"candidate {self.id} must be APPROVED before apply, got {self.status.value}",
-                code="EVOLVE_CANDIDATE_ALREADY_DECIDED",
+                code=ErrorCode.EVOLVE_CANDIDATE_ALREADY_DECIDED.value,
             )
         ts = now or _utcnow()
         return type(self)(

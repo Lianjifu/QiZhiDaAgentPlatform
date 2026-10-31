@@ -49,6 +49,7 @@ from qzdap_agent_runtime.session.turn_runner import (
     TurnRunner,
 )
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError, ConflictError, ValidationError
 from qzdap_kernel.ids import (
     AgentId,
@@ -57,7 +58,6 @@ from qzdap_kernel.ids import (
     UserId,
     WorkspaceId,
 )
-from qzdap_schema.dtos.errors import ErrorCode
 from qzdap_schema.dtos.turn import TurnChunk
 
 _log = logging.getLogger(__name__)
@@ -332,7 +332,7 @@ class CopilotSessionService:
                     await self._idempotency.release(decision)
                 raise SessionBusyError(
                     f"session {session_id} already has a turn in flight",
-                    code="SESSION_BUSY",
+                    code=ErrorCode.SESSION_BUSY.value,
                 )
         try:
             async for chunk in self._run_turn(
@@ -415,7 +415,9 @@ class CopilotSessionService:
         if session.workspace_id != workspace_id or session.owner_id != owner_id:
             raise SessionNotFound(f"session {session_id} not found")
         if session.status is SessionStatus.CLOSED:
-            raise SessionClosedError(f"session {session_id} is closed", code="SESSION_CLOSED")
+            raise SessionClosedError(
+                f"session {session_id} is closed", code=ErrorCode.SESSION_CLOSED.value
+            )
         # 上一轮遗留的停止标记不能影响这一轮.
         await self._sessions.clear_cancel(session_id)
         agent_row = await self._catalog.get_published(session.agent_id)

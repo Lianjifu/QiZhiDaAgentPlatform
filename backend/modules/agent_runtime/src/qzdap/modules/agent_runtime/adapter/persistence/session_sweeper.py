@@ -27,6 +27,7 @@ from qzdap_agent_runtime.session.state import (
     assert_turn_transition,
 )
 from qzdap_agent_runtime.session.sweeper import SweepReport
+from qzdap_kernel.error_codes import ErrorCode
 
 _log = getLogger(__name__)
 
@@ -94,7 +95,7 @@ class PostgresSessionSweeper:
                     SessionTurnORM.status == "running",
                     SessionTurnORM.started_at < stale_before,
                 )
-                .values(status="failed", error_code="ZOMBIE_TAKEOVER")
+                .values(status="failed", error_code=ErrorCode.ZOMBIE_TAKEOVER.value)
             )
             return int(result.rowcount or 0)
 

@@ -6,6 +6,8 @@ from uuid import UUID
 
 import httpx
 
+from qzdap_kernel.error_codes import ErrorCode
+
 
 class HttpSandboxRuntimeClient:
     def __init__(
@@ -41,7 +43,7 @@ class HttpSandboxRuntimeClient:
         if not self._base_url:
             return {
                 "status": "failed",
-                "error_code": "SANDBOX_UNAVAILABLE",
+                "error_code": ErrorCode.SANDBOX_UNAVAILABLE.value,
                 "error_message": "sandbox_runtime_url is empty",
                 "stdout": "",
                 "stderr": "",
@@ -73,7 +75,7 @@ class HttpSandboxRuntimeClient:
                 if response.headers.get("content-type", "").startswith("application/json")
                 else {}
             )
-            code = "SANDBOX_HTTP_ERROR"
+            code = ErrorCode.SANDBOX_HTTP_ERROR.value
             if isinstance(detail, dict) and isinstance(detail.get("detail"), dict):
                 code = str(detail["detail"].get("code") or code)
             return {

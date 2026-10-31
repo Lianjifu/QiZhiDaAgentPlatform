@@ -39,6 +39,7 @@ from qzdap.modules.agent_runtime.adapter.persistence.models import (
     SessionTurnORM,
 )
 from qzdap_agent_runtime.gateway.replay import StoredEvent
+from qzdap_kernel.error_codes import ErrorCode
 
 _log = logging.getLogger(__name__)
 
@@ -135,7 +136,7 @@ class PostgresSessionJournal:
                     SessionTurnORM.started_at
                     < func.now() - text(f"INTERVAL '{CLAIM_STALE_MINUTES} minutes'"),
                 )
-                .values(status="failed", error_code="ZOMBIE_TAKEOVER")
+                .values(status="failed", error_code=ErrorCode.ZOMBIE_TAKEOVER.value)
             )
             return bool(result.rowcount)
 

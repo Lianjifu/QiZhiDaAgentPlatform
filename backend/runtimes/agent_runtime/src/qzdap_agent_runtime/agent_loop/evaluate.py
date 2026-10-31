@@ -24,6 +24,8 @@ from typing import Any, Literal
 
 from langchain_core.messages import SystemMessage
 
+from qzdap_kernel.error_codes import ErrorCode
+
 from .state import LoopState
 
 TerminationAction = Literal["continue", "suspend", "exit", "abort"]
@@ -73,7 +75,9 @@ class Evaluator:
         """**判定下一步** ✓（六条一起判 ✓ —— 顺序 = 硬闸门优先 ✓）。"""
         # ① 用户取消 —— 立刻中断 ✓（产出部分结果 ✓）
         if cancelled:
-            return Termination("abort", reason="用户取消了这一轮", error_code="TURN_CANCELLED")
+            return Termination(
+                "abort", reason="用户取消了这一轮", error_code=ErrorCode.TURN_CANCELLED.value
+            )
         # ② 步数闸门 ✓
         if state.step > self._max_steps:
             return Termination(
@@ -93,7 +97,7 @@ class Evaluator:
             return Termination(
                 "abort",
                 reason="上下文超出模型上限",
-                error_code="CONTEXT_TOO_LARGE",
+                error_code=ErrorCode.CONTEXT_TOO_LARGE.value,
             )
         # ⑤ 审批挂起 ✓（挂起优先于继续 ✓ —— §3.5 ✓）
         if state.pending_approval:
@@ -103,7 +107,7 @@ class Evaluator:
             return Termination(
                 "exit",
                 reason="相同工具连续空转",
-                error_code="TOOL_STALLED",
+                error_code=ErrorCode.TOOL_STALLED.value,
             )
         # ⑦ 没有工具调用 → 收尾 ✓
         if not state.tool_calls:

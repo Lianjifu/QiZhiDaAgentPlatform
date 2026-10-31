@@ -30,6 +30,7 @@ from qzdap.modules.tool.domain.errors import (
     ToolNotFound,
     UpstreamUnavailable,
 )
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
 
 
@@ -140,7 +141,7 @@ class BatchInvokeToolsUseCase:
                         tool_name=inp.tool_name,
                         status=500,
                         result=None,
-                        error={"code": "INTERNAL_ERROR", "message": str(outcome)},
+                        error={"code": ErrorCode.INTERNAL_ERROR.value, "message": str(outcome)},
                         latency_ms=None,
                     )
                 )
@@ -151,7 +152,7 @@ class BatchInvokeToolsUseCase:
                     tool_name=inp.tool_name,
                     status=500,
                     result=None,
-                    error={"code": "INTERNAL_ERROR", "message": "unknown outcome"},
+                    error={"code": ErrorCode.INTERNAL_ERROR.value, "message": "unknown outcome"},
                     latency_ms=None,
                 )
             )

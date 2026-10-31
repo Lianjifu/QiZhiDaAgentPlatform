@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from qzdap.modules.platform.domain.entities import Subscription
 from qzdap.modules.platform.domain.errors import PlanNotFound
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import BusinessRuleError
 from qzdap_kernel.ids import TenantId, UserId
 
@@ -33,7 +34,7 @@ def build(service: PlatformService) -> Any:
         if plan.status.value == "retired":
             raise BusinessRuleError(
                 message=f"plan {plan_code!r} is retired and cannot be assigned",
-                code="PLAN_RETIRED",
+                code=ErrorCode.PLAN_RETIRED.value,
             )
         existing = await service.subscription_repo.get_for_tenant(tenant_id=tenant_id)
         now = datetime.now(UTC)

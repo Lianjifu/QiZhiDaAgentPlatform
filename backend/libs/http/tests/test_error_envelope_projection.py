@@ -12,8 +12,8 @@ from httpx import ASGITransport, AsyncClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from qzdap_http.error_envelope import error_envelope_middleware
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import ForbiddenError
-from qzdap_schema.dtos.errors import ErrorCode
 
 
 def _app() -> FastAPI:
@@ -58,7 +58,7 @@ async def test_a_specific_message_is_never_replaced() -> None:
 
 async def test_the_projected_copy_is_used_for_a_known_code() -> None:
     """码已知 → 用它自己的投影文案（不是通用兜底）。"""
-    from qzdap_schema.dtos.errors import project_error
+    from qzdap_kernel.error_codes import project_error
 
     async with AsyncClient(
         transport=ASGITransport(app=_app()), base_url="http://testserver"

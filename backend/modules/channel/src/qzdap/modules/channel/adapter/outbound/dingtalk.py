@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from qzdap.modules.channel.application.ports import OutboundAdapter
 from qzdap.modules.channel.domain.errors import ChannelDeliveryFailed
 from qzdap_agent_runtime.gateway.types import ChannelType
-from qzdap_schema.dtos.errors import ErrorCode
+from qzdap_kernel.error_codes import ErrorCode
 
 if TYPE_CHECKING:
     import httpx

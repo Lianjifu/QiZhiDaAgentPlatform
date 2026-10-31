@@ -8,6 +8,7 @@ from qzdap.modules.agent_runtime.adapter.sandbox.http_client import (
     HttpSandboxRuntimeClient,
 )
 from qzdap.modules.agent_runtime.application.ports import SandboxPort
+from qzdap_kernel.error_codes import ErrorCode
 
 SANDBOX_EXEC_NAME = "sandbox_exec"
 DEFAULT_IMAGE = "qzdap/sandbox-python:latest"
@@ -40,7 +41,7 @@ class SandboxRuntimeAdapter(SandboxPort):
         if language not in {"python", "shell"}:
             return {
                 "ok": False,
-                "error_code": "SANDBOX_BAD_LANGUAGE",
+                "error_code": ErrorCode.SANDBOX_BAD_LANGUAGE.value,
                 "error_message": "language must be python or shell",
                 "call_id": str(call_id),
             }

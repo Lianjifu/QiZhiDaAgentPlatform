@@ -17,6 +17,7 @@ from qzdap.modules.governance.domain.value_objects import (
     PolicyEffect,
     PolicySubject,
 )
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import (
     ApprovalId,
     AuditLogId,
@@ -163,12 +164,12 @@ class Approval:
         if self.status is not ApprovalStatus.PENDING:
             raise ApprovalAlreadyDecided(
                 f"approval {self.id} already {self.status.value}",
-                code="APPROVAL_ALREADY_DECIDED",
+                code=ErrorCode.APPROVAL_ALREADY_DECIDED.value,
             )
         if approver_id == self.requester_id:
             raise ApproverMustDiffer(
                 "approver must differ from requester",
-                code="APPROVER_MUST_DIFFER",
+                code=ErrorCode.APPROVER_MUST_DIFFER.value,
             )
         ts = now or _utcnow()
         return Approval(
@@ -201,12 +202,12 @@ class Approval:
         if self.status is not ApprovalStatus.PENDING:
             raise ApprovalAlreadyDecided(
                 f"approval {self.id} already {self.status.value}",
-                code="APPROVAL_ALREADY_DECIDED",
+                code=ErrorCode.APPROVAL_ALREADY_DECIDED.value,
             )
         if approver_id == self.requester_id:
             raise ApproverMustDiffer(
                 "denier must differ from requester",
-                code="APPROVER_MUST_DIFFER",
+                code=ErrorCode.APPROVER_MUST_DIFFER.value,
             )
         ts = now or _utcnow()
         new_payload = dict(self.payload)
@@ -233,7 +234,7 @@ class Approval:
         if self.status is not ApprovalStatus.PENDING:
             raise ApprovalAlreadyDecided(
                 f"approval {self.id} already {self.status.value}",
-                code="APPROVAL_ALREADY_DECIDED",
+                code=ErrorCode.APPROVAL_ALREADY_DECIDED.value,
             )
         ts = now or _utcnow()
         return Approval(

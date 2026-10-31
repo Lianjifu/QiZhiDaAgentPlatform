@@ -1077,8 +1077,8 @@ async def test_a_known_error_code_is_projected_into_the_web_copy() -> None:
     ⚠️ 轮次行里存的仍是技术细节（`str(exc)`）—— 那是给日志/运维看的 ✓；
     气泡给用户看的是人话 ✓。
     """
+    from qzdap_kernel.error_codes import ErrorCode, project_error
     from qzdap_kernel.errors import ExternalServiceError
-    from qzdap_schema.dtos.errors import ErrorCode, project_error
 
     tid, wid, uid = TenantId(uuid4()), WorkspaceId(uuid4()), UserId(uuid4())
     agent = CatalogAgent.create(

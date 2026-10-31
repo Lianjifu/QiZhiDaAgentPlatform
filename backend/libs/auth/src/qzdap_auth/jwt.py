@@ -13,8 +13,8 @@ from uuid import UUID, uuid4
 
 import jwt
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AuthenticationError
-from qzdap_schema.dtos.errors import ErrorCode
 
 
 @dataclass(slots=True, frozen=True)

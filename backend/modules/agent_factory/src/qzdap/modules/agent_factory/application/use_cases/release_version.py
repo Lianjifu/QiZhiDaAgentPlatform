@@ -41,6 +41,7 @@ from qzdap.modules.agent_factory.domain.errors import (
 )
 from qzdap.modules.agent_factory.domain.events import AgentReleased
 from qzdap.modules.agent_factory.domain.value_objects import AgentVersionStatus
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import (
     AgentTemplateId,
     AgentVersionId,
@@ -103,7 +104,7 @@ class ReleaseAgentVersionUseCase:
         if version.status is not AgentVersionStatus.PUBLISHED:
             raise EvalGateFailed(
                 f"version {version.version_tag} is not published (status={version.status.value!r})",
-                code="EVAL_GATE_FAILED",
+                code=ErrorCode.EVAL_GATE_FAILED.value,
                 status=422,
             )
 
@@ -116,7 +117,7 @@ class ReleaseAgentVersionUseCase:
         if run is None:
             raise EvalGateFailed(
                 f"no passed eval run for version {version.version_tag}",
-                code="EVAL_GATE_FAILED",
+                code=ErrorCode.EVAL_GATE_FAILED.value,
                 status=422,
             )
 
@@ -126,7 +127,7 @@ class ReleaseAgentVersionUseCase:
             raise EvalGateFailed(
                 f"eval run {run.id} score={score_str} < "
                 f"threshold={self.eval_score_min:.2f} or not completed",
-                code="EVAL_GATE_FAILED",
+                code=ErrorCode.EVAL_GATE_FAILED.value,
                 status=422,
             )
 

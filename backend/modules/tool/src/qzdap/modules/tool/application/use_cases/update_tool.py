@@ -11,6 +11,7 @@ from qzdap.modules.tool.domain import (
     ToolVersionMismatch,
 )
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import TenantId, ToolId
 
 
@@ -39,7 +40,7 @@ class UpdateToolUseCase:
         if expected_version is not None and tool.version != expected_version:
             raise ToolVersionMismatch(
                 f"tool {tool_id} version mismatch: expected {expected_version}, got {tool.version}",
-                code="TOOL_VERSION_MISMATCH",
+                code=ErrorCode.TOOL_VERSION_MISMATCH.value,
             )
 
         new_ops: list[SpecOperation] | None = None

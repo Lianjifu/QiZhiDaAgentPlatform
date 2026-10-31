@@ -22,6 +22,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError
 
 _NONCE_LEN: Final = 12
@@ -31,17 +32,17 @@ _VALID_KEY_LENS: Final = frozenset({16, 24, 32})
 class CryptoError(AppError):
     """Base for AES-GCM crypto failures."""
 
-    code = "CRYPTO_ERROR"
+    code = ErrorCode.CRYPTO_ERROR.value
     status = 500
 
 
 class InvalidKey(CryptoError):
-    code = "INVALID_KEY"
+    code = ErrorCode.INVALID_KEY.value
     status = 422
 
 
 class InvalidCiphertext(CryptoError):
-    code = "INVALID_CIPHERTEXT"
+    code = ErrorCode.INVALID_CIPHERTEXT.value
     status = 422
 
 
@@ -50,7 +51,7 @@ def generate_key(length_bits: int = 256) -> bytes:
     if length_bits not in (128, 192, 256):
         raise InvalidKey(
             f"key length must be 128/192/256 bits; got {length_bits}",
-            code="INVALID_KEY",
+            code=ErrorCode.INVALID_KEY.value,
         )
     return secrets.token_bytes(length_bits // 8)
 
@@ -69,7 +70,7 @@ def encrypt(
     if len(key) not in _VALID_KEY_LENS:
         raise InvalidKey(
             f"AES-GCM key must be 128/192/256-bit; got {len(key) * 8}-bit",
-            code="INVALID_KEY",
+            code=ErrorCode.INVALID_KEY.value,
         )
     nonce = secrets.token_bytes(_NONCE_LEN)
     aesgcm = AESGCM(key)
@@ -87,12 +88,12 @@ def decrypt(
     if len(blob) < _NONCE_LEN + 16:
         raise InvalidCiphertext(
             "ciphertext too short",
-            code="INVALID_CIPHERTEXT",
+            code=ErrorCode.INVALID_CIPHERTEXT.value,
         )
     if len(key) not in _VALID_KEY_LENS:
         raise InvalidKey(
             f"AES-GCM key must be 128/192/256-bit; got {len(key) * 8}-bit",
-            code="INVALID_KEY",
+            code=ErrorCode.INVALID_KEY.value,
         )
     nonce, ct_with_tag = blob[:_NONCE_LEN], blob[_NONCE_LEN:]
     try:
@@ -100,7 +101,7 @@ def decrypt(
     except InvalidTag as exc:
         raise InvalidCiphertext(
             "authentication tag mismatch (wrong key or tampered ciphertext)",
-            code="INVALID_CIPHERTEXT",
+            code=ErrorCode.INVALID_CIPHERTEXT.value,
         ) from exc
 
 
@@ -121,17 +122,17 @@ def derive_key(
     if not passphrase:
         raise InvalidKey(
             "passphrase must be non-empty",
-            code="INVALID_KEY",
+            code=ErrorCode.INVALID_KEY.value,
         )
     if length not in (16, 24, 32):
         raise InvalidKey(
             f"derived key length must be 16/24/32 bytes; got {length}",
-            code="INVALID_KEY",
+            code=ErrorCode.INVALID_KEY.value,
         )
     if not salt:
         raise InvalidKey(
             "salt must be non-empty",
-            code="INVALID_KEY",
+            code=ErrorCode.INVALID_KEY.value,
         )
     kdf = Argon2id(
         salt=salt,

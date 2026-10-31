@@ -13,6 +13,7 @@ from qzdap.modules.tool.domain import (
     ToolProtocol,
 )
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import TenantId, ToolId, UserId, WorkspaceId
 
 
@@ -38,7 +39,7 @@ class RegisterToolUseCase:
         if existing is not None:
             raise ToolAlreadyExists(
                 f"tool {name!r} already exists in tenant",
-                code="TOOL_ALREADY_EXISTS",
+                code=ErrorCode.TOOL_ALREADY_EXISTS.value,
             )
 
         operations: list[SpecOperation] = Tool.extract_operations(protocol=protocol, spec=spec)

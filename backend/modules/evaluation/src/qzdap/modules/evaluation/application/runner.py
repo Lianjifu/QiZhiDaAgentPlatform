@@ -35,6 +35,7 @@ from qzdap.modules.evaluation.domain.events import (
     EvalRunStarted,
 )
 from qzdap.modules.evaluation.domain.value_objects import EvalRunStatus
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError
 
 logger = logging.getLogger(__name__)
@@ -216,7 +217,7 @@ class EvalRunner:
                         run_id=errored.id,
                         tenant_id=errored.tenant_id,
                         workspace_id=errored.workspace_id,
-                        error_code="RUNNER_ERROR",
+                        error_code=ErrorCode.RUNNER_ERROR.value,
                         error_message=error_message,
                         failed_at=errored.completed_at or errored.updated_at,  # type: ignore[arg-type]
                     )

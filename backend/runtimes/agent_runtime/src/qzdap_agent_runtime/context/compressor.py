@@ -32,8 +32,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Protocol, runtime_checkable
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError
-from qzdap_schema.dtos.errors import ErrorCode
 
 from .tokens import estimate_message_tokens
 

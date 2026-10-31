@@ -9,6 +9,7 @@ raised by ``ReleaseAgentVersionUseCase``; that error lives in
 
 from __future__ import annotations
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import (
     AppError,
     BusinessRuleError,
@@ -23,48 +24,50 @@ class AgentFactoryError(AppError):
 
 
 class AgentTemplateNotFound(AgentFactoryError, NotFoundError):
-    code = "AGENT_TEMPLATE_NOT_FOUND"
+    code = ErrorCode.AGENT_TEMPLATE_NOT_FOUND.value
 
 
 class AgentVersionNotFound(AgentFactoryError, NotFoundError):
-    code = "AGENT_VERSION_NOT_FOUND"
+    code = ErrorCode.AGENT_VERSION_NOT_FOUND.value
 
 
 class ReleaseNotFound(AgentFactoryError, NotFoundError):
-    code = "RELEASE_NOT_FOUND"
+    code = ErrorCode.RELEASE_NOT_FOUND.value
 
 
 class AgentTemplateNameConflict(AgentFactoryError, ConflictError):
-    code = "AGENT_TEMPLATE_NAME_CONFLICT"
+    code = ErrorCode.AGENT_TEMPLATE_NAME_CONFLICT.value
     status = 409
 
 
 class AgentVersionTagConflict(AgentFactoryError, ConflictError):
-    code = "AGENT_VERSION_TAG_CONFLICT"
+    code = ErrorCode.AGENT_VERSION_TAG_CONFLICT.value
     status = 409
 
 
 class AgentVersionImmutable(AgentFactoryError):
     """Raised when a caller attempts to mutate a non-draft version."""
 
-    code = "AGENT_VERSION_IMMUTABLE"
+    code = ErrorCode.AGENT_VERSION_IMMUTABLE.value
     status = 422
 
 
 class AgentVersionInvalidTransition(AgentFactoryError):
     """Raised on a disallowed status transition (e.g. released → draft)."""
 
-    code = "AGENT_VERSION_INVALID_TRANSITION"
+    code = ErrorCode.AGENT_VERSION_INVALID_TRANSITION.value
     status = 422
 
 
 class AgentFactoryPolicyDenied(AgentFactoryError, ForbiddenError):
-    code = "AGENT_FACTORY_POLICY_DENIED"
+    code = ErrorCode.AGENT_FACTORY_POLICY_DENIED.value
     status = 403
 
 
 # Re-export for callers — keeps them out of ``qzdap_kernel`` direct deps.
-EvalGateFailed = BusinessRuleError  # signature: (message, *, code="EVAL_GATE_FAILED", status=422)
+EvalGateFailed = (
+    BusinessRuleError  # signature: (message, *, code=ErrorCode.EVAL_GATE_FAILED.value, status=422)
+)
 
 
 __all__ = [

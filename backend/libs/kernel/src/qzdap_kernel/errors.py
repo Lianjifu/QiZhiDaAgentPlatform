@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from qzdap_kernel.error_codes import ErrorCode
+
 
 @dataclass(slots=True)
 class ErrorEnvelope:
@@ -45,7 +47,7 @@ class AppError(Exception):
     Subclasses set a default status. Callers may override.
     """
 
-    code: str = "INTERNAL_ERROR"
+    code: str = ErrorCode.INTERNAL_ERROR.value
     status: int = 500
 
     def __init__(
@@ -75,12 +77,12 @@ class AppError(Exception):
 
 
 class ValidationError(AppError):
-    code = "VALIDATION_ERROR"
+    code = ErrorCode.VALIDATION_ERROR.value
     status = 400
 
 
 class AuthenticationError(AppError):
-    code = "AUTHENTICATION_FAILED"
+    code = ErrorCode.AUTHENTICATION_FAILED.value
     status = 401
 
 
@@ -103,7 +105,7 @@ class ActionDeniedError(ForbiddenError):
     is the policy's human-readable explanation.
     """
 
-    code = "ACTION_DENIED"
+    code = ErrorCode.ACTION_DENIED.value
     status = 403
 
     def __init__(self, reason: str = "", **kwargs: Any) -> None:
@@ -120,7 +122,7 @@ class ApprovalRequiredError(AppError):
     has been granted.
     """
 
-    code = "APPROVAL_REQUIRED"
+    code = ErrorCode.APPROVAL_REQUIRED.value
     status = 202
 
     def __init__(self, approval_id: str = "", **kwargs: Any) -> None:
@@ -131,7 +133,7 @@ class ApprovalRequiredError(AppError):
 
 
 class NotFoundError(AppError):
-    code = "NOT_FOUND"
+    code = ErrorCode.NOT_FOUND.value
     status = 404
 
 
@@ -145,19 +147,19 @@ class BusinessRuleError(AppError):
     EVAL_GATE_FAILED, TENANT_DENIED when forbidden, SANDBOX_TIMEOUT, etc.).
     """
 
-    code = "BUSINESS_RULE_VIOLATED"
+    code = ErrorCode.BUSINESS_RULE_VIOLATED.value
     status = 422
 
 
 class RateLimitError(AppError):
-    code = "RATE_LIMITED"
+    code = ErrorCode.RATE_LIMITED.value
     status = 429
 
 
 class ExternalServiceError(AppError):
     """Upstream system failed (LLM, sandbox, third-party API)."""
 
-    code = "EXTERNAL_SERVICE_ERROR"
+    code = ErrorCode.EXTERNAL_SERVICE_ERROR.value
     status = 502
 
 
@@ -166,5 +168,5 @@ class InternalError(AppError):
     operators can find the originating site via logs.
     """
 
-    code = "INTERNAL_ERROR"
+    code = ErrorCode.INTERNAL_ERROR.value
     status = 500

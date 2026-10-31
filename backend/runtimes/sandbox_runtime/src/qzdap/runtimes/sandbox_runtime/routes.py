@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from qzdap.runtimes.sandbox_runtime.service import JobRejected, JobService
 from qzdap.runtimes.sandbox_runtime.settings import Settings
+from qzdap_kernel.error_codes import ErrorCode
 
 
 def _service(request: Request) -> JobService:
@@ -62,7 +63,7 @@ def build_router() -> APIRouter:
         except ValueError as exc:
             raise HTTPException(
                 status_code=400,
-                detail={"code": "SANDBOX_BAD_PATH", "message": str(exc)},
+                detail={"code": ErrorCode.SANDBOX_BAD_PATH.value, "message": str(exc)},
             ) from exc
         return result.to_dict()
 

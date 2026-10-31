@@ -22,6 +22,7 @@ from uuid import UUID, uuid4
 from fastapi import FastAPI
 
 from qzdap.modules.memory.domain.entities import EMBEDDING_DIM
+from qzdap_kernel.error_codes import ErrorCode
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
@@ -435,7 +436,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             if agent is None:
                 raise AppError(
                     "evaluation agent not found",
-                    code="EVAL_AGENT_NOT_FOUND",
+                    code=ErrorCode.EVAL_AGENT_NOT_FOUND.value,
                     status=404,
                 )
             if agent_version:
@@ -446,7 +447,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 if not version or not isinstance(version.get("snapshot"), dict):
                     raise AppError(
                         "evaluation version snapshot missing",
-                        code="EVAL_VERSION_MISSING",
+                        code=ErrorCode.EVAL_VERSION_MISSING.value,
                         status=422,
                     )
                 agent = replace(agent.apply_patch(version["snapshot"]), version=agent_version)
@@ -472,7 +473,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 if chunk.kind == "approval_required":
                     raise AppError(
                         "evaluation requires human approval",
-                        code="EVAL_APPROVAL_REQUIRED",
+                        code=ErrorCode.EVAL_APPROVAL_REQUIRED.value,
                         status=409,
                     )
                 if chunk.kind == "error":

@@ -42,6 +42,7 @@ from qzdap.modules.governance.domain.policy_match import action_precedence, matc
 from qzdap.modules.governance.domain.value_objects import (
     PolicyEffect,
 )
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import DecisionEventId, UserId
 from qzdap_vault.actor import ActorContext
 
@@ -226,7 +227,7 @@ class PolicyEvaluator:
         if actor.principal_id is None:
             raise InvalidApproval(
                 "cannot require approval for an anonymous actor",
-                code="INVALID_APPROVAL",
+                code=ErrorCode.INVALID_APPROVAL.value,
             )
         now = self._clock.now()
         expires_at = now + timedelta(seconds=self._approval_ttl)

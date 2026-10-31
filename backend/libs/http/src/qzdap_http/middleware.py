@@ -22,6 +22,7 @@ from qzdap_auth.middleware import AuthMiddleware
 from qzdap_http.cors import CORSMiddlewareConfig
 from qzdap_http.error_envelope import error_envelope_middleware
 from qzdap_http.rate_limit import RateLimitMiddleware, RateLimitPolicy
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AuthenticationError, ForbiddenError
 from qzdap_observability.middleware import ObservabilityMiddleware
 
@@ -76,7 +77,7 @@ class TenantGuardMiddleware:
                 if UUID(raw) != bound:
                     raise ForbiddenError(
                         "X-Tenant-Id header does not match authenticated tenant",
-                        code="TENANT_HEADER_MISMATCH",
+                        code=ErrorCode.TENANT_HEADER_MISMATCH.value,
                     )
             except ValueError:
                 # Malformed UUID: let the route layer emit a 422.
@@ -111,7 +112,7 @@ class WorkspaceGuardMiddleware:
                 if UUID(raw) != bound:
                     raise ForbiddenError(
                         "X-Workspace-Id header does not match authenticated workspace",
-                        code="WORKSPACE_HEADER_MISMATCH",
+                        code=ErrorCode.WORKSPACE_HEADER_MISMATCH.value,
                     )
             except ValueError:
                 pass
@@ -169,7 +170,9 @@ class AuthRequiredMiddleware:
         if not self._is_public(path):
             state = scope.get("state") or {}
             if state.get("principal") is None:
-                raise AuthenticationError("missing bearer token", code="MISSING_TOKEN")
+                raise AuthenticationError(
+                    "missing bearer token", code=ErrorCode.MISSING_TOKEN.value
+                )
 
         await self.app(scope, receive, send)
 

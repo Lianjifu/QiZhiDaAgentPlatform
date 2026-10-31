@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError, ConflictError, NotFoundError
 
 
@@ -10,23 +11,23 @@ class PlatformError(AppError):
 
 
 class PlanNotFound(PlatformError, NotFoundError):
-    code = "PLAN_NOT_FOUND"
+    code = ErrorCode.PLAN_NOT_FOUND.value
 
 
 class PlanAlreadyExists(PlatformError, ConflictError):
-    code = "PLAN_ALREADY_EXISTS"
+    code = ErrorCode.PLAN_ALREADY_EXISTS.value
 
 
 class SubscriptionInvalidTransition(PlatformError, ConflictError):
-    code = "SUBSCRIPTION_INVALID_TRANSITION"
+    code = ErrorCode.SUBSCRIPTION_INVALID_TRANSITION.value
 
 
 class TenantSettingNotFound(PlatformError, NotFoundError):
-    code = "TENANT_SETTING_NOT_FOUND"
+    code = ErrorCode.TENANT_SETTING_NOT_FOUND.value
 
 
 class TenantSettingConflict(PlatformError, ConflictError):
-    code = "TENANT_SETTING_CONFLICT"
+    code = ErrorCode.TENANT_SETTING_CONFLICT.value
 
 
 __all__ = [

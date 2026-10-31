@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import ExternalServiceError
 from qzdap_llm.client import ChatRequest, ChatResponse, LLMChunk, LLMClient
 
@@ -42,7 +43,9 @@ class LLMRouter(LLMClient):
                 close = getattr(stream, "aclose", None)
                 if close is not None:
                     await close()
-        raise last_exc or ExternalServiceError("no provider succeeded", code="LLM_ALL_FAILED")
+        raise last_exc or ExternalServiceError(
+            "no provider succeeded", code=ErrorCode.LLM_ALL_FAILED.value
+        )
 
     async def aclose(self) -> None:
         for client in self._chain:
@@ -60,4 +63,6 @@ class LLMRouter(LLMClient):
             except ExternalServiceError as e:
                 last_exc = e
                 continue
-        raise last_exc or ExternalServiceError("no provider succeeded", code="LLM_ALL_FAILED")
+        raise last_exc or ExternalServiceError(
+            "no provider succeeded", code=ErrorCode.LLM_ALL_FAILED.value
+        )

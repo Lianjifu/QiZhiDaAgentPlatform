@@ -52,7 +52,7 @@ from qzdap_agent_runtime.gateway.normalizer import (
     NormalizerContext,
 )
 from qzdap_agent_runtime.gateway.replay import EventStore, ReplayResult
-from qzdap_schema.dtos.errors import ErrorCode
+from qzdap_kernel.error_codes import ErrorCode
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

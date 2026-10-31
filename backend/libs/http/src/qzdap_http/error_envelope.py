@@ -11,9 +11,9 @@ import json
 from collections.abc import Awaitable, Callable
 
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_kernel.error_codes import ErrorCode, project_error_message
 from qzdap_kernel.errors import AppError, InternalError
 from qzdap_observability.logging import get_logger
-from qzdap_schema.dtos.errors import project_error_message
 
 _log = get_logger("http.error")
 
@@ -33,7 +33,7 @@ async def error_envelope_middleware(
         return _json_response(env.to_dict(), env.status)
     except Exception:
         _log.exception("unhandled.exception")
-        env = InternalError("internal error", code="INTERNAL_ERROR").to_envelope(
+        env = InternalError("internal error", code=ErrorCode.INTERNAL_ERROR.value).to_envelope(
             trace_id=current_trace_id()
         )
         return _json_response(env.to_dict(), 500)

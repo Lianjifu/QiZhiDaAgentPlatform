@@ -11,6 +11,7 @@ from qzdap.modules.agent_runtime.application.ports import (
     SkillPort,
     ToolPort,
 )
+from qzdap_kernel.error_codes import ErrorCode
 
 
 def parse_arguments(raw: Any) -> dict[str, Any]:
@@ -87,7 +88,7 @@ async def execute_tool(
             )
         return {
             "ok": False,
-            "error_code": "TOOL_NOT_FOUND",
+            "error_code": ErrorCode.TOOL_NOT_FOUND.value,
             "error_message": f"tool {name} is not bound",
             "call_id": str(call_id),
         }

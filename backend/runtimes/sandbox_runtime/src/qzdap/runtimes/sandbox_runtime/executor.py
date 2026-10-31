@@ -14,6 +14,7 @@ import httpx
 
 from qzdap.runtimes.sandbox_runtime.jobs import JobResult, SandboxJob
 from qzdap.runtimes.sandbox_runtime.settings import Settings
+from qzdap_kernel.error_codes import ErrorCode
 
 MAX_OUTPUT_DEFAULT = 64 * 1024
 
@@ -59,7 +60,7 @@ class StubExecutor:
                 status="cancelled",
                 duration_ms=0,
                 runtime=self.runtime_name,
-                error_code="SANDBOX_CANCELLED",
+                error_code=ErrorCode.SANDBOX_CANCELLED.value,
             )
         if self.force_status == "timeout":
             return JobResult(
@@ -67,7 +68,7 @@ class StubExecutor:
                 status="timeout",
                 duration_ms=job.timeout_ms,
                 runtime=self.runtime_name,
-                error_code="SANDBOX_TIMEOUT",
+                error_code=ErrorCode.SANDBOX_TIMEOUT.value,
             )
         stdout = job.files.get("stdout.txt")
         if stdout is None:
@@ -86,7 +87,7 @@ class StubExecutor:
                 stderr="stub failure",
                 duration_ms=duration_ms,
                 runtime=self.runtime_name,
-                error_code="SANDBOX_FAILED",
+                error_code=ErrorCode.SANDBOX_FAILED.value,
             )
         return JobResult(
             id=job.id,
@@ -157,7 +158,7 @@ class GvisorExecutor:
                     status="timeout",
                     duration_ms=int((time.monotonic() - started) * 1000),
                     runtime=self.runtime_name,
-                    error_code="SANDBOX_TIMEOUT",
+                    error_code=ErrorCode.SANDBOX_TIMEOUT.value,
                     error_message="job exceeded timeout_ms",
                 )
             payload = waited.json() if waited.status_code < 400 else {}

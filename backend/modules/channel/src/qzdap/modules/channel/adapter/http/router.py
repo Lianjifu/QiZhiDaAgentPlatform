@@ -30,8 +30,8 @@ from qzdap.modules.channel.domain.errors import ChannelNotFound
 from qzdap.modules.channel.domain.value_objects import ChannelStatus
 from qzdap_agent_runtime.gateway.types import ChannelType
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import ChannelId, TenantId
-from qzdap_schema.dtos.errors import ErrorCode
 
 if TYPE_CHECKING:
     from qzdap.modules.channel.application.ports import OutboundAdapter

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import (
     AppError,
     ConflictError,
@@ -9,7 +10,6 @@ from qzdap_kernel.errors import (
     NotFoundError,
     ValidationError,
 )
-from qzdap_schema.dtos.errors import ErrorCode
 
 
 class PolicyError(AppError):
@@ -25,22 +25,22 @@ class PolicyError(AppError):
 
 
 class PolicyNotFound(PolicyError, NotFoundError):
-    code = "POLICY_NOT_FOUND"
+    code = ErrorCode.POLICY_NOT_FOUND.value
     status = 404
 
 
 class PolicyAlreadyExists(PolicyError, ConflictError):
-    code = "POLICY_ALREADY_EXISTS"
+    code = ErrorCode.POLICY_ALREADY_EXISTS.value
     status = 409
 
 
 class ApprovalNotFound(PolicyError, NotFoundError):
-    code = "APPROVAL_NOT_FOUND"
+    code = ErrorCode.APPROVAL_NOT_FOUND.value
     status = 404
 
 
 class ApprovalAlreadyDecided(PolicyError, ConflictError):
-    code = "APPROVAL_ALREADY_DECIDED"
+    code = ErrorCode.APPROVAL_ALREADY_DECIDED.value
     status = 409
 
 
@@ -50,17 +50,17 @@ class ApproverMustDiffer(PolicyError, ForbiddenError):
 
 
 class InvalidPolicy(PolicyError, ValidationError):
-    code = "INVALID_POLICY"
+    code = ErrorCode.INVALID_POLICY.value
     status = 422
 
 
 class InvalidApproval(PolicyError, ValidationError):
-    code = "INVALID_APPROVAL"
+    code = ErrorCode.INVALID_APPROVAL.value
     status = 422
 
 
 class ApprovalExpired(PolicyError, ConflictError):
-    code = "APPROVAL_EXPIRED"
+    code = ErrorCode.APPROVAL_EXPIRED.value
     status = 409
 
 
@@ -70,7 +70,7 @@ class DataSubjectFailed(PolicyError, ValidationError):
     ⚠️ **不是「没找到」** ✓ —— 是「**做了但没做完**」✓ → 422 ✓。
     """
 
-    code = "DATA_SUBJECT_FAILED"
+    code = ErrorCode.DATA_SUBJECT_FAILED.value
     status = 422
 
 

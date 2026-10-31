@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from qzdap_schema.dtos.errors import try_project_error
+from qzdap_kernel.error_codes import try_project_error
 from qzdap_schema.dtos.turn import (
     ApprovalRequiredChunk,
     ArtifactReadyChunk,

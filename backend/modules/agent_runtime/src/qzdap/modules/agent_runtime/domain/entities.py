@@ -22,6 +22,7 @@ from qzdap.modules.agent_runtime.domain.events import (
     TurnStarted,
 )
 from qzdap_agent_runtime.session.state import SessionStatus
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import (
     AgentId,
     SessionId,
@@ -101,7 +102,7 @@ class Session:
         if self.status is SessionStatus.CLOSED:
             raise SessionClosedError(
                 f"session {self.id} already closed",
-                code="SESSION_CLOSED",
+                code=ErrorCode.SESSION_CLOSED.value,
             )
         return type(self)(
             id=self.id,

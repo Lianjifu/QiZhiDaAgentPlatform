@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError, NotFoundError
 
 
@@ -10,26 +11,26 @@ class SkillError(AppError):
 
 
 class SkillNotFound(SkillError, NotFoundError):
-    code = "SKILL_NOT_FOUND"
+    code = ErrorCode.SKILL_NOT_FOUND.value
 
 
 class SkillDisabled(SkillError):
-    code = "SKILL_DISABLED"
+    code = ErrorCode.SKILL_DISABLED.value
     status = 409
 
 
 class SkillNeedsConfirm(SkillError):
-    code = "SKILL_NEEDS_CONFIRM"
+    code = ErrorCode.SKILL_NEEDS_CONFIRM.value
     status = 409
 
 
 class SkillNotExecutable(SkillError):
-    code = "SKILL_NOT_EXECUTABLE"
+    code = ErrorCode.SKILL_NOT_EXECUTABLE.value
     status = 409
 
 
 class SkillSandboxUnavailable(SkillError):
-    code = "SANDBOX_UNAVAILABLE"
+    code = ErrorCode.SANDBOX_UNAVAILABLE.value
     status = 503
 
 

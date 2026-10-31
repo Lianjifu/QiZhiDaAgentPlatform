@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError, NotFoundError
 
 
@@ -10,7 +11,7 @@ class MemoryError(AppError):
 
 
 class MemoryNotFound(MemoryError, NotFoundError):
-    code = "MEMORY_NOT_FOUND"
+    code = ErrorCode.MEMORY_NOT_FOUND.value
 
 
 __all__ = ["MemoryError", "MemoryNotFound"]

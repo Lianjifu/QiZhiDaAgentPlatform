@@ -40,6 +40,7 @@ from qzdap_agent_runtime.memory.policy import (
 from qzdap_agent_runtime.memory.promotion import KnowledgePromotionPort
 from qzdap_agent_runtime.memory.refine import BufferPort, SessionBufferView
 from qzdap_agent_runtime.memory.session_info import SessionInfoPort
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import ConflictError, ValidationError
 
 _log = getLogger(__name__)
@@ -207,7 +208,7 @@ class MemoryAdminService:
         if expected is not None and int(expected) != int(item.version or 1):
             raise ConflictError(
                 "memory fact was modified by someone else",
-                code="MEMORY_VERSION_CONFLICT",
+                code=ErrorCode.MEMORY_VERSION_CONFLICT.value,
                 details={
                     "expected": int(expected),
                     "current": int(item.version or 1),
@@ -228,7 +229,7 @@ class MemoryAdminService:
                 raise ValidationError(
                     "the edited content contains sensitive information "
                     f"({', '.join(verdict.kinds)}) — refused",
-                    code="MEMORY_SENSITIVE_CONTENT",
+                    code=ErrorCode.MEMORY_SENSITIVE_CONTENT.value,
                     details={"kinds": list(verdict.kinds)},
                 )
             siblings = await self._catalog.list_l2(workspace_id)
@@ -240,7 +241,7 @@ class MemoryAdminService:
             if duplicate.blocked:
                 raise ValidationError(
                     "这条记忆在工作区里已经存在 — 拒绝重复写入",
-                    code="MEMORY_DUPLICATE_CONTENT",
+                    code=ErrorCode.MEMORY_DUPLICATE_CONTENT.value,
                     details={"reason": duplicate.reason},
                 )
             item.value = new_value
@@ -364,13 +365,13 @@ class MemoryAdminService:
         if self._publisher is None:
             raise ValidationError(
                 "策略发布未接线（agent 目录不可用）—— 策略发不出去",
-                code="MEMORY_POLICY_PUBLISHER_MISSING",
+                code=ErrorCode.MEMORY_POLICY_PUBLISHER_MISSING.value,
             )
         # ⚠️ **工作区级写不了** ✓（L3 已退役 ✓ —— 决策 #1 ✓）→ 明确拒绝 ✓。
         if config.scope == "workspace":
             raise ValidationError(
                 "工作区级记忆写不了（L3 已退役）—— 团队知识走 knowledge 模块",
-                code="MEMORY_SCOPE_UNSUPPORTED",
+                code=ErrorCode.MEMORY_SCOPE_UNSUPPORTED.value,
             )
         published = await self._publisher.publish(
             tenant_id=tenant_id,

@@ -37,6 +37,7 @@ from qzdap.modules.self_evolution.domain.value_objects import (
     EvolveStatus,
     is_terminal,
 )
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import (
     EvolveCandidateId,
     TenantId,
@@ -101,7 +102,7 @@ class EvolutionCandidateService:
         if cand is None:
             raise EvolveCandidateNotFound(
                 f"candidate {candidate_id} not found",
-                code="EVOLVE_CANDIDATE_NOT_FOUND",
+                code=ErrorCode.EVOLVE_CANDIDATE_NOT_FOUND.value,
                 details={"candidate_id": str(candidate_id)},
             )
         return cand
@@ -163,7 +164,7 @@ class EvolutionCandidateService:
         if cand.status is not EvolveStatus.APPROVED:
             raise EvolveCandidateAlreadyDecided(
                 f"candidate {cand.id} must be APPROVED to apply, got {cand.status.value}",
-                code="EVOLVE_CANDIDATE_ALREADY_DECIDED",
+                code=ErrorCode.EVOLVE_CANDIDATE_ALREADY_DECIDED.value,
             )
         outcome = await self._guard.apply(tenant_id=tenant_id, candidate=cand)
         applied = cand.mark_applied(now=self._clock.now())
@@ -199,14 +200,14 @@ class EvolutionCandidateService:
         if cand.status is not EvolveStatus.PENDING:
             raise EvolveCandidateAlreadyDecided(
                 f"candidate {cand.id} already {cand.status.value}",
-                code="EVOLVE_CANDIDATE_ALREADY_DECIDED",
+                code=ErrorCode.EVOLVE_CANDIDATE_ALREADY_DECIDED.value,
             )
 
     def _ensure_not_expired(self, cand: EvolveCandidate) -> None:
         if cand.expires_at <= self._clock.now():
             raise EvolveCandidateAlreadyDecided(
                 f"candidate {cand.id} has expired",
-                code="EVOLVE_CANDIDATE_ALREADY_DECIDED",
+                code=ErrorCode.EVOLVE_CANDIDATE_ALREADY_DECIDED.value,
                 details={"expires_at": cand.expires_at.isoformat()},
             )
 

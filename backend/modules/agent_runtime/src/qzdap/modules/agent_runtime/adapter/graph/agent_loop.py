@@ -48,6 +48,7 @@ from qzdap_agent_runtime.ports import (
     ToolInvocationResult,
     ToolRuntimePort,
 )
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import ModelId, TenantId, WorkspaceId
 from qzdap_llm.client import ChatRequest
 from qzdap_observability.tracing import get_tracer
@@ -152,14 +153,16 @@ class ModuleToolRuntime(ToolRuntimePort):
         # ⚠️ **执行必须带真实 actor** ✓ —— 工具执行是**谁的权限**就得用**谁的
         # actor** ✗✗（用别人的身份调工具 ✗✗✗）。
         if not actor.actor_id:
-            return ToolInvocationResult(ok=False, error_code="TOOL_ACTOR_MISSING", is_error=True)
+            return ToolInvocationResult(
+                ok=False, error_code=ErrorCode.TOOL_ACTOR_MISSING.value, is_error=True
+            )
         if (
             self._tenant_id is not None
             and actor.tenant_id
             and actor.tenant_id != str(self._tenant_id)
         ):
             return ToolInvocationResult(
-                ok=False, error_code="TOOL_ACTOR_TENANT_MISMATCH", is_error=True
+                ok=False, error_code=ErrorCode.TOOL_ACTOR_TENANT_MISMATCH.value, is_error=True
             )
         arguments = dict(invocation.arguments or {})
         # ⚠️ **派生子会话的工具要父会话 id** ✓（旧路径由 runner 注入 ✓ ——

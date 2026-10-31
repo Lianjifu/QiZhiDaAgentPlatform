@@ -14,6 +14,7 @@ from qzdap.modules.observability_module.domain.value_objects import (
     RunStatus,
     RunType,
 )
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import BusinessRuleError
 
 if TYPE_CHECKING:
@@ -28,13 +29,13 @@ def build(service: ObservabilityService) -> Any:
             run_type = RunType(cmd["run_type"])
         except (KeyError, ValueError) as exc:
             raise BusinessRuleError(
-                message=f"invalid run_type: {exc}", code="RUN_TYPE_INVALID"
+                message=f"invalid run_type: {exc}", code=ErrorCode.RUN_TYPE_INVALID.value
             ) from exc
         try:
             status = RunStatus(cmd.get("status", "succeeded"))
         except ValueError as exc:
             raise BusinessRuleError(
-                message=f"invalid status: {exc}", code="RUN_STATUS_INVALID"
+                message=f"invalid status: {exc}", code=ErrorCode.RUN_STATUS_INVALID.value
             ) from exc
         record = RunRecord.from_event(
             tenant_id=cmd["tenant_id"],

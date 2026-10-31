@@ -6,6 +6,7 @@ wire-level identifiers the HTTP layer passes through to the client.
 
 from __future__ import annotations
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError, NotFoundError
 
 
@@ -14,37 +15,37 @@ class ToolError(AppError):
 
 
 class ToolNotFound(ToolError, NotFoundError):
-    code = "TOOL_NOT_FOUND"
+    code = ErrorCode.TOOL_NOT_FOUND.value
 
 
 class ToolAlreadyExists(ToolError):
-    code = "TOOL_ALREADY_EXISTS"
+    code = ErrorCode.TOOL_ALREADY_EXISTS.value
     status = 409
 
 
 class ToolVersionMismatch(ToolError):
     """Raised when an update's `If-Match` version doesn't match the row."""
 
-    code = "TOOL_VERSION_MISMATCH"
+    code = ErrorCode.TOOL_VERSION_MISMATCH.value
     status = 412
 
 
 class InvalidToolSpec(ToolError):
     """Raised when the registration spec is malformed or unsupported."""
 
-    code = "INVALID_TOOL_SPEC"
+    code = ErrorCode.INVALID_TOOL_SPEC.value
     status = 422
 
 
 class ToolDisabled(ToolError):
     """Raised when invocation targets a `enabled=False` tool."""
 
-    code = "TOOL_DISABLED"
+    code = ErrorCode.TOOL_DISABLED.value
     status = 409
 
 
 class ToolCallTimeout(ToolError):
-    code = "TOOL_CALL_TIMEOUT"
+    code = ErrorCode.TOOL_CALL_TIMEOUT.value
     status = 504
 
 
@@ -54,14 +55,14 @@ class ToolIdempotencyConflict(ToolError):
     ⚠️ **不静默返回旧结果** ✓ —— 那会让调用方以为「按新参数执行过了」✗✗。
     """
 
-    code = "TOOL_IDEMPOTENCY_CONFLICT"
+    code = ErrorCode.TOOL_IDEMPOTENCY_CONFLICT.value
     status = 409
 
 
 class ToolExecutionInProgress(ToolError):
     """**同一个幂等键的另一次调用还在跑** ✓ → 不重复执行 ✓。"""
 
-    code = "TOOL_IN_PROGRESS"
+    code = ErrorCode.TOOL_IN_PROGRESS.value
     status = 409
 
 
@@ -72,7 +73,7 @@ class ToolRateLimited(ToolError):
     信封里能带出去 ✓）。
     """
 
-    code = "TOOL_RATE_LIMITED"
+    code = ErrorCode.TOOL_RATE_LIMITED.value
     status = 429
 
     def __init__(self, message: str = "", *, retry_after_ms: int = 0, **kwargs) -> None:
@@ -82,5 +83,5 @@ class ToolRateLimited(ToolError):
 
 
 class UpstreamUnavailable(ToolError):
-    code = "UPSTREAM_UNAVAILABLE"
+    code = ErrorCode.UPSTREAM_UNAVAILABLE.value
     status = 502

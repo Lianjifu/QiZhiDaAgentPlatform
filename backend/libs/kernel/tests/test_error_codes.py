@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from qzdap_kernel.errors import AppError
-from qzdap_schema.dtos import ErrorCode
-from qzdap_schema.dtos.errors import (
+from qzdap_kernel.error_codes import (
     ERROR_PROJECTION,
+    ErrorCode,
     project_error,
     try_project_error,
 )
-from qzdap_schema.dtos.errors import ErrorCode as DirectErrorCode
+from qzdap_kernel.error_codes import ErrorCode as DirectErrorCode
+from qzdap_kernel.errors import AppError
 
 # ---------------------------------------------------------------------------
 # 既有错误码（与 kernel `AppError.code` 字面值一致）
@@ -165,12 +165,20 @@ def test_errorcode_unknown_value_raises() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_dtos_package_exports_errorcode() -> None:
-    """ErrorCode 必须从 `qzdap_schema.dtos` 直接可导入。"""
+def test_error_code_lives_in_kernel_not_schema() -> None:
+    """错误码住 **kernel** ✓ —— 与错误层级在一起 ✓（2026-10-31 搬的 ✓）。
+
+    ⚠️ `qzdap_schema` **不再持有错误码** ✓ —— 它只留线上的 DTO ✓
+    （否则 base 层就得反过来依赖上层 ✗）。
+    """
     assert ErrorCode is DirectErrorCode
-    from qzdap_schema.dtos import ErrorCode as PackageErrorCode
+    from qzdap_kernel.error_codes import ErrorCode as PackageErrorCode
 
     assert PackageErrorCode is ErrorCode
+
+    import importlib.util
+
+    assert importlib.util.find_spec("qzdap_schema.dtos.errors") is None
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +225,7 @@ def test_the_three_surfaces_can_say_different_things() -> None:
 
 def test_the_im_and_web_copy_fall_back_to_http_when_not_written() -> None:
     """少写一份文案不该让用户看到裸码。"""
-    from qzdap_schema.dtos.errors import ErrorCopy
+    from qzdap_kernel.error_codes import ErrorCopy
 
     only_http = ErrorCopy(http="只有 http")
     assert only_http.for_surface("im") == "只有 http"

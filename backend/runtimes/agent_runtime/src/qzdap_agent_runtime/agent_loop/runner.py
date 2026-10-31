@@ -29,6 +29,7 @@ from langchain_core.tools import BaseTool
 from pydantic import create_model
 
 from qzdap_kernel.digest import request_hash
+from qzdap_kernel.error_codes import ErrorCode
 
 from ..execution.tool_binding import (
     reset_current_actor,
@@ -344,7 +345,7 @@ class AgentLoopRunner:
             if approval.get("denied"):
                 yield LoopEvent(
                     kind="error",
-                    error_code="TOOL_DENIED",
+                    error_code=ErrorCode.TOOL_DENIED.value,
                     error_message=str(approval.get("reason") or "治理拒绝执行该工具"),
                 )
             return

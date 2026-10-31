@@ -3127,6 +3127,7 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "qzdap-kernel" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -3136,6 +3137,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pydantic-settings", specifier = ">=2.6.0" },
+    { name = "qzdap-kernel", editable = "libs/kernel" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
 ]
 

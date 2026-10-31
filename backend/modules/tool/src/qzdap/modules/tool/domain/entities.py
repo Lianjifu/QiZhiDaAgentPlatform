@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import TenantId, ToolCallId, ToolId, WorkspaceId
 
 if TYPE_CHECKING:
@@ -179,7 +180,7 @@ class Tool:
             if not isinstance(paths, dict):
                 raise InvalidToolSpec(
                     "openapi spec must contain a 'paths' object",
-                    code="INVALID_TOOL_SPEC",
+                    code=ErrorCode.INVALID_TOOL_SPEC.value,
                 )
             ops: list[SpecOperation] = []
             http_methods = {"get", "post", "put", "delete", "patch"}
@@ -187,7 +188,7 @@ class Tool:
                 if not isinstance(methods, dict):
                     raise InvalidToolSpec(
                         f"openapi paths[{path!r}] must be an object",
-                        code="INVALID_TOOL_SPEC",
+                        code=ErrorCode.INVALID_TOOL_SPEC.value,
                     )
                 for method, op in methods.items():
                     if method.lower() not in http_methods:
@@ -208,13 +209,13 @@ class Tool:
             if not isinstance(server_url, str) or not server_url:
                 raise InvalidToolSpec(
                     "mcp spec must contain a non-empty 'server_url'",
-                    code="INVALID_TOOL_SPEC",
+                    code=ErrorCode.INVALID_TOOL_SPEC.value,
                 )
             mcp_tool_name = spec.get("mcp_tool_name")
             if not isinstance(mcp_tool_name, str) or not mcp_tool_name:
                 raise InvalidToolSpec(
                     "mcp spec must contain a non-empty 'mcp_tool_name'",
-                    code="INVALID_TOOL_SPEC",
+                    code=ErrorCode.INVALID_TOOL_SPEC.value,
                 )
             # MCP exposes a single tool per registration row.
             return [
@@ -228,7 +229,7 @@ class Tool:
             return []
         raise InvalidToolSpec(
             f"unsupported protocol {protocol!r}",
-            code="INVALID_TOOL_SPEC",
+            code=ErrorCode.INVALID_TOOL_SPEC.value,
         )
 
     def raise_registered_event(self) -> ToolRegistered:

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from qzdap_auth.jwt import JWTVerifier
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AuthenticationError, ForbiddenError
 from qzdap_kernel.ids import TenantId, WorkspaceId
 from qzdap_kernel.principal import Principal, PrincipalType
@@ -65,7 +66,7 @@ async def get_principal(
     in a thread so it cannot block the event loop under concurrent load.
     """
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise AuthenticationError("missing bearer token", code="MISSING_TOKEN")
+        raise AuthenticationError("missing bearer token", code=ErrorCode.MISSING_TOKEN.value)
     token = authorization.split(" ", 1)[1].strip()
     claims = await asyncio.to_thread(verifier.verify, token)
     principal = _principal_from_jwt(claims, token)
@@ -79,7 +80,7 @@ def require_authenticated(_: AuthenticatedPrincipal) -> AuthenticatedPrincipal:
 def require_role(role: str):
     def _check(p: AuthenticatedPrincipal) -> AuthenticatedPrincipal:
         if not p.principal.has_role(role):
-            raise ForbiddenError(f"role {role} required", code="INSUFFICIENT_ROLE")
+            raise ForbiddenError(f"role {role} required", code=ErrorCode.INSUFFICIENT_ROLE.value)
         return p
 
     return _check
@@ -88,7 +89,7 @@ def require_role(role: str):
 def require_scope(scope: str):
     def _check(p: AuthenticatedPrincipal) -> AuthenticatedPrincipal:
         if not p.principal.has_scope(scope):
-            raise ForbiddenError(f"scope {scope} required", code="INSUFFICIENT_SCOPE")
+            raise ForbiddenError(f"scope {scope} required", code=ErrorCode.INSUFFICIENT_SCOPE.value)
         return p
 
     return _check

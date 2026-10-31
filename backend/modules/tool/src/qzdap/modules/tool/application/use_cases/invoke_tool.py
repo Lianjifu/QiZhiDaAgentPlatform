@@ -61,6 +61,7 @@ from qzdap.modules.tool.domain.errors import (
     UpstreamUnavailable,
 )
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import TenantId, ToolCallId, TurnId, UserId, WorkspaceId
 
 _log = logging.getLogger("qzdap.modules.tool")
@@ -230,10 +231,10 @@ class InvokeToolUseCase:
             return succeeded
         except (TimeoutError, httpx.TimeoutException):
             latency_ms = int((monotonic() - started) * 1000)
-            failed = call.fail(error_code="TOOL_CALL_TIMEOUT", latency_ms=latency_ms)
+            failed = call.fail(error_code=ErrorCode.TOOL_CALL_TIMEOUT.value, latency_ms=latency_ms)
             await self._calls.add(failed)
             await self._events.publish(
-                failed.raise_failed_event(error_code="TOOL_CALL_TIMEOUT"),
+                failed.raise_failed_event(error_code=ErrorCode.TOOL_CALL_TIMEOUT.value),
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 trace_id=current_trace_id(),
@@ -245,14 +246,14 @@ class InvokeToolUseCase:
             )
             raise ToolCallTimeout(
                 f"tool {tool_name!r} timed out after {self._timeout}s",
-                code="TOOL_CALL_TIMEOUT",
+                code=ErrorCode.TOOL_CALL_TIMEOUT.value,
             ) from None
         except InvalidToolSpecCallError:
             latency_ms = int((monotonic() - started) * 1000)
-            failed = call.fail(error_code="INVALID_TOOL_SPEC", latency_ms=latency_ms)
+            failed = call.fail(error_code=ErrorCode.INVALID_TOOL_SPEC.value, latency_ms=latency_ms)
             await self._calls.add(failed)
             await self._events.publish(
-                failed.raise_failed_event(error_code="INVALID_TOOL_SPEC"),
+                failed.raise_failed_event(error_code=ErrorCode.INVALID_TOOL_SPEC.value),
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 trace_id=current_trace_id(),
@@ -265,10 +266,12 @@ class InvokeToolUseCase:
             raise
         except httpx.HTTPError:
             latency_ms = int((monotonic() - started) * 1000)
-            failed = call.fail(error_code="UPSTREAM_UNAVAILABLE", latency_ms=latency_ms)
+            failed = call.fail(
+                error_code=ErrorCode.UPSTREAM_UNAVAILABLE.value, latency_ms=latency_ms
+            )
             await self._calls.add(failed)
             await self._events.publish(
-                failed.raise_failed_event(error_code="UPSTREAM_UNAVAILABLE"),
+                failed.raise_failed_event(error_code=ErrorCode.UPSTREAM_UNAVAILABLE.value),
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 trace_id=current_trace_id(),
@@ -280,7 +283,7 @@ class InvokeToolUseCase:
             )
             raise UpstreamUnavailable(
                 f"tool {tool_name!r} upstream unavailable",
-                code="UPSTREAM_UNAVAILABLE",
+                code=ErrorCode.UPSTREAM_UNAVAILABLE.value,
             ) from None
 
     # ── 幂等 ────────────────────────────────────────────────────────────
@@ -319,7 +322,7 @@ class InvokeToolUseCase:
         if claim.request_hash and claim.request_hash != fingerprint:
             raise ToolIdempotencyConflict(
                 f"idempotency key {idempotency_key!r} was used with different arguments",
-                code="TOOL_IDEMPOTENCY_CONFLICT",
+                code=ErrorCode.TOOL_IDEMPOTENCY_CONFLICT.value,
             )
         if claim.status == "succeeded" and claim.result_ref:
             try:
@@ -330,7 +333,7 @@ class InvokeToolUseCase:
                 return existing
         raise ToolExecutionInProgress(
             f"tool call with idempotency key {idempotency_key!r} is already running",
-            code="TOOL_IN_PROGRESS",
+            code=ErrorCode.TOOL_IN_PROGRESS.value,
         )
 
     async def _finish_execution(
@@ -365,7 +368,7 @@ class InvokeToolUseCase:
             if self._breaker is not None and self._breaker.is_open(tool.name):
                 raise ToolRateLimited(
                     f"tool {tool.name!r} is circuit-broken",
-                    code="TOOL_RATE_LIMITED",
+                    code=ErrorCode.TOOL_RATE_LIMITED.value,
                     retry_after_ms=self._breaker.retry_after_ms(tool.name),
                 )
             try:

@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_llm.client import ChatMessage, ChatRequest, ChatResponse, LLMChunk, Usage
 from qzdap_llm.config import LLMConfig
 from qzdap_llm.transport import HTTPProviderClient, ProviderTransportError
@@ -139,7 +140,7 @@ class AnthropicClient(HTTPProviderClient):
                 data,
             )
         except (KeyError, TypeError, ValueError, AttributeError):
-            raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
+            raise ProviderTransportError(code=ErrorCode.LLM_INVALID_RESPONSE.value) from None
 
     async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
         events = self._events(self._path, _payload(req, stream=True))
@@ -221,6 +222,8 @@ class AnthropicClient(HTTPProviderClient):
                     elif kind == "message_stop":
                         return
                 except (KeyError, TypeError, ValueError, AttributeError):
-                    raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
+                    raise ProviderTransportError(
+                        code=ErrorCode.LLM_INVALID_RESPONSE.value
+                    ) from None
         finally:
             await events.aclose()

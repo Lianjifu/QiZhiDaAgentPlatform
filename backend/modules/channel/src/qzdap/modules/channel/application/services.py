@@ -51,8 +51,8 @@ from qzdap_agent_runtime.gateway.identity import (
 )
 from qzdap_agent_runtime.gateway.types import RawIngress
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import TenantId, WorkspaceId
-from qzdap_schema.dtos.errors import ErrorCode
 
 if TYPE_CHECKING:
     from uuid import UUID

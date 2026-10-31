@@ -8,6 +8,7 @@ are reused for the four state-code mappings (404 / 409 / 403 / 422).
 
 from __future__ import annotations
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import (
     AppError,
     ConflictError,
@@ -22,7 +23,7 @@ class EvolveCandidateError(AppError):
 
 
 class EvolveCandidateNotFound(EvolveCandidateError, NotFoundError):
-    code = "EVOLVE_CANDIDATE_NOT_FOUND"
+    code = ErrorCode.EVOLVE_CANDIDATE_NOT_FOUND.value
     status = 404
 
 
@@ -30,19 +31,19 @@ class EvolveCandidateAlreadyDecided(EvolveCandidateError, ConflictError):
     """Candidate has already been approved / rejected / applied — no further
     transition is allowed from the current state."""
 
-    code = "EVOLVE_CANDIDATE_ALREADY_DECIDED"
+    code = ErrorCode.EVOLVE_CANDIDATE_ALREADY_DECIDED.value
     status = 409
 
 
 class SignerMustDiffer(EvolveCandidateError, ForbiddenError):
     """The approver's UserId matches the requester — admin must differ."""
 
-    code = "EVOLVE_SIGNER_MUST_DIFFER"
+    code = ErrorCode.EVOLVE_SIGNER_MUST_DIFFER.value
     status = 403
 
 
 class InvalidEvolveCandidate(EvolveCandidateError, ValidationError):
-    code = "INVALID_EVOLVE_CANDIDATE"
+    code = ErrorCode.INVALID_EVOLVE_CANDIDATE.value
     status = 422
 
 
@@ -50,7 +51,7 @@ class ApplyGuardRejected(EvolveCandidateError, ValidationError):
     """The :class:`ApplyGuard` refused to apply this candidate. The exception
     payload carries the structured reason for callers + audit log."""
 
-    code = "APPLY_GUARD_REJECTED"
+    code = ErrorCode.APPLY_GUARD_REJECTED.value
     status = 422
 
 

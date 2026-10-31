@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.errors import AppError, NotFoundError, ValidationError
 
 
@@ -10,13 +11,13 @@ class KnowledgeError(AppError):
 
 
 class KnowledgeNotFound(KnowledgeError, NotFoundError):
-    code = "KNOWLEDGE_NOT_FOUND"
+    code = ErrorCode.KNOWLEDGE_NOT_FOUND.value
 
 
 class KnowledgeValidationError(KnowledgeError, ValidationError):
     """**入参不合法** ✓（例如未知的发布态 ✓）。"""
 
-    code = "KNOWLEDGE_INVALID"
+    code = ErrorCode.KNOWLEDGE_INVALID.value
 
 
 __all__ = ["KnowledgeError", "KnowledgeNotFound", "KnowledgeValidationError"]

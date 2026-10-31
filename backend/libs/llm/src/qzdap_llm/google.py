@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 import httpx
 
+from qzdap_kernel.error_codes import ErrorCode
 from qzdap_llm.client import ChatMessage, ChatRequest, ChatResponse, LLMChunk, Usage
 from qzdap_llm.config import LLMConfig
 from qzdap_llm.transport import HTTPProviderClient, ProviderTransportError
@@ -125,7 +126,7 @@ def _payload(req: ChatRequest) -> dict:
 def _parse(data: dict, model: str, *, tool_offset: int = 0) -> ChatResponse:
     candidates = data.get("candidates") or []
     if not candidates:
-        raise ProviderTransportError(code="LLM_INVALID_RESPONSE")
+        raise ProviderTransportError(code=ErrorCode.LLM_INVALID_RESPONSE.value)
     candidate = candidates[0]
     parts = candidate.get("content", {}).get("parts", [])
     text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
@@ -174,7 +175,7 @@ class GoogleClient(HTTPProviderClient):
         try:
             return _parse(data, req.model)
         except (KeyError, TypeError, ValueError, AttributeError, IndexError):
-            raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
+            raise ProviderTransportError(code=ErrorCode.LLM_INVALID_RESPONSE.value) from None
 
     async def stream(self, req: ChatRequest) -> AsyncIterator[LLMChunk]:
         events = self._events(self._path(req.model, stream=True), _payload(req))
@@ -187,7 +188,7 @@ class GoogleClient(HTTPProviderClient):
                         if data.get("usageMetadata"):
                             yield LLMChunk(req.model, "", usage=_usage(data["usageMetadata"]))
                             continue
-                        raise ProviderTransportError(code="LLM_INVALID_RESPONSE")
+                        raise ProviderTransportError(code=ErrorCode.LLM_INVALID_RESPONSE.value)
                     parsed = _parse(data, req.model, tool_offset=tool_count)
                     calls = [
                         {"index": tool_count + i, **call}
@@ -206,6 +207,8 @@ class GoogleClient(HTTPProviderClient):
                         usage=parsed.usage if "usageMetadata" in data else None,
                     )
                 except (KeyError, TypeError, ValueError, AttributeError, IndexError):
-                    raise ProviderTransportError(code="LLM_INVALID_RESPONSE") from None
+                    raise ProviderTransportError(
+                        code=ErrorCode.LLM_INVALID_RESPONSE.value
+                    ) from None
         finally:
             await events.aclose()
