@@ -46,6 +46,9 @@ class SessionGraphExecutor:
             resume=merged if (merged.get("pending_approval") or resume) else None,
             session_id=request.session_id,
             parent_span_context=request.parent_span_context,
+            # ⚠️ **这一轮能不能挂起审批** ✓ —— IM 渠道是 False ✓（没有人能
+            # 完成审批 ✓ → 挂起 = 卡死 ✗✗）。
+            allow_approval=request.allow_approval,
         )
 
     def latest_state(self) -> Mapping[str, Any]:

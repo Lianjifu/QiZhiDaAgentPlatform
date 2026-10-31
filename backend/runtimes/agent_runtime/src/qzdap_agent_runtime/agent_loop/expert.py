@@ -123,6 +123,7 @@ class ExpertAssembler:
         confidence: float,
         protected: bool = True,
         actor: ActorContext | None = None,
+        allow_approval: bool = True,
         tool_names: tuple[str, ...] = (),
         model_override: str | None = None,
         route_id_override: ModelId | None = None,
@@ -170,7 +171,15 @@ class ExpertAssembler:
             agent_id=selection.agent_id,
             agent_version=selection.agent_version,
         )
-        pairs = self._tools.resolve_pairs(bindings, policy=BindingPolicy(unprotected=not protected))
+        pairs = self._tools.resolve_pairs(
+            bindings,
+            # ⚠️ **`allow_approval` 决定「需要审批的工具」能不能出现在这一轮**
+            # ✓ —— IM 渠道关掉它 ✓（没有人能完成审批 ✓ → 挂起 = 卡死 ✗✗）。
+            policy=BindingPolicy(
+                unprotected=not protected,
+                allow_approval_required=allow_approval,
+            ),
+        )
         return ExpertInstance(
             selection=selection,
             model=model,

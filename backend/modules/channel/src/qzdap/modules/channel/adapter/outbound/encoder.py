@@ -87,6 +87,14 @@ def encode_result_event(event: Any, capabilities: ChannelCapabilities) -> Encode
         return EncodedOutbound(text=event.content)
 
     if isinstance(event, ApprovalRequiredChunk):
+        # ⚠️ **IM 渠道现在到不了这里** ✓（2026-10-31 ✓）—— **IM 的轮次不允许
+        # 挂起审批** ✓（`allow_approval=False` ✓ —— 没有人能完成审批 ✓：
+        # 入站没有审批回调 ✓ + IM 的 actor 是服务账号 ✓ = 发起人 ✓ → 治理域的
+        # 「审批人不能是发起人」✓ 会直接拒掉 ✓）→ **挂起 = 这一轮卡死** ✗✗
+        # → **需要审批的工具根本不暴露给模型** ✓（IM）✓。
+        # → 这段编码**暂时是哑的** ✓（web 侧不走这里 ✓）—— **IM 审批真做了
+        # 再说** ✓（那时才需要「卡片点击 → 审批决策」的入站回调 ✓ —— 见
+        # Session 方案 §Stage 5 的未接管行 ✓）。
         args = _args_preview(event.arguments)
         text = (
             f"需要审批：{event.tool_name}\n"

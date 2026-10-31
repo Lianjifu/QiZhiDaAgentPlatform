@@ -107,6 +107,7 @@ class AgentLoopRunner:
         turn_id: str | None = None,
         session_id: str | None = None,
         protected: bool = True,
+        allow_approval: bool = True,
         cost_of: Callable[[int, int], float] | None = None,
         hooks: LoopHooks | None = None,
     ) -> None:
@@ -118,6 +119,9 @@ class AgentLoopRunner:
         self._turn_id = turn_id
         self._session_id = session_id
         self._protected = protected
+        # ⚠️ **这一轮能不能挂起审批** ✓ —— IM 渠道关掉它 ✓（没有人能完成
+        # 审批 ✓ → 挂起一个永远不会被批准的审批 = **这一轮卡死** ✗✗）。
+        self._allow_approval = allow_approval
         self._cost_of = cost_of
         self._hooks = hooks
 
@@ -254,6 +258,9 @@ class AgentLoopRunner:
         ⚠️ **治理是默认路径** ✓ —— 有 ``PolicyGuard`` 就**每个工具都问一遍**
         ✓（拒绝要拦在执行之前 ✓）；没有 guard 才按绑定声明判
         （``requires_approval`` ✓）。
+
+        ⚠️ **这一轮不能挂起审批时（IM 渠道 ✓）→ 直接拒绝** ✓ —— 不是挂起
+        一个**永远不会被批准**的审批 ✓（那等于**卡死这一轮** ✗✗）。
         """
         arguments = call.get("args") or {}
         if not isinstance(arguments, dict):
@@ -277,8 +284,28 @@ class AgentLoopRunner:
                 }
             if decision == "allow":
                 return None
+            if decision == "approve_required" and not self._allow_approval:
+                # ⚠️ **策略要审批 + 这一轮不能挂起** ✓ → **明确拒绝** ✓
+                # （不是挂起 ✓ —— 挂了没人批 ✓ = 卡死 ✗✗）。
+                return {
+                    "denied": True,
+                    "tool_call_id": str(call.get("id") or ""),
+                    "tool_name": bound.tool.name,
+                    "arguments": dict(arguments),
+                    "request_hash": request_hash(arguments),
+                    "reason": "这个工具需要人工审批，当前渠道无法完成审批",
+                }
         if not bound.binding.requires_approval:
             return None
+        if not self._allow_approval:
+            return {
+                "denied": True,
+                "tool_call_id": str(call.get("id") or ""),
+                "tool_name": bound.tool.name,
+                "arguments": dict(arguments),
+                "request_hash": request_hash(arguments),
+                "reason": "这个工具需要人工审批，当前渠道无法完成审批",
+            }
         return {
             "approval_id": approval_id or "",
             "tool_call_id": str(call.get("id") or ""),

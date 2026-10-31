@@ -215,6 +215,9 @@ class SessionGraphRunner:
         # ⚠️ **这一轮是不是受保护** ✓（Gateway 决策 #5 ✓）—— 不受保护就
         # **剔除副作用工具** ✓（§5.3.1 规则 3 ✓）。
         protected: bool = True,
+        # ⚠️ **这一轮能不能挂起审批** ✓ —— IM 渠道是 False ✓（没有人能完成
+        # 审批 ✓ → 挂起 = 这一轮卡死 ✗✗）→ **需要审批的工具不暴露** ✓。
+        allow_approval: bool = True,
         # ⚠️ **本轮的降级标记盒子** ✓（C-22 ✓）—— 由 ``run_turn`` 建 ✓，
         # 这里**装配完**就填 ✓（第一块产出之前 ✓ → 每块都带得上 ✓）。
         flags_box: dict[str, tuple[str, ...]] | None = None,
@@ -425,6 +428,7 @@ class SessionGraphRunner:
             history_count=len(history),
             actor=actor,
             protected=protected,
+            allow_approval=allow_approval,
         )
         model_id = str((expert.decision.get("model") or {}).get("model_id") or "") or None
         bound_tools = [
@@ -439,6 +443,7 @@ class SessionGraphRunner:
             turn_id=str(turn_id),
             session_id=str(session_id) if session_id else None,
             protected=protected,
+            allow_approval=allow_approval,
             hooks=LoopHooks(before_step=_before_step, after_step=_after_step),
         )
         # ⚠️ **把轮次的 span 设为当前** ✓ —— 模型 / 工具的子 span 挂在它
@@ -916,6 +921,7 @@ class SessionGraphRunner:
         history_count: int,
         actor: ActorContext,
         protected: bool,
+        allow_approval: bool = True,
     ) -> ExpertInstance:
         """**装配专家实例** ✓（Agent Stage 4 ✓）。
 
@@ -945,6 +951,7 @@ class SessionGraphRunner:
             task_kind=classification.kind,
             confidence=classification.confidence,
             protected=protected,
+            allow_approval=allow_approval,
             actor=to_runtime_actor(actor),
             model_override=model or None,
             route_id_override=route_id,

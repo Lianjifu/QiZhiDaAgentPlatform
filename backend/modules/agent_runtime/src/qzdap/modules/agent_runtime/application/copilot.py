@@ -348,6 +348,7 @@ class CopilotSessionService:
                 idempotency_key=key,
                 turn_id=turn_id,
                 ingress_seq=ingress_seq,
+                channel=channel,
             ):
                 yield chunk
         finally:
@@ -404,6 +405,7 @@ class CopilotSessionService:
         idempotency_key: IdempotencyKey,
         turn_id: UUID,
         ingress_seq: int | None = None,
+        channel: ChannelType = ChannelType.WEB,
     ) -> AsyncIterator[TurnChunk]:
         """组装这一轮的输入 → **交给唯一 turn 实现**（契约层的 ``TurnRunner``）✓。
 
@@ -473,6 +475,9 @@ class CopilotSessionService:
             trace_id=current_trace_id(),
             # ⚠️ **入站序号** ✓（有值 = 排队 ✓ —— Router 方案 §4.2 ✓）。
             ingress_seq=ingress_seq,
+            # ⚠️ **IM 渠道不能挂起审批** ✓（没有人能完成审批 ✓ —— 卡片点了
+            # 回不来 ✓ → 挂起 = 这一轮卡死 ✗✗）→ **需要审批的工具不暴露** ✓。
+            allow_approval=channel in (ChannelType.WEB, ChannelType.API),
         )
         async for chunk in self._turn_runner.run(request=request):
             yield chunk

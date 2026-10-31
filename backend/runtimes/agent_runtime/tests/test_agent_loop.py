@@ -114,6 +114,7 @@ class _Harness:
         evaluator: Evaluator | None = None,
         policy_guard: Any | None = None,
         cost_of: Any | None = None,
+        allow_approval: bool = True,
     ) -> None:
         llm = _ScriptedLLM(scripts)
         reasoner = Reasoner(QZDAPChatModel(llm=llm, model_name="demo"))  # type: ignore[arg-type]
@@ -131,6 +132,7 @@ class _Harness:
             actor=actor,
             turn_id="turn-1",
             cost_of=cost_of,
+            allow_approval=allow_approval,
         )
 
     async def run(self, **kwargs: Any) -> list[Any]:
@@ -284,6 +286,70 @@ class TestGovernance:
             policy_guard=_Deny(),
         )
         events = await harness.run()
+        errors = [event for event in events if event.kind == "error"]
+        assert errors and errors[0].error_code == "TOOL_DENIED"
+        assert not harness.runtime.calls
+
+    @pytest.mark.asyncio
+    async def test_the_approval_tool_is_denied_when_approvals_are_not_allowed(self) -> None:
+        """**这一轮不能挂起审批 → 明确拒绝** ✓（不是挂起 ✓）。
+
+        ⚠️ **IM 渠道就是这样** ✓ —— 没有人能完成审批 ✓ → 挂起一个永远不会被
+        批准的审批 = **这一轮卡死** ✗✗ → **直接拒绝并说清原因** ✓。
+        """
+        harness = _Harness(
+            [
+                [
+                    {
+                        "model": "demo",
+                        "delta": "",
+                        "tool_calls": [_call("call-1", "write_file", '{"path":"a.txt"}')],
+                    }
+                ]
+            ],
+            bindings=[_WRITE],
+            allow_approval=False,
+        )
+        events = await harness.run()
+        # ⚠️ **不是挂起** ✓ —— 事件里带的是「已拒绝」✓（挂起 = 等一个永远不会
+        # 来的批准 ✓ = 卡死 ✗✗）。
+        approvals = [event for event in events if event.kind == "approval_required"]
+        assert approvals and approvals[0].approval is not None
+        assert approvals[0].approval["denied"] is True
+        errors = [event for event in events if event.kind == "error"]
+        assert errors and errors[0].error_code == "TOOL_DENIED"
+        assert "审批" in errors[0].error_message
+        assert not harness.runtime.calls
+
+    @pytest.mark.asyncio
+    async def test_the_policy_approval_is_denied_when_approvals_are_not_allowed(self) -> None:
+        """**策略说「要审批」+ 这一轮不能挂起 → 也拒绝** ✓（兜底 ✓）。
+
+        ⚠️ 绑定没声明 ``requires_approval`` ✓ 但策略要求审批 ✓ → 同样挂不死 ✓。
+        """
+
+        class _RequireApproval:
+            async def decide(self, **_kwargs: Any):
+                return "approve_required", "approval-1"
+
+        harness = _Harness(
+            [
+                [
+                    {
+                        "model": "demo",
+                        "delta": "",
+                        "tool_calls": [_call("call-1", "echo", '{"text":"hi"}')],
+                    }
+                ]
+            ],
+            bindings=[_ECHO],
+            policy_guard=_RequireApproval(),
+            allow_approval=False,
+        )
+        events = await harness.run()
+        approvals = [event for event in events if event.kind == "approval_required"]
+        assert approvals and approvals[0].approval is not None
+        assert approvals[0].approval["denied"] is True
         errors = [event for event in events if event.kind == "error"]
         assert errors and errors[0].error_code == "TOOL_DENIED"
         assert not harness.runtime.calls

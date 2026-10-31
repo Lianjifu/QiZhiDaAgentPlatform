@@ -161,6 +161,44 @@ class TestGovernance:
         assert [tool.name for tool in tools] == ["echo", "web_search"]
 
 
+class TestApprovalChannel:
+    """**这一轮能不能挂起审批** ✓ —— IM 渠道关掉它 ✓。
+
+    ⚠️ **IM 侧没有人能完成审批** ✓（入站没有审批回调 ✓ —— 卡片点了回不来
+    ✓；而且 IM 的 actor 是**服务账号** ✓ = 发起人 ✓ → 治理域的「审批人不能
+    是发起人」✓ 会直接拒掉 ✓）→ 挂起一个**永远不会被批准**的审批 ✓ =
+    **这一轮永远卡住** ✗✗ → **需要审批的工具根本不暴露** ✓。
+    """
+
+    def test_the_approval_required_tools_are_exposed_by_default(self) -> None:
+        """默认**能**挂起审批 ✓（web 侧由人在前端点 ✓）。"""
+        resolver = ToolBindingResolver()
+        tools = resolver.resolve([_binding(name="pay", requires_approval=True)])
+        assert [tool.name for tool in tools] == ["pay"]
+
+    def test_the_approval_required_tools_are_removed_when_approvals_are_off(self) -> None:
+        """**剔除，不是执行时拦截** ✓（同 `unprotected` 的做法 ✓）。"""
+        resolver = ToolBindingResolver()
+        tools = resolver.resolve(
+            [_binding(name="echo"), _binding(name="pay", requires_approval=True)],
+            policy=BindingPolicy(allow_approval_required=False),
+        )
+        assert [tool.name for tool in tools] == ["echo"]
+
+    def test_the_other_tools_are_untouched(self) -> None:
+        """**只动需要审批的** ✓ —— 普通工具照旧 ✓。"""
+        resolver = ToolBindingResolver()
+        tools = resolver.resolve(
+            [
+                _binding(name="echo"),
+                _binding(name="write_file", risk="high", side_effect=True),
+                _binding(name="pay", requires_approval=True),
+            ],
+            policy=BindingPolicy(allow_approval_required=False),
+        )
+        assert [tool.name for tool in tools] == ["echo", "write_file"]
+
+
 class TestActor:
     """**取不到 actor → 拒绝执行工具** ✓。"""
 

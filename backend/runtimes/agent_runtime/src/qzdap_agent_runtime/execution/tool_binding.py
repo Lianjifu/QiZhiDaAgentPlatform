@@ -20,6 +20,7 @@ agent 配置的绑定集
 | 4 | 高风险工具即使在绑定集里，也要等 `PolicyGuard` 判定 ✓ | 这里**不筛高风险** ✓（**筛不等于批** ✓） |
 | 5 | **tool / mcp / skill 统一成 `BaseTool`** ✓ | 三种来源对模型是同一种东西 ✓ |
 | 6 | **专家 Agent 的工具集 = 专家自己配置里的绑定集** ✓ | 不做二次裁剪 ✓（§5.3.1 规则 6 ✓） |
+| 7 | **这一轮不能挂起审批 → 剔除需要审批的工具** ✓ | **IM 渠道** ✓（没有人能批准 ✓ → 挂起 = 卡死 ✗✗）|
 
 ⚠️ **作用域不在这里过滤** ✓ —— 端口的查询本身已经按工作区限定 ✓（过滤下推
 ✓ —— 别在这里逐行过滤 ✗✗ —— 那是全量拉回来再筛 ✗）。
@@ -48,6 +49,15 @@ class BindingPolicy:
     unprotected: bool = False
     #: **允许的风险等级** ✓（默认全允许 ✓ —— 高风险的**筛不等于批** ✓）。
     allowed_risks: frozenset[str] = frozenset(RISK_ORDER)
+    #: **这一轮能不能挂起审批** ✓（默认能 ✓ —— web 侧由人在前端点 ✓）。
+    #:
+    #: ⚠️ **IM 渠道关掉它** ✓ —— IM 侧**没有人能完成审批** ✓（入站没有审批
+    #: 回调 ✓ —— 卡片点了回不来 ✓；而且 IM 的 actor 是**服务账号** ✓ =
+    #: 发起人 ✓ → 治理域的「审批人不能是发起人」✓ 会直接拒掉 ✓）→
+    #: 挂起一个**永远不会被批准**的审批 ✓ = **这一轮永远卡住** ✗✗。
+    #: → **不暴露需要审批的工具** ✓（§5.3.1 规则 3 的同款做法 ✓ ——
+    #: **剔除，不是执行时拦截** ✓）。
+    allow_approval_required: bool = True
 
 
 class ToolExecutionError(RuntimeError):
@@ -98,6 +108,11 @@ class ToolBindingResolver:
             if active.unprotected and binding.side_effect:
                 # ⚠️ **剔除** ✓（不是执行时拦截 ✓ —— 未受保护的轮次**根本不
                 # 该看见**副作用工具 ✗✗ —— 看见了就会想去调 ✗）。
+                continue
+            if not active.allow_approval_required and binding.requires_approval:
+                # ⚠️ **剔除** ✓（同款做法 ✓）—— 这一轮**没有人能完成审批** ✓
+                # （IM 渠道 ✓）→ 挂起一个永远不会被批准的审批 = **卡死** ✗✗
+                # → **根本不暴露** ✓（模型看不见 ✓ → 不会去调 ✓）。
                 continue
             if binding.risk not in active.allowed_risks:
                 continue
