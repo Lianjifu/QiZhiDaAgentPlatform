@@ -293,7 +293,8 @@ _scan "memory_l2_embeddings"     modules/          "X19"
 # Agent / Execution 域（X5 + X1）
 _scan "compile_loop_graph"        modules/          "X5"
 _scan "_run_turn_inner"           modules/          "X17"
-_scan "from ...chat_model import ToolCallAccumulator"  modules/  "X5"   # 只盯旧位置的 import，不盯类名本身（它是**被迁入**的资产）
+_scan "adapter\.graph\.chat_model"  modules/          "X5"   # 旧模块路径已删（Agent Stage 7 ✓）—— 盯**旧路径的引用** ✓
+_scan "ToolCallAccumulator"          modules/          "X5"   # 类名**已被迁入** `runtimes/.../agent_loop/reason.py` ✓ —— modules/ 下**不许再出现** ✓（2026-10-31 启用 ✓）
 _scan "graph/nodes.py"            runtimes/         "X1"
 _scan "build_session_graph"       runtimes/         "X1"
 _scan "InMemoryToolExecutor"      runtimes/         "X1"

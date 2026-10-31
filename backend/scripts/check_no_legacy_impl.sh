@@ -181,7 +181,8 @@ class MemoryService\b;modules/;X16;M;on
 memory_l2_embeddings;modules/;X19;M;on
 compile_loop_graph;modules/;X5;A;on
 _run_turn_inner;modules/;X17;A;on
-from ...chat_model import ToolCallAccumulator;modules/;X5;A;off
+adapter\.graph\.chat_model;modules/;X5;A;on
+ToolCallAccumulator;modules/;X5;A;on
 graph/nodes.py;runtimes/;X1;A;on
 build_session_graph;runtimes/;X1;A;on
 InMemoryToolExecutor;runtimes/;X1;A;on
