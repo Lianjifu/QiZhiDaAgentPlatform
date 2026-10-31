@@ -24,6 +24,7 @@ class _FakeSettings:
     """⚠️ **只带清扫器要用的那一个设置** ✓ —— 组合根的容器是真设置 ✓。"""
 
     session_idle_timeout_days = 30
+    session_event_retention_days = 7
 
 
 class _FakeContainer:

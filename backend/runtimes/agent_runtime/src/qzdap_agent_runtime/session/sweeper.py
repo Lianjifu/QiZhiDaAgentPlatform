@@ -34,6 +34,9 @@ class SweepReport:
     expired_idempotency_rows: int = 0
     expired_approvals: int = 0
     idle_sessions: int = 0
+    #: ⚠️ **过期事件行** ✓ —— ``session_events`` 的保留期到了 ✓（事件流是
+    #: **重放日志** ✓ —— 轮次的终态在 ``session_turns`` ✓ —— 删事件不丢轮次 ✓）。
+    expired_events: int = 0
 
     @property
     def total(self) -> int:
@@ -42,6 +45,7 @@ class SweepReport:
             + self.expired_idempotency_rows
             + self.expired_approvals
             + self.idle_sessions
+            + self.expired_events
         )
 
 

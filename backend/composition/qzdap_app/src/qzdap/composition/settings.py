@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # ⚠️ **会话空闲阈值（天）** ✓ —— 决策 #7 ✓（30 天 ✓ —— 不按 agent /
     # 工作区分别配 ✓ —— 那会让配置面爆炸 ✓）。
     session_idle_timeout_days: int = 30
+    # ⚠️ **事件流保留期（天）** ✓ —— ``session_events`` 是**重放日志** ✓
+    # （轮次的终态在 ``session_turns`` ✓ —— 删事件不丢轮次 ✓）→ 不设保留期
+    # 的话这张表只增不减 ✗✗。默认 7 天 ✓（断线重连用得到 ✓）。
+    session_event_retention_days: int = 7
 
     # redis
     redis_url: str = "redis://localhost:9154/0"

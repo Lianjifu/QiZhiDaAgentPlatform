@@ -262,8 +262,10 @@ class SessionManagerPort(Protocol):
 |---|---|---|---|---|
 | **僵尸轮次** | turn 卡在 `running` | 30 分钟（沿用 `CLAIM_STALE_MINUTES`） | 置 `failed`（`TURN_TIMEOUT`）+ 释放会话 | ✅ 已有（`repositories.py:93`） |
 | **审批过期** | approval 停在 `pending` | 15 分钟（沿用 v3.1 §5.7 `APPROVAL_TTL_SECONDS=900`） | 自动 `deny` + 审计 `decision=timeout` | ❌ `expire_if_due()` **无生产调用者** |
-| **会话空闲** | 会话最后活动后无新消息 | 30 天（可配） | `close`（reason=`idle_timeout`） | ❌ 无 |
+| **会话空闲** | 会话最后活动后无新消息 | 30 天（可配） | `close`（reason=`idle_timeout`） | ✅ **已达成**（2026-10-31 ✓ —— **复活路径** ✓ + **空闲清扫** ✓ —— 只关「有复活路径」的 ✓）|
 | **幂等键过期** ⚠️ **新增** | `session_inbox` 里 `expires_at < now()` 的行 | 按行（24h / 7d / 120s 三档，Gateway 写入时定） | **删除该行**（单批 ≤1000 行） | ❌ 无 —— ⚠️ **不清理会导致 Gateway 的幂等在 TTL 之后持续误杀** |
+
+> **事件流保留期**（2026-10-31 补）✓ —— `session_events` 是**重放日志** ✓（轮次的终态在 `session_turns` ✓ —— 删事件**不丢轮次** ✓）→ 不设保留期的话这张表**只增不减** ✗✗ → 清扫器多一类：删掉**已结束且结束超过 N 天**（默认 7 天 ✓ —— `QZDAP_SESSION_EVENT_RETENTION_DAYS` ✓）的轮次的事件 ✓ —— **还在跑的** ✓ / **还在等审批的** ✓（可能被恢复 ✓ —— 恢复要重放事件 ✓）**一律不动** ✓。
 
 > **第四类是 Gateway 方案的硬依赖**（2026-10-29 审查发现）：`session_inbox` 的表归属是 Session（[Gateway 方案](gateway-refactor-plan.md) §8），唯一约束不含 `expires_at` —— **过期行留在表里，同一个键重发时仍会命中冲突**。Gateway 侧的 claim 分支有「过期即当作不存在」作为第二道保险，但**表会无限膨胀**，所以必须有人定期删。
 >

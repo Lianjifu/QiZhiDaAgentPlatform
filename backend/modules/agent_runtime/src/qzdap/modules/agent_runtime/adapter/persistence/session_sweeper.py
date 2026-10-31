@@ -18,12 +18,13 @@ from datetime import datetime, timedelta
 from logging import getLogger
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 
 from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
     CLAIM_STALE_MINUTES,
 )
 from qzdap.modules.agent_runtime.adapter.persistence.models import (
+    SessionEventORM,
     SessionORM,
     SessionTurnORM,
 )
@@ -43,6 +44,9 @@ _log = getLogger(__name__)
 #: 会话空闲的默认阈值（天）✓ —— 决策 #7 ✓（30 天 ✓ —— 可配 ✓）。
 DEFAULT_IDLE_TIMEOUT_DAYS = 30
 
+#: **事件流保留期**（天）✓ —— 默认 7 天 ✓（可配 ✓）。
+DEFAULT_EVENT_RETENTION_DAYS = 7
+
 
 class PostgresSessionSweeper:
     """清扫器 —— 每类各一次批量操作 ✓。"""
@@ -55,6 +59,7 @@ class PostgresSessionSweeper:
         expire_approvals: Callable[[datetime], Awaitable[int]] | None = None,
         batch_limit: int = 1000,
         idle_timeout_days: int = DEFAULT_IDLE_TIMEOUT_DAYS,
+        event_retention_days: int = DEFAULT_EVENT_RETENTION_DAYS,
     ) -> None:
         self._sf = session_factory
         self._inbox = idempotency_store
@@ -65,6 +70,8 @@ class PostgresSessionSweeper:
         self._batch_limit = batch_limit
         #: ⚠️ **会话空闲阈值（天）** ✓ —— 决策 #7 ✓（30 天 ✓ —— 可配 ✓）。
         self._idle_timeout_days = max(1, int(idle_timeout_days))
+        #: ⚠️ **事件流保留期（天）** ✓ —— 默认 7 天 ✓（可配 ✓）。
+        self._event_retention_days = max(1, int(event_retention_days))
 
     async def sweep(self, *, now: datetime) -> SweepReport:
         """跑一次清扫 —— **每类独立**，一类失败不影响另一类 ✓。"""
@@ -72,12 +79,42 @@ class PostgresSessionSweeper:
         expired_rows = await self._sweep_expired_idempotency()
         expired_approvals = await self._sweep_expired_approvals(now=now)
         idle_sessions = await self._sweep_idle_sessions(now=now)
+        expired_events = await self._sweep_expired_events(now=now)
         return SweepReport(
             zombie_turns=zombie_turns,
             expired_idempotency_rows=expired_rows,
             expired_approvals=expired_approvals,
             idle_sessions=idle_sessions,
+            expired_events=expired_events,
         )
+
+    async def _sweep_expired_events(self, *, now: datetime) -> int:
+        """**过了保留期的事件行 → 删掉** ✓。
+
+        ⚠️ **只删「已结束」的轮次的事件** ✓ —— 还在跑的轮次 ✓ / 还在等审批的
+        轮次 ✓（可能被恢复 ✓ —— 恢复要重放事件 ✓）**一律不动** ✓。
+        ⚠️ **删事件不丢轮次** ✓ —— 轮次的终态在 ``session_turns`` ✓ ——
+        事件流只是**重放日志** ✓（断线重连用 ✓）。
+        """
+        cutoff = now - timedelta(days=self._event_retention_days)
+        try:
+            async with self._sf.session() as session, session.begin():
+                result = await session.execute(
+                    delete(SessionEventORM).where(
+                        SessionEventORM.turn_id.in_(
+                            select(SessionTurnORM.id).where(
+                                SessionTurnORM.status.in_(["succeeded", "failed", "cancelled"]),
+                                SessionTurnORM.finished_at.isnot(None),
+                                SessionTurnORM.finished_at < cutoff,
+                            )
+                        ),
+                    )
+                )
+                return int(result.rowcount or 0)
+        except Exception:
+            # ⚠️ **一类失败不影响另一类** ✓（清扫器整体还要跑 ✓）。
+            _log.exception("event retention sweep failed")
+            return 0
 
     async def _sweep_idle_sessions(self, *, now: datetime) -> int:
         """**空闲超时的会话 → 关闭** ✓（方案 §3.3 的第 3 类 ✓）。

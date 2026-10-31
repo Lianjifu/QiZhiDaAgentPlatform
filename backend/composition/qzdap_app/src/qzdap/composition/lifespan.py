@@ -1687,6 +1687,8 @@ async def _start_session_sweeper(
         expire_approvals=_expire_due_approvals(container),
         # ⚠️ **会话空闲阈值可配** ✓（决策 #7 ✓ —— 默认 30 天 ✓）。
         idle_timeout_days=container.settings.session_idle_timeout_days,
+        # ⚠️ **事件流保留期可配** ✓（默认 7 天 ✓ —— 不设的话表只增不减 ✗✗）。
+        event_retention_days=container.settings.session_event_retention_days,
     )
 
     async def _loop() -> None:

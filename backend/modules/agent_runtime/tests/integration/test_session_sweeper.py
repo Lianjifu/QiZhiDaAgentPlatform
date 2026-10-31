@@ -79,6 +79,20 @@ CREATE TABLE "{schema}".session_turns (
 )
 """,
     """
+CREATE TABLE "{schema}".session_events (
+    turn_id uuid NOT NULL,
+    seq integer NOT NULL,
+    event_type varchar(64) NOT NULL,
+    payload jsonb NOT NULL,
+    delivery_status varchar(16) NOT NULL DEFAULT 'pending',
+    delivery_attempts integer NOT NULL DEFAULT 0,
+    delivered_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (turn_id, seq)
+)
+""",
+    """
 CREATE TABLE "{schema}".session_inbox (
     id uuid PRIMARY KEY,
     tenant_id uuid NOT NULL,
@@ -281,3 +295,56 @@ async def test_idle_sessions_are_closed(sweeper_ctx) -> None:  # type: ignore[no
     assert by_id[idle_im].metadata["close_reason"] == "idle_timeout"
     assert by_id[idle_web].status == "open", "Web 会话没有复活路径 —— 关了历史就没了"
     assert by_id[fresh_im].status == "open"
+
+
+async def _insert_event(factory, *, turn_id: uuid.UUID, seq: int) -> None:
+    async with factory.session() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO session_events (turn_id, seq, event_type, payload) "
+                "VALUES (:turn, :seq, 'message', '{}'::jsonb)"
+            ),
+            {"turn": turn_id, "seq": seq},
+        )
+
+
+@pytest.mark.asyncio
+async def test_events_of_finished_turns_expire(sweeper_ctx) -> None:  # type: ignore[no-untyped-def]
+    """⚠️ **过了保留期的事件行要删** ✓ —— 不删的话这张表只增不减 ✗✗。
+
+    ⚠️ **只删「已结束」的轮次** ✓ —— 还在跑的 ✓ / 还在等审批的 ✓（可能被
+    恢复 ✓ —— 恢复要重放事件 ✓）**一律不动** ✓。
+    """
+    sweeper, factory, _schema = sweeper_ctx
+    long_ago = datetime.now(UTC) - timedelta(days=10)
+    yesterday = datetime.now(UTC) - timedelta(days=1)
+
+    old_turn = await _insert_turn(factory, status="succeeded", started_at=long_ago)
+    await _insert_event(factory, turn_id=old_turn, seq=1)
+    await _insert_event(factory, turn_id=old_turn, seq=2)
+    running_turn = await _insert_turn(factory, status="running", started_at=long_ago)
+    await _insert_event(factory, turn_id=running_turn, seq=1)
+    fresh_turn = await _insert_turn(factory, status="succeeded", started_at=yesterday)
+    await _insert_event(factory, turn_id=fresh_turn, seq=1)
+
+    # ⚠️ **轮次的 finished_at 决定事件活多久** ✓（事件自己也有 created_at ✓
+    # —— 但那不是「这轮结束了多久」✓ —— 用轮次的 ✓）。
+    async with factory.session() as session, session.begin():
+        await session.execute(
+            text("UPDATE session_turns SET finished_at = :at WHERE id = :id"),
+            {"at": long_ago, "id": old_turn},
+        )
+        await session.execute(
+            text("UPDATE session_turns SET finished_at = :at WHERE id = :id"),
+            {"at": yesterday, "id": fresh_turn},
+        )
+
+    report = await sweeper.sweep(now=datetime.now(UTC))
+    assert report.expired_events == 2
+
+    async with factory.session() as session:
+        rows = (await session.execute(text("SELECT turn_id FROM session_events"))).all()
+    remaining = {row.turn_id for row in rows}
+    assert old_turn not in remaining
+    assert running_turn in remaining, "还在跑的轮次的事件不能删"
+    assert fresh_turn in remaining
