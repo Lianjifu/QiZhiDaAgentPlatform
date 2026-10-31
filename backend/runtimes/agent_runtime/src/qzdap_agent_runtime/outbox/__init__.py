@@ -26,9 +26,15 @@ import logging
 import random
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, get_args, runtime_checkable
+
+from ..result.events import DegradationFlag
 
 logger = logging.getLogger(__name__)
+
+#: **降级标记的词汇** ✓（Gateway 方案 §9.0 ✓ —— 单一来源 ✓）——
+#: 契约层的 ``DegradationFlag`` ✓（这里只是取它的取值 ✓ —— 不另写一份 ✗✗）。
+_DEGRADATION_FLAGS = frozenset(get_args(DegradationFlag))
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +373,12 @@ def to_result_event(event: Any) -> Any:
     turn_id = getattr(event, "turn_id", "unknown")
     seq = getattr(event, "seq", 0)
     event_id = f"outbox-{turn_id}-{seq}"
+    # ⚠️ **降级标记透传** ✓（C-22 ✓）—— 词汇**只有这三个** ✓（Gateway 方案
+    # §9.0 ✓）—— 认不出来的**丢掉** ✓（前端按固定词汇判断 ✓ —— 塞别的进去
+    # 前端不认 ✗✗）。
+    flags = tuple(
+        str(flag) for flag in (payload.get("flags") or []) if str(flag) in _DEGRADATION_FLAGS
+    )
 
     result_event: Any = None
     if ev_type in ("message", IM_REPLY_EVENT_TYPE):
@@ -483,6 +495,10 @@ def to_result_event(event: Any) -> Any:
             safe_message=str(payload.get("message", ev_type)),
             retriable=False,
         )
+
+    if flags:
+        # ⚠️ **一处盖章** ✓（所有事件类型都带 ✓ —— 前端读哪一块都一样 ✓）。
+        result_event = result_event.model_copy(update={"flags": flags})
 
     return result_event
 

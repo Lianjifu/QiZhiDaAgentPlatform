@@ -41,6 +41,15 @@ EventKind = Literal[
 # ---------------------------------------------------------------------------
 
 
+#: **降级标记** ✓（Gateway 方案 §9.0 ✓ —— C-22 ✓）。
+#: ⚠️ **不是错误码** ✓ —— 降级 ≠ 出错 ✓（前端按策略折叠或提示 ✓）。
+DegradationFlag = Literal[
+    "recall_degraded",
+    "compaction_degraded",
+    "interactive_degraded",
+]
+
+
 class _EventBase(BaseModel):
     """所有 ResultEvent 的公共字段。"""
 
@@ -51,6 +60,9 @@ class _EventBase(BaseModel):
     event_id: str
     trace_id: str | None = None
     retriable: bool = False
+    #: ⚠️ **降级标记** ✓（C-22 ✓）—— 与对外 chunk 的 ``flags`` **同一个词汇** ✓
+    #: （两套词汇 = 前端要写两套判断 ✗✗）。
+    flags: tuple[DegradationFlag, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +262,7 @@ __all__ = [
     "ArtifactReadyEvent",
     "AttachmentReadyEvent",
     "ContextCompactedEvent",
+    "DegradationFlag",
     "DoneEvent",
     "ErrorEvent",
     "EventKind",

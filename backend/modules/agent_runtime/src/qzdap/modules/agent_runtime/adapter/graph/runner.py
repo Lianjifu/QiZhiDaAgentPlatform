@@ -171,12 +171,19 @@ class SessionGraphRunner:
         span.set_attribute("agent.agent_id", str(getattr(kwargs.get("agent"), "id", "")))
         child_ctx = _trace.set_span_in_context(span)
         tools = 0
+        # ⚠️ **本轮的降级标记** ✓（C-22 ✓ —— Gateway 方案 §9.0 ✓）——
+        # 盒子是**本轮的局部变量** ✓（不挂在实例上 ✓ —— 并发轮次会串 ✗✗）。
+        flags_box: dict[str, tuple[str, ...]] = {}
         try:
-            async with aclosing(self._drive_turn(span_ctx=child_ctx, **kwargs)) as inner:
+            async with aclosing(
+                self._drive_turn(span_ctx=child_ctx, flags_box=flags_box, **kwargs)
+            ) as inner:
                 async for chunk in inner:
                     if getattr(chunk, "kind", None) == "tool_call":
                         tools += 1
-                    yield chunk
+                    # ⚠️ **一处盖章** ✓（每一块都带 ✓ —— 前端读哪块都一样 ✓）。
+                    flags = flags_box.get("flags") or ()
+                    yield (chunk.model_copy(update={"flags": list(flags)}) if flags else chunk)
         except Exception:
             span.set_status(_trace.Status(_trace.StatusCode.ERROR))
             span.record_exception(_sys.exc_info()[1])  # type: ignore[arg-type]
@@ -208,6 +215,9 @@ class SessionGraphRunner:
         # ⚠️ **这一轮是不是受保护** ✓（Gateway 决策 #5 ✓）—— 不受保护就
         # **剔除副作用工具** ✓（§5.3.1 规则 3 ✓）。
         protected: bool = True,
+        # ⚠️ **本轮的降级标记盒子** ✓（C-22 ✓）—— 由 ``run_turn`` 建 ✓，
+        # 这里**装配完**就填 ✓（第一块产出之前 ✓ → 每块都带得上 ✓）。
+        flags_box: dict[str, tuple[str, ...]] | None = None,
     ) -> AsyncGenerator[TurnChunk, None]:
         seq = 0
         max_steps = 8
@@ -236,6 +246,13 @@ class SessionGraphRunner:
             agent=agent,
             session_id=session_id,
         )
+        # ⚠️ **降级标记从 Context 出来** ✓（C-22 ✓ —— Context 侧**已经产出**
+        # ✓ —— 之前**没有可投递的通道** ✗✗ → 现在有了 ✓）。
+        degraded_flags = tuple(
+            sorted(name for name, degraded in (assembled.degraded_flags or {}).items() if degraded)
+        )
+        if flags_box is not None:
+            flags_box["flags"] = degraded_flags
         if knowledge_hits:
             seq += 1
             yield KnowledgeSearchChunk(
@@ -256,7 +273,7 @@ class SessionGraphRunner:
                     for item in knowledge_hits
                     if item.get("package_name")
                 ],
-                degraded=False,
+                degraded="recall_degraded" in degraded_flags,
             )
         # ⚠️ **走新的 Compressor** ✓（Context Stage 4 ✓）—— 旧的
         # `compact_messages` 从此没有调用方 ✓（删它归 Context Stage 5 ✓，

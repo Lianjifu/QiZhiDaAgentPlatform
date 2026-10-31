@@ -1,6 +1,7 @@
 # Gateway 层重构方案
 
-> 版本：1.13（2026-10-30：**「切 IM 入口到唯一 turn 实现」已达成** —— 与 **Session Stage 5b 同 PR** ✓：IM 的入站 / 出站 / **轮次编排**全部走唯一实现（会话按 `channel_session_key` 粘住 ✓，台账 **R1 / G9 / X2 已清理**）；旧订阅者 `dispatch_subscriber.py` **删除** ✓）
+> 版本：1.14（2026-10-31：**§9.0 的 `flags` 契约已落地** ✓ —— `ChunkEnvelope.flags` ✓（对外 chunk ✓）+ `ResultEvent.flags` ✓（内部协议 ✓ —— **同一个词汇** ✓）；**降级终于有可投递的通道** ✓（Context 产出的 `recall_degraded` → 运行时 → 事件流 → SSE ✓ —— 实现计划的 **C-22 已达成** ✓）；详见附录 C.9）
+> 沿革：1.13（2026-10-30：**「切 IM 入口到唯一 turn 实现」已达成** —— 与 **Session Stage 5b 同 PR** ✓：IM 的入站 / 出站 / **轮次编排**全部走唯一实现（会话按 `channel_session_key` 粘住 ✓，台账 **R1 / G9 / X2 已清理**）；旧订阅者 `dispatch_subscriber.py` **删除** ✓）
 > 沿革：v1.12（2026-10-29：**Stage 0 的 G-02 / G-02b 已补齐** —— 错误码**收敛 + 投影**落地：15 个 Gateway 域的自由字符串码提升为 `ErrorCode` 枚举成员（台账 **G12 已清理**）+ `ERROR_PROJECTION` 投影表（http / im / web 三套文案）+ 三处投放面接线；**§9.0 的表只列了 7 个** —— 实施时发现 Gateway 自己又造了 8 个，按实况补齐；**其余模块自己的 ~150 个码未接管**；详见附录 C.8）｜ 1.11（2026-10-29：**Stage 5 已实施（部分）** —— 旧的 `/v1/sessions*` **整段删除**（台账 **G7 / G8**；P-11 确认无仓外消费者 → 兼容保留期归零）+ `recent_request_ids` 残留数据清零 + 孤儿索引删除 + 「没有第二套实现」扫描脚本**进 CI** + §11.2 的架构测试落地；**G9（`dispatch_subscriber.py`）与 X2（第二套 turn 实现）仍未接管** —— 必须与 Session Stage 5b 原子切换；详见 §10 Stage 5「实施结果」与附录 C.7）
 > 沿革：v1.10（2026-10-29：**Stage 4b 已实施** —— 无感重放落地：Gateway 侧新增 `gateway/replay.py`（`StoredEvent` / `EventStore` 读端口 / 规范化摘要 `event_digest`）+ `Gateway.replay()`；**连带落地 Session 侧的最小必要**（`session_turns` 轮次双写 + `session_events` 事件落库 + 按 seq 读取端口，迁移 0050）—— 因为 Stage 4b 的硬前置（Session Stage 4「真写真读」）开工时不满足；**202 降级路径整条删除**，重复命中改为**重放上一轮的事件流**（SSE 带 `id:` 游标，支持 `Last-Event-ID` 续传），重放不了才回 409；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4b「实施结果」与附录 C.6）
 > 沿革：v1.9（2026-10-29：**Stage 4a 两段都已实施** —— 第一段：门面接管 + 出站 sink + 202 降级 + 弃用打点；第二段：**web 入口也走 `Gateway.accept`**（身份与幂等键各只有一个来源）；**「切 IM 入口到唯一 turn 实现」仍被 Session 阻塞**；详见 §10 Stage 4a「实施结果」与附录 C.4 / C.5）
@@ -1558,6 +1559,22 @@ Gateway 域对应的规则：
 > 这个旧实现），并把**证明不了的部分**明确留成「未接管」—— **既没有假装条件
 > 满足，也没有因为条件不满足就什么都不做**。
 
+
+### C.9 §9.0 的 `flags` 契约落地（C-22，2026-10-31）
+
+> **背景**：§9.0 把「降级」列为**非 `ErrorCode` 的标记** ✓（`recall_degraded` /
+> `compaction_degraded` / `interactive_degraded` ✓）—— 但**契约一直没实现**
+> ✗✗ → Context 侧**已经产出** `recall_degraded` ✓（落进 manifest 的 `degraded`
+> 列 ✓）却**没有可投递的通道** ✗✗ → **「降级不可见」** ✗✗（实现计划 C-22 ✓）。
+
+| # | 级别 | 问题 | 修正 | 落点 |
+|---|---|---|---|---|
+| **G-50** | 严重 | **降级标记没有契约** —— §9.0 只在方案里写了一行「走 `ResultEvent.flags`」✓，但 `ResultEvent` 与对外 chunk **都没有这个字段** ✗ → Context 产出的降级**到不了前端** ✗✗ | ① **对外 chunk** 加 `ChunkEnvelope.flags` ✓（挂在**信封**上 ✓ —— 每一块都带 ✓ —— 前端读哪块都一样 ✓ —— 一处 ✓）；② **内部协议** 加 `_EventBase.flags` ✓（**同一个词汇** ✓ —— 两套词汇 = 前端要写两套判断 ✗✗）；③ **运行时**把 Context 的 `degraded_flags` **盖到每一块上** ✓（一处盖章 ✓ —— `run_turn` 里盖章 ✓ —— 不逐个 yield 点改 ✓） | `libs/schema/.../turn.py` / `qzdap_agent_runtime/result/events.py` / `qzdap_agent_runtime/outbox/__init__.py` / `modules/agent_runtime/.../graph/runner.py` |
+| **G-51** | 中 | **标记的词汇没有单一来源** —— §9.0 写了三个名字 ✓，但代码里没有对应的东西 ✗（谁想写就写什么 ✗） | 契约层定 `DegradationFlag` ✓（`Literal` ✓ —— 写错就报错 ✓ —— 不静默接受 ✗✗）；**出站转换只放行这三个** ✓（认不出来的**丢掉** ✓ —— 前端按固定词汇判断 ✓） | `qzdap_agent_runtime/result/events.py` / `outbox/__init__.py` |
+| **G-52** | 中 | **降级标记挂在实例上会串轮次** ✓ —— 轮次是**并发的** ✗✗ | 标记盒是**本轮的局部变量** ✓（`run_turn` 建 ✓ → `_drive_turn` 填 ✓ → 不挂实例 ✓） | `modules/agent_runtime/.../graph/runner.py` |
+
+**验收** ✓：召回失败 → **这一轮的每一块都带 `recall_degraded`** ✓（单测 ✓）；
+没降级 → **不带标记** ✓（单测 ✓）；出站转换**透传标记** ✓ 且**丢掉不认识的** ✓（单测 ✓）。
 
 ### C.8 Stage 0 的 G-02 / G-02b 补齐实施带回的五处修正（v1.11 → v1.12，2026-10-29）
 

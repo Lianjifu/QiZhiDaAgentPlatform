@@ -567,7 +567,7 @@
 | | C-19 `rolling_summary` 读写迁移 | ✅ **已达成**（2026-10-30，Context Stage 4）—— **新写入只走 `agent_sessions.rolling_summary`** ✓（`save_rolling_summary` ✓）；旧写入点（Session 层的 `metadata['rolling_summary']`）**不再写** ✓；读侧改读新列 ✓（旧副本**只作过渡回退** ✓ → 清理归 Stage 5 ✓） |
 | | C-20 交付前落库 | ✅ **已达成**（2026-10-30，Context Stage 4）—— manifest **在模型调用之前**落库 ✓（实测：manifest 行先于模型响应存在 ✓）；⚠️ **落库失败就让这一轮失败** ✓ —— 「模型已回答却查不到上下文」比「这一轮失败」更糟 ✗✗ |
 | Stage 4 · 接线与端到端 | C-21 Agent Loop 调 Context | ✅ **已达成**（2026-10-30，**Agent A-26**）—— 旧循环 `_run_turn_inner` 的上下文装配改调 `ContextBuilder.build` ✓（⚠️ **新的 `AgentLoopRunner` 那半还没做** ✗ —— 归 Agent Stage 5 ✓） 替换「自己拼 messages」 | — | 0 | **Agent Stage 5** |
-| | C-22 召回失败的 degraded 标记 | ⚠️ **未达成** —— Context 侧**已经产出** `recall_degraded` ✓（落进 manifest 的 `degraded` 列 ✓），但 **`ResultEvent.flags` 契约还没实现** ✗（Gateway 层 §9.0 只在方案里 ✓）→ **没有可投递的通道** ✗ → 归 **Gateway 层** ✓ | — | 0 | C-08 · **Gateway 的 flags 契约** |
+| | C-22 召回失败的 degraded 标记 | ✅ **已达成**（2026-10-31）—— **契约落地** ✓：`ChunkEnvelope.flags` ✓（对外 chunk ✓ —— 挂在信封上 ✓ —— 前端读哪块都一样 ✓）+ `ResultEvent.flags` ✓（内部协议 ✓ —— 同一个词汇 ✓）；**Context → 运行时 → 事件流 → SSE 全链路通** ✓（召回失败 → 每一块都带 `recall_degraded` ✓） | — | 0 | C-08 |
 | | C-23 端到端回归 | ✅ **已达成** —— `modules/agent_runtime/tests/unit/test_context_wiring.py` ✓（长会话 ✓ 混合中英文 ✓ 召回为空 ✓ 摘要模型故障 ✓） 长会话、混合中英文、召回为空、摘要模型故障 | — | 0 | C-21 |
 | | **C-24 停用 + 打点 `_load_messages` / 四套模板 / `compact.py`** | ⚠️ **前置（硬）已满足**（Agent A-26 ✅ 2026-10-30）—— 旧循环 `_run_turn_inner` 已改接 `context/builder.py` + `memory/writer.py` ✓；**X8 的调用点已归零** ✓（演示栈实测 ✓）—— 剩下的「停用 + 打点 + 删除」归 **Context Stage 4 / Stage 5** ✓ | **X8 / X9 / X10 → 已弃用**（关注点 #9、#10、#11） | — | C-21 · **Agent A-26 ✓** |
 | | C-25 Agent Loop 内自拼 messages 分支停用 + 打点 | ✅ **旧循环那一半已停用** ✓（2026-10-30：随 A-26 改调 Builder ✓）—— ⚠️ `nodes.py` 的 `agent` 节点那半是**死代码** ✓（19 节点图没有生产调用方 ✓）→ 删除归 Agent Stage 7（X17）✓ | — | — | C-21 ✓ |
@@ -1175,7 +1175,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] C-05 `ContextBuilder` ✓ · C-06 agent prompts 接入 ✓ · C-07 单段式渲染 ✓ · C-08 召回发起 ✓ · C-09 manifest 生成 ✓
 - [x] C-10 **只新建，不动调用点** ✓ · **C-10b Builder 接上生产调用方** ✓（Agent A-26 ✓）· C-11 async 压缩器 ✓ · C-12 结构化摘要 ✓ · C-13 复验预算 ✓ · C-14 `removed_ids` 差集 ✓ · C-15 真正的降级序 ✓ · C-16 `context_compacted` 事件 ✓ · C-17 停用打点 `compact.py` → **X9** ✓
 - [x] C-18 manifest 落库 ✓（**Context Stage 4 已接上生产** ✓）· C-19 `rolling_summary` 迁移 ✓ · C-20 交付前落库 ✓
-- [x] C-21 Agent Loop 调 Context ✓（**旧循环那半** ✓ —— A-26 ✓；⚠️ **新 `AgentLoopRunner` 那半未做** ✗ → Agent Stage 5 ✓）· [ ] **C-22 召回失败的 degraded 标记** —— ⚠️ **未达成** —— Context 侧**已产出** `recall_degraded` ✓ 但 **`ResultEvent.flags` 契约还没实现** ✗ → **归 Gateway 层** ✓ · C-23 端到端回归 ✓（`test_context_wiring.py` ✓）
+- [x] C-21 Agent Loop 调 Context ✓（**旧循环那半** ✓ —— A-26 ✓；⚠️ **新 `AgentLoopRunner` 那半未做** ✗ → Agent Stage 5 ✓）· [x] **C-22 召回失败的 degraded 标记** ✓（2026-10-31 —— `flags` 契约落地 ✓ 全链路通 ✓）· C-23 端到端回归 ✓（`test_context_wiring.py` ✓）
 - [x] C-24 停用打点 `_load_messages` / 四套模板 / `compact.py` → **X8 / X9 / X10** ✓（调用点已归零 ✓ —— 实测 legacy 计数 0 ✓）· C-25 自拼 messages 分支停用打点 ✓（旧循环那半 ✓ —— **删除归 Agent X17** ✓）
 - [x] C-26 **删 `compact.py`** → **X9** ✓ · C-27 **删四套模板** → **X10** ✓ · C-28 **删 `_load_messages`** → **X8** ✓ · [x] **C-29 删 `budget.py`** ✓ —— **已随 Agent Stage 7 删除** ✓（2026-10-31 ✓ —— 那两个旧类只被死代码 import ✓）· C-30 删 `metadata['rolling_summary']` 残留 ✓
 - [x] C-31 启用扫描脚本 Context 段 ✓（28 → 30 条 ✓）· [x] **C-32 更新台账 + 现状文档** ✓（2026-10-31 ✓ —— 同一份现状文档 ✓）

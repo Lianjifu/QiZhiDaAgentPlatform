@@ -48,6 +48,13 @@ class ChunkEnvelope(BaseModel):
     turn_id: UUID
     seq: int = Field(ge=0)
     kind: ChunkKind
+    #: ⚠️ **降级标记** ✓（C-22 ✓ —— Gateway 方案 §9.0 ✓）——
+    #: `recall_degraded` / `compaction_degraded` / `interactive_degraded` ✓
+    #: —— **不进错误码枚举** ✓（那是「降级」✓ 不是「错误」✓ —— 前端按策略
+    #: 折叠或提示 ✓）。
+    #: ⚠️ **每一块都带** ✓（不是只有某一块带 ✓）—— 前端读哪一块都一样 ✓
+    #: （挂在信封上 ✓ —— 一处 ✓）。
+    flags: list[str] = Field(default_factory=list)
 
 
 class MessageChunk(ChunkEnvelope):
