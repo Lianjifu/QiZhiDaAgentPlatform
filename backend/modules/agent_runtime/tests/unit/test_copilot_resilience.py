@@ -461,8 +461,9 @@ async def test_cancelled_stream_does_not_leave_a_running_turn() -> None:
     turn = await deps["turns"].latest_for_session(UUID(sid))
     assert turn is not None
     # 「被取消」在权威表 ``session_turns`` 里是 ``cancelled`` ✓ ——
-    # 映射到领域枚举是 ``denied`` ✓（领域里最接近的「没跑成」✓）。
-    assert turn.status.value == "denied"
+    # 领域层**直接用契约层那份状态机** ✓（2026-10-31 ✓ —— 不再有损映射 ✓
+    # → 「被取消」不再被当成「被拒绝」✗✗）。
+    assert turn.status.value == "cancelled"
     assert turn.error_code == "TURN_CANCELLED"
 
 
@@ -617,8 +618,9 @@ async def test_cancel_request_stops_the_running_turn(monkeypatch) -> None:
     turn = await deps["turns"].latest_for_session(UUID(sid))
     assert turn is not None
     # 「被取消」在权威表 ``session_turns`` 里是 ``cancelled`` ✓ ——
-    # 映射到领域枚举是 ``denied`` ✓（领域里最接近的「没跑成」✓）。
-    assert turn.status.value == "denied"
+    # 领域层**直接用契约层那份状态机** ✓（2026-10-31 ✓ —— 不再有损映射 ✓
+    # → 「被取消」不再被当成「被拒绝」✗✗）。
+    assert turn.status.value == "cancelled"
     assert turn.error_code == "TURN_CANCELLED"
 
 

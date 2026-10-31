@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import StrEnum
 from typing import Self
 
 from qzdap.modules.agent_runtime.domain.errors import SessionClosedError
@@ -21,7 +20,7 @@ from qzdap.modules.agent_runtime.domain.events import (
     TurnFailed,
     TurnStarted,
 )
-from qzdap_agent_runtime.session.state import SessionStatus
+from qzdap_agent_runtime.session.state import SessionStatus, TurnStatus
 from qzdap_kernel.error_codes import ErrorCode
 from qzdap_kernel.ids import (
     AgentId,
@@ -40,13 +39,14 @@ from qzdap_kernel.ids import (
 # `waiting_approval` / `cancelled` 从来没在领域层出现过 ✗）—— 领域枚举落后于
 # 表约束 = 又一套真相 ✓。契约层的 `session/state.py` 同时给出**状态机**
 # （合法转移 + 非法转移报错 ✓）。
-
-
-class TurnStatus(StrEnum):
-    RUNNING = "running"
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    DENIED = "denied"
+#
+# ⚠️ **轮次状态同样收上去** ✓（2026-10-31 ✓ —— 唯一 turn 实现落地之后 ✓）：
+# 模块侧原先自己定义了一套四值枚举（``running`` / ``succeeded`` / ``failed``
+# / ``denied`` ✓）—— 它是**旧表** ``agent_turns`` 的语义 ✓ —— 而现在读的
+# 是新表 ``session_turns`` ✓（六个值 ✓）→ 映射只能**有损** ✓
+# （``waiting → running`` ✓ / ``cancelled → denied`` ✓）→ **「被取消的轮次」
+# 在任务卡上显示成「已拒绝」** ✗✗（用户看见的是另一件事 ✓）。
+# 现在**直接用契约层那一份** ✓（与 ``SessionStatus`` 同一口径 ✓）。
 
 
 @dataclass(slots=True, frozen=True)

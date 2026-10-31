@@ -160,10 +160,9 @@ class InMemoryTurnRepository(TurnRepository):
 
 
 def _row_to_turn(turn_id: UUID, row: dict[str, Any]) -> Turn:
-    """journal 的行 → 领域 ``Turn`` ✓（状态映射与生产 mapper 一致 ✓）。"""
-    status = {"waiting": "running", "cancelled": "denied"}.get(
-        str(row.get("status")), str(row.get("status"))
-    )
+    """journal 的行 → 领域 ``Turn`` ✓（状态**直接用契约层那份** ✓ —— 与生产
+    mapper 一致 ✓ —— 2026-10-31 起不再有损映射 ✓）。"""
+    status = str(row.get("status"))
     return Turn(
         id=TurnId(turn_id),
         tenant_id=TenantId(row["tenant_id"]),

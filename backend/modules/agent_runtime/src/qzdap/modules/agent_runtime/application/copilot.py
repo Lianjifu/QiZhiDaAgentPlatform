@@ -492,29 +492,33 @@ def _task_card(
         priority = "中"
         due = "未排期"
         time_label = "—"
-    elif latest_turn.status.value == "running":
-        # 轮次挂起等审批时, 展示成「等你确认」而不是「执行中」—— 后者会让人
+    elif waiting_approval or latest_turn.status.value == "waiting":
+        # 轮次挂起等审批 —— 展示成「等你确认」而不是「执行中」：后者会让人
         # 以为系统还在跑, 实际上球在用户手里.
-        if waiting_approval:
-            status = "待处理"
-            priority = "高"
-            due = "等你确认"
-            time_label = "待确认"
-        else:
-            status = "执行中"
-            priority = "高"
-            due = "进行中"
-            time_label = "运行中"
+        #
+        # ⚠️ **以「会话正在等审批」为准** ✓（journal 说它等 ✓）—— 哪怕
+        # 最新那一轮不是它 ✓（挂起的是**上一轮** ✓ —— 恢复走的是新一轮 ✓）。
+        status = "待处理"
+        priority = "高"
+        due = "等你确认"
+        time_label = "待确认"
+    elif latest_turn.status.value == "running":
+        status = "执行中"
+        priority = "高"
+        due = "进行中"
+        time_label = "运行中"
     elif latest_turn.status.value == "failed":
         status = "异常"
         priority = "高"
         due = "需要重试"
         time_label = "异常"
-    elif latest_turn.status.value == "denied":
-        status = "异常"
-        priority = "中"
-        due = "已拒绝"
-        time_label = "已拒绝"
+    elif latest_turn.status.value == "cancelled":
+        # ⚠️ **被取消 ≠ 被拒绝** ✓（原先有损映射把它当成 denied ✓ →
+        # 用户看见「已拒绝」✗✗ —— 那是另一件事 ✓）。
+        status = "已取消"
+        priority = "低"
+        due = "已取消"
+        time_label = "已取消"
     else:
         status = "待处理"
         priority = "中"

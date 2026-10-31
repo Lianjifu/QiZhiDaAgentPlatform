@@ -36,17 +36,16 @@ def session_orm_to_domain(o: SessionORM) -> Session:
 def session_turn_orm_to_domain(o: SessionTurnORM) -> Turn:
     """新表 ``session_turns`` 的行 → ``Turn`` 领域实体 ✓。
 
-    ⚠️ **状态映射**：新表的枚举比领域的多两个 ✓ ——
-    ``waiting``（挂起等审批）→ ``running`` ✓（卡片另有「等你确认」分支 ✓）；
-    ``cancelled``（被取消）→ ``denied`` ✓（领域里最接近的「没跑成」✓）。
+    ⚠️ **状态直接用契约层那一份** ✓（2026-10-31 ✓ —— 与 ``SessionStatus``
+    同一口径 ✓）：新表 ``session_turns.status`` 的六个值（``queued`` /
+    ``running`` / ``waiting`` / ``succeeded`` / ``failed`` / ``cancelled`` ✓）
+    与状态机**逐一对应** ✓ → **不需要有损映射** ✓（原先映射成 ``denied`` ✓
+    → 「被取消的轮次」在任务卡上显示成「已拒绝」✗✗）。
 
     ⚠️ 新表**没有** ``final_response`` / token 数 ✗ —— 领域实体里留空 ✓
     （读它们的地方已经没有了 ✓；回复在**事件流**里 ✓）。
     """
-    status = {
-        "waiting": TurnStatus.RUNNING.value,
-        "cancelled": TurnStatus.DENIED.value,
-    }.get(o.status, o.status)
+    status = o.status
     return Turn(
         id=TurnId(o.id),
         tenant_id=TenantId(o.tenant_id),
