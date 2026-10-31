@@ -158,7 +158,7 @@ describe('我的工作流', () => {
     expect(screen.getByRole('dialog', { name: '使用销售周报自动整理' })).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText('例如：整理本周华东客户进展'), { target: { value: '本周摘要' } });
     fireEvent.click(screen.getByRole('button', { name: '确认使用' }));
-    expect((await screen.findByRole('status')).textContent).toContain('使用记录已保存');
+    expect((await screen.findByRole('status')).textContent).toContain('执行完成');
   });
 
   it('opens steps and favorites a flow', async () => {

@@ -149,9 +149,11 @@ def build_router() -> APIRouter:
     ) -> dict[str, Any]:
         user_id = _owner_id(request, x_user_id)
         note = body.get("note") if isinstance(body, dict) else None
-        return await svc.record_run(
+        inputs = body.get("inputs") if isinstance(body, dict) else None
+        return await svc.run_workflow(
             workflow_id=workflow_id,
             user_id=user_id,
+            inputs=inputs if isinstance(inputs, dict) else None,
             note=str(note) if note is not None else None,
         )
 
@@ -201,9 +203,11 @@ def build_router() -> APIRouter:
     ) -> dict[str, Any]:
         user_id = _owner_id(request, x_user_id)
         note = body.get("note") if isinstance(body, dict) else None
-        return await svc.record_run(
+        inputs = body.get("inputs") if isinstance(body, dict) else None
+        return await svc.run_workflow(
             workflow_id=workflow_id,
             user_id=user_id,
+            inputs=inputs if isinstance(inputs, dict) else None,
             note=str(note) if note is not None else None,
         )
 

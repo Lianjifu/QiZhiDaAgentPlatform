@@ -1171,10 +1171,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     class _OrchestrationFactory:
         def for_session(self, session):  # type: ignore[no-untyped-def]
+            from qzdap.composition.workflow_ports import (
+                AgentWorkflowPort,
+                ToolWorkflowPort,
+            )
+            from qzdap.modules.orchestration.application.engine import WorkflowEngine
+
+            # ⚠️ **执行引擎** ✓ —— 工具节点真调工具 ✓ / 智能体节点真跑一轮
+            # 对话 ✓（组合根是唯一能同时看到两个模块的地方 ✓）。
+            engine = WorkflowEngine(
+                tools=ToolWorkflowPort(app.state.tool_factory.for_session(session)),
+                agents=AgentWorkflowPort(
+                    session=session,
+                    copilot_factory=app.state.copilot_factory,
+                    catalog_factory=app.state.agent_catalog_factory,
+                ),
+            )
             return OrchestrationService(
                 workflows=SqlWorkflowRepository(session),
                 user_state=SqlWorkflowUserStateRepository(session),
                 runs=SqlWorkflowRunRepository(session),
+                engine=engine,
             )
 
         def __call__(self, session):  # type: ignore[no-untyped-def]

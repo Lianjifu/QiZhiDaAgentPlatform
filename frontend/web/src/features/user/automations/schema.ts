@@ -21,6 +21,12 @@ export interface FlowRun {
   name: string;
   time: string;
   result: string;
+  /** ⚠️ **执行结论** ✓ —— 工作流是真的跑了一遍 ✓（不是「记一条使用记录」✓）。 */
+  ok?: boolean;
+  /** 每一步的执行明细 ✓（节点 / 类别 / 输出 ✓）。 */
+  steps?: { nodeId: string; kind: string; label: string; ok: boolean; error?: string }[];
+  summary?: string;
+  error?: string;
 }
 
 export interface FlowListParams {

@@ -83,6 +83,7 @@ describe('工作流 · 浏览工作流', () => {
     fireEvent.click(screen.getByRole('button', { name: /使用工作流/ }));
     expect(screen.getByRole('dialog', { name: '使用销售周报自动整理' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '确认使用' }));
-    expect((await screen.findByRole('status')).textContent).toContain('使用记录已保存');
+    // ⚠️ **工作流是真的跑了一遍** ✓ —— 提示说的是执行结果 ✓（不是「使用记录已保存」✓）。
+    expect((await screen.findByRole('status')).textContent).toContain('执行完成');
   });
 });

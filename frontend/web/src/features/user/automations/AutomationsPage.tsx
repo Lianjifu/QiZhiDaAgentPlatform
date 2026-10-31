@@ -107,7 +107,7 @@ export default function AutomationsPage() {
   const runFlow = () => {
     if (!runTarget || runTarget.availability !== 'available') return;
     ensureChosen(runTarget.id);
-    recordRun.mutate({ flowId: runTarget.id, note: runNote }, { onSuccess: (next) => { setNotice(`"${runTarget.name}"使用记录已保存。`); setRunNote(''); setRunTarget(null); setBrowseOpen(false); }, onError: (cause) => setNotice(`执行失败：${String(cause)}`) });
+    recordRun.mutate({ flowId: runTarget.id, note: runNote }, { onSuccess: (next) => { setNotice(`「${runTarget.name}」${next.ok === false ? '执行失败' : '执行完成'}：${next.summary || next.result}`); setRunNote(''); setRunTarget(null); setBrowseOpen(false); }, onError: (cause) => setNotice(`执行失败：${String(cause)}`) });
   };
 
   const toggleFavorite = (flow: Flow) => {

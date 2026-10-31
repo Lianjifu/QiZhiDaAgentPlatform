@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+from qzdap.modules.orchestration.application.engine import WorkflowEngine
 from qzdap.modules.orchestration.application.ports import (
     WorkflowRepository,
+    WorkflowRunContext,
     WorkflowRunRepository,
     WorkflowUserStateRepository,
 )
@@ -31,10 +33,13 @@ class OrchestrationService:
         workflows: WorkflowRepository,
         user_state: WorkflowUserStateRepository,
         runs: WorkflowRunRepository,
+        engine: WorkflowEngine | None = None,
     ) -> None:
         self._workflows = workflows
         self._user_state = user_state
         self._runs = runs
+        #: ⚠️ **执行引擎** ✓ —— 没有它就**不能跑** ✓（不假装跑过 ✓）。
+        self._engine = engine
 
     async def list_admin(
         self,
@@ -126,15 +131,38 @@ class OrchestrationService:
         )
         return {"id": str(workflow_id), "on": on}
 
-    async def record_run(
-        self, *, workflow_id: UUID, user_id: UUID, note: str | None = None
+    async def run_workflow(
+        self,
+        *,
+        workflow_id: UUID,
+        user_id: UUID,
+        inputs: dict[str, Any] | None = None,
+        note: str | None = None,
     ) -> dict[str, Any]:
+        """**真的跑一遍这张图** ✓ —— 不是「记一条使用记录」✓。
+
+        ⚠️ **执行引擎没接就跑不了** ✓ —— 明确报错 ✓（而不是记一条
+        「已执行」的假记录 ✗✗ —— 那是 theater ✗）。
+        """
         flow = await self._require(workflow_id)
         if flow.status != "published":
             raise WorkflowUnavailable("workflow unavailable")
+        engine = self._engine
+        if engine is None:
+            raise WorkflowUnavailable("工作流执行引擎未接线")
+        context = WorkflowRunContext(
+            tenant_id=flow.tenant_id,
+            workspace_id=flow.workspace_id,
+            user_id=user_id,
+            workflow_id=flow.id,
+            workflow_name=flow.name,
+        )
+        result = await engine.run(workflow=flow, context=context, inputs=inputs)
         updated = flow.bump_call()
         await self._workflows.update(updated)
-        trimmed = (note or "").strip()
+        summary = result.summary.strip()
+        if note and note.strip():
+            summary = f"{summary}（{note.strip()}）"
         run = FlowRun(
             id=uuid4(),
             tenant_id=flow.tenant_id,
@@ -143,10 +171,11 @@ class OrchestrationService:
             workflow_id=flow.id,
             name=flow.name,
             time="刚刚",
-            result="已记录使用说明" if trimmed else "使用记录已保存",
+            result=summary[:128] or ("执行完成" if result.ok else "执行失败"),
         )
         await self._runs.add(run)
-        return run.to_catalog_dict()
+        # ⚠️ **每一步都回给前端** ✓ —— 让人看得见「到底跑了什么」✓。
+        return {**run.to_catalog_dict(), **result.to_dict()}
 
     async def list_runs(self, *, workspace_id: UUID, user_id: UUID) -> list[dict[str, Any]]:
         rows = await self._runs.list_for_user(workspace_id=workspace_id, user_id=user_id)

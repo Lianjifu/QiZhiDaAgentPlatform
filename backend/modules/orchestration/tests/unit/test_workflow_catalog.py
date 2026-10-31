@@ -6,6 +6,7 @@ from uuid import UUID
 
 import pytest
 
+from qzdap.modules.orchestration.application.engine import WorkflowEngine
 from qzdap.modules.orchestration.application.ports import (
     WorkflowRepository,
     WorkflowRunRepository,
@@ -75,11 +76,12 @@ class InMemoryWorkflowRunRepository(WorkflowRunRepository):
         ][:limit]
 
 
-def _svc() -> OrchestrationService:
+def _svc(engine: WorkflowEngine | None = None) -> OrchestrationService:
     return OrchestrationService(
         InMemoryWorkflowRepository(),
         InMemoryWorkflowUserStateRepository(),
         InMemoryWorkflowRunRepository(),
+        engine=engine,
     )
 
 
@@ -109,7 +111,8 @@ async def test_create_list_and_catalog_visibility() -> None:
 
 @pytest.mark.asyncio
 async def test_run_requires_published_and_records() -> None:
-    svc = _svc()
+    """⚠️ **跑之前要先发布** ✓ —— 草稿不让跑 ✓。"""
+    svc = _svc(engine=WorkflowEngine())
     created = await svc.create(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
@@ -117,15 +120,32 @@ async def test_run_requires_published_and_records() -> None:
     )
     flow_id = UUID(created["id"])
     with pytest.raises(WorkflowUnavailable):
-        await svc.record_run(workflow_id=flow_id, user_id=USER)
+        await svc.run_workflow(workflow_id=flow_id, user_id=USER)
     await svc.update(workflow_id=flow_id, body={"status": "published"}, actor="客服")
-    run = await svc.record_run(workflow_id=flow_id, user_id=USER, note="加急")
-    assert run["result"] == "已记录使用说明"
+    run = await svc.run_workflow(workflow_id=flow_id, user_id=USER, note="加急")
+    assert run["ok"] is True
+    assert run["result"] == "执行完成（加急）"
     assert run["time"] == "刚刚"
     runs = await svc.list_runs(workspace_id=WORKSPACE, user_id=USER)
     assert len(runs) == 1
     admin = await svc.get_admin(flow_id)
     assert admin["callCount"] == 1
+
+
+@pytest.mark.asyncio
+async def test_run_without_an_engine_says_so() -> None:
+    """⚠️ **没有引擎就明说** ✓ —— 不记一条「已执行」的假记录 ✗✗。"""
+    svc = _svc()
+    created = await svc.create(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"name": "客户投诉自动分流", "trigger": "消息触发"},
+    )
+    flow_id = UUID(created["id"])
+    await svc.update(workflow_id=flow_id, body={"status": "published"}, actor="客服")
+    with pytest.raises(WorkflowUnavailable):
+        await svc.run_workflow(workflow_id=flow_id, user_id=USER)
+    assert await svc.list_runs(workspace_id=WORKSPACE, user_id=USER) == []
 
 
 @pytest.mark.asyncio

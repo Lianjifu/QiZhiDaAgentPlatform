@@ -56,7 +56,16 @@ export async function automationsMockHandler(
       id: uid('local'),
       name: flow.name,
       time: '刚刚 · 本地演示',
-      result: body.note?.trim() ? '已记录使用说明' : '演示完成',
+      result: body.note?.trim() ? `演示完成（${body.note.trim()}）` : '演示完成',
+      // ⚠️ **本地演示也走「执行」的形状** ✓（真模式返回每一步 ✓）。
+      ok: true,
+      summary: body.note?.trim() ? `演示完成（${body.note.trim()}）` : '演示完成',
+      steps: flow.steps.map((label, index) => ({
+        nodeId: `n-${index}`,
+        kind: index === 0 ? 'trigger' : index === flow.steps.length - 1 ? 'end' : 'tool',
+        label,
+        ok: true,
+      })),
     };
     state.runs = [run, ...state.runs];
     return withDelay({ ...run });
