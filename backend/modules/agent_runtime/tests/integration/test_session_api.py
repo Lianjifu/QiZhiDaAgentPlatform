@@ -49,20 +49,26 @@ OWNER = UUID("00000000-0000-0000-0000-000000000010")
 
 
 class _Catalog:
-    def __init__(self, agent: CatalogAgent) -> None:
-        self._agent = agent
+    def __init__(self, *agents: CatalogAgent) -> None:
+        self._agents = list(agents)
 
     async def get_published(self, agent_id):  # type: ignore[no-untyped-def]
-        return self._agent
+        for agent in self._agents:
+            if str(agent.id) == str(agent_id):
+                return agent
+        return self._agents[0]
 
     async def get_admin(self, agent_id):  # type: ignore[no-untyped-def]
-        return self._agent.to_admin_dict()
+        return (await self.get_published(agent_id)).to_admin_dict()
 
     async def list_admin(self, *, workspace_id):  # type: ignore[no-untyped-def]
         """候选池 —— 真实实现走 ``to_admin_dict``，这里给同样的形状。"""
-        row = self._agent.to_admin_dict()
-        row["status"] = "published"
-        return [row]
+        rows = []
+        for agent in self._agents:
+            row = agent.to_admin_dict()
+            row["status"] = "published"
+            rows.append(row)
+        return rows
 
 
 class _Messages:
@@ -96,6 +102,7 @@ def _build_test_app(
     *,
     llm_content: str = "echo",
     raise_on_first_chunk: Exception | None = None,
+    agents: tuple[CatalogAgent, ...] | None = None,
 ) -> tuple[FastAPI, dict]:
     """最小 FastAPI app —— 只挂 ``/api/sessions*``，端口全部走内存替身。"""
     from qzdap.modules.agent_runtime.adapter.http.session_router import (
@@ -113,7 +120,7 @@ def _build_test_app(
     journal = InMemorySessionJournal()
     # 轮次读仓库读**同一份行** ✓（停旧写后轮次只有一个落点 ✓）。
     turns = InMemoryTurnRepository(journal)
-    catalog = _Catalog(_agent())
+    catalog = _Catalog(*(agents if agents is not None else (_agent(),)))
     messages = _Messages()
     runner = SessionGraphRunner(llm=llm)
     svc = CopilotSessionService(
@@ -192,6 +199,36 @@ async def _seed_session(ctx: dict, *, closed: bool = False) -> UUID:
 
 
 # ── POST /api/sessions ────────────────────────────────────────────────────
+
+
+#: 第二个 agent —— 用来验证「业务线」与「兜底默认」两条规则 ✓。
+OTHER_AGENT = UUID("00000000-0000-0000-0000-0000000000aa")
+
+
+def _agent_with(
+    *,
+    agent_id: UUID,
+    name: str,
+    category: str,
+    business_lines: tuple[str, ...] = (),
+    is_default: bool = False,
+) -> CatalogAgent:
+    """**带路由配置的 agent** ✓（Router 方案 §6.4 ✓ —— 配置在 profile 里 ✓）。"""
+    routing: dict = {}
+    if business_lines:
+        routing["business_lines"] = list(business_lines)
+    if is_default:
+        routing["default"] = True
+    agent = CatalogAgent.create(
+        id=AgentId(agent_id),
+        tenant_id=TenantId(TENANT),
+        workspace_id=WorkspaceId(WORKSPACE),
+        name=name,
+        category=category,
+        owner="test",
+        model="default",
+    )
+    return agent.apply_patch({"profile": {"routing": routing}})
 
 
 async def test_create_session_returns_201_with_the_detail_shape() -> None:
@@ -440,3 +477,71 @@ async def test_run_turn_stream_first_chunk_latency_below_one_second(
 
     assert first_chunk, "stream must produce at least one byte"
     assert first_ms < 1000, f"first chunk took {first_ms:.1f}ms"
+
+
+async def test_the_business_line_picks_the_agent() -> None:
+    """⚠️ **业务线规则（规则 3）真的有输入了** ✓（Router 方案 §3.1 ✓）。
+
+    此前 ``RoutingRequest.business_line`` **两边都没人填** ✓ → 规则 3 是死
+    规则 ✗✗。现在 web 侧从 ``X-Business-Line``（或请求体 ``businessLine``）
+    取 ✓。
+    """
+    service_agent = _agent_with(
+        agent_id=OTHER_AGENT, name="客服应答助手", category="客服应答", business_lines=("客服",)
+    )
+    app, ctx = _build_test_app(agents=(service_agent,))
+
+    async with _make_client(app) as client:
+        # ⚠️ **中文业务线走请求体** ✓ —— HTTP 头只能带 ASCII ✓（latin-1 ✓）。
+        resp = await client.post(
+            "/api/sessions",
+            json={"businessLine": "客服"},
+            headers=_hdrs(),
+        )
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["agentId"] == str(OTHER_AGENT)
+    session = await ctx["sessions"].get(UUID(resp.json()["id"]))
+    decision = (session.metadata or {}).get("route_decision")
+    assert decision is not None
+    assert decision["source"] == "business_line"
+
+
+async def test_the_fallback_default_agent_catches_the_rest() -> None:
+    """⚠️ **兜底默认 agent（规则 5）真的能兜住** ✓。
+
+    一条规则都没命中时 → 落到 ``profile.routing.default`` 那个 agent ✓
+    （否则建会话直接 400 ✗✗ —— 「兜底必须安全」✓）。
+    """
+    fallback = _agent_with(
+        agent_id=OTHER_AGENT, name="企智搭平台向导", category="企业通用", is_default=True
+    )
+    app, ctx = _build_test_app(agents=(fallback,))
+
+    async with _make_client(app) as client:
+        resp = await client.post("/api/sessions", json={}, headers=_hdrs())
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["agentId"] == str(OTHER_AGENT)
+    session = await ctx["sessions"].get(UUID(resp.json()["id"]))
+    decision = (session.metadata or {}).get("route_decision")
+    assert decision is not None
+    assert decision["source"] == "fallback"
+
+
+async def test_the_business_line_also_comes_from_the_header() -> None:
+    """⚠️ **头也认** ✓ —— 但**只能带 ASCII** ✓（HTTP 头的硬约束 ✓）。"""
+    sales_agent = _agent_with(
+        agent_id=OTHER_AGENT, name="销售助手", category="销售支持", business_lines=("sales",)
+    )
+    app, _ctx = _build_test_app(agents=(sales_agent,))
+
+    async with _make_client(app) as client:
+        resp = await client.post(
+            "/api/sessions",
+            json={},
+            headers={**_hdrs(), "X-Business-Line": "sales"},
+        )
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["agentId"] == str(OTHER_AGENT)

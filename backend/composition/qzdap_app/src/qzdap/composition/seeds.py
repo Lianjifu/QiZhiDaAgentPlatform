@@ -291,6 +291,10 @@ DEMO_AGENT_SPECS: tuple[dict[str, Any], ...] = (
         "name": "销售线索洞察助手",
         "description": "从线索表里找出值得优先跟进的客户，给出跟进动作与话术建议。",
         "category": "销售支持",
+        # ⚠️ **业务线** ✓（Router 方案 §3.1 规则 3 ✓）—— 挂在
+        # ``profile.routing.business_lines`` ✓ —— ``category`` 是长名 ✓
+        # 规则按**名字相等**匹配 ✓ → 短名也得声明 ✓。
+        "businessLines": ["销售", "线索"],
         "tags": ["线索分析", "客户跟进"],
         "tone": "brand",
         "dataAccess": "CRM 线索表与客户跟进记录",
@@ -311,6 +315,7 @@ DEMO_AGENT_SPECS: tuple[dict[str, Any], ...] = (
         "name": "客服应答助手",
         "description": "基于产品知识库起草标准应答，必要时引用外部资料并提醒人工介入。",
         "category": "客服应答",
+        "businessLines": ["客服", "售后"],
         "tags": ["工单应答", "知识检索"],
         "tone": "info",
         "dataAccess": "产品知识库与历史工单",
@@ -329,6 +334,7 @@ DEMO_AGENT_SPECS: tuple[dict[str, Any], ...] = (
         "name": "经营数据分析",
         "description": "拉通订单、成本与渠道数据，算清关键指标并指出异常。",
         "category": "数据分析",
+        "businessLines": ["数据", "经营分析"],
         "tags": ["指标分析", "经营看板"],
         "tone": "success",
         "dataAccess": "订单、成本与渠道投放数据",
@@ -349,6 +355,7 @@ DEMO_AGENT_SPECS: tuple[dict[str, Any], ...] = (
         "name": "营销文案创作",
         "description": "把卖点与客群信息改写成多渠道可用的营销文案。",
         "category": "文案创作",
+        "businessLines": ["文案", "营销"],
         "tags": ["文案生成", "多渠道改写"],
         "tone": "purple",
         "dataAccess": "产品卖点与目标客群画像",
@@ -367,6 +374,11 @@ DEMO_AGENT_SPECS: tuple[dict[str, Any], ...] = (
         "name": "企智搭平台向导",
         "description": "讲清楚平台能做什么，并帮忙把任务拆成可执行的步骤。",
         "category": "企业通用",
+        "businessLines": ["通用"],
+        # ⚠️ **兜底默认 agent** ✓（Router 方案 §3.1 规则 5 ✓）—— 标记在
+        # ``profile.routing.default`` ✓ —— 一条规则都没命中时**不丢消息** ✓
+        # （否则建会话直接 400 ✗✗）。
+        "routingDefault": True,
         "tags": ["平台导览", "任务拆解"],
         "tone": "brand",
         "dataAccess": "平台能力与当前工作空间配置",
@@ -382,6 +394,21 @@ DEMO_AGENT_SPECS: tuple[dict[str, Any], ...] = (
         },
     },
 )
+
+
+def _routing_profile(spec: dict[str, Any]) -> dict[str, Any]:
+    """**演示 agent 的路由配置** ✓（Router 方案 §6.4 ✓）。
+
+    ⚠️ **业务线 + 兜底标记** ✓ —— 前者让规则 3 有东西可匹配 ✓；后者让
+    规则 5 真能兜住 ✓（否则建会话直接 400 ✗✗ —— 「兜底必须安全」✓）。
+    """
+    routing: dict[str, Any] = {}
+    lines = [str(item) for item in (spec.get("businessLines") or ()) if str(item)]
+    if lines:
+        routing["business_lines"] = lines
+    if spec.get("routingDefault"):
+        routing["default"] = True
+    return routing
 
 
 async def seed_demo_agents(
@@ -428,6 +455,9 @@ async def seed_demo_agents(
             "maxSteps": 8,
             "visibleScope": ["公开"],
             "tools": [{"name": name, "enabled": True} for name in spec.get("tools", [])],
+            # ⚠️ **路由配置挂在 ``profile.routing``** ✓（Router 方案 §6.4 ✓
+            # —— 不新建策略表 ✓ —— 策略就是 agent 自己的属性 ✓）。
+            "profile": {"routing": _routing_profile(spec)},
         }
         await service.create(tenant_id=tenant_id, workspace_id=workspace_id, body=body)
         created.append(str(spec["name"]))

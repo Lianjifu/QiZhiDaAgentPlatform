@@ -344,6 +344,13 @@ function CopilotInner() {
             if (flag) degradedFlags.add(flag);
           }
         }
+        if (event === 'queued') {
+          // ⚠️ **排队中** ✓（Router Stage 3 ✓）—— 不显示的话用户只看到转圈
+          // ✗✗（后端每个轮询周期都发一块 ✓ —— 所以文案要**稳定** ✓ ——
+          // 否则每秒一条提示 ✗✗）。
+          const position = Number(data.position || 0);
+          setNotices((current) => pushNotice(current, `排队中（第 ${position} 位）`));
+        }
         if (event === 'message') {
           const chunk = String(data.content || '');
           if (chunk) {

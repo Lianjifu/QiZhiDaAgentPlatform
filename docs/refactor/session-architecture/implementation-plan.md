@@ -411,6 +411,7 @@
 | | R-26 **确认**第二套 turn 实现无残留调用方 | ✅ **已确认** —— 两个用例已删 ✓ 扫描规则已启用 ✓ ⚠️ **不删**（归 Session） | — | 0 | — |
 | | R-27 启用扫描脚本 Router 段 | ✅ **已达成** —— `build_session_key` ✓ / `try_claim` ✓ 两条规则**已启用** ✓ 进 CI | — | 0 | R-22 |
 | | R-28 更新台账 + 现状文档 | ✅ **已达成**（2026-10-31）—— **现状文档已更新** ✓（`docs/copilot-chat-module-architecture.md` ✓ —— §3.2 加了「路由 / 排队」两行 ✓ + §12.2 ✓ —— 与 Session S-38 / Context C-32 / Memory M-51 **同一份** ✓） | — | 0 | R-27 |
+| | **R-29 规则 3 / 规则 5 真能命中** | ✅ **已达成**（2026-10-31）—— ① **业务线有输入了** ✓（Router 方案 §3.1 规则 3 ✓ —— 此前 `RoutingRequest.business_line` **两边都没人填** ✓ = **死规则** ✗✗）：web 侧从**请求**取 ✓（请求头 `X-Business-Line` ✓ / 请求体 `businessLine` ✓ —— ⚠️ **头只能带 ASCII** ✓ → 中文走请求体 ✓）；IM 侧从**渠道服务账号的 `business_line`** 取 ✓（与 `roles` 同一层 ✓ —— 渠道的属性 ✓）→ `ServiceAccount` 加字段 ✓ + 渠道侧带进 metadata ✓；② **兜底默认 agent 真能兜住** ✓（规则 5 ✓ —— 演示种子给「企智搭平台向导」打上 `profile.routing.default` ✓ + 每个演示 agent 声明 `profile.routing.business_lines` ✓ —— 否则建会话直接 400 ✗✗）；③ **前端消费 `queued`** ✓（`CopilotPage.tsx` ✓ —— 「排队中（第 N 位）」✓ + 单测 ✓）→ 排队开关打开时前端**不缺东西** ✓（⚠️ **开关默认仍关** ✓ —— Router 方案 D8 ✓ —— 「不急着开」✓） | — | ~120 行 | R-27 |
 
 **退出判据**：
 1. 同一飞书群连续 3 条消息 → **同一个 `session_id`**，跨 worker 一致；
@@ -1162,6 +1163,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] R-20 `dispatch_subscriber` 停用打点 ✓（文件已删 ✓）· R-21 第二套 turn 停用打点 ✓（两个用例已删 ✓）
 - [x] R-22 **删 `build_session_key`** → **R4 已清理** ✓（扫描规则的目录原本写错 ✓ 已改正并启用 ✓）· R-23 **确认 `try_claim` 的互斥已迁走** ✓（**不删** ✓ —— R3 归 Session ✓）· R-24 删 `catalog.py` 映射（⚠️ **待核对** ✓）
 - [x] R-25 / R-26 **确认**无残留调用方 ✓ · R-27 启用扫描脚本 Router 段 ✓ · R-28 更新台账 + **现状文档** ✓（2026-10-31 ✓ —— `docs/copilot-chat-module-architecture.md` v1.4 ✓）
+- [x] **R-29 规则 3 / 规则 5 真能命中** ✓（2026-10-31 ✓ —— 业务线有输入 ✓ + 兜底默认 agent 打标 ✓ + 前端消费 `queued` ✓）
 
 ### Session 层（§3.3）—— **删除 X2 / X3 / X4 / X6 / X7 / X18**（**全局关键路径**）
 - [x] S-01 `session/` 骨架 + `state.py` ✓ · S-02 **迁移 0046** ✓ · S-03 `session_messages.session_id` 回填 ✓ · S-04 `APPROVER_MUST_DIFFER` ✓ · S-05 **`AsyncPostgresSaver`** ✓（**X20 已清理** ✓）· S-06 停写 `wait_status` → **X6** ✓ · S-07 打点 X2–X7 ✓

@@ -208,6 +208,7 @@ def build_session_router() -> APIRouter:
         x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
         x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
         x_user_id: UUID = Header(default=UUID(int=0), alias="X-User-Id"),
+        x_business_line: str | None = Header(default=None, alias="X-Business-Line"),
         svc: CopilotSessionService = Depends(copilot_dependency),
         strategy: Strategy = Depends(routing_strategy_dependency),
     ) -> dict[str, Any]:
@@ -216,6 +217,13 @@ def build_session_router() -> APIRouter:
         旧的 ``agentId`` 直取（台账 **R2**）已下线：请求体里的 agentId 现在
         只是「**显式指定**」这一条规则的输入，还要跟粘性/业务线/用户标签/
         兜底一起比。
+
+        ⚠️ **业务线从请求里来** ✓（Router 方案 §3.1 规则 3 ✓）—— 请求头
+        ``X-Business-Line`` 或请求体 ``businessLine`` ✓（**头优先** ✓）。
+        不给 = 规则 3 不命中 ✓（**不猜** ✓）。
+
+        ⚠️ **中文业务线走请求体** ✓ —— HTTP 头只能带 ASCII ✓（latin-1 ✓）
+        → 头只对英文业务线好用 ✓。
         """
         explicit = body.get("agentId") or body.get("agent_id")
         explicit_id: UUID | None = None
@@ -224,6 +232,9 @@ def build_session_router() -> APIRouter:
                 explicit_id = UUID(str(explicit))
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail="agentId is not a valid uuid") from exc
+        business_line = (
+            x_business_line or body.get("businessLine") or body.get("business_line") or ""
+        ).strip()
         try:
             decision = await strategy.decide(
                 RoutingRequest(
@@ -232,6 +243,7 @@ def build_session_router() -> APIRouter:
                     user_id=_owner_id(request, x_user_id),
                     explicit_agent_id=explicit_id,
                     roles=_roles(request),
+                    business_line=business_line or None,
                 )
             )
         except RoutingUnavailable as exc:

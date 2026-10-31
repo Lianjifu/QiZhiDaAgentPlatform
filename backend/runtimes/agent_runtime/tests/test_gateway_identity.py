@@ -85,6 +85,27 @@ def test_service_account_round_trips_through_a_mapping() -> None:
     assert ServiceAccount.from_mapping(account.to_mapping()) == account
 
 
+def test_the_service_account_carries_the_business_line() -> None:
+    """⚠️ **渠道的业务线** ✓（Router 方案 §3.1 规则 3 的输入 ✓）。
+
+    **渠道的属性** ✓ —— 与 ``roles`` 同一层 ✓（不是用户的 ✓）。
+    没配 = 空串 ✓（**不猜** ✓ —— 规则 3 不命中 ✓）。
+    """
+    account = ServiceAccount.from_mapping(
+        {
+            "user_id": str(uuid4()),
+            "agent_id": str(uuid4()),
+            "business_line": "客服",
+        }
+    )
+    assert account is not None
+    assert account.business_line == "客服"
+    # 没配就是空 ✓
+    bare = ServiceAccount.from_mapping({"user_id": str(uuid4()), "agent_id": str(uuid4())})
+    assert bare is not None
+    assert bare.business_line == ""
+
+
 # ── HmacWebhookVerifier ──────────────────────────────────────────────────
 
 

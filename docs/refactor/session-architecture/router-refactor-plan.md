@@ -420,7 +420,7 @@ AND 该会话当前没有正在执行的 turn
 
 **S1 的配套要求**：
 
-1. **前端需要知道「在排队」**。⚠️ **chunk 已新增** ✓（`QueuedChunk` ✓ —— 含 `position` / `waited_ms` ✓ —— 2026-10-31 ✓）→ ⚠️ **前端尚未消费** ✗（copilot 页零处处理 ✓ —— 开关打开前要接上 ✓ —— 否则用户只看到转圈 ✓）。
+1. **前端需要知道「在排队」**。✅ **两端都齐了** ✓（2026-10-31 ✓ —— `QueuedChunk` ✓ 含 `position` / `waited_ms` ✓ + 前端 `CopilotPage.tsx` **已消费** ✓ —— 提示「排队中（第 N 位）」✓ —— 否则用户只看到转圈 ✗✗）。
 2. **队列上限与超时**：单会话排队上限（N 条）与最长等待时间（T 秒），超限返回明确错误码，**不得静默丢弃**。
 
    > **决策 #7（已定稿）**：N 与 T 的取值，以及错误码。
@@ -936,7 +936,7 @@ def test_router_layer_has_no_framework_imports():
 |---|---|---|---|
 | **D1** | ~~**粘性规则（规则 1）拿不到输入**~~ → **已消解**（2026-10-31 ✓ 13.6） | Session 的只读 `lookup(session_key)` 端口已落地 ✓（Session Stage 5b ✓）→ **IM 路径把既有会话的绑定喂给规则 1** ✓；web 路径的粘性是**结构性的** ✓（会话行自带绑定 ✓，见 13.6-D10 ✓） | ✅ 已消解 |
 | **D2** | **`route_decision` 的「唯一写者」在字面上不成立** | 决策的**产出者唯一是 Router**（策略链）；但写列的是 **Session 的行写者**（copilot 的 journal）—— Router 不直接写 `session_turns`（那会越权写会话表，违反 §10.2 规则 1）。实际保证是「**只有 Router 产出这一列的值**」 | 措辞修正见 §6.2 / §10.2 |
-| **D3** | **业务线规则（规则 3）在 web 路径恒不命中** | 规则 3 需要「本次请求的业务线」这个输入 —— **web 路径没有这个概念**（业务线是渠道 / 工作区的属性）。⚠️ **2026-10-31 仍未消解** ✓（IM 侧也还没派生 ✓ —— 见 13.6-D9 ✓） | 渠道 / 工作区属性落地后接 |
+| ~~**D3**~~ | **业务线规则（规则 3）在 web 路径恒不命中** | ✅ **2026-10-31 已消解** ✓ —— web 侧从请求取业务线 ✓（请求头 `X-Business-Line` ✓ / 请求体 `businessLine` ✓ —— ⚠️ **头只能带 ASCII** ✓ → 中文走请求体 ✓）→ 规则 3 **真的有输入了** ✓ | — |
 | **D4** | **用户标签规则（规则 4）只是近似** | §1.5 的缺口没消失：部门**没有结构化字段**。实现取 `visible_scope` ∩（部门 ∪ 标签 ∪ roles）；`visible_scope` 写的是**范围类型**（默认的 `["部门"]`）时，按「用户有部门归属即命中」处理。⚠️ **IM 侧的输入已接上** ✓（服务账号的 `roles` ✓ —— 13.6 ✓） | identity 补结构化字段（之后只改适配器） |
 | **D5** | ~~**`QUEUE_FULL` / `QUEUE_TIMEOUT` 暂无消费方**~~ → **已消解**（2026-10-31 ✓ 13.6） | 排队语义（Stage 3）已落地 ✓ → 两个错误码**有消费方了** ✓（`QueueFullError` / `QueueTimeoutError` ✓ + `ErrorCopy` 文案 ✓） | ✅ 已消解 |
 | **D6** | ~~**`sequencer.py` 仍然没建**~~ → **已消解**（2026-10-31 ✓ 13.6） | 「没有调用方的类型就是建而不切」—— **有调用方了** ✓：`session/sequence.py`（序号分配 ✓）+ `session/queue.py`（FIFO 放行 ✓）+ `PostgresTurnQueue`（实现 ✓） | ✅ 已消解 |
@@ -1027,7 +1027,7 @@ def test_router_layer_has_no_framework_imports():
 | **FIFO 放行** | `modules/agent_runtime/.../adapter/persistence/session_queue.py` 的 `PostgresTurnQueue` ✓ —— **单语句 CAS** ✓（`status: queued → running` ✓） | ✅ |
 | **兜底路径** | 快照落后 → **以 `session_turns` 权威值为准放行** ✓ + **修快照** ✓ + **计数告警** ✓（`qzdap_router_seq_snapshot_drift_total` ✓） | ✅ |
 | **审批不占执行位** | 审批挂起落 `waiting` ✓（**不是 `running`** ✓） | ✅ |
-| **排队期间的可见性** | `QueuedChunk` ✓（`position` / `waited_ms` / `estimated_wait_seconds` ✓）—— ⚠️ **后端已发** ✓；**前端尚未消费** ✗（copilot 页零处处理 ✓）→ 开关打开前要接上 ✓ | ⚠️ **部分** |
+| **排队期间的可见性** | `QueuedChunk` ✓（`position` / `waited_ms` / `estimated_wait_seconds` ✓）—— **后端已发** ✓；**前端已消费** ✓（`CopilotPage.tsx` ✓ —— 「排队中（第 N 位）」✓ + 单测 ✓）→ **开关打开也不缺东西** ✓ | ✅ |
 | **超限不静默** | `QUEUE_FULL`（429 ✓）/ `QUEUE_TIMEOUT`（503 ✓）✓ + `ErrorCopy` 文案 ✓ | ✅ |
 | **开关可回滚** | `QZDAP_ROUTER_QUEUE_ENABLED` ✓（**默认关** ✓ —— 关掉即旧语义 ✓） | ✅ |
 | 观测 | `qzdap_router_route_total` ✓（沿用）+ **快照漂移计数** ✓ + **队列深度 / 等待时长 / 被拒计数 / 会话 key 派生次数** ✓（§12.2 的四个指标 ✓ —— **本轮补齐** ✓） | ✅ |
@@ -1041,7 +1041,7 @@ def test_router_layer_has_no_framework_imports():
 | # | 偏差 | 事实 | 归属 |
 |---|---|---|---|
 | **D8** | **排队默认关** | `QZDAP_ROUTER_QUEUE_ENABLED` **默认 false** ✓ —— 「同会话严格有序」**只有开关打开后才成立** ✓。关掉 = 旧语义（claim 失败即 `SESSION_BUSY` ✓） | 运维开开关（**不急着开** ✓ —— 打开前先在预发验证 ✓） |
-| **D9** | **业务线规则（规则 3）仍无输入** | D3 未消解 ✓ —— `RoutingRequest.business_line` **两边都没人填** ✓（web 没有「业务线」概念 ✓；IM 侧的渠道配置里也还没派生 ✓）。规则本身已实现 ✓ | 渠道 / 工作区属性落地后接（**只改适配器** ✓） |
+| ~~**D9**~~ | **业务线规则（规则 3）仍无输入** | ✅ **2026-10-31 已消解** ✓ —— `RoutingRequest.business_line` **两边都填了** ✓：web = 请求头 / 请求体 ✓；IM = **渠道服务账号上的 `business_line`** ✓（与 `roles` 同一层 ✓ —— 渠道的属性 ✓）→ 规则 3 **不再是死规则** ✓ | — |
 | **D10** | **web 的粘性不经过规则链** | web 建会话时**本来就没有既有会话** ✓ —— 粘性由**会话行的 agent 绑定**承担 ✓（结构性 ✓）。因此 web 路径**不需要**规则 1 ✓ | 无（设计如此 ✓） |
 | **D12** | **换哈希 key 后旧的原始 key 行成为孤儿** | IM 的 `channel_session_key` 从「`channel_id:chat_id`」换成 sha256 ✓ → **旧行再也查不到** ✓（会话会新建 ✓ —— 上下文不续 ✗）。**dev 库与 demo 库各有 0 行** ✓（已核对 ✓）→ **无影响** ✓ | 无（存量 0 行 ✓） |
 | **D11** | **兜底默认 agent 仍需打标** | D7 未消解 ✓ —— 存量 agent 都没打 `profile.routing.default` ✓ → IM 侧「一条规则都没命中」时**退回渠道登记的 agent** ✓（不是 400 ✓ —— **不丢消息** ✓） | 运维打标（不改代码） |

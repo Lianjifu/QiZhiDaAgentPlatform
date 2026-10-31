@@ -104,6 +104,10 @@ class ChannelTurnService:
                 agent_version=existing.agent_version,
             )
         roles = frozenset(str(role) for role in (metadata.get("roles") or ()))
+        # ⚠️ **渠道的业务线** ✓（Router 方案 §3.1 规则 3 的输入 ✓）——
+        # **渠道侧带过来** ✓（配在服务账号上 ✓ —— 与 roles 同一层 ✓）。
+        # 没配就是空 ✓（**不猜** ✓ —— 规则 3 直接不命中 ✓）。
+        business_line = str(metadata.get("business_line") or "").strip()
         try:
             decision: RouteDecision = await self._strategy.decide(
                 RoutingRequest(
@@ -113,6 +117,7 @@ class ChannelTurnService:
                     explicit_agent_id=request.agent_id,
                     sticky_agent=sticky,
                     roles=roles,
+                    business_line=business_line or None,
                 )
             )
         except RoutingUnavailable:

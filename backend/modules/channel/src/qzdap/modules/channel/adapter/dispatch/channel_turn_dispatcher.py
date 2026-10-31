@@ -170,6 +170,10 @@ class ChannelTurnDispatcher:
                 # ⚠️ **服务账号的角色** ✓（台账 R19 ✓）—— Router 的「用户标签」
                 # 规则要它 ✓（渠道侧只负责带过来 ✓ —— 路由判断在 Router 侧 ✓）。
                 "roles": list(account.roles),
+                # ⚠️ **渠道的业务线** ✓（Router 方案 §3.1 规则 3 ✓）——
+                # **渠道的属性** ✓（配在服务账号上 ✓ —— 与 roles 同一层 ✓）。
+                # 没配就是空串 ✓（**不猜** ✓ —— 规则 3 不命中 ✓）。
+                "business_line": account.business_line,
             },
         )
 

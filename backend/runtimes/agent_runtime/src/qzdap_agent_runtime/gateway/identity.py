@@ -77,6 +77,10 @@ class ServiceAccount:
     agent_id: UUID
     agent_version: str = ""
     roles: tuple[str, ...] = ()
+    #: ⚠️ **渠道的业务线** ✓（Router 方案 §3.1 规则 3 的输入 ✓）——
+    #: **渠道的属性** ✓（不是用户的 ✓ —— 与 ``roles`` 同一层 ✓）。
+    #: 空 = 没配 ✓（**不猜** ✓ —— 规则 3 直接不命中 ✓）。
+    business_line: str = ""
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any] | None) -> ServiceAccount | None:
@@ -97,6 +101,7 @@ class ServiceAccount:
             agent_id=agent_id,
             agent_version=str(raw.get("agent_version") or ""),
             roles=tuple(str(item) for item in (raw.get("roles") or ())),
+            business_line=str(raw.get("business_line") or ""),
         )
 
     def to_mapping(self) -> dict[str, Any]:
@@ -105,6 +110,7 @@ class ServiceAccount:
             "agent_id": str(self.agent_id),
             "agent_version": self.agent_version,
             "roles": list(self.roles),
+            "business_line": self.business_line,
         }
 
 

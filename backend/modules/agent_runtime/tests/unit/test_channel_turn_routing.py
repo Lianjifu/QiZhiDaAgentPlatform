@@ -114,7 +114,7 @@ def _decision(agent_id: UUID, *, source: str = "user_tag") -> RouteDecision:
     )
 
 
-def _request(*, agent_id: UUID, roles: tuple[str, ...] = ()) -> Any:
+def _request(*, agent_id: UUID, roles: tuple[str, ...] = (), business_line: str = "") -> Any:
     from qzdap_agent_runtime.session.channel_turn import ChannelTurnRequest
 
     return ChannelTurnRequest(
@@ -132,7 +132,11 @@ def _request(*, agent_id: UUID, roles: tuple[str, ...] = ()) -> Any:
             strength="strong",
             expires_at=None,  # type: ignore[arg-type]
         ),
-        metadata={"channel_type": "feishu", "roles": list(roles)},
+        metadata={
+            "channel_type": "feishu",
+            "roles": list(roles),
+            "business_line": business_line,
+        },
     )
 
 
@@ -252,3 +256,37 @@ async def test_the_route_decision_is_left_on_the_session() -> None:
     decision = sessions.metadata["route_decision"]
     assert decision["source"] == "user_tag"
     assert decision["reason"] == "user_tag_scope_match"
+
+
+@pytest.mark.asyncio
+async def test_the_business_line_reaches_the_rule_chain() -> None:
+    """⚠️ **渠道的业务线** ✓ —— 进「业务线」规则 ✓（Router 方案 §3.1 规则 3 ✓）。
+
+    业务线配在**渠道的服务账号**上 ✓（与 roles 同一层 ✓ —— 渠道的属性 ✓），
+    渠道侧只负责带过来 ✓。
+    """
+    strategy = _FakeStrategy(_decision(uuid4(), source="business_line"))
+    sessions = _FakeSessions()
+    service = ChannelTurnService(
+        sessions=sessions,  # type: ignore[arg-type]
+        copilot=_FakeCopilot(),  # type: ignore[arg-type]
+        turn_entry=_FakeTurnEntry(),  # type: ignore[arg-type]
+        strategy=strategy,  # type: ignore[arg-type]
+    )
+    await service.run(_request(agent_id=uuid4(), business_line="客服"))
+    assert strategy.requests[0].business_line == "客服"
+
+
+@pytest.mark.asyncio
+async def test_no_business_line_means_the_rule_does_not_fire() -> None:
+    """没配业务线 = **空** ✓（**不猜** ✓ —— 规则 3 不命中 ✓）。"""
+    strategy = _FakeStrategy(_decision(uuid4()))
+    sessions = _FakeSessions()
+    service = ChannelTurnService(
+        sessions=sessions,  # type: ignore[arg-type]
+        copilot=_FakeCopilot(),  # type: ignore[arg-type]
+        turn_entry=_FakeTurnEntry(),  # type: ignore[arg-type]
+        strategy=strategy,  # type: ignore[arg-type]
+    )
+    await service.run(_request(agent_id=uuid4()))
+    assert strategy.requests[0].business_line is None
