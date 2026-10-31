@@ -84,6 +84,40 @@
 
 ---
 
+## 两套栈：账号与入口（**先分清是哪一套** ✓）
+
+⚠️ **演示数据与开发数据严格分开** ✓ —— 不共用库 ✓ / 不共用租户 ✓ / 不共用账号 ✓ / 不共用密码 ✓（数据通道分离 ✓）。
+
+| | **开发栈（dev）** | **演示栈（demo）** |
+|---|---|---|
+| 前端 | `http://127.0.0.1:9152` ✓ | `http://127.0.0.1:9162` ✓ |
+| 网关 | `http://127.0.0.1:9150` ✓ | 无 ✓（前端直连后端 ✓） |
+| 后端 | `http://127.0.0.1:9151` ✓ | `http://127.0.0.1:9161` ✓ |
+| 库 | `127.0.0.1:9153/qzdap_dev` ✓ | `127.0.0.1:9153/qzdap_demo` ✓ |
+| 租户 | slug `dev` ✓（id **随机** ✓ —— `uuid4()` ✓） | slug `demo` ✓（id 固定 `00000000-…-0001` ✓） |
+| 管理员 | `admin@dev.qzdap.dev` / `dev-admin-password-change-me` ✓ | `admin@acme.com` / `demo-password-change-me` ✓ |
+| 成员 | **无** ✓ | `user@acme.com` / `demo-password-change-me` ✓ |
+| 其它账号 | 验收样本（**只在 dev 库** ✓）：`qa-a-admin@example.invalid` / `qa-a-user@example.invalid`（租户 `qa-tenant-a` ✓）· `qa-b-admin@example.invalid` / `qa-b-user@example.invalid`（租户 `qa-tenant-b` ✓）—— 口令一律 `qa-local-samples-only` ✓ | 无 ✓ |
+| 种子内容 | 验收样本 ✓（无演示内容 ✓） | 演示智能体 5 ✓ / 工作流 3 ✓ / 知识库 ✓ / 演示会话 ✓ / 记忆 ✓ / 管理台 30 个集合 ✓ |
+| LLM 供应商 | **未配** ✓ → 发一轮必然 `TURN_FAILED` ✓ | **未配** ✓ → 同左 ✓（不是回归 ✓ —— 配了才通 ✓） |
+
+⚠️ **账号来源** ✓：`backend/composition/qzdap_app/src/qzdap/composition/settings.py` 的 `demo_*` / `dev_*` ✓ —— `backend/.env.local` 与栈脚本**都没覆盖** ✓ → 跑的就是这些默认值 ✓。
+
+⚠️ **怎么确认自己连的是哪一套** ✓：
+```bash
+# 租户 slug 就是答案：demo / dev / qa-tenant-a / qa-tenant-b
+curl -s -X POST http://127.0.0.1:9161/v1/identity/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@acme.com","password":"demo-password-change-me"}' \
+  | python3 -c "import sys,json,base64;t=json.load(sys.stdin)['access_token'].split('.')[1];\
+print(json.loads(base64.urlsafe_b64decode(t+'='*(-len(t)%4)))['tid'])"
+```
+⚠️ **demo 账号在 dev 栈上登录会 401** ✓（`INVALID_CREDENTIALS` ✓）—— 两套**彻底隔离** ✓。
+
+⚠️ **起停** ✓：`bin/qzdap-stack/run-qzdap-stack.sh`（dev ✓）/ `run-qzdap-demo-stack.sh`（demo ✓）/ 对应的 `stop-*.sh` ✓ —— **改完代码要重启** ✓（否则跑的还是旧代码 ✓）。
+
+---
+
 ## 通用
 
 ### HttpServerErrorRateHigh
