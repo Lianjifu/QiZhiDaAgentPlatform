@@ -1176,10 +1176,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             self._publisher = evaluation_publisher
             self._policy_guard = policy_guard
 
-        def for_session(self) -> EvaluationService:
-            sf = container.session_factory().maker()
-            ds_repo = SqlEvalDatasetRepository(sf)
-            run_repo = SqlEvalRunRepository(sf)
+        def for_session(self, session) -> EvaluationService:  # type: ignore[no-untyped-def]
+            ds_repo = SqlEvalDatasetRepository(session)
+            run_repo = SqlEvalRunRepository(session)
             # 评测跑的是**唯一 turn 实现**（copilot 链 ✓）—— 没有它就退到桩 ✓。
             sub_agent_factory = getattr(app.state, "copilot_factory", None)
             sub_agent = _sub_agent_for_evaluation(sub_agent_factory)
@@ -1348,13 +1347,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             self._publisher = agent_factory_publisher
             self._policy_guard = policy_guard
 
-        def for_session(self) -> AgentFactoryService:
-            sf = container.session_factory().maker()
-            evaluation_query = _build_evaluation_query(sf)
+        def for_session(self, session) -> AgentFactoryService:  # type: ignore[no-untyped-def]
+            evaluation_query = _build_evaluation_query(session)
             return AgentFactoryService.from_parts(
-                template_repository=SqlAgentTemplateRepository(sf),
-                version_repository=SqlAgentVersionRepository(sf),
-                release_repository=SqlReleaseRepository(sf),
+                template_repository=SqlAgentTemplateRepository(session),
+                version_repository=SqlAgentVersionRepository(session),
+                release_repository=SqlReleaseRepository(session),
                 evaluation_query=evaluation_query,
                 publisher=self._publisher,
                 policy_guard=self._policy_guard,

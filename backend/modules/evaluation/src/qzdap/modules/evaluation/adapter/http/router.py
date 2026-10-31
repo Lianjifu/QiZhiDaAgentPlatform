@@ -15,6 +15,7 @@ Endpoints (v1):
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -44,19 +45,28 @@ from qzdap_auth.workspace_guard_dep import _require_active_workspace
 
 async def evaluation_service_dependency(
     request: Request,
-) -> EvaluationService:
-    """Yield a per-request ``EvaluationService``.
+) -> AsyncIterator[EvaluationService]:
+    """**每个请求一个会话** ✓ —— 成功提交 ✓ / 失败回滚 ✓。
 
-    Production wires ``EvaluationServiceFactory`` via ``app.state``;
-    when the factory is missing we surface 503.
+    ⚠️ **以前只开会话、不提交也不回滚** ✓ → **评测域的写全部丢** ✓
+    （建数据集 / 加用例 / 起一次评测都白跑 ✓ —— 与 platform / agent_factory
+    那个依赖同一个病 ✓ → 一起改 ✓）。
     """
     factory = getattr(request.app.state, "evaluation_service_factory", None)
-    if factory is None:
+    container = getattr(request.app.state, "container", None)
+    if factory is None or container is None:
         raise HTTPException(
             status_code=503,
             detail="evaluation service factory not wired",
         )
-    return factory.for_session()
+    sf = container.session_factory()
+    async with sf.session() as session:
+        try:
+            yield factory.for_session(session)
+        except Exception:
+            await session.rollback()
+            raise
+        await session.commit()
 
 
 def _domain_error_to_http(exc: Exception) -> HTTPException:

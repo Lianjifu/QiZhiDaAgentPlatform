@@ -21,6 +21,7 @@ Endpoints (v1):
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
@@ -64,21 +65,32 @@ from qzdap_kernel.errors import BusinessRuleError
 
 async def agent_factory_service_dependency(
     request: Request,
-) -> AgentFactoryService:
-    """Yield a per-request ``AgentFactoryService``.
+) -> AsyncIterator[AgentFactoryService]:
+    """**每个请求一个会话** ✓ —— 成功提交 ✓ / 失败回滚 ✓。
 
-    Production wires ``AgentFactoryServiceFactory`` via ``app.state``;
-    when the factory is missing we surface 503.
+    ⚠️ **以前这个依赖只开会话、不提交也不回滚** ✓ —— **这个域的写没丢** ✓
+    （用例层**自己显式提交** ✓ —— `create_template` / `create_version` /
+    `update_*` 都调了 `repository.commit()` ✓）→ 但**依赖层没有回滚语义** ✓
+    （出错时事务悬着 ✓）→ 与 platform / evaluation 那个依赖**统一口径** ✓
+    （那两处的写**是真的会丢** ✓ —— platform 已实测 ✓）。
     """
     factory: AgentFactoryServiceFactory | None = getattr(
         request.app.state, "agent_factory_service_factory", None
     )
-    if factory is None:
+    container = getattr(request.app.state, "container", None)
+    if factory is None or container is None:
         raise HTTPException(
             status_code=503,
             detail="agent_factory service factory not wired",
         )
-    return factory.for_session()
+    sf = container.session_factory()
+    async with sf.session() as session:
+        try:
+            yield factory.for_session(session)
+        except Exception:
+            await session.rollback()
+            raise
+        await session.commit()
 
 
 # Phase 2: 把请求里的 default_model_id / model_id (上游名字符串) 解析成 UUID
