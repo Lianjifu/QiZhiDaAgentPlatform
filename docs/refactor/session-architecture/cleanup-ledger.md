@@ -47,7 +47,7 @@
 
 > 「观测指标」统一为 `qzdap_legacy_calls_total{entry="<台账编号>"}`，在旧实现被调用的**入口处**打点。
 >
-> ✅ **该指标已于 2026-10-29 落地**：`libs/observability/src/qzdap_observability/metrics.py` 的 `LEGACY_CALLS_TOTAL` + `record_legacy_call(entry)`（另附 `LEGACY_CALL_LAST_TIMESTAMP` gauge）。**尚未打点** —— 各层方案的 Stage 0 仍需在旧入口调用 `record_legacy_call("<编号>")`，否则该层的清理判据仍无从判定。
+> ✅ **该指标已于 2026-10-29 落地**：`libs/observability/src/qzdap_observability/metrics.py` 的 `LEGACY_CALLS_TOTAL` + `record_legacy_call(entry)`（另附 `LEGACY_CALL_LAST_TIMESTAMP` gauge）。⚠️ **打点已随旧实现全部撤除** ✓（2026-10-31 核对：生产代码 `record_legacy_call` 调用点 = **0** ✓ —— 旧实现删干净了 ✓ → 打点不再需要 ✓）→ **判据统一走 CI 扫描脚本** ✓（47 条规则全开 ✓）。
 
 ### 2.0 台账条目的字段定义
 
@@ -118,7 +118,7 @@
 
 #### X1 已核实的具体缺陷（2026-10-29 读码核对）
 
-Agent / Execution 层方案**暂不编写**，但读码时核实到以下事实，登记在此以免丢失：
+Agent / Execution 层方案**已编写** ✓（[`agent-refactor-plan.md`](agent-refactor-plan.md) ✓ —— 已评审 v1.2 ✓）；下面记的是**读码时核实到的事实** ✓（登记在此以免丢失 ✓）：
 
 | # | 事实 | 位置 | 后果 |
 |---|---|---|---|
@@ -133,7 +133,7 @@ Agent / Execution 层方案**暂不编写**，但读码时核实到以下事实�
 
 > **结论**：Agent 层与其它层的形态**不同** —— 别的层是「旧实现完整、新实现未接线」，这一层是「**两套都不完整**」：旧路径循环是真的但图是残留物，新 runtime 图是真的但推理节点是空的。处置原则应是「**取旧的真逻辑 + 用新骨架重写**」，而不是「把新 runtime 接上线」。
 >
-> **方案已写**：[`agent-refactor-plan.md`](agent-refactor-plan.md)（2026-10-29，**已评审 v1.2**），附录 A 8 条决策（**#4 已定**）。技术栈定为 **LangGraph 1.2 + LangChain（langchain-core 1.6）+ Deep Agents**；其中 `deepagents` **未安装、不在 `uv.lock`**，需在 Stage 6 前补依赖并先验证 API。
+> **方案已写**：[`agent-refactor-plan.md`](agent-refactor-plan.md)（2026-10-29，**已评审 v1.2**），附录 A 8 条决策（**#4 已定**）。技术栈定为 **LangGraph 1.2 + LangChain（langchain-core 1.6）+ Deep Agents**；其中 `deepagents` **不接** ✓（2026-10-31 · Agent Stage 6 **已关闭** ✓ —— 决策 #8 未采纳 ✓ —— 不造第三套循环 ✓）→ **这条前置不存在了** ✓。
 >
 > **骨架（v1.2 重排后）**：**执行轴**（每步推理：循环 → 选专家 → 执行）与**配置轴**（管理员配置 → agent 绑定 → 运行时取值）**两条正交轴**。**模型与工具在配置轴上** —— 决策 #4 取消 Model Router / Tool Router 后，⑧ 只剩「选专家」一路，模型 / 工具的**取值**归 ⑨ Execution（Agent 方案 §0.2 / §5.2.1 / §5.3.1）。
 
@@ -171,10 +171,10 @@ Agent / Execution 层方案**暂不编写**，但读码时核实到以下事实�
 
 | 资产 | 位置 | 状态 |
 |---|---|---|
-| `session_inbox` 表 | 迁移 0035 | 待启用（Gateway Stage 1）+ 改造（加列改约束） |
-| `session_turns` / `session_messages` / `session_events` | 迁移 0035 | 待启用（Session 层） |
-| `tool_executions` / `outbox_dead_letters` | 迁移 0035 | 待启用（Agent Loop / Execution 层） |
-| `agent_sessions.channel_session_key` | 迁移 0035 | 待启用（Router Stage 2）+ 加唯一索引 |
+| `session_inbox` 表 | 迁移 0044 | ✅ **已启用** ✓（Gateway Stage 1 ✓ —— 幂等守卫在用 ✓） |
+| `session_turns` / `session_messages` / `session_events` | 迁移 0035 / 0050 | ✅ **已启用** ✓（Session 层 ✓ —— 真写真读 ✓） |
+| `tool_executions` / `outbox_dead_letters` | 迁移 0035 | ✅ **已启用** ✓（Agent Loop / Execution 层 ✓ —— 跨 worker 幂等 ✓ + 死信 ✓） |
+| `agent_sessions.channel_session_key` | 迁移 0035 | ✅ **已启用** ✓（Router Stage 2 ✓ —— 部分唯一索引在迁移 0046 ✓） |
 | `agent_sessions.current_revision` | 迁移 0035 | 待启用（Session 层乐观并发；旧路径从不使用） |
 | `agent_sessions.next_ingress_seq` | 迁移 0045 ✓ | ✅ **已加**（Router Stage 3 ✓ —— `last_completed_seq` 同批 ✓） |
 | `admin_agents.visible_scope` / `category` / `tags` / `profile` | 现有 | **已在用**（作为 Strategy 的策略依据，不新建策略表） |
@@ -349,7 +349,7 @@ bash scripts/check_no_legacy_impl.sh --self-test
 
 > **为什么必须有这个脚本**：台账的「已清理」判据是**指标归零**（运行时事实），但**代码里彻底没人提**这件事只能靠静态扫描确认。两者互补：指标说「没人调用了」，扫描说「连字样都没了」。
 
-### 3.2 指标看板（**当前不存在，必须先建**）
+### 3.2 指标看板（**已落地** ✓）
 
 ```
 qzdap_legacy_calls_total{entry="<台账编号>"}   # 旧实现调用次数，按台账编号标注
@@ -359,7 +359,7 @@ qzdap_legacy_calls_total{entry="<台账编号>"}   # 旧实现调用次数，按
 
 > ✅ **2026-10-29 已落地**：指标与 `record_legacy_call(entry)` 已写进 `libs/observability/src/qzdap_observability/metrics.py`（并有单测）。**收敛机制不再是空的。**
 >
-> ⚠️ **但「指标存在」≠「判据可用」** —— **旧入口还没打点**。本台账每一条目的「指标归零」判据仍需要一个**打点**才能判定（没打点的条目，指标恒为 0，看起来像「已清零」，实则从未被观测 —— **这是比没有指标更危险的状态**）。
+> ✅ **判据已可用** ✓ —— 旧入口**全部删除** ✓（2026-10-31 ✓）→ 没有入口可打点 ✓ → **判据统一走 CI 扫描脚本** ✓（47 条规则全开 ✓ —— §3.1 是唯一来源 ✓）。
 >
 > **因此：本台账的每一条目，其所属方案的 Stage 0 必须包含「给该旧入口打点」这一步**，否则该条目不得进入 Stage N（接管）之后的任何阶段。
 
@@ -382,7 +382,7 @@ def record_legacy_call(entry: str) -> None:
 
 **打点位置**：旧实现的**入口处**（不是内部），保证「旧实现被调用」与「旧实现被调用但走的是别的分支」都能被观测到。
 
-**打点覆盖（2026-10-30 更新，Session Stage 5b 后）**：**36 条**中 **16 条在旧实现的入口处打点** ——
+**打点覆盖（2026-10-31 更新）**：**37 条**中 **0 条仍在打点** ✓ —— 打点随旧实现**全部撤除** ✓（生产调用点 = 0 ✓）—— **全部走替代判据** ✓（CI 扫描脚本 ✓）：
 本轮新增 **R3**（`try_claim` 的互斥职责）与 **X4**（旧表写入点 —— 双写期结束与否由指标说了算），
 **撤除 X7 / G9 / X2 / R1**（旧实现已删 → 打点随代码一起撤除）——
 `record_legacy_call("<编号>")` 落在**入口**（不是内部），保证「旧实现被调用」与
@@ -518,7 +518,7 @@ def record_legacy_call(entry: str) -> None:
 | **已修复** | 2 | X14（跨用户泄漏）、**G10**（审批恢复路径丢幂等键）—— 判据是测试不是指标 |
 
 > **条目数**：37 条（2026-10-29 新增 **G12** = 错误码收敛；2026-10-31 新增 **X21** = 产物落库 ✓）。
-> **打点覆盖率**：37 条中 **16 条在旧实现的入口处打点**（2026-10-30 更新 ✓ —— §3.2 的「打点覆盖」表 ✓），其余 20 条走替代判据（grep 扫描 / 数据迁移 / 回归测试 ✓）。
+> **打点覆盖率**：37 条中 **0 条仍在打点** ✓（2026-10-31 更新 ✓ —— 打点随旧实现全部撤除 ✓ —— §3.2 的「打点覆盖」表 ✓），全部走替代判据（CI 扫描脚本 ✓ / 数据迁移 ✓ / 回归测试 ✓）。
 > ⚠️ **2026-10-31**：**X1 / X5 / X12 / X17 的打点随旧实现一起撤除** ✓（Agent Stage 5/7 ✓）—— 打点是清理**前**的观测手段 ✓ 不是终态 ✓。
 > ⚠️ **G7 / G8 / R2 的打点随旧实现一起撤除**（2026-10-29 Gateway Stage 5 / Router Stage 1）—— 打点是清理**前**的观测手段，不是终态。
 > **指标本身**（`qzdap_legacy_calls_total` + `record_legacy_call`）已在
@@ -537,6 +537,8 @@ def record_legacy_call(entry: str) -> None:
 
 ### 5.3 最高风险项：X1
 
+> ✅ **风险已解除**（2026-10-31 · Agent Stage 7 —— 整包拆空 ✓ —— 本节保留作为**处置原则**的记录 ✓）
+
 `backend/runtimes/agent_runtime/`（19 节点 LangGraph + 全部 InMemory 假实现）**建于 2026-10-15，从未被 composition 根接线**，全包除 `langgraph` / `langchain_core` / `pydantic` 外零外部 import——物理上无法连数据库、LLM、工具服务。
 
 它同时是**诱惑**和**陷阱**：
@@ -554,7 +556,7 @@ def record_legacy_call(entry: str) -> None:
 |---|---|---|
 | G1 | `gateway-refactor-plan.md` §9.2、Stage 1 | Gateway Stage 1（直接删，无调用方）—— ✅ **已执行**（2026-10-29） |
 | G2 | `gateway-refactor-plan.md` §9.2、Stage 2 | Gateway Stage 2 —— ✅ **已执行**（2026-10-29） |
-| G3 | `gateway-refactor-plan.md` §9.2；`router-refactor-plan.md` §7.2 | Gateway Stage 2 —— ✅ **已执行**（2026-10-29；Router Stage 2 的「按渠道解析会话」部分仍未做） |
+| G3 | `gateway-refactor-plan.md` §9.2；`router-refactor-plan.md` §7.2 | Gateway Stage 2 —— ✅ **已执行**（2026-10-29 ✓；**Router Stage 2 的「按渠道解析会话」也已达成** ✓ —— IM 粘性随 Session Stage 5b 落地 ✓） |
 | G4、G5、G6 | `gateway-refactor-plan.md` §9.2、Stage 3 | Gateway Stage 3 —— ✅ **已执行**（2026-10-29） |
 | G7、G8、G9 | `gateway-refactor-plan.md` §9.4、Stage 4 | Gateway Stage 5 —— G7 / G8 ✅ **已执行**（2026-10-29）；**G9 ✅ 已清理**（2026-10-30：随 Session Stage 5b 的原子切换删除 `dispatch_subscriber.py` ✓） |
 | G11 | `gateway-refactor-plan.md` §4.5、§10 Stage 4b | Gateway Stage 4b —— ✅ **已执行**（2026-10-29：202 降级路径删除，改重放事件流） |
@@ -574,7 +576,7 @@ def record_legacy_call(entry: str) -> None:
 | X10 | `context-refactor-plan.md` §8.2、§3.4 | ✅ **已清理**（旧模板随 Session Stage 5b 删除 ✓；新渲染随 Context Stage 4 接上生产 ✓） |
 | X11 | `memory-refactor-plan.md` §10.2 | ✅ **已清理**（2026-10-30：停用随 Agent A-26 ✓，删除随 Memory Stage 7 ✓；扫描规则已启用 ✓）。⚠️ **不是 Memory Stage 3** —— 旧写入点在此之前一直被旧循环调用 |
 | X12 | `memory-refactor-plan.md` §10.2 | Memory **Stage 7**（**从未接线 → 无停用阶段**） |
-| X13 | `memory-refactor-plan.md` §5（**决策 #5**） | Memory **Stage 7**（**写侧已退役** ✓ —— **表 DROP 未做** ✗：管理端 4 个 L1 端点还读它 ✓） |
+| X13 | `memory-refactor-plan.md` §5（**决策 #5**） | ✅ **已清理** ✓（迁移 0057 DROP ✓ —— 读侧改读**会话缓冲** ✓ —— 管理端 4 个 L1 端点已切 ✓） |
 | X14 | `memory-refactor-plan.md` §1.2、§3.2 | Memory Stage 1（修复，非删除） |
 | X15 | `memory-refactor-plan.md` §1.9、§5.3（决策 #1） | Memory Stage 7 |
 | X16 | `memory-refactor-plan.md` §1.1b、§2.2（规则 3 / 6） | Memory **Stage 0（拆分服务类）→ Stage 6b（管理端补齐闸门与并发）** —— ✅ **已清理**（2026-10-31 ✓） |

@@ -125,9 +125,9 @@
 |---|---|---|---|
 | `session_events` 真写真读 | Session | **§4.5 无感重放** | 决策 #4 已定稿为「无感重放」，因此这是硬依赖。若 Session 层未先行落地，Gateway 的重复分支降级为「返回 202 + 上次 turn_id + 标 `replay_unavailable`」，**不得静默丢弃重复请求** |
 | 唯一 turn 实现（claim / 幂等 / 取消 / 审批合一） | Session | §9.4、Stage 4a | 渠道入站改造要求下游只有一套 turn 语义；本方案 Stage 4a 会连带停用第二套实现 |
-| `LLMPort` 与真实 `agent` 节点 | Agent Loop | §4.2 的 `unprotected` 策略 | 决策 #5 已定稿为「不抑制 + 标 unprotected + 禁用副作用工具」，该策略由 Agent Loop（不选择副作用工具）与 Execution（拒绝执行）共同执行；两者未落地前，`unprotected` 标记只记录不生效（**此时不得启用任何有副作用的工具**，否则违反决策 #5 的前提） |
+| `LLMPort` 与真实 `agent` 节点 | Agent Loop | §4.2 的 `unprotected` 策略 | 决策 #5 已定稿为「不抑制 + 标 unprotected + 禁用副作用工具」，该策略由 Agent Loop（不选择副作用工具）与 Execution（拒绝执行）共同执行；✅ **两者已落地**（2026-10-31 ✓ —— runtime 侧 `execution/tool_binding.py` ✓ 已剔除 unprotected 轮次的副作用工具 ✓）→ `unprotected` 标记**已生效** ✓ |
 | `tool_executions` 幂等键传递 | Execution | §4.6 三层键传递链 | C 层幂等由 Execution 落地 |
-| **`ErrorCode` 码收敛** | `libs/schema` + `modules/channel` + `modules/agent_runtime` | **§9.0 的投影表** | 7 个码散落在模块内异常的 `code=` 字符串里（`ErrorCode` 枚举**不含**它们）。投影表按码查文案 → **必须先收敛**。登记为横切 H8 的第一条 |
+| ~~**`ErrorCode` 码收敛**~~ | ~~`libs/schema` + `modules/channel` + `modules/agent_runtime`~~ | — | ✅ **已满足**（2026-10-31 · G-02b / G-02c ✓）—— 7 个码**全在 `ErrorCode` 枚举里** ✓（枚举 160 个成员 ✓）+ 守卫扩到**全量生产目录** ✓ → 生产代码**零字面量** ✓ |
 | **`modules/channel` 新增 `qzdap-agent-runtime` 依赖** | `modules/channel` | §9.2.1 的依赖方向 | webhook 端点要调 `Gateway.accept` → channel 需要依赖 runtime。**必须同步改 `pyproject.toml` 与 `uv.lock`**（横切 H6） |
 
 > **依赖顺序建议**：Session 层的「`session_events` 落库」应先于本方案 **Stage 4b** 落地；本方案 Stage 0–4a 不受任何上游阻塞，可立即开工（Stage 4a 属 `README.md` §3.3.1 的豁免 E1）。
@@ -613,9 +613,9 @@ VALUES (
 
 | 入口 | 正确行为 | 现状 |
 |---|---|---|
-| web SSE | **重放上一轮事件流**（按 seq 从 `session_events` 读）→ 前端看到「内容还在」 | ❌ 抛 `DuplicateRequestError`（`application/copilot.py:237`），前端只能弹错 |
-| web REST | 返回上次的 turn（202 + turn_id） | ❌ 抛错 |
-| IM | 不重复回消息，记审计 | 进程内 LRU 挡掉，无记录 |
+| web SSE | **重放上一轮事件流**（按 seq 从 `session_events` 读）→ 前端看到「内容还在」 | ⚠️ **改造前** = 抛 `DuplicateRequestError`；**现在 = 重放** ✓（`session_router.py` 的 `_replay_duplicate` ✓ —— SSE 与 REST 同一条 ✓）；**重放不了才 409** ✓ |
+| web REST | 返回上次的 turn（202 + turn_id） | ⚠️ **改造前** = 抛错；**现在 = 重放** ✓ —— ⚠️ **202 降级整段删除** ✓（Session 侧已落地 ✓ → 降级路径从未启用 ✓） |
+| IM | 不重复回消息，记审计 | ⚠️ **改造前** = 进程内 LRU 挡掉；**现在 = 走幂等守卫 + 重放** ✓（LRU 随 G5 / G6 删除 ✓） |
 
 > **A 层幂等的完整实现依赖事件落库。** 旧路径没有 `session_events` 写入，所以命中重复只能报错。新 runtime 的 `session_events` 表（迁移 0035 已建）+ `get_events(turn_id, after_seq)` 重放语义（`runtimes/.../result/sink.py:54-86`）+ outbox 死信状态机正好是这块缺的东西——**这是新 runtime 最该被用上的资产**。
 
@@ -627,6 +627,8 @@ VALUES (
 ```
 
 > **依赖声明**（决策 #4 已定稿）：本方案把「事件落库 + 重放」作为**前置依赖**。若 Session 层的方案尚未落地，Gateway 的重复分支只能降级为「返回 202 + 上次 turn_id，不重放事件」，并在 `InboundMessage` 上标记 `replay_unavailable`。**不得静默地丢弃重复请求。** 前置依赖清单见 §0.5。
+>
+> ⚠️ **2026-10-31 更新**：Session 侧**已落地** ✓（迁移 0050 + `PostgresSessionJournal` 真写真读 ✓）→ **降级路径从未启用** ✓（202 整段删除 ✓）→ 重放是唯一行为 ✓。
 
 > **Stage 1 的实际行为（2026-10-29 已实施）**：重复命中**仍抛 `DuplicateRequestError`**
 > （前端已对该 code 做「静默忽略」处理，`frontend/web/src/features/user/copilot/CopilotPage.tsx:601`），
@@ -1123,8 +1125,7 @@ composition
 | **`/v1/sessions*`（路径 C）走门面** | 它走的是**第二套 turn 实现**（无 claim / 幂等 / 取消 / 审批），本轮已加弃用标记 + 打点；「让它走门面」没有意义 —— **它的终态是被删除**（G7/G8，Stage 5） | Gateway Stage 5 |
 | **无感重放** | ✅ **Stage 4b 已实施**（2026-10-29）—— 重复命中改为重放事件流，202 降级路径删除 | — |
 
-> **因此本轮的清零判据不成立**：G9 / X2 的打点**仍会有流量**（IM 仍走它们），
-> Stage 5 的「连续 7 天为 0」不可能满足。**先上新、后清旧**的窗口仍然开着。
+> ⚠️ **2026-10-31 更新**：这段是 2026-10-29 的状态 ✓ —— **G9 / X2 已清理** ✓（2026-10-30 · Session Stage 5b 同 PR ✓ —— `dispatch_subscriber.py` 已不存在 ✓ · `use_cases/run_turn*` 已删 ✓）→ 打点**零调用点** ✓ → 「连续 7 天为 0」**不再是障碍** ✓（**用户已提前结束清理窗口** ✓）。
 
 ### Stage 4b：启用无感重放（Session 就绪后）
 
@@ -1195,7 +1196,7 @@ composition
 | 未接管项 | 为什么 | 归属 |
 |---|---|---|
 | ~~**IM 入口的无感重放**~~ | ✅ **核对后关闭** ✓（2026-10-31 ✓）—— IM 的轮次编排**已切到唯一实现** ✓（Session Stage 5b ✓ —— 2026-10-30 ✓）；且**「重放」在 IM 侧没有要解决的问题** ✓ —— web 的重放是**客户端主动要**（`Last-Event-ID` ✓），IM 是**平台重投 webhook** ✓（用户已经收到 ✓ → 重发是噪音 ✗），而「真没送到」由 **outbox** 兜住 ✓ → **关闭** ✓（详见 Session 方案 §Stage 5 的「IM 的「重放」」行 ✓） | — |
-| **Session 的 outbox 调度与死信** | `delivery_status` 目前只在轮次**正常收尾**时从 `pending` 标成 `delivered`；「按状态捞待投递 → 重试退避 → 死信」的调度器没有 | Session Stage 4 |
+| ~~**Session 的 outbox 调度与死信**~~ | ✅ **已落地** ✓（2026-10-31）—— `OutboxWorker` ✓（重试 → `move_to_dead_letter` → `outbox_dead_letters` 表 ✓ 迁移 0035 ✓）+ composition 接线 ✓（`lifespan.py` 的 `_start_outbox_worker` ✓）→ **不是未接管** ✓ | — |
 | **`session_turns` 作为轮次幂等的权威** | 本轮幂等的权威仍是 `session_inbox`（带 TTL 与强弱分层）；`session_turns` 的唯一索引只兜底「同会话不得有两个**在飞的**同键轮次」 | Session Stage 2（双写期结束后再移交） |
 | **切 IM 入口到唯一 turn 实现** | ✅ **2026-10-30 已达成**（与 Session Stage 5b 同 PR） | — |
 
@@ -1255,10 +1256,10 @@ composition
 
 | 未接管项 | 为什么 | 归属 |
 |---|---|---|
-| **删 `dispatch_subscriber.py`（G9）** | 必须与「切 IM 入口」+ Session Stage 5b（删 `use_cases/*`）**同一个 PR** —— 台账 §3.4 的「必须原子切换」条目。而「切 IM 入口」被 Session 的「唯一 turn 实现」阻塞 | Session（Stage 3–5b）· 同一个 PR |
-| **删第二套 turn 实现（X2）** | **唯一 owner 是 Session**（台账 §3.4 的唯一 owner 规则）；本层只做了「确认无残留调用方」—— HTTP 入口已删，**只剩 IM 入口**一个调用方 | Session Stage 5b |
+| ~~**删 `dispatch_subscriber.py`（G9）**~~ | ✅ **已达成**（2026-10-30 —— Session Stage 5b **同 PR** ✓ —— 台账 §3.4 的「必须原子切换」✓） | — |
+| ~~**删第二套 turn 实现（X2）**~~ | ✅ **已达成**（2026-10-30 —— Session Stage 5b **同 PR** ✓ —— 唯一 owner 是 Session ✓） | — |
 | **G8 的兼容保留期** | ✅ **已归零**（P-11 确认无仓外消费者）—— 不是未接管 | — |
-| **指标归零判据（≥7 天）** | 打点 2026-10-29 才上线，观察窗口不足 7 天 —— **本轮的删除依据是「引用关系」（代码 + 前端 + 仓内调用方），不是指标**（G-38） | 下一轮窗口满足后复核 |
+| ~~**指标归零判据（≥7 天）**~~ | ✅ **窗口已由用户提前结束**（2026-10-31 ✓）—— 删除依据 = **引用关系** ✓（G-38 口径 ✓）→ 无需再等窗口 ✓ | — |
 
 ### 阶段与「旧代码减少」对照表
 
@@ -1303,7 +1304,8 @@ composition
 ```python
 # tests/architecture/test_gateway_boundary.py
 FORBIDDEN = ("fastapi", "starlette", "sqlalchemy", "asyncpg", "psycopg")
-SCAN_DIRS = ("backend/runtimes", "backend/modules/agent_runtime/application",
+SCAN_DIRS = ("backend/runtimes/agent_runtime/src",   # ⚠️ 已收窄（G-40）✓
+             "backend/modules/agent_runtime/application",
              "backend/modules/memory/application", "backend/modules/knowledge/application")
 
 def test_no_framework_imports_in_runtime_layers():
@@ -1589,8 +1591,7 @@ Gateway 域对应的规则：
 | **G-48** | 中 | **投影表是「按码查文案」—— 但码一直在增加**（每层都在加码）。没有兜底的话，未登记的码只能把**裸码**返回给用户 | 表里只登记 **Gateway 层会产生 / 关心**的码；其余走**兜底文案**（三个面各一句）。另给 `try_project_error()`：调用方**已有自己文案**时用它（返回 `None` → 保留原文，投影不覆盖有用的细节） | `libs/schema/.../errors.py` |
 | **G-49** | 低 | **投影表建好但没人用 = 建而不切**（本项目的教训） | **三处投放面各接一处**：① http —— `libs/http/error_envelope.py`，**没写消息**的领域异常用投影文案代替裸码；② im —— `modules/channel/.../outbound/encoder.py`，已知码用投影文案（同一个码永远说同一句话）；③ web —— `modules/agent_runtime/.../copilot.py` 的 SSE 错误 chunk，**没写消息**时用投影文案（技术细节仍留在日志与轮次行里） | 三处 + 各自的单测 |
 
-**未接管（不属本层）**：**其余模块自己的 ~150 个自由字符串错误码**（tool / skill / memory / governance / identity / platform …）——
-全量收敛是**跨层工程**，不在 Gateway 层假装做完。Gateway 域的 15 个由
+**已接管**（2026-10-31 · G-02c ✓）：`ErrorCode` 扩到 **160 个成员** ✓（住 `qzdap_kernel.error_codes` ✓）+ 守卫扩到**全量生产目录** ✓（`tests/architecture/test_error_code_vocabulary.py` ✓）→ **生产代码里不再有任何错误码字面量** ✓。Gateway 域的 15 个由
 `tests/architecture/test_error_code_vocabulary.py`（架构守卫）+ 台账 **G12** 的
 三条扫描规则（`modules/` / `libs/` / `runtimes/` 各一条）双重守门 ✓。
 

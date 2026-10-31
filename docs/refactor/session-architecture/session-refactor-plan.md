@@ -724,7 +724,7 @@ DROP TABLE IF EXISTS checkpoints;
 | **Stage 6** | 重复状态字段 | `agent_sessions.wait_status` 列 | X6 |
 | **Stage 6** | 混装状态列 | `agent_sessions.graph_state`（迁移期双写后废弃） | X3 |
 | **Stage 6** | 旧表 | `agent_turns`、`agent_session_messages`（迁数据后 DROP） | X4 |
-| **Stage 6** | 冗余索引 | `ix_agent_sessions_channel_session_key`（若 §10.2 的 grep 确认它已无独立用途） | — |
+| **Stage 6** | 冗余索引 | ~~`ix_agent_sessions_channel_session_key`~~ ✅ **已删** ✓（迁移 0046 用部分唯一索引 `uq_agent_sessions_channel_key` 覆盖了它 ✓ —— dev 库索引清单已无它 ✓） | — |
 | **Stage 6** | 孤儿索引 / 废弃常量 | | — |
 
 > **X18 为什么单独落在 Stage 3b**：Stage 3 切完 web/api 入口后，`copilot.py` 的 turn 编排**已无调用方**，但它仍是一份**可被误接回去的第二实现**（~600 行）。删除必须发生在具体的 Stage 上，否则 X18 会永远停在「已弃用」。见 §12 Stage 3b。
@@ -779,12 +779,12 @@ DROP TABLE IF EXISTS checkpoints;
 
 | # | 事项 | 原因 | 归属 |
 |---|---|---|---|
-| **S-06** | `wait_status` 写入点归零 | ⚠️ **原记录的理由有误**（「X2 仍靠它做互斥」—— 实测 `try_claim` 的唯一调用者是 copilot，X2 没有互斥语义 ✓，已于 **Stage 3a** 迁走）。**现在那列只剩「审批挂起」的语义** —— 停写要等 Stage 5 把审批挂起落进 `session_turns.pending_approval`（否则「等待确认」的展示会退化 ✗） | **Stage 5** |
+| ~~**S-06**~~ | `wait_status` 写入点归零 | ✅ **已达成**（2026-10-30，Stage 6a ✓）—— `wait_status` **整列退役** ✓（迁移 0053 DROP ✓ + ORM 不再映射 ✓ + 写点归零 ✓）→ 台账 **X6 已清理** ✓ | — |
 | **S-11** | 删 `try_claim` 的 `wait_status` 分支 | ✅ **Stage 3a 已完成**（台账 R3 已清理）—— 执行权迁到 `current_turn_id` + 轮次状态推导 | — |
-| **清扫第 2 类** | 审批过期 | 归**治理域**（`approval_service.expire_if_due`） | 治理域 / Session Stage 5（S-30） |
+| ~~**清扫第 2 类**~~ | 审批过期 | ✅ **已达成**（2026-10-31）—— 判定在**治理域** ✓（`approval_service.expire_if_due` ✓ —— **只有一份** ✓）+ 清扫器接回调 ✓（组合根接线 ✓） | — |
 | **清扫第 3 类** | 会话空闲（30 天） | ✅ **2026-10-31 已达成** ✓—— ① **复活路径** ✓（契约层 `SessionManager.resolve_or_create` ✓ —— 查到**终态**会话就**让出外部会话键** ✓（置 NULL ✓ —— 部分唯一索引 ✓）→ **新建一个接管** ✓（不是状态转移 ✓ —— `closed` 是终态 ✓）→ 用户「隔了一周再问一句」拿到的是新会话 ✓ 而不是死会话 ✓）；② **空闲清扫** ✓（模块侧 `PostgresSessionSweeper._sweep_idle_sessions` ✓ —— 「最后活动」= **最后一轮的开始时间** ✓（不是会话行的 `updated_at` ✓ —— 那列会被摘要写入顶上去 ✗）→ 关闭并记 `metadata["close_reason"]="idle_timeout"` ✓（之前 `reason` 参数**被丢掉了** ✗✗）；③ ⚠️ **只关「有外部会话键」的** ✓ —— 那些**有复活路径** ✓；**Web 会话不关** ✓（没有复活路径 ✓ → 关了就是「用户的旧对话从列表里消失」✗✗ —— 方案 §3.4 点名的坑 ✓）；④ **阈值可配** ✓（`QZDAP_SESSION_IDLE_TIMEOUT_DAYS` ✓ —— 默认 30 天 ✓ —— 决策 #7 ✓）| — |
 | **S-07** | `X7`（审批吞异常）**提前清理** | 该缺陷 = 审批失败后**工具照常执行**；本轮改成「记日志 + **再抛**」（旧打点撤除） | 比原定的 Stage 5 提前到 Stage 1 |
-| **两套 `TurnStatus`** | 契约层 `session/state.py` 的 `TurnStatus`（`queued`/`running`/`waiting`/`succeeded`/`failed`/`cancelled` = `session_turns` 的 check constraint）与模块领域 `entities.py` 的 `TurnStatus`（`running`/`succeeded`/`failed`/`denied` = 旧 `agent_turns` 的语义） | **语义不同** —— `denied` 在新表里没有对应值，不能直接换掉 | **Stage 3**（唯一 turn 实现时合并）。本轮只收敛了 `SessionStatus`（两边语义完全一致，只是取值集合落后于表约束） |
+| **两套 `TurnStatus`** | 契约层 `session/state.py` 的 `TurnStatus`（`queued`/`running`/`waiting`/`succeeded`/`failed`/`cancelled` = `session_turns` 的 check constraint）与模块领域 `entities.py` 的 `TurnStatus`（`running`/`succeeded`/`failed`/`denied` = 旧 `agent_turns` 的语义） | **语义不同** —— `denied` 在新表里没有对应值，不能直接换掉 | ⚠️ **Stage 3 已过（2026-10-31 ✓）但仍未合并** ✓ —— 唯一 turn 实现已落地 ✓，模块侧枚举**仍在** ✓（`domain/entities.py` ✓）+ `mappers.py` 的**有损映射**还在用 ✓（`waiting → running` ✓ / `cancelled → denied` ✓）→ **归后续收口** ✓ |
 | **§13.2 规则 1 / 2** | 架构测试里的「只有一个 turn 实现」「状态机是唯一状态写入点」 | ✅ **2026-10-31 已达成**（S-39 ✓）—— 规则 1：模块侧图执行器改名 `run_graph` ✓ → `run_turn` 的定义只剩契约层 ✓（架构测试按「别处只许转调」判红 ✓）；规则 2：契约层 `plan_turn_transition` ✓ → 三个写入点全部改走状态机 ✓（**放行的状态值也由状态机给** ✓）。⚠️ 规则 2 的**判据与原文有偏差**（`state.py` 是纯契约层 ✓ → 「裸赋值只许在 `state.py`」字面做不到 ✓ → 落成「写点必须用状态机的词表与判定」✓）| — |
 
 ### Stage 2：Thread 落地
@@ -867,12 +867,14 @@ turn），而是让**模块侧组装** `TurnRequest`（读都在那边 ✓）。
 | # | 事项 | 原因 | 归属 |
 |---|---|---|---|
 | ~~**S-21b**~~ | 删 copilot 里的**薄壳**（幂等 + claim + 转发） | ✅ **已达成**（2026-10-31 ✓ —— **用户决定提前结束清理窗口** ✓）—— 幂等 + claim + 转发 → 契约层 `TurnRunner.run_turn` ✓；读 + 组装 → 模块侧 `application/turn_entry.py` ✓；调用方全切 ✓；薄壳（≈225 行 ✓）已删 ✓ | Stage 3b ✓ |
-| **执行器本身** | 跑轮次的仍是旧的手写循环（`SessionGraphRunner`，台账 **X17**） | 归 **Agent 层**的 A-26（旧循环改接新 Builder / Writer）—— 本层只管编排 ✓ | **Agent 层 A-26** |
-| **S-06** | `wait_status` 写入点归零 | 那列现在**只剩**「审批挂起」的语义 —— 停写要等 **Stage 5** 把审批挂起落进 `session_turns.pending_approval`（否则「等待确认」的展示会退化 ✗） | Stage 5 |
-| **S-22** | 停用 `use_cases/run_turn*.py`（X2） | IM 渠道仍在调它 —— 删除要与 **Gateway 的 IM 入口切换同 PR**（原子） | Stage 5b |
+| ~~**执行器本身**~~ | 跑轮次的仍是旧的手写循环（`SessionGraphRunner`，台账 **X17**） | ✅ **已达成**（2026-10-31 · Agent Stage 5 的 A-26 ✓ + Stage 7 ✓）—— 执行器改走**新的 `ContextBuilder`** ✓（`adapter/graph/runner.py` ✓）+ 旧图整包删 ✓ | — |
+| ~~**S-06**~~ | `wait_status` 写入点归零 | ✅ **已达成**（2026-10-30，Stage 6a ✓）—— 整列退役 ✓（迁移 0053 DROP ✓ + 审批挂起落进 `session_turns.pending_approval` ✓ + 读端改成从轮次表推导 ✓）→ 台账 **X6 已清理** ✓ | — |
+| ~~**S-22**~~ | 停用 `use_cases/run_turn*.py`（X2） | ✅ **已达成**（2026-10-30，Stage 5b ✓ —— 与 Gateway 的 IM 入口切换**同 PR** ✓）—— `use_cases/run_turn*.py` 已删 ✓ → 台账 **X2 已清理** ✓ | — |
 **验收**：同一 `clientRequestId` 重复到达 → 只起一轮；取消跨 worker 生效；**web/api 上只有一套「跑一轮」的语义**。
 
 ### Stage 3b：删 Copilot 侧旧 turn 编排（**X18**）
+
+> ✅ **2026-10-31 更新**：本 Stage **已达成** ✓ —— `copilot.py` 的 turn 编排已删 ✓（薄壳 ≈225 行 ✓）→ 台账 **X18 → 已清理** ✓
 
 > **为什么单独拆一个 Stage**：Stage 3 切完 web/api 入口后，`copilot.py` 的 turn 编排**已无调用方** —— 但「已弃用」不是终点，它仍是一份**可被误接回去的第二实现**（~600 行）。删除必须落在具体的 Stage 上，否则 X18 会永远停在「已弃用」，违反「停用 ≠ 删除」。
 >
@@ -1105,7 +1107,7 @@ IM 侧**未接管**（见下表）。
 | 迁移 | **0053**（单独迁移 ✓，不与 0046 合并）；实测 upgrade → downgrade → upgrade ✓ |
 | 扫描 | 规则从 `wait_status` **收窄**成 `(\.wait_status\b|wait_status\s*=)` —— 只盯**引用/赋值**，文档里提到列名不算残留 ✓（已用植入字面量验证会红 ✓） |
 
-⚠️ **dev 库待办**：`make db-upgrade`（迁移 **0052 / 0053**）—— 我这边连接被你运行中
+✅ **2026-10-31 更新**：dev 库**已迁移到 0064** ✓ —— 0052 / 0053 / 0056 / 0062 / 0063 / 0064 **全部应用** ✓（`wait_status` / `graph_state` 列已不在 ✓ · 旧表已 DROP ✓）→ **本条待办关闭** ✓
 的应用占满，apply 不上去 ✓（**代码不依赖这两列**，所以不迁移也能跑 ✓）。
 
 **仍未接管**（都要等前置条件，不能提前做）：
@@ -1126,7 +1128,7 @@ IM 侧**未接管**（见下表）。
 | Stage 1 | `wait_status` 写入点 | ~20 行 | 同上 | 直接替换 |
 | Stage 2 | 旧表写入点 | — | **双写期**：新旧两套表同时写（迁移期成本翻倍） | 直接替换（读保留用于迁移） |
 | Stage 3 | `copilot.py` 的 turn 编排（**X18**）**停用 + 打点** | 0（删除见 Stage 3b） | 同上 | **停用 + 打点** → 清理窗口 → **Stage 3b 删除**。`runner.py` 的 ReAct 循环（**X17**）**归 Agent 层**（Stage 5 接线 → Stage 7 删），本层不碰 |
-| Stage 4 | 无（事件落库 + outbox） | 0 | **`session_events`：每个 chunk 一行**（一次对话平均 5–20 行）+ **每条 IM 回复一行**（出站队列 ✓）；`outbox_dead_letters` 少量 | ✅ **outbox 已接线**（2026-10-30，Stage 4b —— 队列 = `session_events` 的 `im_reply` 子集 ✓；worker 进 lifespan ✓；重试退避 / 死信用契约层那一份 ✓）。⚠️ **保留期仍未做**（`session_events` 只增不减 —— 事件日志的清理策略还没定 ✓） |
+| Stage 4 | 无（事件落库 + outbox） | 0 | **`session_events`：每个 chunk 一行**（一次对话平均 5–20 行）+ **每条 IM 回复一行**（出站队列 ✓）；`outbox_dead_letters` 少量 | ✅ **outbox 已接线**（2026-10-30，Stage 4b —— 队列 = `session_events` 的 `im_reply` 子集 ✓；worker 进 lifespan ✓；重试退避 / 死信用契约层那一份 ✓）。⚠️ **保留期已做** ✓（2026-10-31 ✓ —— `sweeper._sweep_expired_events` ✓ —— 只删「已结束且超过保留期」的轮次事件 ✓ —— 默认 7 天 ✓ 可配 ✓） |
 | Stage 5 | 审批异常吞噬（`copilot.py` 的 `except Exception: pass`） | ~5 行 | 同上 | **删除**（X7） |
 | Stage 5b | 第二套 turn 实现（`use_cases/run_turn.py` + `run_turn_to_completion.py`） | ~600 行 | 同上 | **删除**（与 Gateway 的 IM 入口切换同 PR · X2 的 IM 侧） |
 | Stage 3b | Copilot 侧旧 turn 编排（`copilot.py` 的 turn 编排 · **X18**） | ~600 行 | 同上 | **删除**（清理窗口 ≥7 天且指标归零后；与 Stage 3 的切换分离，留回退窗口） |

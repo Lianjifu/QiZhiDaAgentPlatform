@@ -466,7 +466,7 @@ ToolMessage(content=..., tool_call_id=..., name=..., status="success" | "error")
 | **continue** | 有待执行的 tool_calls，且未超步数 / 成本 | 回到 Reason/Plan |
 | **suspend** | 工具需要审批 | 产出 `approval_required` chunk ✓ → 交 Session 挂起轮次（`session_turns.pending_approval` ✓）—— ⚠️ **不是 LangGraph 的 `interrupt()`** ✓（新循环是**手写循环** ✓ —— 2026-10-31 核对 ✓）|
 | **exit** | 无 tool_calls，或模型给出最终答案 | 收尾，交 Session / Context / Memory |
-| **abort** | 步数 / 成本 / token 超限 | 抛明确错误（`DEEP_AGENT_BUDGET_EXCEEDED` —— ⚠️ 它目前只是**新 runtime 里的字符串常量**（`graph/deep_agent.py:25`），**不在 `ErrorCode` 枚举里** → 前端不认识这个码，本层要**新增错误码**并同步 `libs/schema`） |
+| **abort** | 步数 / 成本 / token 超限 | 抛明确错误（`DEEP_AGENT_BUDGET_EXCEEDED` —— ⚠️ 仍是**纯字符串常量** ✓（`agent_loop/evaluate.py` ✓ —— 原 `graph/deep_agent.py` 已随 Stage 7 删除 ✓）—— **不在 `ErrorCode` 枚举里** ✓ → 前端不认识这个码 → **仍需新增错误码** ✓ |
 
 > **决策 #7（已定稿）**：成本闸门 → **两级都有**：轮次级是硬闸门，深度任务级是它的一个子集（deep path 允许更大但仍有上限）。
 
@@ -1217,8 +1217,8 @@ ToolRuntimePort
 |---|---|---|
 | **`sandbox_exec` 的暴露口径** | ✅ **已收紧** ✓ —— 旧路径**无条件**暴露沙箱工具 ✗（等于每个 agent 都凭空多了跑代码的能力 ✗✗）→ 现在**配了沙箱才暴露** ✓（`ToolBindingAdapter(sandbox=True)` ✓） |
 | **Stage 2 的 `ToolRuntimeAdapter`** | ⚠️ **零调用方** ✗ → 归 **Stage 7** 删 ✓（否则就是第二个工具运行时 ✗✗） |
-| **占位图 `compile_loop_graph` 的文件** | ⚠️ **文件还在** ✗（只是不再构造 ✓）→ 归 **Stage 7** 删 ✓ |
-| **`agent_loop/graph.py`（6 节点 LangGraph）** | ⚠️ **没做** ✗ —— 当前实现是**手写循环** ✓（runtime 侧 ✓）—— 六个终止条件的**单一判定点** ✓ 已经达成 ✓；**LangGraph 装配**（`interrupt()` + checkpointer ✓）归 **Stage 6 / 7** ✓ —— 审批挂起现在走**事件 + 落库** ✓（`session_turns.pending_approval` ✓）而不是 `interrupt()` ✓ |
+| **占位图 `compile_loop_graph` 的文件** | ✅ **已删** ✓（2026-10-31 · Stage 7 ✓ —— 仓内零命中 ✓ —— 扫描规则已启用 ✓） |
+| **`agent_loop/graph.py`（6 节点 LangGraph）** | ✅ **不做** ✓（2026-10-31 · A-34 ✓）—— 六个终止条件的**单一判定点** ✓ 已由 `agent_loop/evaluate.py` 达成 ✓ → **不建图** ✓（再造一张就是第三套 ✗✗）→ 审批挂起走**事件 + 落库** ✓（`session_turns.pending_approval` ✓） |
 
 ### Stage 6：Deep Agents（🚫 **已关闭** ✓ —— 决策 #8 未采纳）
 
@@ -1276,7 +1276,7 @@ ToolRuntimePort
 | **扫描脚本** | ✅ **启用 38 条** ✓（跳过 7 条 ✓）—— `compile_loop_graph` ✓ / `_run_turn_inner` ✓ / `graph/nodes.py` ✓ / `build_session_graph` ✓ / `InMemoryToolExecutor` ✓ / `class InMemory(...)`（14 个名字 ✓）—— **零命中** ✓ |
 | **死脚本** | `scripts/verify_e2e.py` ✓（716 行 ✓ —— 验的是**旧 runtime** ✓）—— **删除** ✓ |
 | **台账** | **X1 / X5 / X12 / X17 → 已清理** ✓ —— 统计同步 ✓（未开始 4 ✓ / 已弃用 2 ✓ / 已清理 28 ✓ / 已修复 2 ✓ = **36** ✓） |
-| ⚠️ **留下的尾巴** | **A-39 `result/events.py` 的 16 种 `*Event`** ⏳ —— ⚠️ **它们已被出站编码器接上** ✓（`modules/channel/.../outbound/encoder.py` ✓）—— 不再是「零引用的平行实现」✓；**直接换 TurnChunk 会丢数据** ✗（usage 的 6 维 ✓ / error 的 `detailed` ✓ / `event_id` ✓）→ **归 Gateway 层** ⏳（先扩前端契约 ✓） |
+| ~~⚠️ **留下的尾巴**~~ | ✅ **已清空** ✓（2026-10-31 · A-39 ✓ —— `result/events.py` 的 16 种 `*Event` **已删** ✓ —— `result/` 只剩一个工厂 `to_chunk` ✓（出站编码器改吃 chunk ✓）—— 台账 **X1-a 已清理** ✓） |
 
 
 ### 阶段与「旧代码减少」对照
@@ -1490,6 +1490,8 @@ def test_agent_layers_have_no_framework_imports():
 ---
 
 ## 附录 B：现状 → 目标 文件对照速查
+
+> ⚠️ **本表是「改造前」的文件映射** ✓ —— 实际结果见 Stage 5–7 的实施记录 ✓（表里写着「删除」的行**已删** ✓；写着「保留类型定义」的行**已不保留** ✓）
 
 | 现状文件 | 目标状态 |
 |---|---|

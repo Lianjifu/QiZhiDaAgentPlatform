@@ -1,6 +1,6 @@
 # 会话架构重构方案集
 
-> 版本：1.2（2026-10-29：补落地路线与里程碑、跨方案系统级验收、外部前置依赖；扩术语表；迁移表从引用块中提出）
+> 版本：1.3（2026-10-31：外部前置项与台账状态按已落地的事实回填 ✓）
 > 目录：`docs/refactor/session-architecture/`
 > 建立日期：2026-10-29
 > 状态：**生效中**
@@ -18,7 +18,7 @@
 | 2 | [`cleanup-ledger.md`](cleanup-ledger.md) | **全局收敛机制**：旧实现台账（弃用标记 → 调用打点 → 指标归零 → 删除 → CI 扫描脚本 → 阶段门禁） | **生效中** |
 | 3 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | Gateway 泳道：Channel Gateway / Auth Identity / Message Normalizer / Idempotency Guard ＋ 入口级限流 | **已定稿（v1.12）· Stage 0–3 + Stage 4a 两段 + Stage 4b + Stage 5 已实施**（幂等守卫 / 鉴权收口 / 归一化收口 / 门面接管 + 出站 sink + web 入口接管 / 无感重放 / **旧 `/v1/sessions*` 整段删除 + 扫描脚本进 CI + 架构测试**；**Stage 0 的 G-02/G-02b 补齐** —— 错误码收敛进 `ErrorCode` 枚举 + `ERROR_PROJECTION` 投影表，台账 **G12 已清理**；**G9 与 X2 已随 Session Stage 5b 的原子切换完成 ✓（2026-10-30）✓** —— 台账 Gateway 域 **G1–G12 全「已清理」** ✓） |
 | 4 | [`router-refactor-plan.md`](router-refactor-plan.md) | Router 泳道：Strategy（选 agent）+ Session Routing（选会话 + 有序保证） | **已定稿（v1.6）· Stage 0–3 已实施**（契约层 `router/` + 五条规则链 + `RouteDecision` 留痕 + **web 建会话改走 Strategy → 台账 R2 已清理** + **哈希版会话 key 派生 → 台账 R4 已清理** + **IM 也走规则链 ✓** + **同会话 FIFO 排队 ✓**（`session/queue.py` + `PostgresTurnQueue` ✓ —— 序号分配 / 入队 / 放行 / 兜底 / 上限 / 超时 ✓）—— 台账 **R1–R4 全「已清理」** ✓） |
-| 5 | [`session-refactor-plan.md`](session-refactor-plan.md) | Session 泳道：Manager（生命周期）+ State（状态机）+ Thread（多轮线程）+ 唯一 turn 实现 | **已定稿（v1.3）· Stage 0–3b + 5a + 5b + 6a/6b/6c/6d 已实施**（唯一 turn 实现 + **IM 切入口 + 删第二套 turn 实现**（台账 **X2 / G9 / R1 已清理** ✓）+ `wait_status` 整列退役（**X6** ✓）+ `graph_state` 整列退役（**X3** ✓）+ **旧表迁数据 + 切读 + 停旧写** ✓（**X4 只剩 DROP** ✗ —— 等只读窗口 ≥7 天 + 备份恢复演练 ✓）） |
+| 5 | [`session-refactor-plan.md`](session-refactor-plan.md) | Session 泳道：Manager（生命周期）+ State（状态机）+ Thread（多轮线程）+ 唯一 turn 实现 | **已定稿（v1.3）· Stage 0–3b + 5a + 5b + 6a/6b/6c/6d 已实施**（唯一 turn 实现 + **IM 切入口 + 删第二套 turn 实现**（台账 **X2 / G9 / R1 已清理** ✓）+ `wait_status` 整列退役（**X6** ✓）+ `graph_state` 整列退役（**X3** ✓）+ **旧表迁数据 + 切读 + 停旧写** ✓（**X4 已清理** ✓（迁移 0062 DROP ✓ —— 用户已提前结束只读窗口 ✓））） |
 | 6 | [`context-refactor-plan.md`](context-refactor-plan.md) | Context 泳道：Builder（拼装）+ Compressor（压缩）+ Persistence（manifest 落库） | **已定稿（v1.2）** |
 | 7 | [`memory-refactor-plan.md`](memory-refactor-plan.md) | Memory 泳道：Retrieval（检索）+ Writer（沉淀）+ STM/LTM 分层 | **已定稿（v1.4）** |
 | 8 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | ⑦ Agent Loop（大脑）· ⑧ Agent Router（**只选专家**：模型 / 工具 / 知识都来自 agent 配置，**不做 Model Router**）· ⑨ Execution Runtime（Agent / Model Runtime / Tool Runtime）。技术栈：LangGraph 1.x + LangChain + Deep Agents | **已定稿（v1.2）** |
@@ -70,7 +70,7 @@
 
 | 规则 | 说明 |
 |---|---|
-| **弃用标记 + 观测** | 旧实现被接管时打 `@deprecated` + `qzdap_legacy_calls_total{entry="..."}`，让「旧路径还在被调用」成为可观测事实。✅ 指标与打点已落地（2026-10-30 更新，16/36 条，见台账 §3.2 的打点覆盖表） |
+| **弃用标记 + 观测** | 旧实现被接管时打 `@deprecated` + `qzdap_legacy_calls_total{entry="..."}`，让「旧路径还在被调用」成为可观测事实。✅ 指标已落地 ✓（2026-10-30）—— ⚠️ **打点已随旧实现全部撤除** ✓（生产代码 `record_legacy_call` 调用点 = **0** ✓ —— 2026-10-31 核对 ✓）→ 判据统一走 CI 扫描脚本 ✓（47 条规则全开 ✓） |
 | **删除条件客观化** | 连续运行 **≥ 7 天** + 新路径流量占比 **≥ 95%** + `qzdap_legacy_calls_total{entry="…"}` 窗口内**累计为 0** + 窗口内无相关生产事故。**不使用「发布周期」概念** —— 本项目无 tag / CHANGELOG / release 目标，该周期不可定义，等于「随时」（见台账 §3.3 的论证） |
 | **台账化** | 全部旧实现登记在 [`cleanup-ledger.md`](cleanup-ledger.md) |
 | **单实现不变量** | **对每个关注点，任一时刻只有一个实现活着。**「弃用」不是终态 —— 每个旧实现的删除都落在**某一层的某个具体 Stage** 的具体 PR，见 [`implementation-plan.md`](implementation-plan.md) §1.2 的「关注点 → 唯一实现 → 删除时点 → 归属层 · Stage → **允许并存窗口**」表，并由 §6.2 的守卫规则在 CI 里强制 |
@@ -351,7 +351,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 | **M2 事件可重放** | Session 4/5 · Gateway 4a/4b · **Session 5b（删第二套 turn 实现）** | `session_events` 真写真读；SSE 断线带 `Last-Event-ID` 重连内容完整；重复请求**无感重放**（Gateway 4b 完成）；**IM 渠道上只剩一套 turn 实现**（Session 5b 与 Gateway 的 IM 切换同 PR 删除） |
 | **M3 上下文与记忆上线** | Context 1–3 · Memory 2–3 | 上下文可喂模型（`[{role, content}]`）；超预算走真压缩而非标记；记忆召回按用户隔离；manifest 落库 |
 | **M4 路由与执行成型** | Router 2–4 · Agent 1–5 | 同会话消息严格有序；工具幂等**跨 worker** 生效；`tool_executions` 有真实行；**专家选择有留痕**、模型 / 工具**取自 agent 配置**；**存在一条跑完整个循环的端到端测试** |
-| **M5 全部清零** | 全部 Stage N（清理） | 台账 36 条**全部「已清理」**；CI 扫描脚本零命中；`qzdap_legacy_calls_total` 全指标归零 |
+| **M5 全部清零** | 全部 Stage N（清理） | 台账 37 条**全部「已清理」**；CI 扫描脚本零命中；`qzdap_legacy_calls_total` 全指标归零 |
 
 ### 6.3 关键路径与并行度
 
@@ -382,7 +382,7 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 | 9 | **记忆不串用户**：用户 A 的会话召回结果里不含用户 B 的记忆（租户 / 工作区 / 用户三层隔离各有测试） | Memory |
 | 10 | **manifest 可查**：任一轮都能查出它每次模型调用的上下文组成与**淘汰原因** | Context |
 | 11 | **成本归属正确**：`session_turns.cost_usd` 与实际调用一致；专家路由 / 模型降级都计入 | Agent |
-| 12 | **旧实现真的少了**：台账 36 条全部「已清理」（**修复类条目 X14 / G10 走「已修复」**）；CI 扫描脚本零命中；`qzdap_legacy_calls_total` 全指标归零 | 全部（台账） |
+| 12 | **旧实现真的少了**：台账 37 条全部「已清理」（**修复类条目 X14 / G10 走「已修复」**）；CI 扫描脚本零命中；`qzdap_legacy_calls_total` 全指标归零 | 全部（台账） |
 | 13 | **架构边界不被绕过**：runtime 层零框架 import；摘掉任一层，其余层**不知道 HTTP / SSE / 飞书存在** | 全部 |
 
 ---
@@ -394,14 +394,14 @@ Router 决策 #2（表选择）与 Session 决策 #5（表选择）**是同一�
 | # | 依赖 | 归属模块 | 被哪个 Stage 卡住 | 备注 |
 |---|---|---|---|---|
 | 1 | ~~**`route_strategy` 新取值**~~ | ~~`modules/model` + `modules/agent_factory`~~ | ~~Agent Stage 4~~ | ❌ **已取消**（Agent 决策 #4）：不做运行时策略路由 → **这条跨模块前置不再存在**，`route_strategy` 保持 0042 的现有取值集合 |
-| 2 | **专家 Agent 的 role 标签** | `modules/agent_factory`（`agent_versions`） | **Agent Stage 4** | 建议**复用 `agent_versions` + role 标签**，不新建专家表 —— 若决定新建，需在本目录补一份表归属登记 |
-| 3 | **工具幂等 / 重试 / 熔断** | `modules/tool`（`InvokeToolUseCase`） | **Agent Stage 3** | 本方案给 Execution 层补幂等，但**执行器在 `modules/tool`**。落地要么在 `modules/tool` 里改，要么由 Execution 层包一层 —— **需先定归属**（倾向：改 `modules/tool`，因为它已经在写 `tool_calls`） |
-| 4 | **`tools` 表的 spec 生成真实 schema** | `modules/tool` | **Agent Stage 2** | 现在 admin 注册的 OpenAPI / MCP 工具返回的是**空 schema**，模型看不到参数 |
-| 5 | **工具白名单与 `unprotected` 语义** | `modules/agent_runtime`（agent 配置） | **Agent Stage 2** | 白名单在 agent 配置里（`allowed_tools` / `allowed_skills`）；`unprotected` 是 Gateway 判定的事实，需沿链路传到工具绑定的治理过滤 |
-| 6 | **`deepagents` 依赖** | `runtimes/agent_runtime/pyproject.toml` | **Agent Stage 6** | **未安装、不在 `uv.lock`**；且现有 `InMemoryDeepAgentFactory` 的 docstring 声称「已验证可用」是**错的**（代码从未 import 它）。必须先在隔离分支验证 API 与版本 |
+| 2 | **专家 Agent 的 role 标签** | `modules/agent_factory`（`agent_versions`） | **Agent Stage 4** | 建议**复用 `agent_versions` + role 标签**，不新建专家表 —— 若决定新建，需在本目录补一份表归属登记 | ✅ **已消解**（2026-10-31，A-22 / A-23 ✓）—— 决策 #3 = **复用 `agent_versions`** ✓（专家 = 模型 + 指令 + 工具集 ✓）→ **未新建专家表** ✓ |
+| 3 | **工具幂等 / 重试 / 熔断** | `modules/tool`（`InvokeToolUseCase`） | **Agent Stage 3** | 本方案给 Execution 层补幂等，但**执行器在 `modules/tool`**。落地要么在 `modules/tool` 里改，要么由 Execution 层包一层 —— **需先定归属**（倾向：改 `modules/tool`，因为它已经在写 `tool_calls`） | ✅ **已消解**（2026-10-31，A-14 / A-16 / A-20b ✓）—— 归属拍板 = **改 `modules/tool`** ✓（`tool_executions` 开始写 ✓ + 指数退避 + 熔断 ✓ + `turn_id` / `idempotency_key` ✓） |
+| 4 | ~~**`tools` 表的 spec 生成真实 schema**~~ | ~~`modules/tool`~~ | — | ✅ **已消解**（2026-10-31，A-11 ✓）—— `modules/tool/.../application/tool_schema.py` ✓（**spec → JSON Schema 的单一真相** ✓）→ 模型看得到参数 ✓ |
+| 5 | **工具白名单与 `unprotected` 语义** | `modules/agent_runtime`（agent 配置） | **Agent Stage 2** | 白名单在 agent 配置里（`allowed_tools` / `allowed_skills`）；`unprotected` 是 Gateway 判定的事实，需沿链路传到工具绑定的治理过滤 | ✅ **已消解**（2026-10-31，A-10 ✓）—— 治理过滤在 runtime 侧 `execution/tool_binding.py` ✓（`unprotected` 轮次的副作用工具**已剔除** ✓）→ 链路已通 ✓ |
+| 6 | ~~**`deepagents` 依赖**~~ | ~~`runtimes/agent_runtime/pyproject.toml`~~ | — | ✅ **不再需要**（2026-10-31）—— Agent Stage 6 **已关闭** ✓（A-28b · 决策 #8 未采纳 ✓ —— 不接 `deepagents` = 不造第三套循环 ✓）→ `InMemoryDeepAgentFactory` 已随 Agent Stage 7 删除 ✓（全仓零命中 ✓）→ **这条前置不存在了** ✓ |
 | 7 | ~~**`qzdap_legacy_calls_total` 指标**~~ | ~~`libs/observability`~~ | — | ✅ **已落地（2026-10-29）**：`LEGACY_CALLS_TOTAL` + `record_legacy_call(entry)` + `NEW_CALLS_TOTAL` + `record_new_call(entry)`（有单测）；**16/36 条台账条目已在旧入口打点**，其余 7 条走替代判据（从未接线 / 数据类）。**这一条不再是外部前置依赖** |
-| 8b | **`ErrorCode` 码收敛** | `libs/schema` + `modules/channel` + `modules/agent_runtime` | **Gateway Stage 0** | 7 个码（`CHANNEL_NOT_FOUND` / `CHANNEL_DISABLED` / `INBOUND_ADAPTER_MISSING` / `WEBHOOK_SIGNATURE_INVALID` / `WEBHOOK_TIMESTAMP_SKEW` / `DUPLICATE_REQUEST` / `TENANT_DENIED`）散落在模块内异常的 `code=` 字符串里，**`ErrorCode` 枚举不含它们**。Gateway 的 `ERROR_PROJECTION` 投影表按码查文案 → 必须先收敛 |
-| 8c | **`modules/channel` 依赖 `qzdap-agent-runtime`** | `modules/channel` + `uv.lock` | **Gateway Stage 2** | webhook 端点要调 `Gateway.accept`。**不改正 `uv.lock` 就装不上** |
+| 8b | ~~**`ErrorCode` 码收敛**~~ | ~~`libs/schema` + `modules/channel` + `modules/agent_runtime`~~ | — | ✅ **已消解**（2026-10-31，G-02b / G-02c ✓）—— 7 个码**全在 `ErrorCode` 枚举里** ✓（枚举 160 个成员 ✓）+ 守卫扩到**全量生产目录** ✓ → 生产代码里**不再有任何错误码字面量** ✓ |
+| 8c | ~~**`modules/channel` 依赖 `qzdap-agent-runtime`**~~ | ~~`modules/channel` + `uv.lock`~~ | — | ✅ **已消解**（2026-10-31）—— `modules/channel/pyproject.toml` **已显式声明** `qzdap-agent-runtime-runtime` ✓ → 装得上 ✓ |
 | 8 | ~~**LangGraph checkpoint 表**~~ | ~~`backend/migrations`（Session 迁移 0046）~~ | — | ✅ **已消解**（2026-10-31）—— ⚠️ **原文写「checkpoint 系列表不在任何迁移里」是错的** ✓ —— 0046 恰恰建了它们 ✓；但 **saver 已退役** ✓（S-14 ✓ —— 唯一消费者那张 19 节点图已随 Agent Stage 7 删除 ✓）→ **全仓零引用** ✓ → **迁移 0063 把四张表删了** ✓（`checkpoint_thread_id` 死函数一起删 ✓）|
 
 ---

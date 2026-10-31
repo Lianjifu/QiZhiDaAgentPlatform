@@ -78,7 +78,7 @@
 | **Stage 3** | **Session 层的唯一 turn 实现落地**（Session Stage 3） | Session 方案 | **语义（硬）** | 有序性只对一条路径成立 → **不得开启** |
 | **Stage 3** | 会话级互斥原语（advisory lock 或轮次表 CAS） | 本方案 + Session | 实现 | 无 |
 
-> **Stage 3 是本方案唯一被硬阻塞的阶段**。Session 层方案未落地「唯一 turn 实现」之前，Router 的 FIFO 排队没有意义 —— 因为另一条路径（渠道 / 子代理 / 评测）仍然可以绕过队列并发执行。**这与 2026-10-15 那次的失败是同一个形状：只建一半。**
+> ⚠️ **这段是 2026-10-29 的状态** ✓ —— **2026-10-30 两道门都开了** ✓（§13.5 ✓）→ Stage 0–3 **全部执行完毕** ✓。原文：Stage 3 曾是本方案唯一被硬阻塞的阶段 —— Session 层方案未落地「唯一 turn 实现」之前，Router 的 FIFO 排队没有意义 —— 因为另一条路径（渠道 / 子代理 / 评测）仍然可以绕过队列并发执行。**这与 2026-10-15 那次的失败是同一个形状：只建一半。**
 
 ### 0.7 排队语义的前端契约（**破坏性变更，必须有契约与开关**）
 
@@ -89,7 +89,7 @@
 | 用户连发两条 | 第二条收到 409 `SESSION_BUSY`，前端提示「上一轮还在跑」 | 第二条**排队**，等第一轮完成后自动执行 |
 | 前端表现 | 错误提示 | **需要展示「排队中」** |
 
-**需要新增的 chunk**：当前 **17** 种 `TurnChunk` 里**没有 `queued` 类型**（`libs/schema/src/qzdap_schema/dtos/turn.py`，实测 17 个 `*Chunk` 类）→ 需新增 `QueuedChunk`（含 `position` / `waited_ms` / `estimated_wait_seconds`），否则前端只能一直转圈到首 chunk 到达。
+**需要新增的 chunk**：⚠️ **已新增** ✓（2026-10-31 ✓ —— `libs/schema/src/qzdap_schema/dtos/turn.py` 的 `QueuedChunk` ✓ —— 含 `position` / `waited_ms` / `estimated_wait_seconds` ✓）→ 前端能显示「排队中」的前提**已具备** ✓（⚠️ 前端**尚未消费** ✓ —— 见 §13.6.2 ✓）
 
 **灰度开关**：排队语义是**破坏性契约变更**，需要一个开关：
 
@@ -146,10 +146,10 @@
 | `admin_agents.category`（业务线） | 同上 | ✅ 业务线策略的依据 |
 | `admin_agents.tags` / `profile` | 同上 | ✅ 标签与扩展策略配置 |
 | `ActorContext.roles`（来自 JWT claims） | `libs/auth/src/qzdap_auth/dependencies.py:49` | ✅ 角色维度策略依据 |
-| `build_session_key` | `runtimes/.../channels/gateway.py` | ✅ 可用 |
-| `select_chain_for_strategy`（模型策略链） | `modules/model/src/qzdap/modules/model/application/services.py:980` | ✅ 真实现 → 归 Agent 层 Execution 的**模型解析**调用（查表，不是运行时决策） |
-| `classify_task_kind_heuristic` | `runtimes/.../graph/routing.py:91` | ✅ 可用 → 归 Agent 层 |
-| `ErrorCode.SESSION_BUSY` / `REVISION_CONFLICT` | `libs/schema/.../errors.py:39` | ✅ 可用 |
+| ~~`build_session_key`~~ | **已删** ✓（台账 R4 ✓ —— 分隔符注入与清洗歧义 ✗✗）→ 替代物 = `router/session_key.py` 的 `derive_session_key` ✓（哈希版 ✓） | — |
+| `select_chain_for_strategy`（模型策略链） | `modules/model/src/qzdap/modules/model/application/services.py:930` | ✅ 真实现 → 归 Agent 层 Execution 的**模型解析**调用（查表，不是运行时决策） |
+| `classify_task_kind_heuristic` | `runtimes/agent_runtime/src/qzdap_agent_runtime/agent_router/classifier.py:174` | ✅ 可用 → 归 Agent 层 |
+| `ErrorCode.SESSION_BUSY` / `REVISION_CONFLICT` | `libs/kernel/src/qzdap_kernel/error_codes.py`（2026-10-31 词汇表搬进 kernel ✓） | ✅ 可用 |
 
 ### 1.5 缺口：用户标签没有一等公民
 
@@ -420,7 +420,7 @@ AND 该会话当前没有正在执行的 turn
 
 **S1 的配套要求**：
 
-1. **前端需要知道「在排队」**。当前 **17** 种 `TurnChunk` 里**没有 `queued` 类型** → 需要新增 `QueuedChunk`（含 `position` / `waited_ms`），否则前端只能转圈直到首 chunk 到达。
+1. **前端需要知道「在排队」**。⚠️ **chunk 已新增** ✓（`QueuedChunk` ✓ —— 含 `position` / `waited_ms` ✓ —— 2026-10-31 ✓）→ ⚠️ **前端尚未消费** ✗（copilot 页零处处理 ✓ —— 开关打开前要接上 ✓ —— 否则用户只看到转圈 ✓）。
 2. **队列上限与超时**：单会话排队上限（N 条）与最长等待时间（T 秒），超限返回明确错误码，**不得静默丢弃**。
 
    > **决策 #7（已定稿）**：N 与 T 的取值，以及错误码。
@@ -1027,7 +1027,7 @@ def test_router_layer_has_no_framework_imports():
 | **FIFO 放行** | `modules/agent_runtime/.../adapter/persistence/session_queue.py` 的 `PostgresTurnQueue` ✓ —— **单语句 CAS** ✓（`status: queued → running` ✓） | ✅ |
 | **兜底路径** | 快照落后 → **以 `session_turns` 权威值为准放行** ✓ + **修快照** ✓ + **计数告警** ✓（`qzdap_router_seq_snapshot_drift_total` ✓） | ✅ |
 | **审批不占执行位** | 审批挂起落 `waiting` ✓（**不是 `running`** ✓） | ✅ |
-| **排队期间的可见性** | `QueuedChunk` ✓（`position` / `waited_ms` / `estimated_wait_seconds` ✓）→ 前端能显示「排队中」✓ | ✅ |
+| **排队期间的可见性** | `QueuedChunk` ✓（`position` / `waited_ms` / `estimated_wait_seconds` ✓）—— ⚠️ **后端已发** ✓；**前端尚未消费** ✗（copilot 页零处处理 ✓）→ 开关打开前要接上 ✓ | ⚠️ **部分** |
 | **超限不静默** | `QUEUE_FULL`（429 ✓）/ `QUEUE_TIMEOUT`（503 ✓）✓ + `ErrorCopy` 文案 ✓ | ✅ |
 | **开关可回滚** | `QZDAP_ROUTER_QUEUE_ENABLED` ✓（**默认关** ✓ —— 关掉即旧语义 ✓） | ✅ |
 | 观测 | `qzdap_router_route_total` ✓（沿用）+ **快照漂移计数** ✓ + **队列深度 / 等待时长 / 被拒计数 / 会话 key 派生次数** ✓（§12.2 的四个指标 ✓ —— **本轮补齐** ✓） | ✅ |
@@ -1064,7 +1064,7 @@ def test_router_layer_has_no_framework_imports():
 | 4 | 深度任务判定与模型链解析 | **不在本层**，归 Agent 层 | 放 Strategy（但入站拿不到上下文） | 与基线图的一致性 |
 | 5 | `ingress_seq` 分配方式 | **会话行原子自增**（`next_ingress_seq` 列） | 全局序列 / 分布式锁 | 跨 worker 正确性 |
 | 6 | 审批中断是否占用 FIFO 执行位 | **不占用**（等待审批不阻塞新消息） | 占用（严格全局有序，但会堵死） | 死锁风险 |
-| 7 | 排队上限 N / 等待超时 T / 超限错误码 | **N=5 条、T=60 秒**；`QUEUE_FULL`（409）/ `QUEUE_TIMEOUT`（504） | 无上限（无限排队）；拒绝而非排队 | 前端契约 + 资源保护 |
+| 7 | 排队上限 N / 等待超时 T / 超限错误码 | **N=5 条、T=60 秒**；`QUEUE_FULL`（**429**）/ `QUEUE_TIMEOUT`（**503**）✓（与 `ErrorCode.http_status` 一致 ✓） | 无上限（无限排队）；拒绝而非排队 | 前端契约 + 资源保护 |
 | 8 | 排队语义的开关 | **`QZDAP_ROUTER_QUEUE_ENABLED` 默认 off**，前端先兼容再开 | 无开关直接切（不可回滚） | 回滚成本 |
 | 9 | 会话级互斥的原语 | **轮次表 CAS 为唯一权威**（`session_turns.status`）；advisory lock 仅作优化，**不用 `_xact_` 变体** | 纯 advisory lock（事务提交即失效） | 并发正确性 |
 | 10 | 会话实例由谁创建 | **Router 只派生 `session_key` + 分配 `ingress_seq`；`resolve_or_create` 由 Session 执行**（R1） | R2 Router 自己查建会话（两处都能建 → 第二套真相） | 会话创建逻辑的唯一性、层间依赖顺序 |

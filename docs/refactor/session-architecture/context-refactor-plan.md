@@ -760,7 +760,7 @@ UPDATE agent_sessions s
 | Agent Loop 调 Context | 替换「自己拼 messages」的逻辑 |
 | 召回失败的 degraded 标记 | `recall_degraded` 传到前端（走 `ResultEvent.flags`，键已在 Gateway §9.0 登记） |
 | 端到端回归 | 长会话、混合中英文、召回为空、摘要模型故障 |
-| **前端消费降级标记** | ⚠️ 前端目前**零消费** `flags`（§5.3.1）→ 需要一个前端工作项：读 `context_compacted.degraded` 与 `ResultEvent.flags`，把「未使用历史记忆」提示出来 |
+| **前端消费降级标记** | ✅ **已达成**（2026-10-31）—— 前端读 `flags` ✓ 并把「未使用历史记忆」这类降级提示出来 ✓（`CopilotPage.tsx` ✓ —— §5.3.1） |
 
 **旧代码减少**：Agent Loop 内「自己拼 messages」的分支下线（该分支当前分散在 `nodes.py` 的 `agent` 节点与旧 `runner._run_turn_inner` 中）→ 打点，进入清理窗口。
 >
@@ -793,9 +793,9 @@ UPDATE agent_sessions s
 
 | 项 | 状态 | 门禁 |
 |---|---|---|
-| **C-22 降级标记到前端** | ✗ 未做 | ⚠️ **`ResultEvent.flags` 契约还没实现** ✗（Gateway 层 §9.0 只在方案里 ✓）—— Context 只能产出 `degraded_flags` ✓，**没有可投递的通道** ✗ → 归 **Gateway 层** ✓ |
-| **前端消费降级标记** | ✗ 未做 | 前端零消费 `flags` ✓（§5.3.1 ✓）→ 独立工作项 ✓ |
-| **C-25 自拼 messages 分支停用** | ✅ 已达成（旧循环那半 ✓） | ⚠️ `nodes.py` 的 `agent` 节点那半是**死代码** ✓（19 节点图没有生产调用方 ✓）→ 删除归 Agent Stage 7 ✓ |
+| **C-22 降级标记到前端** | ✅ **已达成**（2026-10-31） | `ResultEvent.flags` 契约已落地 ✓（Gateway §9.0 ✓）+ `ChunkEnvelope.flags` ✓ → **降级有可投递的通道** ✓（Context 产出 → 运行时 → 事件流 → SSE ✓） | — |
+| **前端消费降级标记** | ✅ **已达成**（2026-10-31） | 前端读 `flags` ✓ 并在轮次结束时提示降级 ✓（`CopilotPage.tsx` ✓ + 单测 ✓） | — |
+| **C-25 自拼 messages 分支停用** | ✅ **已达成** ✓ | 旧循环那半随 A-26 停用 ✓；`nodes.py` 的那半**已随 Agent Stage 7 整包删** ✓ | — |
 
 ### Stage 5：清理与封口
 
@@ -829,7 +829,7 @@ UPDATE agent_sessions s
 
 | 项 | 状态 | 原因 |
 |---|---|---|
-| **C-29 删 `runtimes/.../context/budget.py`**（**384 行** ✓） | ⚠️ **未删** ✓ | 它的两个旧类（`Compactor` / `ContextAssembler` ✓）还被 **19 节点图的 `nodes.py`** import ✓ —— 那图**没有生产调用方** ✓（死代码 ✓）→ **删除归 Agent Stage 7** ✓（连 `nodes.py` 一起删 ✓ —— 免得两个 PR 互相冲突 ✗✗） |
+| **C-29 删 `runtimes/.../context/budget.py`**（**384 行** ✓） | ✅ **已删** ✓ | 2026-10-31 · Agent Stage 7 ✓ —— 随 `context/budget.py` ✓ / `memory/layered.py` ✓ / `graph/*` ✓ 整包删 ✓ —— 仓内零引用 ✓ | — |
 
 
 ### 阶段与「旧代码减少」对照
@@ -851,10 +851,10 @@ UPDATE agent_sessions s
 |---|---|---|---|
 | **Stage 4 接线** | Agent Loop 改调 `context/builder.py` + `memory/writer.py` | ✅ **已达成**（2026-10-30）—— 装配那一半随 **Agent A-26** 接上 ✓；**压缩那一半随 Context Stage 4 接上** ✓（旧的 `compact.py` 已无调用方 ✓，实测 `X9` = 0 ✓） | Context 层（Stage 4 ✓ 已达成） |
 | **C-22 降级标记到前端** | `recall_degraded` 走 `ResultEvent.flags` | ✅ **已达成**（2026-10-31）—— `ResultEvent.flags` 契约已落地 ✓（Gateway §9.0 ✓ —— 内部事件与对外 chunk **同一个词汇** ✓）+ `ChunkEnvelope.flags` ✓ → **降级终于有可投递的通道** ✓（Context 产出 → 运行时 → 事件流 → SSE ✓） | — |
-| **前端消费降级标记** | 读 `context_compacted.degraded` 与 `ResultEvent.flags` | ⚠️ 前端目前**零消费** `flags` ✓（§5.3.1 ✓）→ 独立工作项 ✓ | 前端 |
-| **Stage 5 清理** | 删 `compact.py` / `_load_messages` / `budget.py` / `metadata['rolling_summary']` 残留 | ✅ **已达成**（2026-10-30）—— X8 / X9 / X10 已清理 ✓；扫描规则已启用 ✓；⚠️ **`budget.py`（384 行）未删** ✓ → **归 Agent Stage 7** ✓（`nodes.py` 还 import 它 ✓ —— 死代码 ✓） | 本层（Stage 5 ✓ 已达成 · `budget.py` 归 Agent） |
+| **前端消费降级标记** | 读 `context_compacted.degraded` 与 `ResultEvent.flags` | ✅ **已达成**（2026-10-31）—— 前端读 `flags` ✓ 并在对话里提示降级 ✓（`CopilotPage.tsx` ✓ —— 「本轮降级：X —— 回答可能不完整」✓，含单测 ✓） | 前端 ✓ |
+| **Stage 5 清理** | 删 `compact.py` / `_load_messages` / `budget.py` / `metadata['rolling_summary']` 残留 | ✅ **已达成**（2026-10-30）—— X8 / X9 / X10 已清理 ✓；扫描规则已启用 ✓；✅ **`budget.py`（384 行）已删** ✓（2026-10-31 · Agent Stage 7 ✓ —— 连 `nodes.py` 一起删 ✓ —— 仓内零引用 ✓） | 本层（Stage 5 ✓ 已达成 · `budget.py` 归 Agent） |
 | **X9 / X8 的扫描规则启用** | `compact.py` / `_load_messages` 两条规则 | 旧实现删掉后才开 ✓（X10 的规则**已开** ✓ —— 2026-10-30） | 本层（Stage 5） |
-| **前端消费降级标记** | 读 `context_compacted.degraded` 与 `ResultEvent.flags` | ⚠️ 前端目前**零消费** `flags` ✓（§5.3.1 ✓）→ 独立工作项 ✓ | 前端 |
+
 | **快照** | `session_context_snapshots` | 决策 #3：**先不做** ✓ | — |
 
 ⚠️ **解锁链**（要接线就得按这个顺序走 ✓）：

@@ -306,7 +306,7 @@
 |---|---|---|---|---|---|
 | Stage 0 · 契约与地基 | G-01 建 `gateway/` 骨架 + `types.py` | ✅ **已达成** —— `gateway/` 骨架 ✓（`types.py` ✓ / `normalizer.py` ✓ / `identity.py` ✓ / `idempotency.py` ✓ / `facade.py` ✓ / `replay.py` ✓ / `web.py` ✓ / `outbound.py` ✓ / `channels.py` ✓） 4 个类型定稿 | — | 0（纯新增） | — |
 | | G-02 扩 `ErrorCode` 投影表 | ✅ **已实施**（2026-10-29）：`libs/schema/.../errors.py` 的 `ERROR_PROJECTION`（http/im/web 三套文案）+ `project_error` / `try_project_error` / `project_error_message`；**三处投放面接线**（http 错误信封 / im 出站编码器 / web 的 SSE 错误 chunk）。⚠️ **落点与 §9.1 的 `gateway/errors.py` 不同** —— 唯一一份放 `libs/schema`（Gateway 方案附录 C.8 的 G-46）| — | 0 | G-01 |
-| | **G-02b 错误码收敛（跨模块）** | ✅ **已实施**（2026-10-29）：**15 个**码提升为 `ErrorCode` 枚举成员（方案 §9.0 列了 7 个 —— 实施时发现 Gateway Stage 2/4a **自己又造了 8 个**，按实况补齐），各模块 `domain/errors.py` 的 `code=` 改为 `ErrorCode.X.value`；台账 **G12 已清理**（扫描规则 + 架构测试双重守门）。⚠️ **其余模块自己的 ~150 个码未接管** —— 不属本层 | — | 0 | **横切 H8**（跨模块前置） |
+| | **G-02b 错误码收敛（跨模块）** | ✅ **已实施**（2026-10-29）：**15 个**码提升为 `ErrorCode` 枚举成员（方案 §9.0 列了 7 个 —— 实施时发现 Gateway Stage 2/4a **自己又造了 8 个**，按实况补齐），各模块 `domain/errors.py` 的 `code=` 改为 `ErrorCode.X.value`；台账 **G12 已清理**（扫描规则 + 架构测试双重守门）。✅ **2026-10-31 跨模块全量接管** ✓ —— 其余模块的 **121 个**码也进了 `ErrorCode` 枚举 ✓（枚举 40 → **160** 个成员 ✓ —— 见 G-02c 行 ✓）+ 守卫扩到**全量生产目录** ✓（`tests/architecture/test_error_code_vocabulary.py` ✓）→ 生产代码里**不再有任何错误码字面量** ✓ | — | 0 | **横切 H8**（跨模块前置） |
 | | **G-02c 错误码收敛的跨模块扩展**（2026-10-31） | ✅ **已达成** —— ① **121 个码**提升为枚举成员 ✓（**扫出来的** ✓ —— AST 扫 `code=` / `"code":` / `"error_code":` 三种位置 ✓ —— 不是拍脑袋数的 ✓）→ 枚举 **40 → 160 个** ✓；② **229 处字面量**改成 `ErrorCode.X.value` ✓（15 个模块 + 5 个 lib + 契约层 + composition ✓）；③ **投影表补齐** ✓（**每个成员都有 http/im/web 三套文案** ✓ —— 此前有 **12 个成员没文案** ✓ → 漏的码用户只看到兜底 ✓）；④ **`_HTTP_STATUS` 补齐** ✓（**每个成员都有状态** ✓ —— `http_status` 是查表 ✓ → 漏一项 = 运行期 KeyError ✗✗）；⑤ **守门人从「Gateway 的 15 个」扩到「全部」** ✓（`tests/architecture/test_error_code_vocabulary.py` ✓ —— **生产代码里不许再有任何错误码字面量** ✓）；⑥ ⚠️ **词汇表从 `qzdap_schema` 搬进 `qzdap_kernel`** ✓（`libs/kernel/.../error_codes.py` ✓）—— **错误码与错误层级是同一件事** ✓ → 词汇表与错误层级住在一起 ✓ → **base 层不必反过来依赖上层** ✗✗（`kernel` 保持零依赖 ✓）；⑦ ⚠️ **唯一的线上码变更** ✓：`E_WORKSPACE_NOT_FOUND` → `WORKSPACE_NOT_FOUND` ✓（auth 自造的 `E_` 前缀 ✓ —— 只有前端 mock 用过 ✓）；⑧ ⚠️ **这批也不单独进 PR** ✓ —— **与 S-36 / S-21b / P-13 同一批走** ✓（2026-10-31 决定 ✓ —— **用户随后决定提前结束窗口** ✓ → **同批一起提交** ✓ —— 提交已在本地 main ✓ —— `35380f3d` ✓）| **G12 → 全量已清理** ✓ | **~800 行**（枚举 + 投影表 ✓ —— **旧代码减少 0 行** ✓ —— 这一批是**收敛**不是删除 ✓） | **G-02b** |
 | | G-03 **迁移 0044** | ✅ **已执行**（2026-10-29）—— `session_inbox` 的 **strong 部分唯一索引** ✓ + `expires_at` ✓ `session_inbox` 加列 + 换约束：**部分唯一索引**（`WHERE key_strength='strong'`，让 weak 键不参与判重）+ `expires_at` + NOT NULL 列的**合成值/哨兵**约定 | — | 0 | G-01 |
 | | G-04 建架构测试 | ✅ **已执行** —— `backend/tests/architecture/test_gateway_boundary.py` ✓（import 禁令 ✓） import 禁令 | — | 0 | — |
@@ -1095,7 +1095,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 | 六份层方案 | **架构与验收标准的来源**；本计划不重新设计。**§3 的 Stage 编号与层方案一致** |
 | [`cleanup-ledger.md`](cleanup-ledger.md) | **收敛判据的来源**（指标 + 扫描脚本 + 状态机 + 唯一 owner 规则） |
 | [`../session-module-refactor-plan.md`](../session-module-refactor-plan.md) v3.1 | **状态模型与持久化设计的上游**（§4 / §5.7 / §13.3–13.5 / §14 仍有效） |
-| [`../langgraph-1x-migration-notes.md`](../langgraph-1x-migration-notes.md) | LangGraph 1.x 升级结论；⚠️ 其 §4.1 的 `qzdap-vault` 修复**至今未做** → 本计划 §2.2 前置 B |
+| [`../langgraph-1x-migration-notes.md`](../langgraph-1x-migration-notes.md) | LangGraph 1.x 升级结论；✅ **已补齐**（2026-10-31）—— `modules/agent_runtime/pyproject.toml` **已显式声明** `qzdap-vault` ✓ → 本计划 §2.2 前置 B **已消解** ✓ |
 | [`../deepagents-probe-result.md`](../deepagents-probe-result.md) | Deep Agents 的 API 签名与三条实施约束 → Agent Stage 6 |
 
 ---
@@ -1186,7 +1186,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] C-05 `ContextBuilder` ✓ · C-06 agent prompts 接入 ✓ · C-07 单段式渲染 ✓ · C-08 召回发起 ✓ · C-09 manifest 生成 ✓
 - [x] C-10 **只新建，不动调用点** ✓ · **C-10b Builder 接上生产调用方** ✓（Agent A-26 ✓）· C-11 async 压缩器 ✓ · C-12 结构化摘要 ✓ · C-13 复验预算 ✓ · C-14 `removed_ids` 差集 ✓ · C-15 真正的降级序 ✓ · C-16 `context_compacted` 事件 ✓ · C-17 停用打点 `compact.py` → **X9** ✓
 - [x] C-18 manifest 落库 ✓（**Context Stage 4 已接上生产** ✓）· C-19 `rolling_summary` 迁移 ✓ · C-20 交付前落库 ✓
-- [x] C-21 Agent Loop 调 Context ✓（**旧循环那半** ✓ —— A-26 ✓；⚠️ **新 `AgentLoopRunner` 那半未做** ✗ → Agent Stage 5 ✓）· [x] **C-22 召回失败的 degraded 标记** ✓（2026-10-31 —— `flags` 契约落地 ✓ 全链路通 ✓）· C-23 端到端回归 ✓（`test_context_wiring.py` ✓）
+- [x] C-21 Agent Loop 调 Context ✓（**旧循环那半** ✓ —— A-26 ✓；✅ **新 `AgentLoopRunner` 那半也已达成** ✓ —— A-25 / A-27 ✓ —— 生产路径跑的是新循环 ✓（`adapter/graph/runner.py` ✓）+ 上下文走 `ContextBuilder` ✓）· [x] **C-22 召回失败的 degraded 标记** ✓（2026-10-31 —— `flags` 契约落地 ✓ 全链路通 ✓）· C-23 端到端回归 ✓（`test_context_wiring.py` ✓）
 - [x] C-24 停用打点 `_load_messages` / 四套模板 / `compact.py` → **X8 / X9 / X10** ✓（调用点已归零 ✓ —— 实测 legacy 计数 0 ✓）· C-25 自拼 messages 分支停用打点 ✓（旧循环那半 ✓ —— **删除归 Agent X17** ✓）
 - [x] C-26 **删 `compact.py`** → **X9** ✓ · C-27 **删四套模板** → **X10** ✓ · C-28 **删 `_load_messages`** → **X8** ✓ · [x] **C-29 删 `budget.py`** ✓ —— **已随 Agent Stage 7 删除** ✓（2026-10-31 ✓ —— 那两个旧类只被死代码 import ✓）· C-30 删 `metadata['rolling_summary']` 残留 ✓
 - [x] C-31 启用扫描脚本 Context 段 ✓（28 → 30 条 ✓）· [x] **C-32 更新台账 + 现状文档** ✓（2026-10-31 ✓ —— 同一份现状文档 ✓）
