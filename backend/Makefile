@@ -25,6 +25,7 @@ help:
 	@echo "  bench-turn-latency : turn P95 bench (asyncio + httpx)"
 	@echo "  bench-obs-ingest    : event-bus → recorder micro-bench"
 	@echo "  db-upgrade      : alembic upgrade head"
+	@echo "  db-drill        : 备份恢复演练（S-36 的门禁）"
 	@echo "  db-downgrade    : alembic downgrade -1"
 	@echo "  run-app         : uvicorn on :$(PORT)"
 	@echo "  verify          : lint + import-lint + type-check + test"
@@ -84,6 +85,12 @@ db-upgrade:
 db-downgrade:
 	@if [ -f .env ]; then set -a; . ./.env; set +a; fi
 	$(UV) run alembic -c migrations/alembic.ini downgrade -1
+
+# 备份恢复演练（S-36 的门禁 ④）—— 备份 → 恢复到临时库 → 逐表核对。
+# ⚠️ 「备份存在」不等于「能恢复」—— 台账的回退纪律要求「恢复演练过」。
+db-drill:
+	@if [ -f .env ]; then set -a; . ./.env; set +a; fi
+	$(UV) run python scripts/backup_restore_drill.py
 
 db-stamp:
 	@if [ -f .env ]; then set -a; . ./.env; set +a; fi

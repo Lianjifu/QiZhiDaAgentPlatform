@@ -179,6 +179,11 @@ jobs:
         run: QZDAP_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/qzdap_test uv run alembic -c migrations/alembic.ini upgrade head
       - name: Run tests
         run: QZDAP_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/qzdap_test uv run pytest --cov-fail-under=70
+      - name: Backup/restore drill (S-36 gate ④)
+        # ⚠️ **「备份存在」不等于「能恢复」** ✓ —— 台账的回退纪律第 2 条 ✓
+        # 要求「备份必须**恢复演练过**」✓ → 这里**真的做一遍** ✓（备份 → 恢复
+        # 到临时库 → 逐表核对 ✓）→ 演练路径**每次 CI 都验** ✓ ✓。
+        run: uv run python scripts/backup_restore_drill.py --url postgresql://postgres:postgres@localhost:5432/qzdap_test
 
   smoke:
     name: Smoke (end-to-end)
