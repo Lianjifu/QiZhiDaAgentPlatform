@@ -95,6 +95,20 @@ class KnowledgeDocORM(TenantScopedMixin, Base):
     chunks_preview: Mapped[list] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
     )
+    #: ⚠️ **类别 / 发布态 / 贡献者 / 来源** ✓ —— L3 迁过来时用 ✓（M-47 ✓）。
+    #: ⚠️ **发布态不是 ``status``** ✓ —— ``status`` 是处理状态 ✓（两根轴 ✓）。
+    category: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="", server_default=text("''")
+    )
+    publish_state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="published", server_default=text("'published'")
+    )
+    contributor: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="", server_default=text("''")
+    )
+    origin: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="manual", server_default=text("'manual'")
+    )
 
     __table_args__ = (
         Index("ix_admin_knowledge_docs_tenant_workspace_kb", "tenant_id", "workspace_id", "kb_id"),

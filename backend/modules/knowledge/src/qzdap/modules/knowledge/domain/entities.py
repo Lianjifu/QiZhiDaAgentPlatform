@@ -216,6 +216,18 @@ class KnowledgeDoc:
     chunks: int = 0
     citations: int = 0
     chunks_preview: list[DocChunk] = field(default_factory=list)
+    #: **类别** ✓（自由文本 ✓ —— L3 迁过来的「话术」/「术语表」/「规范」✓）。
+    #: ⚠️ **不是 ``type``** ✓ —— ``type`` 是枚举（``manual`` / ``policy`` / … ✓）
+    #: → 装不下自由类别 ✗✗。
+    category: str = ""
+    #: **发布态** ✓（``draft`` / ``published`` / ``retired`` ✓）——
+    #: ⚠️ **不是 ``status``** ✓ —— ``status`` 是**处理**状态（``parsed`` / … ✓）
+    #: → 不是一根轴 ✗✗（M-47 ✓ —— L3 迁过来时分开存 ✓）。
+    publish_state: str = "published"
+    #: **贡献者** ✓（谁写的 ✓ —— KB 的 ``owner`` 是库级 ✓）。
+    contributor: str = ""
+    #: **来源** ✓（``manual`` / ``memory_l3`` ✓）—— 迁移痕迹 ✓。
+    origin: str = "manual"
 
     @classmethod
     def create(
@@ -231,6 +243,10 @@ class KnowledgeDoc:
         chunks_preview: list[DocChunk],
         chunk_count: int,
         size_kb: int,
+        category: str = "",
+        publish_state: str = "published",
+        contributor: str = "",
+        origin: str = "manual",
     ) -> Self:
         now = _utcnow()
         kind: DocType = doc_type if doc_type in DOC_TYPES else "manual"  # type: ignore[assignment]
@@ -248,6 +264,10 @@ class KnowledgeDoc:
             size_kb=max(0, size_kb),
             chunks=chunk_count,
             chunks_preview=list(chunks_preview),
+            category=category,
+            publish_state=publish_state,
+            contributor=contributor,
+            origin=origin,
         )
 
     def to_admin_dict(self) -> dict[str, Any]:
@@ -261,6 +281,9 @@ class KnowledgeDoc:
             "chunks": self.chunks,
             "updatedAt": format_last_update(self.updated_at),
             "citations": self.citations,
+            "category": self.category,
+            "publishState": self.publish_state,
+            "contributor": self.contributor,
         }
         if self.source_id:
             out["sourceId"] = self.source_id

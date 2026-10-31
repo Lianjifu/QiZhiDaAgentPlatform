@@ -587,6 +587,60 @@ DEMO_KB_SPECS: tuple[dict[str, Any], ...] = (
             }
         ],
     },
+    # ⚠️ **团队知识** ✓（决策 #1 ✓ —— **L3 退役** ✓ —— 台账 **X15** ✓）——
+    # 原来长在 ``admin_memory_l3`` 的那三条 ✓ → 现在是**团队自己的知识库**
+    # ✓（**一个团队一个库** ✓ —— 与迁移 0058 的映射一致 ✓）。
+    {
+        "name": "客服团队",
+        "description": "客服团队的团队知识 —— 话术、流程与常见问题。",
+        "scope": "部门",
+        "retrieval": "hybrid",
+        "topK": 6,
+        "docs": [
+            {
+                "name": "退款话术模板",
+                "type": "manual",
+                "category": "话术",
+                "publishState": "published",
+                "contributor": "客服一组",
+                "content": "5 类退款场景的标准回复模板, 带情绪分级。",
+            }
+        ],
+    },
+    {
+        "name": "产品团队",
+        "description": "产品团队的团队知识 —— 术语、规划与口径。",
+        "scope": "部门",
+        "retrieval": "hybrid",
+        "topK": 6,
+        "docs": [
+            {
+                "name": "业务术语对照表",
+                "type": "manual",
+                "category": "术语表",
+                "publishState": "published",
+                "contributor": "产品团队",
+                "content": "内部术语、缩写、产品代号的官方解释, 所有智能体引用时优先检索。",
+            }
+        ],
+    },
+    {
+        "name": "研发团队",
+        "description": "研发团队的团队知识 —— 规范、约定与排查手册。",
+        "scope": "部门",
+        "retrieval": "hybrid",
+        "topK": 6,
+        "docs": [
+            {
+                "name": "API 设计规范",
+                "type": "manual",
+                "category": "规范",
+                "publishState": "draft",
+                "contributor": "研发架构组",
+                "content": "REST 命名、错误码、版本策略; 新智能体工程助手输出代码需符合。",
+            }
+        ],
+    },
 )
 
 
@@ -758,6 +812,11 @@ async def seed_demo_knowledge(
                     "name": doc["name"],
                     "type": doc["type"],
                     "content": doc["content"],
+                    # ⚠️ **类别 / 发布态 / 贡献者** ✓ —— 团队知识要带着它们 ✓
+                    # （L3 迁过来时也是这几个字段 ✓ —— M-47 ✓）。
+                    "category": doc.get("category", ""),
+                    "publishState": doc.get("publishState", "published"),
+                    "contributor": doc.get("contributor", ""),
                 },
             )
         created.append(str(spec["name"]))
@@ -1068,36 +1127,23 @@ DEMO_MEMORY_SPECS: dict[str, tuple[dict[str, Any], ...]] = {
             "status": "pending",
         },
     ),
-    "l3": (
-        {
-            "team": "客服团队",
-            "title": "退款话术模板",
-            "summary": "5 类退款场景的标准回复模板, 带情绪分级.",
-            "category": "话术",
-            "contributor": "客服一组",
-            "status": "published",
-            "hits": 524,
-        },
-        {
-            "team": "产品团队",
-            "title": "业务术语对照表",
-            "summary": "内部术语、缩写、产品代号的官方解释, 所有智能体引用时优先检索.",
-            "category": "术语表",
-            "contributor": "产品团队",
-            "status": "published",
-            "hits": 1280,
-        },
-        {
-            "team": "研发团队",
-            "title": "API 设计规范",
-            "summary": "REST 命名、错误码、版本策略; 新智能体工程助手输出代码需符合.",
-            "category": "规范",
-            "contributor": "研发架构组",
-            "status": "draft",
-            "hits": 612,
-        },
-    ),
 }
+
+
+async def _find_team_doc(session: Any, *, workspace_id: UUID) -> Any:
+    """**找一条团队知识文档** ✓（演示里给「L2 → 团队知识」的晋升记录指个落点 ✓）。
+
+    ⚠️ **knowledge 还没种就是没有** ✓ —— 返回 ``None`` ✓（不猜 ✓）。
+    """
+    from qzdap.modules.knowledge.adapter.persistence.repositories import (
+        SqlKnowledgeCatalogRepository,
+    )
+
+    catalog = SqlKnowledgeCatalogRepository(session)
+    for doc in await catalog.list_docs(workspace_id):
+        if doc.name == "退款话术模板":
+            return doc
+    return None
 
 
 async def seed_demo_memory(
@@ -1120,7 +1166,6 @@ async def seed_demo_memory(
     )
     from qzdap.modules.memory.domain.entities import (
         L2Fact,
-        L3Entry,
         PromotionEvent,
     )
 
@@ -1129,7 +1174,7 @@ async def seed_demo_memory(
         return {}
 
     now = datetime.now(UTC)
-    counts = {"l2": 0, "l3": 0, "promotions": 0}
+    counts = {"l2": 0, "promotions": 0}
 
     # ⚠️ **L1 表退役** ✓（决策 #5 ✓ —— M-46 ✓）—— 演示数据**不再种 L1** ✓
     # （管理端看的「L1」现在是**会话缓冲** ✓ —— 演示环境不配模型 ✓ →
@@ -1171,40 +1216,26 @@ async def seed_demo_memory(
         )
         counts["promotions"] += 1
 
-    for spec in DEMO_MEMORY_SPECS["l3"]:
-        entry = L3Entry.create(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            team=spec["team"],
-            title=spec["title"],
-            summary=spec["summary"],
-            category=spec["category"],
-            contributor=spec["contributor"],
-            status=spec["status"],
-        )
-        entry.hits = spec["hits"]
-        entry.hits_trend = [spec["hits"] // 2, spec["hits"] - spec["hits"] // 4, spec["hits"]]
-        await catalog.add_l3(entry)
-        counts["l3"] += 1
-
-    # 一条 l2→l3 的晋升记录, 让"晋升"这条链路在演示里有来龙去脉.
+    # ⚠️ **不再种 L3** ✓（决策 #1 ✓ —— L3 退役 ✓ —— 台账 **X15** ✓）——
+    # 团队知识已经种进 **knowledge** ✓（``DEMO_KB_SPECS`` 里的团队库 ✓）。
+    #
+    # 一条 l2→knowledge 的晋升记录, 让"晋升"这条链路在演示里有来龙去脉 ✓
+    # （⚠️ **终点是 knowledge 的文档** ✓ —— 不是 L3 ✓）。
     promoted_fact = await catalog.get_l2(UUID(l2_ids[2]))
-    promoted_entry = (await catalog.list_l3(workspace_id))[0]
+    team_doc = await _find_team_doc(session, workspace_id=workspace_id)
     if promoted_fact is not None:
         promoted_fact.promoted_to_l3 = True
         promoted_fact.updated_at = now
         await catalog.update_l2(promoted_fact)
-        promoted_entry.promoted_from_l2_ids = [str(promoted_fact.id)]
-        await catalog.update_l3(promoted_entry)
     await catalog.add_promotion(
         PromotionEvent(
             id=uuid4(),
             tenant_id=tenant_id,
             workspace_id=workspace_id,
-            layer="l2→l3",
-            label=f"{promoted_entry.team} · {promoted_entry.title}发布",
+            layer="l2→knowledge",
+            label=f"团队知识 · {team_doc.name if team_doc else '退款话术模板'}发布",
             operator="演示管理员",
-            target_id=str(promoted_entry.id),
+            target_id=str(team_doc.id) if team_doc else "",
             created_at=now,
         )
     )

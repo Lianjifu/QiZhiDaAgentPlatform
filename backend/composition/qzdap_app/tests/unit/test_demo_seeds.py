@@ -145,23 +145,42 @@ def test_demo_memory_is_skipped_for_the_dev_profile(settings: Settings) -> None:
     assert counts == {}
 
 
-def test_demo_memory_specs_cover_three_layers() -> None:
-    """**L2 / L3 都要有内容** ✓ —— 记忆管理页的 tab 不能是空的 ✓。
+def test_demo_memory_specs_cover_l2_only() -> None:
+    """**记忆只剩 L2** ✓ —— L1 / L3 都退役了 ✓。
 
     ⚠️ **不再有 L1** ✓（表退役了 ✓ —— 决策 #5 ✓ —— M-46 ✓）——
     管理端看的「L1」现在是**会话缓冲** ✓（演示环境不配模型 ✓ → 本来就空 ✓）。
+
+    ⚠️ **不再有 L3** ✓（决策 #1 ✓ —— L3 退役 ✓ —— 台账 **X15** ✓）——
+    团队知识归 **knowledge** ✓（见 `test_demo_kb_specs_carry_team_knowledge` ✓）。
     """
     assert "l1" not in DEMO_MEMORY_SPECS
+    assert "l3" not in DEMO_MEMORY_SPECS
     assert len(DEMO_MEMORY_SPECS["l2"]) >= 3
-    assert len(DEMO_MEMORY_SPECS["l3"]) >= 2
     for spec in DEMO_MEMORY_SPECS["l2"]:
         assert spec["key"] and spec["value"]
         assert spec["category"] in {"preference", "fact", "style", "context"}
         assert spec["status"] in {"pending", "confirmed", "retired"}
-    for spec in DEMO_MEMORY_SPECS["l3"]:
-        assert spec["team"] and spec["title"] and spec["summary"]
-        assert spec["status"] in {"draft", "published", "retired"}
+
+
+def test_demo_kb_specs_carry_team_knowledge() -> None:
+    """**团队知识在 knowledge 里** ✓ —— 一个团队一个库 ✓（M-47 ✓）。
+
+    ⚠️ **类别 / 发布态 / 贡献者都要带着** ✓ —— 它们是 L3 迁过来时的字段 ✓
+    （丢了就等于**没迁** ✗✗）。
+    """
+    team_docs = [
+        doc
+        for kb in DEMO_KB_SPECS
+        for doc in kb.get("docs", [])
+        if doc.get("category")
+    ]
+    assert len(team_docs) >= 2
+    for doc in team_docs:
+        assert doc["name"] and doc["content"]
+        assert doc["publishState"] in {"draft", "published", "retired"}
+        assert doc["contributor"]
     # 演示要能看到"发布 / 下线"两种状态, 按钮才有东西可点
-    l3_statuses = {spec["status"] for spec in DEMO_MEMORY_SPECS["l3"]}
-    assert "published" in l3_statuses
-    assert l3_statuses & {"draft", "retired"}
+    states = {doc["publishState"] for doc in team_docs}
+    assert "published" in states
+    assert states & {"draft", "retired"}

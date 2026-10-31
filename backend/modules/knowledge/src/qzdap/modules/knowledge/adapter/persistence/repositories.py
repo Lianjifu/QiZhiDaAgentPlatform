@@ -89,6 +89,10 @@ def _doc_to_domain(row: KnowledgeDocORM) -> KnowledgeDoc:
         chunks=row.chunks,
         citations=row.citations,
         chunks_preview=[DocChunk.from_dict(item) for item in (row.chunks_preview or [])],
+        category=row.category,
+        publish_state=row.publish_state,
+        contributor=row.contributor,
+        origin=row.origin,
     )
 
 
@@ -192,6 +196,10 @@ class SqlKnowledgeCatalogRepository(KnowledgeCatalogRepository):
                 chunks=doc.chunks,
                 citations=doc.citations,
                 chunks_preview=[item.to_dict() for item in doc.chunks_preview],
+                category=doc.category,
+                publish_state=doc.publish_state,
+                contributor=doc.contributor,
+                origin=doc.origin,
                 created_at=doc.created_at,
                 updated_at=doc.updated_at,
             )
@@ -215,6 +223,10 @@ class SqlKnowledgeCatalogRepository(KnowledgeCatalogRepository):
         row.chunks = doc.chunks
         row.citations = doc.citations
         row.chunks_preview = [item.to_dict() for item in doc.chunks_preview]
+        row.category = doc.category
+        row.publish_state = doc.publish_state
+        row.contributor = doc.contributor
+        row.origin = doc.origin
         row.updated_at = doc.updated_at
 
     async def list_docs(self, workspace_id: UUID) -> list[KnowledgeDoc]:

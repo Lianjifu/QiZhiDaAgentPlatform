@@ -113,6 +113,13 @@ def build_router() -> APIRouter:
     ) -> list[dict[str, Any]]:
         return await svc.list_docs(workspace_id=x_workspace_id)
 
+    @router.get("/api/admin/knowledge/docs/{doc_id}")
+    async def get_doc(
+        doc_id: UUID,
+        svc: KnowledgeService = Depends(knowledge_dependency),
+    ) -> dict[str, Any]:
+        return await svc.get_doc(doc_id)
+
     @router.post(
         "/api/admin/knowledge/docs",
         status_code=201,

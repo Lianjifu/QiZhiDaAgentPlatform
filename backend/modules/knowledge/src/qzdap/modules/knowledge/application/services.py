@@ -106,6 +106,13 @@ class KnowledgeService:
         items.sort(key=lambda item: item.updated_at, reverse=True)
         return [item.to_admin_dict() for item in items]
 
+    async def get_doc(self, doc_id: UUID) -> dict[str, Any]:
+        """**取一条文档** ✓（查不到就抛**找不到** ✓ —— 不猜 ✓）。"""
+        doc = await self._catalog.get_doc(doc_id)
+        if doc is None:
+            raise KnowledgeNotFound(f"knowledge doc {doc_id} not found")
+        return doc.to_admin_dict()
+
     async def ingest_doc(
         self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
     ) -> dict[str, Any]:
@@ -140,6 +147,10 @@ class KnowledgeService:
             chunks_preview=preview,
             chunk_count=len(pieces),
             size_kb=max(1, len(content.encode("utf-8")) // 1024),
+            # ⚠️ **类别 / 发布态 / 贡献者** ✓ —— L3 迁过来时带着 ✓（M-47 ✓）。
+            category=str(body.get("category") or ""),
+            publish_state=str(body.get("publishState") or body.get("publish_state") or "published"),
+            contributor=str(body.get("contributor") or ""),
         )
         if existing is None:
             await self._catalog.add_doc(doc)
@@ -248,8 +259,42 @@ class KnowledgeService:
                 top_k=limit * 4,
                 kb_ids=tuple(str(kid) for kid in kbs),
             )
+            vector_hits = await self._drop_unpublished(
+                vector_hits, workspace_id=workspace_id, kbs=kbs
+            )
         merged = _merge_hits(kbs=kbs, vector_hits=vector_hits, keyword_hits=keyword_hits)
         return merged[:limit]
+
+    async def _drop_unpublished(
+        self,
+        hits: list[VectorHit],
+        *,
+        workspace_id: UUID,
+        kbs: dict[UUID, KnowledgeBase],
+    ) -> list[VectorHit]:
+        """**草稿的向量命中丢掉** ✓ —— 发布态是**一根独立的轴** ✓（M-47 ✓）。
+
+        ⚠️ **草稿照样进了向量库** ✓（入库不看发布态 ✓ —— 发布后要能被搜到 ✓）
+        → **检索时再滤一遍** ✓（不然草稿会漏进提示词 ✗✗）。
+        """
+        if not hits:
+            return hits
+        docs = {doc.id: doc for doc in await self._catalog.list_docs(workspace_id)}
+        chunks = {
+            chunk.id: chunk
+            for chunk in await self._catalog.list_chunks(workspace_id, kb_ids=tuple(kbs))
+        }
+        kept: list[VectorHit] = []
+        for hit in hits:
+            try:
+                chunk = chunks.get(UUID(str(hit.chunk_id)))
+            except ValueError:
+                chunk = None
+            doc = docs.get(chunk.doc_id) if chunk is not None else None
+            if doc is None or doc.publish_state != "published":
+                continue
+            kept.append(hit)
+        return kept
 
     async def _keyword_hits(
         self,
@@ -267,7 +312,10 @@ class KnowledgeService:
             for chunk in chunks:
                 kb = kbs.get(chunk.kb_id)
                 doc = docs.get(chunk.doc_id)
+                # ⚠️ **草稿不进检索** ✓ —— 发布态是**一根独立的轴** ✓（M-47 ✓）。
                 if kb is None or doc is None or doc.status != "parsed":
+                    continue
+                if doc.publish_state != "published":
                     continue
                 hay = f"{doc.name} {chunk.heading} {chunk.content}".lower()
                 score = _keyword_score(needle, hay)
@@ -288,6 +336,8 @@ class KnowledgeService:
             for doc in docs.values():
                 kb = kbs.get(doc.kb_id)
                 if kb is None or doc.status != "parsed":
+                    continue
+                if doc.publish_state != "published":
                     continue
                 snippets = list(doc.chunks_preview) or [
                     DocChunk(index=0, snippet=f"{doc.name} {kb.description}")

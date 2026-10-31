@@ -334,3 +334,109 @@ async def test_keyword_mode_ignores_unrelated_vector_neighbor() -> None:
     hits = await svc.search_query(tenant_id=TENANT, workspace_id=WORKSPACE, query="迟到", top_k=3)
     assert hits
     assert "迟到" in hits[0]["content"]
+
+
+# ---------------------------------------------------------------------------
+# M-47 —— **knowledge 承接 L3 的语义** ✓（决策 #1 ✓ —— 台账 **X15** ✓）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ingest_doc_keeps_the_team_fields() -> None:
+    """**类别 / 发布态 / 贡献者要留住** ✓ —— 丢了就等于**没迁** ✗✗。"""
+    svc, _catalog, _vectors = _svc()
+    kb = await svc.create_kb(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"name": "客服团队", "description": "团队知识", "scope": "部门"},
+        owner="客服一组",
+    )
+    doc = await svc.ingest_doc(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={
+            "kbId": kb["id"],
+            "name": "退款话术模板",
+            "content": "5 类退款场景的标准回复模板",
+            "category": "话术",
+            "publishState": "draft",
+            "contributor": "客服一组",
+        },
+    )
+    assert doc["category"] == "话术"
+    assert doc["publishState"] == "draft"
+    assert doc["contributor"] == "客服一组"
+
+
+@pytest.mark.asyncio
+async def test_a_draft_document_is_not_searchable() -> None:
+    """**草稿不进检索** ✓ —— 发布态是**一根独立的轴** ✓（不是处理状态 ✓）。"""
+    svc, _catalog, _vectors = _svc()
+    kb = await svc.create_kb(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"name": "研发团队", "description": "规范", "scope": "部门"},
+        owner="研发架构组",
+    )
+    await svc.ingest_doc(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={
+            "kbId": kb["id"],
+            "name": "API 设计规范",
+            "content": "REST 命名、错误码、版本策略",
+            "publishState": "draft",
+        },
+    )
+    hits = await svc.search_query(
+        tenant_id=TENANT, workspace_id=WORKSPACE, query="REST 命名", top_k=5
+    )
+    assert hits == []
+
+
+@pytest.mark.asyncio
+async def test_a_published_document_is_searchable() -> None:
+    """**发布了就该被搜到** ✓ —— 否则团队知识等于没有 ✓。"""
+    svc, _catalog, _vectors = _svc()
+    kb = await svc.create_kb(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"name": "产品团队", "description": "术语", "scope": "部门"},
+        owner="产品团队",
+    )
+    await svc.ingest_doc(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={
+            "kbId": kb["id"],
+            "name": "业务术语对照表",
+            "content": "内部术语、缩写、产品代号的官方解释",
+            "publishState": "published",
+        },
+    )
+    hits = await svc.search_query(
+        tenant_id=TENANT, workspace_id=WORKSPACE, query="内部术语", top_k=5
+    )
+    assert hits
+    assert "术语" in hits[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_get_doc_returns_one_document() -> None:
+    """**单取一条文档** ✓（管理端的详情页要它 ✓）。"""
+    svc, _catalog, _vectors = _svc()
+    kb = await svc.create_kb(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"name": "客服团队", "description": "话术", "scope": "部门"},
+        owner="客服一组",
+    )
+    doc = await svc.ingest_doc(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        body={"kbId": kb["id"], "name": "退款话术模板", "content": "退款场景话术"},
+    )
+    fetched = await svc.get_doc(UUID(doc["id"]))
+    assert fetched["name"] == "退款话术模板"
+    with pytest.raises(KnowledgeNotFound):
+        await svc.get_doc(UUID("00000000-0000-0000-0000-0000000000ff"))
