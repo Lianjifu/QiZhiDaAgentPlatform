@@ -181,7 +181,7 @@
 
 | 资产 | 位置 | 状态 |
 |---|---|---|
-| `ErrorCode` 枚举 + HTTP status + retriable + i18n key | `libs/schema/src/qzdap_schema/dtos/errors.py:22` | ✅ 可用，**缺多渠道文案投影** |
+| `ErrorCode` 枚举 + HTTP status + retriable + i18n key | **`libs/kernel/src/qzdap_kernel/error_codes.py`**（2026-10-31 从 `libs/schema/.../dtos/errors.py` 搬进 kernel ✓ —— 错误码与错误层级是同一件事 ✓） | ✅ 可用，**多渠道文案投影已补齐** ✓（**160 个码全有文案** ✓ —— 2026-10-31 ✓） |
 | `session_turns` 唯一约束 `(session_id, idempotency_key)` | `migrations/.../0035_...py:107` | ✅ 表已建，无人用 |
 | `tool_executions.idempotency_key` unique | `migrations/.../0035_...py` | ✅ 表已建，无人用 |
 | `session_inbox` 表 | `migrations/.../0035_...py:196` | ⚠️ 已建，schema 需改造，无人用 |

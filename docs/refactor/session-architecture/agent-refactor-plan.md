@@ -464,7 +464,7 @@ ToolMessage(content=..., tool_call_id=..., name=..., status="success" | "error")
 | 判定 | 条件 | 动作 |
 |---|---|---|
 | **continue** | 有待执行的 tool_calls，且未超步数 / 成本 | 回到 Reason/Plan |
-| **suspend** | 工具需要审批 | `interrupt()` → 交 Session 挂起轮次（`session_turns.pending_approval`） |
+| **suspend** | 工具需要审批 | 产出 `approval_required` chunk ✓ → 交 Session 挂起轮次（`session_turns.pending_approval` ✓）—— ⚠️ **不是 LangGraph 的 `interrupt()`** ✓（新循环是**手写循环** ✓ —— 2026-10-31 核对 ✓）|
 | **exit** | 无 tool_calls，或模型给出最终答案 | 收尾，交 Session / Context / Memory |
 | **abort** | 步数 / 成本 / token 超限 | 抛明确错误（`DEEP_AGENT_BUDGET_EXCEEDED` —— ⚠️ 它目前只是**新 runtime 里的字符串常量**（`graph/deep_agent.py:25`），**不在 `ErrorCode` 枚举里** → 前端不认识这个码，本层要**新增错误码**并同步 `libs/schema`） |
 
@@ -478,19 +478,19 @@ ToolMessage(content=..., tool_call_id=..., name=..., status="success" | "error")
 | 2 | 最大成本 | `max_cost_usd` | 同上 |
 | 3 | 上下文超限 | 模型报错 | 交 Context 重组；连续 2 次仍超限 → 明确错误 |
 | 4 | 用户取消 | `session_turns.cancel_requested` | 立即中断，产出部分结果 |
-| 5 | 审批挂起 | 策略判定 | `interrupt()` → `suspend` |
+| 5 | 审批挂起 | 策略判定 | `suspend` → 产出 `approval_required` chunk ✓ → Session 落库 ✓ |
 | 6 | 工具连续失败 / 相同工具连续空转 | 熔断器（按工具名）；`apply_stall_guard` 护栏 | `exit` + 明确错误 |
 
 > 这六条必须写成一个「**终止条件的单一判定点**」。分散在各个节点里是 2026-10-15 那次重构失败的模式之一 —— 每个 Stage 的验收都是「本节点单测通过」，但**没有一条测试跑完整个循环**。
 
-### 3.5 审批中断与恢复（LangGraph `interrupt` 的正确用法）
+### 3.5 审批挂起与恢复（**挂起靠「事件 + 落库」** ✓ —— 不是 LangGraph 的 `interrupt()` ✓）
 
 **本层只做两件事，决策在 Governance，落地在 Session**：
 
 ```
 ① 调 PolicyGuard.decide(...) → allow / approve_required / deny
 ② allow           → 继续执行工具
-   approve_required → interrupt()，把 approval_id + request_hash 交给 Session
+   approve_required → 产出 approval_required chunk（带 approval_id + 参数指纹），交 Session 落库
    deny             → 产出错误，不执行工具
 ```
 
@@ -1060,7 +1060,7 @@ ToolRuntimePort
 |---|---|
 | **工具绑定 + 治理过滤** | 从 **agent 配置的绑定集**（`allowed_tools` / `allowed_skills`）取工具 → tool / mcp / skill **统一成 `BaseTool`**；再 ∩ 风险 ∩ 作用域；**`unprotected` 剔除副作用工具** |
 | 修 `list_tools` 的空 schema | 改为从 `tools` 表的 spec 生成真实 schema |
-| `governance` 接线 | 真实 actor（**删掉 `actor_id="u-1"`**）；审批挂起走 `interrupt()` |
+| `governance` 接线 | 真实 actor（**删掉 `actor_id="u-1"`**）；审批挂起**走「事件 + 落库」** ✓（不是 `interrupt()` ✓ —— 2026-10-31 核对 ✓）|
 | **真实 actor 注入到新的 `AgentLoopRunner`** | ⚠️ **不改 `runtimes/.../graph/nodes.py`** —— 那个文件从未接线、且在 Stage 7 会整体删除，在这里改它是**改死代码**。actor 从 Session 的轮次上下文（`session_turns` 的用户/租户列）注入 |
 
 **旧代码减少**：硬编码 actor 消除（`actor_id="u-1"` 归零）。`nodes.py` 的 `governance` 节点**留到 Stage 7 随整文件删除** —— 提前改它是改死代码。
@@ -1074,7 +1074,7 @@ ToolRuntimePort
 | **A-11 修 `list_tools` 的空 schema** | ✅ **单一真相**落在 `modules/tool/.../application/tool_schema.py` ✓ —— `spec` → **JSON Schema** ✓：**OpenAPI** 从文档的 paths 抽出 `__operation_id`（枚举 ✓）/ `path` / `query` / `body` ✓（**与 `openapi_runtime` 的参数路由同口径** ✓ —— 那是执行时的真相 ✓）；**MCP / 自定义**取 spec 里声明的参数 ✓（`parameters` / `input_schema` / `inputSchema` ✓）；`ToolServiceAdapter.list_tools` 改用它 ✓ —— admin 工具不再是**空 `properties`** ✓。⚠️ **旧路径顺带受益** ✓ —— 旧 runner 的 `_openai_tools` 直接吃 `parameters` ✓ → **admin 工具在旧路径上也拿到真 schema** ✓（不是新路径专属 ✓） |
 | **A-12 `governance` 接线（真实 actor）** | ✅ **runtime 侧** `current_actor()` / `require_actor()` ✓ —— **取不到 actor 就拒绝执行工具** ✓（不静默降级成匿名 ✗✗）；⚠️ **用 `ContextVar` 挂** ✓（**并发两轮各挂各的** ✓ —— 普通全局变量会互相覆盖 ✗✗✗ 那就等于用错了人的身份调工具 ✗✗✗）。✅ **模块侧** `adapter/tools/tool_runtime_adapter.py` ✓（`ToolRuntimeAdapter` ✓ **实现 `ToolRuntimePort`** ✓）：**无 actor → `TOOL_ACTOR_MISSING`** ✓（**不执行** ✓）+ **跨租户 actor → `TOOL_ACTOR_TENANT_MISMATCH`** ✓；执行**复用 `modules/tool` 的既有路径** ✓（`invoke_tool` ✓ —— **不自建执行器** ✓ —— §5.3 ✓），skill 落到 skill 的路径 ✓ |
 | **A-13 新 AgentLoop 侧注入真实 actor** | ⚠️ **未做** —— 按 §9 Stage 2 的说明：**不改 `runtimes/.../graph/nodes.py`** ✓（**死代码** ✓ —— 19 节点图没有生产调用方 ✓ —— Stage 7 随整文件删 ✓ —— 在那里改是**改死代码** ✗✗）。真实 actor 从 **Session 的轮次上下文**（`session_turns` 的用户/租户列）注入到新的 `AgentLoopRunner` ✓ → **归 Stage 5（A-25）** ✓ |
-| **审批挂起走 `interrupt()`** | ⚠️ **未做** —— 那需要**新的 `AgentLoopRunner`** ✓（LangGraph 的 `interrupt()` 要有 checkpointer ✓ + 图 ✓ —— 现在只有死代码那张图 ✓）→ **归 Stage 5（A-25）** ✓ —— 见「未接管」表 ✓ |
+| **审批挂起走 `interrupt()`** | 🚫 **不适用** ✓（2026-10-31 核对 ✓）—— 当时的理由（「`interrupt()` 要有 checkpointer + 图 ✓ —— 那时只有死代码那张 19 节点图 ✓」）**前提已不成立** ✓（新的 `AgentLoopRunner` 已落地 ✓ —— A-25 ✓ —— 19 节点图已整包删 ✓ —— Stage 7 ✓）；**现在走「事件 + 落库」** ✓（`session_turns.pending_approval` ✓ —— 契约层 `TurnRunner` 的 `mark_waiting_approval` ✓ —— Session 方案 §8 · 决策 #6 ✓）→ **不改口径** ✓ |
 | 旧代码减少 | **0 行** —— 本 Stage 是**新增** ✓（runtime 的绑定机器 ✓ + 模块侧的三个适配器 ✓）；⚠️ **旧路径仍在服役** ✓（旧 runner 的 ReAct 循环 ✓ —— 它的工具白名单走 `ToolPort.list_tools()` ✓ → **顺带拿到真 schema** ✓） |
 | 测试 | 新增 `runtimes/agent_runtime/tests/test_agent_tool_binding.py` ✓（12 条 ✓：三种来源统一 ✓ / spec 进 schema ✓ / properties 兜底 ✓ / **空绑定集不报错** ✓ / **unprotected 剔除副作用工具** ✓ / **高风险不筛** ✓ / 风险过滤 ✓ / **没有 actor 就不执行** ✓ / actor 到达端口 ✓ / 失败带错误码 ✓ / actor 必填 ✓）；新增 `modules/tool/tests/unit/test_tool_schema.py` ✓（9 条 ✓：OpenAPI 的操作与参数 ✓ / MCP 与自定义 ✓ / 风险与审批 ✓ / 描述 ✓）；新增 `modules/agent_runtime/tests/unit/test_tool_binding.py` ✓（11 条 ✓：**admin 工具的真实 schema** ✓ / 内置工具仍走目录 ✓ / **绑定集读取** ✓ / **未注册的工具不暴露** ✓ / mcp 标记 ✓ / **skill 统一成同一种形状** ✓ / 高风险 = 副作用 ✓ / **无 actor 拒绝执行** ✓ / **跨租户拒绝** ✓ / 结果回文本 ✓） |
 | 回归 | `pytest` **1838 passed** ✓（**0 失败** ✓ —— 4 个 error 是 testcontainers 的网络问题 ✓ 与改动前一致 ✓）；`ruff` 我的文件**全过** ✓；`mypy` **7 个文件无问题** ✓ |
@@ -1084,7 +1084,7 @@ ToolRuntimePort
 | 项 | 归属 |
 |---|---|
 | **绑定集 / 模型解析接进生产调用方**（把**选中专家**的配置交给 Execution ✓ —— §5.3.1 规则 6 ✓） | **Stage 4** ✓ |
-| **新的 `AgentLoopRunner`**（Reason → Observe → Evaluate ✓）+ **真实 actor 注入** ✓ + **审批挂起走 `interrupt()`** ✓ | **Stage 5（A-25）** ✓ |
+| **新的 `AgentLoopRunner`**（Reason → Observe → Evaluate ✓）+ **真实 actor 注入** ✓ + **审批挂起** ✓（**事件 + 落库** ✓ —— `session_turns.pending_approval` ✓ —— 不是 `interrupt()` ✓）| **Stage 5（A-25）** ✓ |
 | **`tool_executions` 落库**（幂等 ✓ / 重试 ✓ / 熔断 ✓）+ **`TOOL_IDEMPOTENCY_CONFLICT`** ✓ | **Stage 3** ✓ |
 | **旧 ReAct 循环退役**（`runner.py::_run_turn_inner` ✓ —— 旧路径真正变小 ✓） | **Stage 5（停用 + 打点 A-28）→ Stage 7（删除）** ✓ |
 
@@ -1124,7 +1124,7 @@ ToolRuntimePort
 |---|---|
 | **`tool_executions` 的成本 / 审计落 `session_turns.agent_decision`** | **Stage 4** ✓ |
 | **沙箱作为一类工具走同一 `ToolRuntime`** ✓ | **Stage 4/5** ✓ |
-| **新的 `AgentLoopRunner`** ✓（含真实 actor ✓ + `interrupt()` 审批 ✓ + 端到端 ✓） | **Stage 5（A-25）** ✓ |
+| **新的 `AgentLoopRunner`** ✓（含真实 actor ✓ + 审批挂起 ✓（事件 + 落库 ✓）+ 端到端 ✓） | **Stage 5（A-25）** ✓ |
 | **删 `InMemoryToolExecutor`** ✓ + **删 `run_async_from_sync`** ✓ + **删 `budget.py`** ✓ | **Stage 7** ✓ |
 
 ### Stage 4：专家 Agent 选择 + 配置取值接线
@@ -1220,19 +1220,30 @@ ToolRuntimePort
 | **占位图 `compile_loop_graph` 的文件** | ⚠️ **文件还在** ✗（只是不再构造 ✓）→ 归 **Stage 7** 删 ✓ |
 | **`agent_loop/graph.py`（6 节点 LangGraph）** | ⚠️ **没做** ✗ —— 当前实现是**手写循环** ✓（runtime 侧 ✓）—— 六个终止条件的**单一判定点** ✓ 已经达成 ✓；**LangGraph 装配**（`interrupt()` + checkpointer ✓）归 **Stage 6 / 7** ✓ —— 审批挂起现在走**事件 + 落库** ✓（`session_turns.pending_approval` ✓）而不是 `interrupt()` ✓ |
 
-### Stage 6：Deep Agents（决策 #8 采纳时才做）
+### Stage 6：Deep Agents（🚫 **已关闭** ✓ —— 决策 #8 未采纳）
 
 > **开工前置**：**Stage 1 已完成**（`QZDAPChatModel` 可用 —— Deep Agents 的模型参数必须是 LangChain 的 `BaseChatModel` 或 `Runnable`，见 §2.2）。**决策 #8 未采纳则本阶段整段跳过**，类型定义保留即可。
 
+#### 🚫 **实施结论（2026-10-31）：本 Stage 整段不做** ✓
+
+| 项 | 结论 |
+|---|---|
+| **决策 #8** | 🚫 **未采纳** ✓ —— 「先加依赖并在隔离分支验证 API 与版本，验证通过后再在 Stage 6 接线」✓ —— **验证没做** ✓ → **不接线** ✓ |
+| **为什么不接** | ⚠️ **接了就是第二套循环** ✗✗ —— 现在的唯一实现是 runtime 的**手写循环** ✓（`AgentLoopRunner` ✓ —— 六节点图已整包删 ✓ —— A-33 ✓ / A-34 ✓）→ Deep Agents 会造出**第三套** ✗ → **不做** ✓；⚠️ **不动 lockfile** ✓ —— 一个可选增强不值得给生产依赖树加风险 ✓ |
+| **规划器 / 子代理** | ✅ **已有实现** ✓ —— `ExpertAssembler` ✓（Agent Stage 4 ✓ —— 选专家 ✓ 取模型 ✓ 取工具 ✓）+ `delegate_subagent` 用例 ✓（子代理走**同一条**循环 ✓ —— 不是另一套 ✓）→ **不重复造** ✓ |
+| **预算** | ✅ **已有单一判定点** ✓ —— `agent_loop/evaluate.py` 的 `Evaluator` ✓（Agent Stage 5 ✓ —— 步数 ✓ / 成本 ✓ / 空转 ✓ / 取消 ✓）→ Deep Agents 的 `max_steps` / `max_cost_usd` 会是**第二套** ✗✗ → **不做** ✓ |
+| **旧空壳** | ✅ **已随 Stage 7 删除** ✓ —— `graph/deep_agent.py` ✓ 随 `graph/` 整包删 ✓（A-33 ✓ / A-40 ✓）→ ⚠️ **仓内零引用** ✓（`deepagents` / `deep_agent` / `DeepAgent` **一处都没有** ✓）|
+| **类型定义** | ⚠️ **不再保留** ✓ —— Stage 7 整包删时**一起删了** ✓（没有第二个引用方 ✓ —— 留着就是**空壳** ✗）|
+
 | 动作 | 细节 |
 |---|---|
-| 加依赖 | `deepagents` 进 `runtimes/agent_runtime/pyproject.toml` + 更新 `uv.lock` |
-| `deep/factory.py` | `create_deep_agent` 包装，模型 = `QZDAPChatModel` |
-| `deep/planner.py` | 规划器 + 子代理派发；子代理工具集 = **子代理自己配置里的绑定集** |
-| 预算 | `DeepAgentConfig.max_steps` / `max_cost_usd` / `SubAgentSpec`（**已有结构**） |
+| ~~加依赖~~ | 🚫 不做 ✓ |
+| ~~`deep/factory.py`~~ | 🚫 不做 ✓ |
+| ~~`deep/planner.py`~~ | 🚫 不做 ✓（`ExpertAssembler` ✓ 已有 ✓） |
+| ~~预算~~ | 🚫 不做 ✓（`Evaluator` ✓ 已有 ✓） |
 
-**旧代码减少**：`nodes.py` 的 `deep_agent_plan` / `subagent` 空壳删除。
-**验收**：深度任务能产出规划清单并逐步执行；**子代理的工具调用同样经过治理**；超预算抛明确错误。
+**旧代码减少**：`nodes.py` 的 `deep_agent_plan` / `subagent` 空壳删除 ✓ —— **已随 Stage 7 达成** ✓。
+**验收**：✅ **已达成** ✓ —— 仓内**零 `deepagents` 引用** ✓ + **零 deep 空壳** ✓ + **循环仍只有一套** ✓（`AgentLoopRunner` ✓）。
 
 ### Stage 7：清理与封口
 
@@ -1278,7 +1289,7 @@ ToolRuntimePort
 | Stage 3 | `executor.py` 的 `InMemoryToolExecutor` | ~200 行 | **`tool_executions`：每次工具调用 1 行** | 停用 + 打点 |
 | Stage 4 | `adapter/llm` 的散装参数 | ~40 行 | 同上 | — |
 | Stage 5 | `runner.py` 的 `_run_turn_inner` | ~250 行 | 同上 | 停用 + 打点 |
-| Stage 6 | `nodes.py` 的 deep 分支空壳 | ~130 行 | 同上 | 停用 + 打点 |
+| Stage 6 | 🚫 **不做** ✓（决策 #8 未采纳 ✓）—— `nodes.py` 的 deep 分支空壳 | ~130 行（**随 Stage 7 一起删了** ✓） | 同上 | **删除** ✓（Stage 7 内 ✓） |
 | Stage 7 | 上述 + `nodes.py` 剩余 13 个节点 + `builder.py` 19 节点版 + `loop.py` | ~900 行 | 同上（不再新增） | **删除**（台账清零） |
 
 > **新写入量的量级对照**：`tool_executions` 的行数 = **工具调用总次数**。粗估：单租户日均 1 万轮、平均 2 次工具调用 → **约 2 万行/天**，每行约 0.3–2 KB（只存指针与指纹，不存结果正文）→ **约 6–40 MB/天**。
@@ -1398,7 +1409,7 @@ def test_agent_layers_have_no_framework_imports():
 | Agent Router 选专家 | 专家的可见范围（`visible_scope`） | 越权专家 → 落回会话绑定的 agent |
 | **工具绑定 + 治理过滤** | agent 配置的绑定集 ∩ 风险 ∩ 作用域 | 筛不出 → **降级为「无工具」**，不阻断轮次 |
 | 工具绑定的 `unprotected` 剔除 | Gateway 决策 #5 | **剔除**副作用工具（不是执行时拦截） |
-| 工具执行前 | `policy_guard.check`（`modules/tool` 已有）+ `PolicyGuard.decide` | `approve_required` → `interrupt()` 挂起；`deny` → 明确错误，**不执行** |
+| 工具执行前 | `policy_guard.check`（`modules/tool` 已有）+ `PolicyGuard.decide` | `approve_required` → **产出 approval chunk 挂起** ✓（Session 落库 ✓）；`deny` → 明确错误，**不执行** |
 | 恢复执行前 | `request_hash` 复核 + 审批有效期 + 审批人 ≠ 申请人 | 任一不符 → **拒绝执行 + 审计** |
 | 成本 | 轮次预算 / 深度任务预算 | 超限 → `DEEP_AGENT_BUDGET_EXCEEDED` |
 | 沙箱 | 沙箱侧的资源与网络策略 | 沙箱拒绝 → 结构化错误，不抛穿图 |
