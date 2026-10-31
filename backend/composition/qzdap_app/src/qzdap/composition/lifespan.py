@@ -1233,9 +1233,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             async def get_agent_version(  # type: ignore[no-untyped-def]
                 self, *, tenant_id, template_id, version_id
             ):
-                version = await self._repo.get(
-                    tenant_id=tenant_id, version_id=version_id
-                )
+                version = await self._repo.get(tenant_id=tenant_id, version_id=version_id)
                 if version is None or version.template_id != template_id:
                     return None
                 return {

@@ -180,6 +180,25 @@ Agent  Stage 5(循环)  ←  Session Stage 3(唯一 turn 实现)
 
 > **0049 及之后**留给 Agent / Execution 层的后续演进（Deep Agents 依赖落 `pyproject.toml`，不占迁移号）。
 >
+> ⚠️ **实际已经用到 0060** ✓（2026-10-31 核对 ✓）—— 这段话**已过期** ✓：
+>
+> | 迁移 | owner | 内容 |
+> |---|---|---|
+> | 0049 | Gateway | **服务账号物化** ✓（`channels.service_account` ✓ —— 取代硬编码的 `SYSTEM_USER_ID` ✓） |
+> | 0050 | Gateway | **无感重放的最小必要** ✓（轮次双写 ✓ + 事件落库 ✓ + 按 seq 读取端口 ✓） |
+> | 0051 | Gateway | Stage 5 的清理 ✓（`recent_request_ids` 残留 ✓ + 孤儿索引 ✓） |
+> | 0052 | Session | 消息序号 ✓（`session_messages.session_seq` ✓） |
+> | 0053 | Session | **DROP `agent_sessions.wait_status`** ✓（X6 ✓） |
+> | 0054 | Session | 旧表 → 新表**迁数据** ✓ + 对账脚本 ✓（X4 的第一步 ✓） |
+> | 0055 | Session | `session_turns.user_input` 补列 ✓ |
+> | 0056 | Session | **DROP `agent_sessions.graph_state`** ✓（X3 ✓） |
+> | 0057 | Memory | **DROP `admin_memory_l1`** ✓（X13 ✓） |
+> | 0058 | Memory → Knowledge | L3 **逐行搬进** knowledge ✓（X15 的第一步 ✓） |
+> | 0059 | Memory | **DROP `admin_memory_l3`** ✓（X15 ✓） |
+> | 0060 | Platform | **DROP `subscriptions.workspace_id`** ✓（P-13 扫出来的真缺陷 ✓ —— 订阅是租户级的 ✓） |
+>
+> **dev 库 / demo 库都在 0060** ✓（upgrade → downgrade → upgrade 实测通过 ✓）。
+>
 > ✅ **0044–0048 已实现（2026-10-29）**：五个迁移脚本已落在 `backend/migrations/versions/`，**dev 库实测 upgrade → downgrade → upgrade 全程通过**（可回滚，M0 判据达成）。其中两处与本表原描述不同，已回写方案：
 > - **0046 的 checkpoint 表名**：按已安装的 `langgraph-checkpoint-postgres` **3.1.3** 的实际 DDL → `checkpoints` / `checkpoint_blobs` / `checkpoint_writes` / `checkpoint_migrations`（**无 `langgraph_` 前缀、无 `_v2` 变体**，那是 2.x 的命名）。迁移把 `checkpoint_migrations` 的版本行写成 `9`，saver 的 `setup()` 跑完仍是单行 → **不会重复建表**。
 > - **0047 的 `metadata` 清理**：**不在 0047 里做** —— 旧路径仍是 `rolling_summary` 的唯一写者，提前清空会丢摘要且旧路径会立刻写回来。清理落在 **Context Stage 4（旧循环停用）之后**。

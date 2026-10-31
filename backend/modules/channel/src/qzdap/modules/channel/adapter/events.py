@@ -22,7 +22,6 @@ from qzdap_kernel.ids import TenantId, WorkspaceId
 from qzdap_messaging.domain_event import EventEnvelope
 
 if TYPE_CHECKING:
-
     from qzdap_messaging.bus import EventBus
 
 logger = logging.getLogger(__name__)

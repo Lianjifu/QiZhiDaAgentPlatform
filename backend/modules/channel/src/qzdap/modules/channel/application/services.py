@@ -266,9 +266,7 @@ class ChannelService:
             await self.publisher.publish(
                 message,
                 tenant_id=TenantId(tenant_id),
-                workspace_id=(
-                    WorkspaceId(channel.workspace_id) if channel.workspace_id else None
-                ),
+                workspace_id=(WorkspaceId(channel.workspace_id) if channel.workspace_id else None),
                 trace_id=message.trace_id or None,
             )
         return delivery

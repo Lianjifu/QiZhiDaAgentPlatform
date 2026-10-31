@@ -20,9 +20,7 @@ class ListEvalCasesUseCase:
 
     repository: EvalDatasetRepository
 
-    async def execute(
-        self, *, tenant_id: TenantId, dataset_id: EvalDatasetId
-    ) -> list[EvalCase]:
+    async def execute(self, *, tenant_id: TenantId, dataset_id: EvalDatasetId) -> list[EvalCase]:
         return await self.repository.list_cases(tenant_id=tenant_id, dataset_id=dataset_id)
 
 

@@ -17,9 +17,7 @@ from qzdap.modules.identity.application.services import IdentityService
 
 
 def build_auth_router(
-    identity_service_dep: Callable[
-        ..., AsyncIterator[IdentityService]
-    ] = get_identity_service,
+    identity_service_dep: Callable[..., AsyncIterator[IdentityService]] = get_identity_service,
 ) -> APIRouter:
     # No prefix here — the parent router (adapter/http/router.py) already
     # mounts the `/v1/identity` prefix; nested routers that re-prefix cause

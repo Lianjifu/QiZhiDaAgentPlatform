@@ -16,8 +16,6 @@ from qzdap_messaging.domain_event import EventEnvelope
 _log = logging.getLogger("qzdap.messaging")
 
 
-
-
 class InProcessBus(EventBus):
     def __init__(self) -> None:
         self._subs: dict[str, list[Handler]] = defaultdict(list)

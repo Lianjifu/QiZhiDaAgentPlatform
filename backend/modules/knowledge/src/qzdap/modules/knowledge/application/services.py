@@ -62,9 +62,7 @@ class KnowledgeService:
     ) -> dict[str, Any]:
         # ⚠️ **字面量收窄** ✓ —— 运行时用 `in` 校验 ✓；类型上显式收窄 ✓
         # （`body` 是 `dict[str, Any]` ✓ → mypy 看不出「只能是这三个值」✗）。
-        scope = cast(
-            "KbScope", body.get("scope") if body.get("scope") in KB_SCOPES else "部门"
-        )
+        scope = cast("KbScope", body.get("scope") if body.get("scope") in KB_SCOPES else "部门")
         retrieval = cast(
             "RetrievalMode",
             body.get("retrieval") if body.get("retrieval") in RETRIEVAL_MODES else "hybrid",

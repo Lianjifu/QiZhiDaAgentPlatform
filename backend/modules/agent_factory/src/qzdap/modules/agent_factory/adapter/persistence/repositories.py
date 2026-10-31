@@ -55,7 +55,6 @@ from qzdap_kernel.ids import (
 # ── AgentTemplateRepository ───────────────────────────────────────────────
 
 
-
 def _as_uuid(value: str | UUID | None) -> UUID | None:
     """**领域里的模型 id 可能是字符串** ✓（HTTP 层解析出来的 ✓）→ 落库前
     统一成 `UUID` ✓（ORM 列是 `PgUUID` ✓ —— 直接塞字符串会在绑定时炸 ✗）。"""
@@ -64,6 +63,7 @@ def _as_uuid(value: str | UUID | None) -> UUID | None:
     if isinstance(value, UUID):
         return value
     return UUID(str(value))
+
 
 class SqlAgentTemplateRepository(AgentTemplateRepository):
     def __init__(self, session: AsyncSession) -> None:

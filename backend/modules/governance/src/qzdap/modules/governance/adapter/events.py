@@ -29,9 +29,7 @@ class MessagingEventPublisher:
         else:
             tenant_id = TenantId(UUID("00000000-0000-0000-0000-000000000000"))
         raw_wid = payload.get("workspace_id")
-        workspace_id = (
-            WorkspaceId(UUID(str(raw_wid))) if raw_wid is not None else None
-        )
+        workspace_id = WorkspaceId(UUID(str(raw_wid))) if raw_wid is not None else None
 
         envelope = EventEnvelope(
             event_id=uuid4(),
