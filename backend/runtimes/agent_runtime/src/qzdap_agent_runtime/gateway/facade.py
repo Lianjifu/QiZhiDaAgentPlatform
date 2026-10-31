@@ -24,7 +24,7 @@
 ``release`` 掉（否则调用方重试会被误判成重复，键就白烧了）。IM 的门口不知道
 轮次成败，所以 claim 不能只发生在门口。
 
-**这一层没有框架依赖**：渠道查询走端口（实现��渠道模块侧），验签走
+**这一层没有框架依赖**：渠道查询走端口（实现在渠道模块侧），验签走
 :class:`IdentityVerifier`，归一化走 :class:`MessageNormalizer`，幂等走
 :class:`IdempotencyGuard` —— Gateway 只持端口，不碰 DB、不碰框架。
 """

@@ -17,6 +17,7 @@ from logging import getLogger
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap.modules.memory.application.admin_rules import AdminEditRules
 from qzdap.modules.memory.application.embedding import embed_item
 from qzdap.modules.memory.application.ports import (
     EmbeddingPort,
@@ -32,8 +33,11 @@ from qzdap.modules.memory.domain.entities import (
     RetentionPolicy,
 )
 from qzdap.modules.memory.domain.errors import MemoryNotFound
+from qzdap_agent_runtime.memory.policy import (
+    MemoryPolicyConfig,
+    MemoryPolicyPublisherPort,
+)
 from qzdap_agent_runtime.memory.promotion import KnowledgePromotionPort
-from qzdap_agent_runtime.memory.redaction import RuleRedactor
 from qzdap_kernel.errors import ConflictError, ValidationError
 from qzdap_observability.metrics import record_legacy_call
 
@@ -50,6 +54,8 @@ class MemoryAdminService:
         embedding: EmbeddingPort | None = None,
         vectors: VectorSearchPort | None = None,
         knowledge: KnowledgePromotionPort | None = None,
+        publisher: MemoryPolicyPublisherPort | None = None,
+        rules: AdminEditRules | None = None,
     ) -> None:
         self._catalog = catalog
         self._embedding = embedding
@@ -57,6 +63,12 @@ class MemoryAdminService:
         #: ⚠️ **团队知识候选的落点** ✓（决策 #1 ✓ —— L3 退役 ✓）——
         #: 没有它 = **提升走不了** ✓（明确失败 ✓ —— 不静默写 L3 ✗✗）。
         self._knowledge = knowledge
+        #: ⚠️ **策略发布的落点** ✓（B2 的「配置发布与生效」✓ —— M-37 ✓）——
+        #: 没有它 = **发布走不了** ✓（明确失败 ✓ —— 不假装发布成功 ✗✗）。
+        self._publisher = publisher
+        #: ⚠️ **人工编辑的规则** ✓（B3 ✓ —— M-38 ✓）—— 默认用平面 A 的
+        #: **同一个闸门实现** ✓（规则 4 ✓）。
+        self._rules = rules or AdminEditRules()
 
     async def list_l1(self, *, workspace_id: UUID) -> list[dict[str, Any]]:
         items = await self._catalog.list_l1(workspace_id)
@@ -155,9 +167,9 @@ class MemoryAdminService:
             item.status = value  # type: ignore[assignment]
         if "value" in patch and patch["value"] is not None:
             new_value = str(patch["value"])
-            # ⚠️ **敏感闸门** ✓（与平面 A **同一套规则** ✓ —— M-41 ✓）——
-            # 命中 → **整条拒绝** ✓（不是打码后继续写 ✗✗）。
-            verdict = RuleRedactor().redact(new_value)
+            # ⚠️ **人工编辑走平面 B 的规则** ✓（B3 ✓ —— M-38 ✓）——
+            # 敏感闸门与平面 A **同一套实现** ✓（M-41 ✓）+ **去重** ✓（M-38 ✓）。
+            verdict = self._rules.check_sensitive(new_value)
             if verdict.blocked:
                 raise ValidationError(
                     "the edited content contains sensitive information "
@@ -165,10 +177,22 @@ class MemoryAdminService:
                     code="MEMORY_SENSITIVE_CONTENT",
                     details={"kinds": list(verdict.kinds)},
                 )
+            siblings = await self._catalog.list_l2(workspace_id)
+            duplicate = self._rules.check_duplicate(
+                new_value,
+                existing=[(str(other.id), other.value) for other in siblings],
+                exclude_id=str(item.id),
+            )
+            if duplicate.blocked:
+                raise ValidationError(
+                    "这条记忆在工作区里已经存在 — 拒绝重复写入",
+                    code="MEMORY_DUPLICATE_CONTENT",
+                    details={"reason": duplicate.reason},
+                )
             item.value = new_value
         if patch.get("confidence") is not None:
             item.confidence = float(patch["confidence"])
-        item.version = int(item.version or 1) + 1
+        item.version = self._rules.next_version(item.version)
         item.updated_at = datetime.now(UTC)
         await self._catalog.update_l2(item)
         return item.to_admin_dict()
@@ -313,6 +337,49 @@ class MemoryAdminService:
         if item is None:
             raise MemoryNotFound(f"policy {label} not found")
         return item.to_admin_dict()
+
+    async def publish_policy(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        label: str,
+        config: MemoryPolicyConfig,
+    ) -> dict[str, Any]:
+        """**发布一条记忆策略配置** ✓（B2 的「配置发布与生效」✓ —— M-37 ✓）。
+
+        ⚠️ **发布 = 写进绑了这个 label 的 agent** ✓ —— 运行时**只读** agent
+        上那段配置 ✓（``PolicyBinding`` ✓）→ 发布完**立刻生效** ✓（不用重启 ✓
+        —— 这是「发布」的意义 ✓）。
+
+        ⚠️ **平面 B 写、平面 A 读** ✓（单向 ✓）—— 走窄端口 ✓（Memory 模块
+        **不 import agent 模块** ✓ —— 层次不倒 ✓）。
+
+        ⚠️ **没接发布端就明确失败** ✓（不假装发布成功 ✗✗ —— 那是「后台说
+        发布好了，其实什么都没发生」✗✗）。
+        """
+        if self._publisher is None:
+            raise ValidationError(
+                "策略发布未接线（agent 目录不可用）—— 策略发不出去",
+                code="MEMORY_POLICY_PUBLISHER_MISSING",
+            )
+        # ⚠️ **工作区级写不了** ✓（L3 已退役 ✓ —— 决策 #1 ✓）→ 明确拒绝 ✓。
+        if config.scope == "workspace":
+            raise ValidationError(
+                "工作区级记忆写不了（L3 已退役）—— 团队知识走 knowledge 模块",
+                code="MEMORY_SCOPE_UNSUPPORTED",
+            )
+        published = await self._publisher.publish(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            label=label,
+            config=config,
+        )
+        return {
+            "label": label,
+            "published": published,
+            "config": config.to_agent_policy(label=label),
+        }
 
     async def trend(self, *, workspace_id: UUID, range: str = "7d") -> dict[str, list[int]]:
         """**真实使用趋势** ✓（C7 ✓ —— M-33 ✓）。

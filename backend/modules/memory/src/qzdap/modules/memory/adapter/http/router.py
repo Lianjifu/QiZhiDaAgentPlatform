@@ -26,6 +26,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 
 from qzdap.modules.memory.application.admin_service import MemoryAdminService
+from qzdap_agent_runtime.memory.policy import MemoryPolicyConfig
 from qzdap_auth.workspace_guard_dep import _require_active_workspace
 
 
@@ -242,6 +243,36 @@ def build_router() -> APIRouter:
         svc: MemoryAdminService = Depends(memory_dependency),
     ) -> dict[str, Any]:
         return await svc.get_policy(workspace_id=x_workspace_id, label=label)
+
+    @router.post("/api/admin/memory/policies/{label}/publish")
+    async def publish_policy(
+        label: str,
+        body: dict[str, Any],
+        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
+        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
+        svc: MemoryAdminService = Depends(memory_dependency),
+    ) -> dict[str, Any]:
+        """**发布策略配置** ✓（B2 的「配置发布与生效」✓ —— M-37 ✓）。
+
+        ⚠️ **发布完立刻生效** ✓ —— 写进 agent 行 ✓ → 运行时**下一次就读到**
+        ✓（不用重启 ✓ —— 这才是「发布」的意义 ✓）。
+        """
+        config = MemoryPolicyConfig(
+            enabled=bool(body.get("enabled", True)),
+            scope=str(body.get("scope") or "user"),
+            retention_days=body.get("retentionDays"),
+            auto_summarize=bool(body.get("autoSummarize", False)),
+            l3_entry_ids=tuple(str(item) for item in (body.get("l3EntryIds") or [])),
+            knowledge_refs=tuple(
+                dict(ref) for ref in (body.get("knowledgeRefs") or []) if isinstance(ref, dict)
+            ),
+        )
+        return await svc.publish_policy(
+            tenant_id=x_tenant_id,
+            workspace_id=x_workspace_id,
+            label=label,
+            config=config,
+        )
 
     @router.get("/api/admin/memory/policies/{label}/agents")
     async def policy_agents(

@@ -1024,6 +1024,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         """**管理面** ✓ —— 管理端接口用它 ✓（目录 / 策略 / 审核 / 趋势 ✓）。"""
 
         def for_session(self, session):  # type: ignore[no-untyped-def]
+            from qzdap.modules.agent_runtime.adapter.memory.policy_publisher import (
+                AgentMemoryPolicyPublisher,
+            )
             from qzdap.modules.knowledge.adapter.promotion import (
                 KnowledgeCandidateAdapter,
             )
@@ -1037,6 +1040,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 knowledge=KnowledgeCandidateAdapter(
                     app.state.knowledge_service_factory.for_session(session)
                 ),
+                # ⚠️ **策略发布的落点** ✓（B2 的「配置发布与生效」✓ —— M-37 ✓）——
+                # 发布写进 agent 行 ✓ → 运行时**下一次就读到** ✓。
+                publisher=AgentMemoryPolicyPublisher(SqlCatalogAgentRepository(session)),
             )
 
         def __call__(self, session):  # type: ignore[no-untyped-def]

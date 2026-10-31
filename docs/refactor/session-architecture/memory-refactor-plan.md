@@ -1251,6 +1251,20 @@ ALTER TABLE admin_memory_policies
 3. 治理删除一个用户 → 其 L1 / L2 / 向量 / 缓冲**全部清除**，且 `qzdap_memory_eviction_total{reason="manual"}` 计数增加；
 4. 导出产出可回放的快照。
 
+#### 实施记录（2026-10-31 · Stage 6b（补）：B2 配置发布 + B3 管理规则）
+
+| 项 | 结果 |
+|---|---|
+| **B3 管理规则**（M-38） | ✅ 新增 `modules/memory/.../application/admin_rules.py` ✓（**平面 B 的规则单独一个模块** ✓ —— §10.1 ✓）—— ① **敏感闸门与平面 A 共用同一实现** ✓（直接用 `RuleRedactor` ✓ —— 规则 4 ✓ —— 单测断言「是同一个类」✓）；② **去重** ✓（归一化后比 ✓ —— 「换个空格」绕不过去 ✗✗）；③ **版本化** ✓（`next_version` ✓） |
+| **人工编辑走 B3** | ✅ `MemoryAdminService.update_l2` **不再内联判敏感** ✓ → 改走 `AdminEditRules` ✓（**单一实现** ✓ —— 旧的内联逻辑删掉 ✓）+ **重复内容被拒** ✓（`MEMORY_DUPLICATE_CONTENT` ✓ —— 被拒的内容**不入库** ✓） |
+| **B2 配置发布与生效**（M-37） | ✅ 契约层加 `MemoryPolicyConfig` ✓ + `MemoryPolicyPublisherPort` ✓（**窄端口** ✓ —— Memory 模块**不 import agent 模块** ✓ —— 层次不倒 ✓）；agent 侧实现 `AgentMemoryPolicyPublisher` ✓（**只改绑了这个 label 的 agent** ✓ —— 别人的策略不碰 ✓；**跨租户不碰** ✓）；组合根接线 ✓；管理端 `POST /api/admin/memory/policies/{label}/publish` ✓ |
+| **「生效」怎么算达成** | ✅ **发布写进 agent 行** ✓ → 运行时**下一次就读到** ✓（`PolicyBinding` 解析的就是那行 ✓ —— 不用重启 ✓）—— 单测断言「发布后的 `memory_policy` 解析出 `enabled=False` / `scope=session` / `retentionDays=7`」✓ |
+| **引用只存一处** | ✅ `knowledge_refs` 是 agent 的**另一个字段** ✓（§1.7 ✓）→ 发布的引用落在那里 ✓（**唯一真相** ✓ —— 不在 `memory_policy` 里存第二份 ✗✗） |
+| **没接线就明确失败** | ✅ `publish_policy` 在没有发布端时抛 `MEMORY_POLICY_PUBLISHER_MISSING` ✓（**不假装发布成功** ✗✗）；工作区级作用域被拒（`MEMORY_SCOPE_UNSUPPORTED` ✓ —— L3 已退役 ✓ —— 决策 #1 ✓） |
+| 测试 | 模块侧 9 条 ✓（共用闸门 ✓ / 去重 ✓ / 版本 ✓ / 编辑拒重 ✓ / 发布走端口 ✓ / 没接线失败 ✓ / 工作区级被拒 ✓ / 发布的形状 = 运行时解析的形状 ✓）+ agent 侧 4 条 ✓（只改绑了的 ✓ / 发布即生效 ✓ / 跨租户不碰 ✓ / 引用落位 ✓） |
+
+⚠️ **C9 治理 provider（M-39）仍未做** ✓ —— **不是漏了** ✓：治理域**没有 `data_subject` 接口** ✓（`grep` 零命中 ✓）→ **没有调用方** ✓ → 先造一个 provider 就是**「建而不切」** ✗✗ → 归「未接管」✓。
+
 ### Stage 7：清理与封口
 
 | 动作 | 细节 |

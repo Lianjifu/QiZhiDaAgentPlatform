@@ -124,7 +124,7 @@ class Evictor:
                 if now - stamp > ttl:
                     victims[candidate.id] = "ttl"
 
-        # ── ② 条数上限 ✓（LRU：最久没用���先走 ✓）────────────────────
+        # ── ② 条数上限 ✓（LRU：最久没用的先走 ✓）────────────────────
         survivors = [c for c in candidates if c.id not in victims]
         if policy.max_items > 0 and len(survivors) > policy.max_items:
             survivors.sort(key=_lru_key)

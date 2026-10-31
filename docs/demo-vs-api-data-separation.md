@@ -670,7 +670,7 @@ Rollup 本来就把没人用的再导出 tree-shake 掉了；改的是**耦合**
   新建知识走**真实领域模型**，不是路由里手搓 dataclass。
 * 仓储补了 `MemoryCatalogRepository.update_l3()`（端口 + SQL 实现）。
 * 服务层补了 `flush_l1 / flush_all_l1 / update_l2 / promote_l2 /
-  create_l3 / update_l3`，都带**工作区归属校验** —— 别的��作区的 id 一律
+  create_l3 / update_l3`，都带**工作区归属校验** —— 别的工作区的 id 一律
   404，不是 403（不泄露"存在但无权"）。
 * 写路由挂 `_require_active_workspace`，跟 knowledge 模块同一套写法。
 

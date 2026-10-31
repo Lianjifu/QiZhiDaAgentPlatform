@@ -196,8 +196,74 @@ class RetentionPolicyPort(Protocol):
         ...
 
 
+@dataclass(frozen=True, slots=True)
+class MemoryPolicyConfig:
+    """一条**待发布**的记忆策略配置 ✓（B2 的「配置发布」✓）。
+
+    ⚠️ **发布出去的样子 = 运行时解析的样子** ✓（``to_agent_policy`` ✓ ——
+    它产出的键名与 :meth:`PolicyBinding.to_policy` 读的键名**一致** ✓）——
+    两处各写一份形状 = **两套契约** ✗✗（发布出去的运行时读不到 ✗✗）。
+    """
+
+    enabled: bool = True
+    #: 作用域 ✓（``user`` / ``session`` / ``workspace`` ✓ —— workspace
+    #: **写不了** ✓（L3 已退役 ✓ —— 决策 #1 ✓）→ 明确拒绝 ✓。
+    scope: str = "user"
+    #: 保留天数 ✓（``None`` = 不限 ✓）。
+    retention_days: int | None = None
+    #: 自动沉淀 ✓（**目前无实现** ✗ —— §10.4 ✓）。
+    auto_summarize: bool = False
+    #: 额外纳入的 L3 条目 ✓。
+    l3_entry_ids: tuple[str, ...] = ()
+    #: agent 显式引用的记忆 / 知识 ✓（``type`` + ``id`` ✓）。
+    knowledge_refs: tuple[Mapping[str, Any], ...] = ()
+
+    def to_agent_policy(self, *, label: str) -> dict[str, Any]:
+        """**发布到 agent 上的形状** ✓（与运行时解析口径一致 ✓）。
+
+        ⚠️ **不包含 ``knowledgeRefs``** ✓ —— 引用在 agent 的**另一个字段**
+        （``knowledge_refs`` ✓ —— §1.7 ✓）→ 那里才是它的唯一落点 ✓
+        （放两处 = 两套真相 ✗✗）。
+        """
+        return {
+            "enabled": self.enabled,
+            "scope": self.scope,
+            "policyLabel": label,
+            "retentionDays": self.retention_days,
+            "autoSummarize": self.auto_summarize,
+            "l3EntryIds": list(self.l3_entry_ids),
+        }
+
+
+@runtime_checkable
+class MemoryPolicyPublisherPort(Protocol):
+    """把**策略配置发布到 agent** ✓（B2 的「配置发布与生效」✓）。
+
+    ⚠️ **平面 B 写、平面 A 读** ✓（§2.2 规则 6 ✓ —— 单向 ✓）—— 运行时
+    **只读** agent 上那段配置 ✓（``PolicyBinding`` ✓）—— 发布走这个窄端口 ✓
+    （Memory 模块**不 import agent 模块** ✓ —— 层次不倒 ✓）。
+    """
+
+    async def publish(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        label: str,
+        config: MemoryPolicyConfig,
+    ) -> int:
+        """把配置写到**绑了这个 label 的 agent** 上 ✓ —— 返回**改了几条** ✓。
+
+        ⚠️ **没有 agent 绑这个 label** → **0 条** ✓（不是错误 ✓ —— 绑定关系
+        本来就不存在 ✓ —— 但调用方要能分清「发了但没人绑」✓）。
+        """
+        ...
+
+
 __all__ = [
     "MemoryPolicy",
+    "MemoryPolicyConfig",
+    "MemoryPolicyPublisherPort",
     "MemoryRef",
     "MemoryRefKind",
     "PolicyBinding",

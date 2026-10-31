@@ -657,8 +657,8 @@
 | | M-34 接入 sweeper 调度 | ✅ **已达成** —— **与 Session 层清扫器同批调度** ✓（组合根的清扫循环里一并跑 ✓） | — | 0 | M-32 |
 | | M-35 **淘汰执行器** | ✅ **已达成** —— `admin_memory_policies` 的 TTL / max_items / storage_mb **首次有执行者** ✓；**向量同步删** ✓（不留残留副本 ✓）；**按原因计数** ✓（`qzdap_memory_eviction_total{reason}` ✓） | — | 0 | M-34 |
 | Stage 6b · 平面 B 落地 | M-36 B1 管理接口 | **18** 个管理端点收敛到 `MemoryAdminService` | — | 0 | Stage 0 |
-| | M-37 B2 管理服务 | 审核提升、人工编辑、配置发布与生效 | — | 0 | M-36 |
-| | M-38 B3 管理策略 | 管理侧独立的脱敏 / 去重 / 版本化（**敏感闸门与 A 共用同一实现**） | — | 0 | M-37 |
+| | M-37 B2 管理服务 | ✅ **已达成**（2026-10-31）—— 审核提升 ✓（→ knowledge 候选 ✓）/ 人工编辑 ✓（M-40 / M-41 ✓）/ **配置发布与生效** ✓（窄端口 `MemoryPolicyPublisherPort` ✓ → 写进 agent 行 ✓ → 运行时下一次就读到 ✓） | — | 0 | M-36 |
+| | M-38 B3 管理策略 | ✅ **已达成**（2026-10-31）—— `application/admin_rules.py` ✓（平面 B 的规则单独成模块 ✓）：敏感闸门**与平面 A 共用同一实现** ✓ + **去重** ✓ + **版本化** ✓；人工编辑改走它 ✓（旧的内联逻辑删掉 ✓ —— 单一实现 ✓） | — | 0 | M-37 |
 | | M-39 **C9 治理 provider** | 删除 / 导出：清理 L1/L2/L3 表 + 向量 + `session_memory_buffer` | — | 0 | M-36 |
 | | M-40 乐观并发 | ✅ **已达成**（2026-10-31）—— 人工编辑带 `version` ✓ → 不一致 **409** ✓（**不静默后写覆盖** ✓）；管理端读回带 `version` ✓ | — | 0 | M-37 |
 | | M-41 敏感闸门补齐 | ✅ **已达成**（2026-10-31）—— 管理端 `PATCH /l2/{id}` **走与平面 A 同一套闸门** ✓（命中敏感内容**整条拒绝** ✓ —— 被拒的**不入库** ✓） | — | 0 | M-37 |
@@ -1117,6 +1117,8 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] P-11 **确认 `/v1/sessions*` 是否有仓外消费者**（H5 / C9，需 API owner 拍板）—— ✅ **已确认无仓外调用方** ✓（Gateway G-27 的删除依据 ✓ —— 兼容保留期因此归零 ✓）
 - [x] **P-12 CI 加 isolated install 检查**（H6 / C10）—— ✅ **2026-10-31 已做** —— `backend/scripts/check_isolated_deps.py` ✓（**逐包**解析各自的 `pyproject.toml` ✓ → AST 扫 import ✓ → import 到的 **lib** 必须被**声明** ✓ —— 判据只有 pyproject 一个来源 ✓）+ CI 的 `isolated-install` job ✓。⚠️ **它当场抓到 7 个包漏声明** ✗✗ → 已补 ✓（`libs/auth` ✓ `libs/observability` ✓ `modules/agent_factory` ✓ `modules/evaluation` ✓ `modules/governance` ✓ `modules/self_evolution` ✓ `modules/tool` ✓ —— 各补 `qzdap-persistence` / `qzdap-auth` / `qzdap-vault` ✓）+ `uv.lock` 离线重锁 ✓（**无版本变动** ✓）。⚠️ **顺带修了 CI 的同步命令** ✗✗（`uv sync --all-extras` **只装根的依赖** ✓ → workspace 成员被**卸载** ✓ → smoke job import 不到 `qzdap.composition` ✗✗）→ 全部改成 `uv sync --all-extras --all-packages` ✓（与 Makefile 一致 ✓）
 
+- [ ] **P-13 CI 的 type-check 闸门（mypy）** —— ⬜ **未接管**（**2026-10-31 核对** ✓）—— CI 有 `type-check` job ✓（`make type-check` = `mypy libs modules composition` ✓）—— ⚠️ **它一直是红的** ✗✗：**148 处错误** ✓（84 处 `arg-type` ✓ + 27 处 `attr-defined` ✓ + 其余零散 ✓ —— 分布在 15 个包 ✓）—— ⚠️ **根因是类型模型没收口** ✗✗：`qzdap_schema.ids` 的**品牌 ID**（`TenantId` / `WorkspaceId` / `UserId` ✓）与**裸 `UUID`** 在各模块边界上混用 ✓（治理 / 平台 / 编排 / 知识四处最明显 ✓）→ **不是本次重构引入的** ✓（重构前后同样红 ✓）→ **单独工程** ✓（要么统一品牌 ID ✓ —— 要改一批公开签名 ✗✗；要么按包豁免 ✓ —— 那就是**把闸门关掉** ✗✗）→ **本轮不做** ✓（登记在案 ✓ —— 免得「以为 CI 全绿」 ✗✗）
+
 ### Gateway 层（§3.1）—— **删除 G1–G12**
 > **台账 G1–G12 全部「已清理」** ✓ —— 本层**收口** ✓。剩余的只有「现状文档同步」（与 Session S-38 / Router R-28 / Context C-32 / Memory M-51 一起补 ✓）。
 
@@ -1186,7 +1188,7 @@ pytest backend/tests/integration/test_agent_loop_e2e.py -q
 - [x] **M-22 `enabled`** ✓ · [x] **M-23 `scope`** ✓ · [x] **M-24 `policyLabel`** ✓ · [x] **M-25 `l3EntryIds`/`knowledge_refs`** ✓ —— ✅ **Stage 4 已达成**（2026-10-31 ✓ —— 管理端绑的东西运行面**真的读到** ✓：关掉就一条不写 ✓ / 会话级只召回本会话 ✓ / 绑定的条目一定被召回 ✓ / 保留策略标签解析出来 ✓）
 - [x] **M-26 向量统一走 embedding** ✓ · [x] **M-27 异步补写** ✓ · [x] **M-28 `session_memory_buffer`** ✓ · [x] **M-29 会话结束提炼（sweeper 触发）** ✓ · [x] **M-30 提升规则** ✓ —— ✅ **Stage 5 已达成**（2026-10-31 ✓）
 - [x] **M-31 统计更新** ✓ · [x] **M-32 淘汰器** ✓ · [x] **M-33 `trend()` 真实统计** ✓ · [x] **M-34 接入 sweeper** ✓ · [x] **M-35 淘汰执行器** ✓ —— ✅ **Stage 6 已达成**（2026-10-31 ✓ —— 策略**第一次有执行者** ✓ ✓）
-- [x] **M-36 B1 管理接口** ✓（18 个端点全走服务 ✓）· [ ] **M-37 B2 管理服务** · [ ] **M-38 B3 管理策略** · [ ] **M-39 C9 治理 provider** —— ⚠️ **阻塞** ✓：**治理域没有 `data_subject` 接口** ✓（方案假设「治理域已有接口」✗ —— 实际不存在 ✓ —— 要先在治理域建 ✓）· [x] **M-40 乐观并发 409** ✓ · [x] **M-41 敏感闸门补齐** ✓ · [x] **M-42 管理端直写停用打点** ✓（**没有直写路径可停** ✓ → X16 转「已清理」✓）
+- [x] **M-36 B1 管理接口** ✓（18 个端点全走服务 ✓）· [x] **M-37 B2 管理服务** ✓（2026-10-31 —— 配置发布与生效 ✓）· [x] **M-38 B3 管理策略** ✓（2026-10-31 —— `admin_rules.py` ✓ 共用闸门 ✓ 去重 ✓ 版本化 ✓）· [ ] **M-39 C9 治理 provider** —— ⚠️ **阻塞** ✓：**治理域没有 `data_subject` 接口** ✓（方案假设「治理域已有接口」✗ —— 实际不存在 ✓ —— 要先在治理域建 ✓）· [x] **M-40 乐观并发 409** ✓ · [x] **M-41 敏感闸门补齐** ✓ · [x] **M-42 管理端直写停用打点** ✓（**没有直写路径可停** ✓ → X16 转「已清理」✓）
 - [x] M-43 **删 `_remember`** → **X11** ✓ · [x] M-44 **删 `layered.py`** → **X12** ✓（**已随 Agent Stage 7 删除** ✓ —— 扫描规则同时覆盖 `modules/` 与 `runtimes/` ✓）· [x] M-45 **删 `remember` 节点** → **X12** ✓（同批 ✓）· [ ] M-46 **退役 `admin_memory_l1`** → **X13**（⚠️ **写侧已退役 ✓，表未 DROP** ✓ —— 管理端 4 个 L1 端点还读它 ✓）· [ ] M-47 **退役 `admin_memory_l3`** → **X15**（⚠️ **数据要先迁 knowledge** ✓）· M-48 清理 `memory_policy` 无效语义 ✓ · M-49 **删原 `MemoryService` 单类** → **X16** ✓（已拆 ✓ —— 两个服务类**必须保留** ✓）
 - [x] **M-50 启用扫描脚本 Memory 段** —— ⚠️ **部分** —— **X11 / X12 / X16 两条已启用** ✓（X12 于 2026-10-31 随 Agent Stage 7 的删除启用 ✓ —— `modules/` 与 `runtimes/` 两条规则 ✓）；**X13 / X15 仍关着** ✓（旧表还在 ✓ —— 表未 DROP ✓）· [x] **M-51 更新台账 + 现状文档** ✓（2026-10-31 ✓ —— 同一份现状文档 ✓）
 
