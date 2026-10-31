@@ -84,7 +84,9 @@ class RealSubAgentPort(SubAgentPort):
                 status=400,
             )
 
-        model_id = version.default_model_id
+        # ⚠️ **端口返回的是字典** ✓（不是领域对象 ✓ —— 评测模块不引
+        # agent_factory 的领域 ✓）→ **按键取值** ✓（属性访问会 AttributeError ✗）。
+        model_id = version.get("model_id")
 
         # ── 建会话 + 跑一轮（唯一 turn 实现 ✓）────────────────────────
         # ⚠️ 会话用**显式的 agent_version**（评测跑的是被测版本 ✓）——
@@ -95,7 +97,7 @@ class RealSubAgentPort(SubAgentPort):
                 workspace_id=workspace_id,
                 owner_id=owner_id,
                 agent_id=AgentId(agent_id),  # template UUID re-used as agent id
-                agent_version=str(version.version_tag),
+                agent_version=str(version.get("version_tag") or ""),
                 user_input=user_input,
                 model=model_id,
                 metadata={"evaluation": True},

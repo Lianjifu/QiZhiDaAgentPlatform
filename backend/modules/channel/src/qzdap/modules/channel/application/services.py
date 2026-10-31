@@ -51,6 +51,7 @@ from qzdap_agent_runtime.gateway.identity import (
 )
 from qzdap_agent_runtime.gateway.types import RawIngress
 from qzdap_kernel.contextvars import current_trace_id
+from qzdap_kernel.ids import TenantId, WorkspaceId
 from qzdap_schema.dtos.errors import ErrorCode
 
 if TYPE_CHECKING:
@@ -264,8 +265,10 @@ class ChannelService:
             # 没了，发出去的就是标准入站消息本身。
             await self.publisher.publish(
                 message,
-                tenant_id=tenant_id,
-                workspace_id=channel.workspace_id,
+                tenant_id=TenantId(tenant_id),
+                workspace_id=(
+                    WorkspaceId(channel.workspace_id) if channel.workspace_id else None
+                ),
                 trace_id=message.trace_id or None,
             )
         return delivery
@@ -327,8 +330,10 @@ class ChannelService:
                         external_chat_id=external_chat_id,
                         tenant_id=tenant_id,
                     ),
-                    tenant_id=tenant_id,
-                    workspace_id=channel.workspace_id,
+                    tenant_id=TenantId(tenant_id),
+                    workspace_id=(
+                        WorkspaceId(channel.workspace_id) if channel.workspace_id else None
+                    ),
                 )
         except ChannelDeliveryFailed:
             # Persist the failure then re-raise the original error so

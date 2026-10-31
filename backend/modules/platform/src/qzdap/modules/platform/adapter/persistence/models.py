@@ -81,7 +81,8 @@ class PlanORM(Base):
 class SubscriptionORM(TenantScopedMixin, Base):
     __tablename__ = "subscriptions"
 
-    workspace_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
+    # ⚠️ **没有 `workspace_id`** ✓ —— 订阅是**租户级**的 ✓（0014 的唯一约束在
+    # `tenant_id` 上 ✓）→ 那列是多余的 ✓（迁移 0060 删掉了 ✓）。
     plan_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey("plans.id", ondelete="RESTRICT"),

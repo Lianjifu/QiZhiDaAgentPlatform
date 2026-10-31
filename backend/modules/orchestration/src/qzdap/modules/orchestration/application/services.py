@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from qzdap.modules.orchestration.application.ports import (
@@ -14,7 +14,9 @@ from qzdap.modules.orchestration.domain.entities import (
     FLOW_STATUSES,
     TRIGGER_TYPES,
     FlowRun,
+    FlowStatus,
     FlowVersion,
+    TriggerType,
     Workflow,
 )
 from qzdap.modules.orchestration.domain.errors import (
@@ -60,8 +62,15 @@ class OrchestrationService:
     async def create(
         self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
     ) -> dict[str, Any]:
-        trigger = body.get("trigger") if body.get("trigger") in TRIGGER_TYPES else "消息触发"
-        status = body.get("status") if body.get("status") in FLOW_STATUSES else "draft"
+        # ⚠️ **字面量收窄** ✓ —— 运行时用 `in` 校验 ✓；类型上显式收窄 ✓。
+        trigger = cast(
+            "TriggerType",
+            body.get("trigger") if body.get("trigger") in TRIGGER_TYPES else "消息触发",
+        )
+        status = cast(
+            "FlowStatus",
+            body.get("status") if body.get("status") in FLOW_STATUSES else "draft",
+        )
         nodes = body.get("initialNodes") if isinstance(body.get("initialNodes"), list) else None
         edges = body.get("initialEdges") if isinstance(body.get("initialEdges"), list) else None
         agents = body.get("boundAgents") if isinstance(body.get("boundAgents"), list) else None
@@ -91,7 +100,8 @@ class OrchestrationService:
         self, *, workflow_id: UUID, body: dict[str, Any], actor: str
     ) -> dict[str, Any]:
         flow = await self._require(workflow_id)
-        patch = body.get("patch") if isinstance(body.get("patch"), dict) else body
+        raw_patch = body.get("patch")
+        patch: dict[str, Any] = raw_patch if isinstance(raw_patch, dict) else body
         updated = flow.apply_patch(patch, actor=actor)
         await self._workflows.update(updated)
         return updated.to_admin_dict()

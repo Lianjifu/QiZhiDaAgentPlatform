@@ -8,6 +8,9 @@ from qzdap.modules.evaluation.application.use_cases.get_run import (
     GetEvalRunUseCase,
     ListEvalRunsUseCase,
 )
+from qzdap.modules.evaluation.application.use_cases.list_cases import (
+    ListEvalCasesUseCase,
+)
 from qzdap.modules.evaluation.application.use_cases.start_run import (
     StartEvalRunUseCase,
 )
@@ -15,6 +18,7 @@ from qzdap.modules.evaluation.application.use_cases.start_run import (
 __all__ = [
     "GetEvalDatasetUseCase",
     "GetEvalRunUseCase",
+    "ListEvalCasesUseCase",
     "ListEvalDatasetsUseCase",
     "ListEvalRunsUseCase",
     "StartEvalRunUseCase",

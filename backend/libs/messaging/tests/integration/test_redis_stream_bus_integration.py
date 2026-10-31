@@ -20,6 +20,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from qzdap_kernel.ids import TenantId
 from qzdap_messaging.domain_event import EventEnvelope
 from qzdap_messaging.redis_stream import RedisStreamBus
 
@@ -30,7 +31,7 @@ async def _envelope(tenant_id: UUID, name: str = "test.event") -> EventEnvelope:
     return EventEnvelope(
         event_id=uuid4(),
         event_name=name,
-        tenant_id=tenant_id,
+        tenant_id=TenantId(tenant_id),
         workspace_id=None,
         trace_id=None,
         occurred_at_ms=1_700_000_000_000,

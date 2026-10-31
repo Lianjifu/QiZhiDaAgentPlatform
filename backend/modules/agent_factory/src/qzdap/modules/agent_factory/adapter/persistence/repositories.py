@@ -11,6 +11,8 @@ goes through ``AgentFactoryEventPublisher`` from the application layer
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,6 +54,16 @@ from qzdap_kernel.ids import (
 
 # ── AgentTemplateRepository ───────────────────────────────────────────────
 
+
+
+def _as_uuid(value: str | UUID | None) -> UUID | None:
+    """**领域里的模型 id 可能是字符串** ✓（HTTP 层解析出来的 ✓）→ 落库前
+    统一成 `UUID` ✓（ORM 列是 `PgUUID` ✓ —— 直接塞字符串会在绑定时炸 ✗）。"""
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    return UUID(str(value))
 
 class SqlAgentTemplateRepository(AgentTemplateRepository):
     def __init__(self, session: AsyncSession) -> None:
@@ -121,7 +133,7 @@ class SqlAgentTemplateRepository(AgentTemplateRepository):
             raise AgentTemplateNotFound(f"agent template {template.id} not found")
         existing.name = template.name
         existing.description = template.description
-        existing.default_model_id = template.default_model_id
+        existing.default_model_id = _as_uuid(template.default_model_id)
         existing.default_system_prompt = template.default_system_prompt
         existing.status = template.status.value
         existing.metadata_ = dict(template.metadata)
@@ -210,7 +222,7 @@ class SqlAgentVersionRepository(AgentVersionRepository):
             raise AgentVersionNotFound(f"agent version {version.id} not found")
         existing.status = version.status.value
         existing.system_prompt = version.system_prompt
-        existing.model_id = version.model_id
+        existing.model_id = _as_uuid(version.model_id)
         existing.allowed_tools = list(version.allowed_tools)
         existing.allowed_skills = list(version.allowed_skills)
         existing.knowledge_package_ids = list(version.knowledge_package_ids)

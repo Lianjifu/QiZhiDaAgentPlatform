@@ -18,6 +18,7 @@ from qzdap_kernel.errors import (
     RateLimitError,
     ValidationError,
 )
+from qzdap_kernel.ids import TenantId, WorkspaceId
 from qzdap_kernel.principal import Principal, PrincipalType
 
 # ── contextvars ──────────────────────────────────────────────────────────────
@@ -48,7 +49,7 @@ def test_workspace_context_implies_tenant() -> None:
     # Just ensure constructor shape
     from uuid import UUID
 
-    ctx = WorkspaceContext(tenant_id=UUID(int=1), workspace_id=UUID(int=2))
+    ctx = WorkspaceContext(tenant_id=TenantId(UUID(int=1)), workspace_id=WorkspaceId(UUID(int=2)))
     assert ctx.tenant_id.int == 1
     assert ctx.workspace_id.int == 2
 
@@ -57,7 +58,7 @@ def test_tenant_workspace_to_workspace_requires_workspace_id() -> None:
     from uuid import UUID
 
     t = UUID(int=1)
-    ctx = TenantWorkspaceContext(tenant_id=t, workspace_id=None)
+    ctx = TenantWorkspaceContext(tenant_id=TenantId(t), workspace_id=None)
     with pytest.raises(ValueError):
         ctx.to_workspace()
 
@@ -67,7 +68,7 @@ def test_tenant_workspace_to_workspace_ok() -> None:
 
     t = UUID(int=1)
     w = UUID(int=2)
-    ctx = TenantWorkspaceContext(tenant_id=t, workspace_id=w)
+    ctx = TenantWorkspaceContext(tenant_id=TenantId(t), workspace_id=WorkspaceId(w))
     ws = ctx.to_workspace()
     assert ws.tenant_id == t
     assert ws.workspace_id == w
@@ -102,10 +103,10 @@ def test_with_workspace_returns_new_principal() -> None:
     p = Principal(
         id=UUID(int=1),
         type=PrincipalType.USER,
-        tenant_id=UUID(int=1),
+        tenant_id=TenantId(UUID(int=1)),
         workspace_id=None,
     )
-    p2 = p.with_workspace(UUID(int=2))
+    p2 = p.with_workspace(WorkspaceId(UUID(int=2)))
     assert p.workspace_id is None
     assert p2.workspace_id == UUID(int=2)
 
@@ -116,7 +117,7 @@ def test_has_role_and_scope() -> None:
     p = Principal(
         id=UUID(int=1),
         type=PrincipalType.USER,
-        tenant_id=UUID(int=1),
+        tenant_id=TenantId(UUID(int=1)),
         workspace_id=None,
         roles=frozenset({"workspace_owner"}),
         scopes=frozenset({"agents:invoke"}),

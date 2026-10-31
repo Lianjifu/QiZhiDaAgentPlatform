@@ -44,6 +44,7 @@ from qzdap.modules.governance.domain.entities import (
     PolicyRule,
 )
 from qzdap.modules.governance.domain.value_objects import ApprovalStatus
+from qzdap_kernel.ids import AuditLogId
 
 
 class SqlPolicyRepository(PolicyRepository):
@@ -259,7 +260,7 @@ class SqlAuditLogAdapter(AuditLogPort):
         from uuid import uuid4
 
         entry = AuditLogEntry(
-            id=uuid4(),
+            id=AuditLogId(uuid4()),
             tenant_id=tenant_id,  # type: ignore[arg-type]
             actor_id=actor_id,  # type: ignore[arg-type]
             event_type=event_type,

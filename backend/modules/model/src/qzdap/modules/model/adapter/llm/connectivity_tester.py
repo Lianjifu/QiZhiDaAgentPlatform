@@ -69,7 +69,10 @@ class PublicNetworkTransport(httpx.AsyncBaseTransport):
         self.status_code = response.status_code
         if response.is_stream_consumed and len(response.content) > _MAX_RESPONSE_BYTES:
             raise ResponseTooLargeError
-        response.stream = _BoundedStream(response.stream)
+        # ⚠️ **异步传输的响应流一定是 `AsyncByteStream`** ✓ —— 类型上只保证
+        # 「同步或异步」✗ → 显式判一下 ✓（同步流不该被异步包装器包 ✗）。
+        if isinstance(response.stream, httpx.AsyncByteStream):
+            response.stream = _BoundedStream(response.stream)
         return response
 
     async def aclose(self) -> None:

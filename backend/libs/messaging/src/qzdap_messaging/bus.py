@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Protocol
 
 from qzdap_messaging.domain_event import EventEnvelope
 
+#: **一个事件处理器** ✓ —— 收到信封后异步处理 ✓。
+Handler = Callable[[EventEnvelope], Awaitable[None]]
+
 
 class EventBus(Protocol):
     async def publish(self, envelope: EventEnvelope) -> None: ...
-    def subscribe(self, event_name: str, handler: object) -> None: ...
+    async def subscribe(self, event_name: str, handler: Handler) -> None: ...
     async def start(self) -> None: ...
     async def stop(self) -> None: ...
     async def stream(self, tenant_id: object) -> AsyncIterator[EventEnvelope]: ...
@@ -22,7 +25,7 @@ class NullBus:
     async def publish(self, envelope: EventEnvelope) -> None:
         return None
 
-    def subscribe(self, event_name: str, handler: object) -> None:
+    async def subscribe(self, event_name: str, handler: Handler) -> None:
         return None
 
     async def start(self) -> None:

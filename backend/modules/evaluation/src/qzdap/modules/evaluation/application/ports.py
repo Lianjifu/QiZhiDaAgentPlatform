@@ -123,7 +123,13 @@ class AgentFactoryQueryPort(Protocol):
         tenant_id: TenantId,
         template_id: AgentTemplateId,
         version_id: AgentVersionId,
-    ) -> dict[str, Any] | None: ...
+    ) -> dict[str, Any] | None:
+        """**取一个已发布的 agent 版本** ✓ —— 没有就 `None` ✓。
+
+        ⚠️ **返回的是字典** ✓（不是 agent_factory 的领域对象 ✓ —— 评测模块
+        不引那个模块 ✓）→ **消费方按键取值** ✓（`model_id` / `version_tag` ✓）。
+        """
+        ...
 
 
 # ── Eventing ─────────────────────────────────────────────────────────────

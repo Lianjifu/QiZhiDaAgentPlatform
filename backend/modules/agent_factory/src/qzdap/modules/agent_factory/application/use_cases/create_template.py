@@ -35,7 +35,7 @@ class CreateAgentTemplateUseCase:
         workspace_id: WorkspaceId,
         name: str,
         description: str,
-        default_model_id: str,
+        default_model_id: str | None,
         default_system_prompt: str,
         metadata: dict[str, Any] | None = None,
         created_by: UserId | None = None,

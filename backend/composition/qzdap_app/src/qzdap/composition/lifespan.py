@@ -1217,15 +1217,39 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
             return StubSubAgentPort()
 
-        from qzdap.modules.evaluation.adapter.agent_factory_adapter import (
-            EvaluationServiceAdapter,
+        class _AgentVersionQuery:
+            """**评测要读的 agent 版本** ✓ —— 从 agent_factory 的版本表读 ✓。
+
+            ⚠️ **跨模块的读放在组合根** ✓ —— 评测模块只声明端口 ✓（不引
+            agent_factory 的持久化 ✓）。
+
+            ⚠️ **返回字典而不是领域对象** ✓ —— 评测模块不引 agent_factory 的
+            领域 ✓ → 消费方按键取值 ✓（`model_id` / `version_tag` ✓）。
+            """
+
+            def __init__(self, repo) -> None:  # type: ignore[no-untyped-def]
+                self._repo = repo
+
+            async def get_agent_version(  # type: ignore[no-untyped-def]
+                self, *, tenant_id, template_id, version_id
+            ):
+                version = await self._repo.get(
+                    tenant_id=tenant_id, version_id=version_id
+                )
+                if version is None or version.template_id != template_id:
+                    return None
+                return {
+                    "model_id": version.model_id,
+                    "version_tag": version.version_tag,
+                    "status": version.status.value,
+                }
+
+        from qzdap.modules.agent_factory.adapter.persistence.repositories import (
+            SqlAgentVersionRepository,
         )
 
         sf_for_query = container.session_factory().maker()
-        agent_factory = EvaluationServiceAdapter(
-            run_repository=SqlEvalRunRepository(sf_for_query),
-            score_threshold=container.settings.agent_factory_eval_score_min,
-        )
+        agent_factory = _AgentVersionQuery(SqlAgentVersionRepository(sf_for_query))
         return _PerCaseRealSubAgent(
             container=container,
             agent_factory=agent_factory,

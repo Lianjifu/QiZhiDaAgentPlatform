@@ -98,7 +98,6 @@ def subscription_to_orm(entity: Subscription) -> SubscriptionORM:
     return SubscriptionORM(
         id=entity.id,
         tenant_id=entity.tenant_id,
-        workspace_id=entity.workspace_id,
         plan_id=entity.plan_id,
         plan_code=entity.plan_code,
         status=entity.status.value,

@@ -54,6 +54,7 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from qzdap_kernel.ids import TenantId, WorkspaceId
 from qzdap_messaging.bus import EventBus
 from qzdap_messaging.domain_event import EventEnvelope
 
@@ -400,13 +401,13 @@ def _envelope_from_fields(fields: dict[bytes | str, bytes | str]) -> EventEnvelo
         s = _s(v)
         return s if s else ""
 
-    tenant_id = UUID(_s(fields[b"tenant_id" if b"tenant_id" in fields else "tenant_id"]))
+    tenant_id = TenantId(UUID(_s(fields[b"tenant_id" if b"tenant_id" in fields else "tenant_id"])))
     return EventEnvelope(
         event_id=UUID(_s(fields[b"event_id" if b"event_id" in fields else "event_id"])),
         event_name=_s(fields[b"event_name" if b"event_name" in fields else "event_name"]),
         tenant_id=tenant_id,
-        workspace_id=UUID(
-            _s(fields[b"workspace_id" if b"workspace_id" in fields else "workspace_id"])
+        workspace_id=WorkspaceId(
+            UUID(_s(fields[b"workspace_id" if b"workspace_id" in fields else "workspace_id"]))
         )
         if _u(fields[b"workspace_id" if b"workspace_id" in fields else "workspace_id"])
         else None,

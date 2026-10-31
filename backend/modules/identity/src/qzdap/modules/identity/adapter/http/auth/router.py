@@ -6,8 +6,7 @@ login contract stays scoped to this subfolder.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Coroutine
-from typing import Any
+from collections.abc import AsyncIterator, Callable
 
 from fastapi import APIRouter, Depends
 
@@ -19,7 +18,7 @@ from qzdap.modules.identity.application.services import IdentityService
 
 def build_auth_router(
     identity_service_dep: Callable[
-        ..., Coroutine[Any, Any, IdentityService]
+        ..., AsyncIterator[IdentityService]
     ] = get_identity_service,
 ) -> APIRouter:
     # No prefix here — the parent router (adapter/http/router.py) already

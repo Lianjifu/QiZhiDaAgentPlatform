@@ -13,6 +13,7 @@ Routes (mounted as-is so the web client does not need a rewrite):
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
@@ -30,7 +31,7 @@ def _owner_id(request: Request, fallback: UUID) -> UUID:
     return UUID(str(pid))
 
 
-async def orchestration_dependency(request: Request) -> OrchestrationService:
+async def orchestration_dependency(request: Request) -> AsyncIterator[OrchestrationService]:
     factory = getattr(request.app.state, "orchestration_service_factory", None)
     container = getattr(request.app.state, "container", None)
     if factory is None or container is None:

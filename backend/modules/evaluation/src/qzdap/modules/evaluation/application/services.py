@@ -17,6 +17,9 @@ from qzdap.modules.evaluation.application.use_cases.get_run import (
     GetEvalRunUseCase,
     ListEvalRunsUseCase,
 )
+from qzdap.modules.evaluation.application.use_cases.list_cases import (
+    ListEvalCasesUseCase,
+)
 from qzdap.modules.evaluation.application.use_cases.start_run import (
     StartEvalRunUseCase,
 )
@@ -33,6 +36,7 @@ class EvaluationService:
 
     get_dataset: GetEvalDatasetUseCase | None = None
     list_datasets: ListEvalDatasetsUseCase | None = None
+    list_cases: ListEvalCasesUseCase | None = None
     get_run: GetEvalRunUseCase | None = None
     list_runs: ListEvalRunsUseCase | None = None
     start_run: StartEvalRunUseCase | None = None
@@ -40,6 +44,7 @@ class EvaluationService:
     def __post_init__(self) -> None:
         self.get_dataset = GetEvalDatasetUseCase(repository=self.dataset_repository)
         self.list_datasets = ListEvalDatasetsUseCase(repository=self.dataset_repository)
+        self.list_cases = ListEvalCasesUseCase(repository=self.dataset_repository)
         self.get_run = GetEvalRunUseCase(repository=self.run_repository)
         self.list_runs = ListEvalRunsUseCase(repository=self.run_repository)
         self.start_run = StartEvalRunUseCase(

@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
@@ -20,7 +21,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from qzdap.modules.platform.application.ops_service import AdminOpsService
 
 
-async def ops_dependency(request: Request) -> AdminOpsService:
+async def ops_dependency(request: Request) -> AsyncIterator[AdminOpsService]:
     factory = getattr(request.app.state, "admin_ops_factory", None)
     container = getattr(request.app.state, "container", None)
     if factory is None or container is None:

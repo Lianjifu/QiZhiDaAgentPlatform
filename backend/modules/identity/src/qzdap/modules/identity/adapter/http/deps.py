@@ -6,12 +6,14 @@ both import without circularity.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 from fastapi import Request
 
 from qzdap.modules.identity.application.services import IdentityService
 
 
-async def get_identity_service(request: Request) -> IdentityService:
+async def get_identity_service(request: Request) -> AsyncIterator[IdentityService]:
     """FastAPI dependency — opens a per-request session and binds an
     IdentityService to it for the lifetime of the request. The session is
     committed on success and rolled back on exception."""

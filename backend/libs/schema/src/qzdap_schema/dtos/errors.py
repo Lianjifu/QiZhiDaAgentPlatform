@@ -87,6 +87,26 @@ class ErrorCode(str, Enum):
     # Agent Stage 3 —— **同一个幂等键的另一次调用还在跑** ✓ → 不重复执行 ✓
     TOOL_IN_PROGRESS = "TOOL_IN_PROGRESS"
 
+    # ── 派生属性 ────────────────────────────────────────────────────────
+    # ⚠️ **必须在类体里定义** ✓ —— 事后 `ErrorCode.http_status = property(...)`
+    # 对类型检查器**不可见** ✗ → 调用方拿不到这三个属性 ✗✗（类型上直接报错 ✓）。
+    # 元数据表（`_HTTP_STATUS` / `_RETRIABLE` / `_I18N_PREFIX`）在**类体之后**
+    # 定义 ✓ —— 但属性是**调用时**才求值 ✓ → 那时表已经就位 ✓。
+    @property
+    def http_status(self) -> int:
+        """这个错误码对应的 HTTP 状态码 ✓。"""
+        return _HTTP_STATUS[self]
+
+    @property
+    def retriable(self) -> bool:
+        """这个错误码**可重试**吗 ✓（限流 / 外部服务故障 ✓）。"""
+        return self in _RETRIABLE
+
+    @property
+    def i18n_key(self) -> str:
+        """这个错误码的 i18n key ✓。"""
+        return f"{_I18N_PREFIX}{self.value.lower()}"
+
 
 # ---------------------------------------------------------------------------
 # 元数据表
@@ -161,24 +181,6 @@ _I18N_PREFIX = "errors."
 # ---------------------------------------------------------------------------
 # 扩展属性（用 property 而非方法以与现有 `ChunkEnvelope.kind` 风格一致）
 # ---------------------------------------------------------------------------
-
-
-def _http_status(code: ErrorCode) -> int:
-    return _HTTP_STATUS[code]
-
-
-def _retriable(code: ErrorCode) -> bool:
-    return code in _RETRIABLE
-
-
-def _i18n_key(code: ErrorCode) -> str:
-    return f"{_I18N_PREFIX}{code.value.lower()}"
-
-
-# 把方法挂到枚举类上，避免每个实例重复包装
-ErrorCode.http_status = property(_http_status)  # type: ignore[attr-defined]
-ErrorCode.retriable = property(_retriable)  # type: ignore[attr-defined]
-ErrorCode.i18n_key = property(_i18n_key)  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------

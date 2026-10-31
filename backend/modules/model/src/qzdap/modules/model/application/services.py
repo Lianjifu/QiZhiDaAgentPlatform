@@ -517,12 +517,15 @@ class ModelService:
             )
             await self._models.add(model)
             first = first or model
+        if first is None:
+            raise ValueError("no model to return")
         return await self.get_model(first.id)
 
     async def update_model(self, *, model_id: UUID, body: dict[str, Any]) -> dict[str, Any]:
         model = await self._require_model(model_id)
         provider = await self._provider(model)
-        patch = body.get("patch") if isinstance(body.get("patch"), dict) else body
+        raw_patch = body.get("patch")
+        patch: dict[str, Any] = raw_patch if isinstance(raw_patch, dict) else body
         pp = patch.get("provider") or {}
         if not isinstance(pp, dict):
             raise ValueError("provider must be object")  # noqa: TRY004 — request validation error
@@ -556,7 +559,7 @@ class ModelService:
             await self._validate_selection(
                 patch, (key, url, protocol, version, upstream), [upstream]
             )
-        changes = {
+        changes: dict[str, Any] = {
             k: {"before": v, "after": updated.to_admin_dict()[k]}
             for k, v in model.to_admin_dict().items()
             if k
@@ -964,7 +967,7 @@ class ModelService:
 
         if strategy == "fallback":
             # 旧行为: primary + explicit fallback list
-            chain: list[ModelId] = [primary_id]
+            chain: list[ModelId] = [ModelId(primary_id)]
             for fid in rule.fallback_model_ids:
                 try:
                     chain.append(ModelId(UUID(str(fid))))

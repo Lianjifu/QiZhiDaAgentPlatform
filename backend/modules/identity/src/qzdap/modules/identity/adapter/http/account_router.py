@@ -4,6 +4,7 @@
 
 import re
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -431,7 +432,7 @@ def build_account_router():
                 .order_by(SessionTurnORM.started_at)
             )
         ).all()
-        daily = {}
+        daily: dict[str, dict[str, Any]] = {}
         for turn, _ in rows:
             day = turn.started_at.strftime("%m-%d")
             entry = daily.setdefault(day, {"label": day, "tasks": 0, "completed": 0, "total": 0})

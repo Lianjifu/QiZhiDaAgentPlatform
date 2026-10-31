@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 
-from qzdap_messaging.bus import EventBus
+from qzdap_messaging.bus import EventBus, Handler
 from qzdap_messaging.domain_event import EventEnvelope
 
 _log = logging.getLogger("qzdap.messaging")
 
-Handler = Callable[[EventEnvelope], Awaitable[None]]
+
 
 
 class InProcessBus(EventBus):

@@ -12,6 +12,8 @@ want to probe.
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 from pydantic import PydanticUserError
 
@@ -154,7 +156,7 @@ async def test_saved_model_stream_facade_session_lifecycle(monkeypatch, outcome:
         model_credential_cipher=lambda: object(),
         session_factory=lambda: Sessions(),
     )
-    facade = Container.model_service(host)
+    facade = Container.model_service(cast("Container", host))
     stream = facade.stream(actor=actor, model_id=saved_id, req=req)
     assert (await anext(stream)).delta == "first"
     assert events == ["open"]

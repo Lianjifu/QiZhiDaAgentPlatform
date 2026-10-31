@@ -124,6 +124,7 @@ def _batch(collection: str, action: str):
                     for doc_id in ids
                 ]
                 return {"updated": len(results), "results": results}
+            patch: dict[str, Any]
             if collection == "operations.incidents":
                 patch = {"resolved": True}
             elif action in {"enable", "disable"}:

@@ -159,7 +159,7 @@ class AdminOpsService:
         )
         if runner is None:
             raise NotImplementedError("evaluation runner is not configured")
-        cases = row.get("casesList")
+        cases = row.get("casesList") or []
         results: list[dict[str, Any]] = []
         for case in cases:
             if not isinstance(case, dict) or not str(case.get("input") or "").strip():
