@@ -10,7 +10,7 @@
 - PostgreSQL 14+ (pgvector 扩展需启用)
 - Redis 6+ (事件总线 / 限流)
 - (可选) HashiCorp Vault 或 CSI 驱动管理 secrets
-- (可选) Kubernetes 1.24+ (现成 manifests 在 `infra/k8s/`)
+- (可选) Kubernetes 1.24+（⚠️ **本仓库不含 k8s manifests** ✓ —— 下面 §3.2 的命令需要你自己准备）
 
 ### 1.2 必需环境变量
 
@@ -88,8 +88,12 @@ curl http://localhost:9151/healthz
 
 ### 3.2 Kubernetes
 
+⚠️ **本仓库不含 k8s manifests** ✓ —— 下面这些文件**不在仓库里** ✓，
+需要你自己按 [`infra/envoy/nginx.compose.conf`](../infra/envoy/nginx.compose.conf)
+的 ring 切分规则编写 ✓：
+
 ```bash
-# 应用 (现成 manifests 在 .claude/worktrees/.../infra/k8s/)
+# ⚠️ 这些 manifests 需要自备 —— 仓库里没有
 kubectl apply -f infra/k8s/namespace.yaml
 kubectl apply -f infra/k8s/secret.example.yaml  # 替换占位
 kubectl apply -f infra/k8s/configmap.yaml

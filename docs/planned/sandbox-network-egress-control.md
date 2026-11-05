@@ -141,4 +141,4 @@ skill 想要 `network != "none"` 必须:
 ## 关联
 
 - 当前孤儿 column:`admin_skill_packages.network_policy` (`0005_skill.py:43-48`) — 这次顺手 reconcile
-- 安全评审: `docs/audit/` 下新建一份 `network-egress-policy.md`,作为后续审计的依据
+- 安全评审: 实施时在 `docs/architecture/` 下新建一份 `network-egress-policy.md`,作为后续审计的依据

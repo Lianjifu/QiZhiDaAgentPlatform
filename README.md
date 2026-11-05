@@ -598,7 +598,6 @@ curl http://127.0.0.1:9151/metrics     # Prometheus 指标
 | **值班手册** | [`docs/architecture/oncall-runbook.md`](./docs/architecture/oncall-runbook.md) | 告警阈值 · 排查 · 回退步骤 · 两套栈入口 |
 | **演示 / 开发数据分离** | [`docs/architecture/data-separation.md`](./docs/architecture/data-separation.md) | 两条数据通道的现状 |
 | **待实施项** | [`docs/planned/`](./docs/planned/) | 方案已写好、代码未实现的 ticket |
-| **功能审查方法论** | [`docs/audit/functional-review-methodology.md`](./docs/audit/functional-review-methodology.md) | 「怎么审」的框架 |
 | **部署说明** | [`deploy/README.md`](./deploy/README.md) · [`deploy/PRODUCTION.md`](./deploy/PRODUCTION.md) | 生产 compose · staging 沙箱 · 环境变量 |
 | **API 文档** | `http://127.0.0.1:9151/docs` (本地) | OpenAPI 自动生成 |
 | **品牌资产** | [`docs/images/brand/`](./docs/images/brand/) | Logo · 配色 · 字体 |

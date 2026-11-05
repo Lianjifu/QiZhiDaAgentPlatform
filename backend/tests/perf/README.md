@@ -4,7 +4,7 @@ asyncio + httpx scripts for measuring the two primary latency SLIs:
 
 | Script | Target | SLO |
 |---|---|---|
-| `bench_turn_latency.py` | SSE turn end-to-end P95 | [SLO-1](../../doc/slo.md) ≤ 10s |
+| `bench_turn_latency.py` | SSE turn end-to-end P95 | ≤ 10s |
 | `bench_observability_ingest.py` | event-bus → DB row P95 | micro-bench, target ≤ 5ms (in-memory) |
 
 ## bench_turn_latency
@@ -68,4 +68,8 @@ can run them against staging and post P95 to the Grafana
 
 ## SLO mapping
 
-See [`../../doc/slo.md`](../../doc/slo.md) for the SLI/SLO targets.
+| SLI | SLO |
+|---|---|
+| SSE turn end-to-end | P95 ≤ 10s |
+| event-bus → DB row | ≤ 5ms (in-memory) |
+| turn failure rate | ≤ 1% |

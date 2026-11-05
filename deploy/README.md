@@ -43,9 +43,13 @@ client requests based on the `X-QZDAP-Ring` header:
 - `X-QZDAP-Ring: canary` → port 8103
 - (no header) → port 8102
 
-See [`infra/k8s/ingress.yaml`](../infra/k8s/ingress.yaml) for the k8s
-equivalent. For compose-only dev, route manually with two A records or
-a local nginx sidecar.
+See [`infra/envoy/nginx.compose.conf`](../infra/envoy/nginx.compose.conf)
+for the compose equivalent. For compose-only dev, route manually with two
+A records or a local nginx sidecar.
+
+> ⚠️ **The repository does not ship Kubernetes manifests.** The nginx
+> compose config is the reference implementation of the ring split; port it
+> to your own `infra/k8s/` if you deploy to k8s.
 
 ## Secrets
 
