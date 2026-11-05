@@ -85,6 +85,12 @@ class AgentReleased(DomainEvent):
     eval_run_id: EvalRunId | None
     eval_score: float | None
     released_by: UserId
+    #: **版本绑的策略路由** ✓（UUID ✓）—— 随发布事件带走 ✓，这样 runtime
+    #: 那侧的 catalog agent **能拿到路由** ✓（之前这一路是断的 ✗✗ —— 版本存了
+    #: 路由，但对话路径永远读不到 ✓）。
+    route_id: UUID | None = None
+    #: **版本指定的路由策略** ✓（覆盖 route 自带的 strategy ✓）。
+    route_strategy: str | None = None
     event_id: UUID = field(default_factory=_event_id)
     occurred_at: datetime = field(default_factory=_utcnow)
     event_name: str = "agent_factory.version.released"
@@ -99,6 +105,8 @@ class AgentReleased(DomainEvent):
             "eval_run_id": str(self.eval_run_id) if self.eval_run_id else None,
             "eval_score": self.eval_score,
             "released_by": str(self.released_by),
+            "route_id": str(self.route_id) if self.route_id else None,
+            "route_strategy": self.route_strategy,
         }
 
 

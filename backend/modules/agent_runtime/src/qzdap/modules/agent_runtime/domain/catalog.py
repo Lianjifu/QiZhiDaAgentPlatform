@@ -13,6 +13,15 @@ MemoryScope = Literal["session", "user", "tenant"]
 VisibleScope = Literal["公开", "部门", "个人"]
 
 AGENT_STATUSES = frozenset({"draft", "pending", "graying", "published", "retired"})
+#: **路由策略白名单** ✓ —— 与 ``qzdap.modules.model.domain.entities`` 里的
+#: ``ROUTE_STRATEGIES`` **同一集合** ✓。
+#: ⚠️ **这里自带一份** ✓ —— domain 层**不 import peer 模块** ✓（那是分层红线
+#: ✓ —— agent_runtime 的 domain 不许依赖 model 的 domain ✗✗）。集合很小 ✓，
+#: 漂移的风险由**模型层那道兜底**压住 ✓（未知 strategy 会退化成 fallback ✓
+#: —— 不会炸 ✓）。
+ROUTE_STRATEGIES = frozenset(
+    {"quality-first", "cost-first", "latency-first", "fallback", "round-robin", "weighted"}
+)
 TONES = frozenset({"brand", "info", "success", "warn", "danger", "purple"})
 MEMORY_SCOPES = frozenset({"session", "user", "tenant"})
 VISIBLE_SCOPES = frozenset({"公开", "部门", "个人"})
@@ -20,6 +29,22 @@ VISIBLE_SCOPES = frozenset({"公开", "部门", "个人"})
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def _parse_route_id(value: Any) -> UUID | None:
+    """**路由 id 解析** ✓ —— 认 UUID ✓，认空 ✓。
+
+    ⚠️ **认不出来的当「没配」** ✓ —— 静默忽略 ✗✗ 会让调用方以为配上了 ✓；
+    这里直接**不设** ✓（退回请求里的 route_id ✓ → 再退回默认模型 ✓）。
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(str(value).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 def format_last_update(moment: datetime) -> str:
@@ -98,6 +123,13 @@ class CatalogAgent:
     flow_refs: list[dict[str, Any]] = field(default_factory=list)
     profile: dict[str, Any] | None = None
     audit_events: list[dict[str, Any]] = field(default_factory=list)
+    #: **绑定的策略路由** ✓（UUID ✓ —— 指向 ``admin_model_routes.id`` ✓）——
+    #: 「这个 agent 走哪条路由」✓（不传就走请求里指定的 ✓ → 再不传就走
+    #: 默认模型 ✓）。
+    route_id: UUID | None = None
+    #: **路由策略覆盖** ✓（覆盖 route 自带的 strategy ✓ —— 同一条路由在不同
+    #: agent 上取舍不同 ✓）。
+    route_strategy: str | None = None
 
     @classmethod
     def create(
@@ -180,6 +212,14 @@ class CatalogAgent:
             data["flow_refs"] = [item for item in patch["flowRefs"] if isinstance(item, dict)]
         if "profile" in patch and (patch["profile"] is None or isinstance(patch["profile"], dict)):
             data["profile"] = patch["profile"]
+        if "routeId" in patch:
+            data["route_id"] = _parse_route_id(patch["routeId"])
+        if "routeStrategy" in patch:
+            raw_strategy = patch["routeStrategy"]
+            strategy = str(raw_strategy).strip() if raw_strategy else ""
+            if strategy and strategy not in ROUTE_STRATEGIES:
+                raise ValueError(f"routeStrategy must be one of {sorted(ROUTE_STRATEGIES)}")
+            data["route_strategy"] = strategy or None
         data["updated_at"] = _utcnow()
         next_agent = replace(self, **data)
         if next_agent.status == "published" and self.status != "published":
@@ -218,6 +258,8 @@ class CatalogAgent:
             "memoryPolicy": dict(self.memory_policy),
             "flowRefs": list(self.flow_refs),
             "profile": self.profile,
+            "routeId": str(self.route_id) if self.route_id else None,
+            "routeStrategy": self.route_strategy,
         }
         versions.insert(
             0,
@@ -273,6 +315,8 @@ class CatalogAgent:
             "flowRefs": list(self.flow_refs),
             "profile": self.profile,
             "auditEvents": list(self.audit_events),
+            "routeId": str(self.route_id) if self.route_id else None,
+            "routeStrategy": self.route_strategy,
         }
 
     def to_catalog_dict(self) -> dict[str, Any]:

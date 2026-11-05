@@ -94,6 +94,10 @@ def build_handler(session: AsyncSession):
                 template_id,
             )
             return
+        # ⚠️ **路由绑定随发布一起搬过来** ✓ —— 版本存了 route_id ✓ 但对话
+        # 路径读不到 ✗✗（两套存储之间本来就没有桥 ✗）→ 这一行就是那道桥 ✓。
+        route_id = _parse_uuid(payload.get("route_id"))
+        route_strategy = str(payload.get("route_strategy") or "") or None
         version_tag = str(payload.get("version_tag") or "")
         new_version = _bump_version_string(agent.version, version_tag)
         eval_score = payload.get("eval_score")
@@ -133,6 +137,8 @@ def build_handler(session: AsyncSession):
             "memoryPolicy": dict(agent.memory_policy),
             "flowRefs": list(agent.flow_refs),
             "profile": agent.profile,
+            "routeId": str(route_id) if route_id else None,
+            "routeStrategy": route_strategy,
         }
         existing = [v for v in agent.versions if not v.get("current")]
         new_version_record = {
@@ -149,6 +155,8 @@ def build_handler(session: AsyncSession):
             version=new_version,
             versions=[new_version_record, *existing],
             audit_events=[*agent.audit_events, audit_event],
+            route_id=route_id,
+            route_strategy=route_strategy,
             updated_at=now,
         )
         await repo.update(updated)

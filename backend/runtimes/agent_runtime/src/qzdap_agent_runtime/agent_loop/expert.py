@@ -86,6 +86,7 @@ def decision_payload(
             "name": resolved.model_name,
             "model_id": str(resolved.model_id) if resolved.model_id else None,
             "route_id": str(resolved.route_id) if resolved.route_id else None,
+            "route_strategy": resolved.route_strategy,
             "fallback_model_ids": [str(item) for item in resolved.fallback_model_ids],
         },
         "tools": list(tool_names),
@@ -127,6 +128,7 @@ class ExpertAssembler:
         tool_names: tuple[str, ...] = (),
         model_override: str | None = None,
         route_id_override: ModelId | None = None,
+        route_strategy_override: str | None = None,
     ) -> ExpertInstance:
         """**装配一个专家** ✓（模型 ✓ + 工具 ✓）。
 
@@ -149,12 +151,15 @@ class ExpertAssembler:
             selection = replace(selection, model_name=model_override)
         if route_id_override is not None:
             selection = replace(selection, route_id=route_id_override)
+        if route_strategy_override is not None:
+            selection = replace(selection, route_strategy=route_strategy_override)
         resolved = await self._caller.resolve(
             model_name=selection.model_name,
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             model_id=selection.model_id,
             route_id=selection.route_id,
+            route_strategy=selection.route_strategy,
             fallback_model_ids=list(selection.fallback_model_ids),
         )
         model = QZDAPChatModel(
@@ -162,6 +167,7 @@ class ExpertAssembler:
             model_name=resolved.model_name or "default",
             model_id=resolved.model_id,
             route_id=resolved.route_id,
+            route_strategy=resolved.route_strategy,
             fallback_model_ids=resolved.fallback_model_ids,
             actor=actor,
         )

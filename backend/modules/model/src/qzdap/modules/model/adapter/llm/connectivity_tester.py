@@ -14,6 +14,7 @@ import httpx
 from qzdap.modules.model.application.ports import ConnectivityTester
 from qzdap_llm import ChatMessage, ChatRequest
 from qzdap_llm.providers import build_provider_client, get_provider_spec
+from qzdap_llm.retry import RetryPolicy
 
 _MAX_RESPONSE_BYTES = 65_536
 
@@ -141,6 +142,11 @@ class HttpConnectivityTester(ConnectivityTester):
                         api_version=api_version,
                         timeout_seconds=self._timeout,
                         http=http,
+                        # ⚠️ **连通性探测不重试** ✓ —— 它要的是**当下的真实
+                        # 状态码** ✓（重试会把 429 变成「等了 3 次才失败」✗✗
+                        # —— 管理侧看到的就不是上游的真实回答 ✗✗）；而且探测
+                        # 要**快** ✓（重试会翻三倍延迟 ✗✗）。
+                        retry_policy=RetryPolicy(max_attempts=1),
                     )
                     try:
                         response = await client.chat(

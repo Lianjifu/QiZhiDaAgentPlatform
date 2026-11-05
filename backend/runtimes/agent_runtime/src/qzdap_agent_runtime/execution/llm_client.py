@@ -42,6 +42,7 @@ class ResolvedModel:
     model_name: str
     model_id: ModelId | None = None
     route_id: ModelId | None = None
+    route_strategy: str | None = None
     fallback_model_ids: tuple[ModelId, ...] = ()
 
     @property
@@ -70,6 +71,7 @@ class LLMCaller:
         workspace_id: UUID,
         model_id: ModelId | None = None,
         route_id: ModelId | None = None,
+        route_strategy: str | None = None,
         fallback_model_ids: Sequence[ModelId] | None = None,
     ) -> ResolvedModel:
         """**取值链** ✓ —— 查表 ✓（不是决策 ✓）。
@@ -83,6 +85,7 @@ class LLMCaller:
                 model_name=model_name,
                 model_id=model_id,
                 route_id=route_id,
+                route_strategy=route_strategy,
                 fallback_model_ids=fallback,
             )
         if model_id is None and _looks_uuid(model_name):
@@ -93,6 +96,7 @@ class LLMCaller:
             return ResolvedModel(
                 model_name=model_name,
                 model_id=model_id,
+                route_strategy=route_strategy,
                 fallback_model_ids=fallback,
             )
         if self._resolver is not None and model_name:
@@ -108,9 +112,14 @@ class LLMCaller:
             return ResolvedModel(
                 model_name=model_name,
                 model_id=resolved,
+                route_strategy=route_strategy,
                 fallback_model_ids=fallback,
             )
-        return ResolvedModel(model_name=model_name, fallback_model_ids=fallback)
+        return ResolvedModel(
+            model_name=model_name,
+            route_strategy=route_strategy,
+            fallback_model_ids=fallback,
+        )
 
     async def stream(
         self,
@@ -128,6 +137,7 @@ class LLMCaller:
             request,
             model_id=resolved.model_id,
             route_id=resolved.route_id,
+            route_strategy=resolved.route_strategy,
             fallback_model_ids=list(resolved.fallback_model_ids) or None,
             actor=actor,
         )

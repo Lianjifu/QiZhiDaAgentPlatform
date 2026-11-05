@@ -205,6 +205,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from qzdap.modules.agent_runtime.adapter.persistence.session_messages import (
         PostgresSessionMessageStore,
     )
+    from qzdap.modules.agent_runtime.adapter.tools.agent_decision_store import (
+        JournalAgentDecisionStore,
+    )
     from qzdap.modules.agent_runtime.adapter.turn.cancel import SqlCancelProbe
     from qzdap.modules.agent_runtime.adapter.turn.executor import SessionGraphExecutor
     from qzdap.modules.agent_runtime.adapter.turn.lifecycle import TurnLifecycle
@@ -369,6 +372,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 # ``session_artifacts`` ✓（迁移 0064 ✓）—— **跟着会话走** ✓
                 # —— 与轮次**同事务** ✓（同一个 session ✓）。
                 artifact_store=PostgresArtifactStore(session),
+                # ⚠️ **专家选择的留痕** ✓ —— 之前这套实现**零调用方** ✓ →
+                # ``session_turns.agent_decision`` **恒为 NULL** ✗✗
+                # （事件流里也看不到「选了谁」✗）。
+                agent_decision_store=JournalAgentDecisionStore(container.session_journal()),
             )
             _ = (TenantId, UserId, WorkspaceId)
             sessions_repo = SqlSessionRepository(session)
@@ -611,6 +618,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     from qzdap.modules.model.application.services import (
         ModelService as CatalogModelService,
     )
+    from qzdap_llm.retry import RetryPolicy
 
     class _ModelFactory:
         def for_session(self, session):  # type: ignore[no-untyped-def]
@@ -627,6 +635,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 cipher=cipher,
                 client_factory=build_default_client_factory(
                     request_timeout_seconds=container.settings.model_invocation_timeout_seconds,
+                    retry_policy=RetryPolicy(
+                        max_attempts=container.settings.llm_retry_max_attempts,
+                        base_delay_seconds=container.settings.llm_retry_base_delay_seconds,
+                        max_delay_seconds=container.settings.llm_retry_max_delay_seconds,
+                    ),
                 ),
                 prober=HttpCatalogProber(),
                 connectivity_tester=HttpConnectivityTester(),

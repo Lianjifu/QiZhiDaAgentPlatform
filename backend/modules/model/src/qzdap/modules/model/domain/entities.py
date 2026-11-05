@@ -320,6 +320,7 @@ class RouteRule:
         priority: int,
         primary_model_id: UUID,
         description: str,
+        fallback_model_ids: list[str | dict[str, Any]] | None = None,
     ) -> Self:
         now = _utcnow()
         return cls(
@@ -331,7 +332,7 @@ class RouteRule:
             strategy=strategy if strategy in ROUTE_STRATEGIES else "quality-first",
             priority=int(priority),
             primary_model_id=primary_model_id,
-            fallback_model_ids=[],
+            fallback_model_ids=list(fallback_model_ids or []),
             enabled=True,
             description=description or "",
             created_at=now,

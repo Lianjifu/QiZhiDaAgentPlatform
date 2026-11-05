@@ -112,6 +112,14 @@ class CatalogAgentORM(TenantScopedMixin, Base):
     profile: Mapped[dict | None] = mapped_column(
         JSONB, nullable=True, default=None, server_default=text("NULL")
     )
+    # ⚠️ **策略路由绑定** ✓（迁移 0066 ✓）—— 「这个 agent 走哪条路由」✓
+    # （之前只能靠 HTTP 请求体临时传 ✓ → 换个客户端就没了 ✗✗）。
+    route_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), nullable=True, default=None, server_default=text("NULL")
+    )
+    route_strategy: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, default=None, server_default=text("NULL")
+    )
 
     __table_args__ = (
         Index(

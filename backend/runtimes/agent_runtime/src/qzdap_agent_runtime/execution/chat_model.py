@@ -57,6 +57,8 @@ class QZDAPChatModel(BaseChatModel):
     model_id: ModelId | None = None
     #: **策略路由 id** ✓（**优先于** ``model_id`` ✓ —— §5.2.1 第 3 条 ✓）。
     route_id: ModelId | None = None
+    #: **路由策略覆盖** ✓（同一路由在不同 agent 上取舍不同 ✓）。
+    route_strategy: str | None = None
     #: **失败转移链** ✓（primary + fallback ✓ —— §5.2.1 第 5 条 ✓）。
     fallback_model_ids: tuple[ModelId, ...] = ()
     #: 调用者身份 ✓（**真实用户** ✓ —— Stage 2 的治理要用 ✓）。
@@ -73,6 +75,7 @@ class QZDAPChatModel(BaseChatModel):
             "model_name": self.model_name,
             "model_id": str(self.model_id) if self.model_id else None,
             "route_id": str(self.route_id) if self.route_id else None,
+            "route_strategy": self.route_strategy,
         }
 
     # ── 流式 ────────────────────────────────────────────────────────────
@@ -100,6 +103,7 @@ class QZDAPChatModel(BaseChatModel):
             request,
             model_id=self.model_id,
             route_id=self.route_id,
+            route_strategy=self.route_strategy,
             fallback_model_ids=list(self.fallback_model_ids) or None,
             actor=self.actor,
         )

@@ -21,6 +21,7 @@ Reason（模型流式输出 ✓）
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -50,6 +51,8 @@ from .observe import Observer, ToolOutcome
 from .reason import Reasoner
 from .state import LoopState
 from .todos import parse_todos, render_todos
+
+_log = logging.getLogger(__name__)
 
 LoopEventKind = Literal[
     "text",
@@ -161,17 +164,47 @@ class AgentLoopRunner:
         messages: Sequence[BaseMessage],
         tools: Sequence[BoundTool],
         cancelled: Callable[[], bool] | None = None,
+        # ⚠️ **异步取消探测** ✓ —— 每步之前 await 一次 ✓。
+        # ⚠️ **为什么不能只靠 ``cancelled``** ✓ —— 那是**同步**回调 ✓
+        # —— 跨进程的取消标记要查 DB ✓ → 必须 await ✓。
+        # ⚠️ **两个都传** ✓ —— 同步的给兼容 ✓ / 异步的更准 ✓。
+        cancel_probe: Callable[[], Awaitable[bool]] | None = None,
     ) -> AsyncIterator[LoopEvent]:
         """**跑一轮** ✓（产出事件流 ✓）。"""
         state = LoopState(messages=list(messages))
         reasoner = self._reasoner
         step_tools = list(tools)
         by_name = {bound.tool.name: bound for bound in step_tools}
+        # ⚠️ **取消状态的缓存** ✓ —— 同步回调读它 ✓（探测是异步的 ✓）。
+        cancel_state = {"cancelled": False}
+
+        async def _check_cancel() -> bool:
+            """**这一轮被取消了吗** ✓（同步版 ✓）—— 读缓存 ✓。"""
+            if cancel_probe is not None:
+                try:
+                    cancel_state["cancelled"] = bool(await cancel_probe())
+                except Exception as exc:  # defensive
+                    # ⚠️ **探测失败不当作取消** ✓（误杀比漏杀更糟 ✗✗）。
+                    _log.warning("cancel probe failed, treating as not cancelled: %s", exc)
+            elif cancelled is not None:
+                try:
+                    cancel_state["cancelled"] = bool(cancelled())
+                except Exception as exc:  # defensive
+                    _log.warning("cancel check failed, treating as not cancelled: %s", exc)
+            return bool(cancel_state["cancelled"])
+
         while True:
             state.step += 1
             state.tool_calls = []
             state.step_input_tokens = 0
             state.step_output_tokens = 0
+            # ⚠️ **每步之前查一次取消** ✓ —— 用户点「停止生成」✓ 要**立刻**
+            # 生效 ✓（之前只在收到 chunk 时查 ✓ —— 长流式生成期间无响应 ✗）。
+            if await _check_cancel():
+                termination = self._evaluator.evaluate(state, cancelled=True)
+                async for event in self._finish(state, termination):
+                    yield event
+                return
             # ⚠️ **每步重选专家** ✓ —— 装配器按**这一步的上下文**选 ✓
             # （之前专家**一轮只装一次** ✓ → 后面几步都在用第一个专家 ✗✗）。
             # ⚠️ **换专家时工具集也换** ✓ —— 专家的工具集是它自己的 ✓。

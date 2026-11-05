@@ -186,7 +186,13 @@ class TurnEntryService:
             history=hist_msgs,
             model=model_used,
             resume=context.resume,
-            route_id=context.route_id,
+            # ⚠️ **请求里的 route_id 优先** ✓；没有就**用 agent 自己绑的**
+            # ✓（迁移 0066 ✓）—— 「这个 agent 走哪条路由」是 agent 的配置 ✓
+            # 不是每轮现传的东西 ✓。
+            route_id=context.route_id
+            or (ModelId(agent_row.route_id) if agent_row.route_id else None),
+            # ⚠️ **策略覆盖跟着路由一起走** ✓（agent 配了就用 agent 的 ✓）。
+            route_strategy=agent_row.route_strategy,
             # ⚠️ **摘要只读新列** ✓（Context 方案 §5.1 ✓）—— 旧副本
             # （``metadata`` 里的 ✓）的读写点**已全部归零** ✓（迁移 0047
             # 已把历史行回填 ✓）。

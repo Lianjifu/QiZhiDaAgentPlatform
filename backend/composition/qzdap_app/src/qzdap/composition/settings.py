@@ -249,6 +249,11 @@ class Settings(BaseSettings):
     model_quota_default_max_requests: int = 1000
     model_quota_default_max_tokens: int = 2_000_000
     model_invocation_timeout_seconds: float = 30.0
+    # ⚠️ **LLM 上游重试** ✓ —— 只对瞬时错误 ✓（限流 / 5xx / 连接错 ✓）；
+    # ⚠️ **流式吐过字之后不重试** ✓（重放会重复吐字 ✗✗）。
+    llm_retry_max_attempts: int = 3
+    llm_retry_base_delay_seconds: float = 0.2
+    llm_retry_max_delay_seconds: float = 5.0
 
     # P6 channel
     channel_webhook_signature_tolerance_seconds: int = 300

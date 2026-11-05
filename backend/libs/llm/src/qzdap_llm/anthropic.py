@@ -10,6 +10,7 @@ import httpx
 from qzdap_kernel.error_codes import ErrorCode
 from qzdap_llm.client import ChatMessage, ChatRequest, ChatResponse, LLMChunk, Usage
 from qzdap_llm.config import LLMConfig
+from qzdap_llm.retry import RetryPolicy
 from qzdap_llm.transport import HTTPProviderClient, ProviderTransportError
 
 
@@ -104,12 +105,19 @@ def _payload(req: ChatRequest, *, stream: bool) -> dict:
 class AnthropicClient(HTTPProviderClient):
     name = "anthropic"
 
-    def __init__(self, config: LLMConfig, *, http: httpx.AsyncClient | None = None):
+    def __init__(
+        self,
+        config: LLMConfig,
+        *,
+        http: httpx.AsyncClient | None = None,
+        retry_policy: RetryPolicy | None = None,
+    ):
         super().__init__(
             base_url=config.base_url,
             headers={"x-api-key": config.api_key, "anthropic-version": "2023-06-01"},
             timeout_seconds=config.timeout_seconds,
             http=http,
+            retry_policy=retry_policy,
         )
 
     @property

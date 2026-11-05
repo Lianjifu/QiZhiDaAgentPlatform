@@ -51,6 +51,7 @@ class _FakeLLM:
         *,
         model_id: ModelId | None = None,
         route_id: ModelId | None = None,
+        route_strategy: str | None = None,
         fallback_model_ids: list[ModelId] | None = None,
         actor: ActorContext | None = None,
     ) -> AsyncIterator[LLMChunk]:
@@ -66,10 +67,11 @@ class _EchoLLM:
         *,
         model_id: ModelId | None = None,
         route_id: ModelId | None = None,
+        route_strategy: str | None = None,
         fallback_model_ids: list[ModelId] | None = None,
         actor: ActorContext | None = None,
     ) -> AsyncIterator[LLMChunk]:
-        _ = (model_id, route_id, fallback_model_ids, actor)
+        _ = (model_id, route_id, route_strategy, fallback_model_ids, actor)
         yield LLMChunk(model=request.model, delta="你好")
 
 

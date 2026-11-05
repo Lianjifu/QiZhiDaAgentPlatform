@@ -73,6 +73,7 @@ class RuntimeLLMPort:
         *,
         model_id: Any = None,
         route_id: Any = None,
+        route_strategy: str | None = None,
         fallback_model_ids: list[Any] | None = None,
         actor: ActorContext | None = None,
     ) -> AsyncIterator[Any]:
@@ -85,6 +86,7 @@ class RuntimeLLMPort:
             request,
             model_id=model_id,
             route_id=route_id,
+            route_strategy=route_strategy,
             fallback_model_ids=fallback_model_ids,
             actor=actor,
         )
@@ -95,6 +97,7 @@ class RuntimeLLMPort:
         *,
         model_id: Any,
         route_id: Any,
+        route_strategy: str | None,
         fallback_model_ids: list[Any] | None,
         actor: ActorContext | None,
     ) -> AsyncIterator[Any]:
@@ -106,6 +109,7 @@ class RuntimeLLMPort:
                 request,
                 model_id=model_id,
                 route_id=route_id,
+                route_strategy=route_strategy,
                 fallback_model_ids=fallback_model_ids,
                 actor=to_vault_actor(actor),
             ):

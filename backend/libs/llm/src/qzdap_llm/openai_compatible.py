@@ -15,19 +15,27 @@ from qzdap_llm.client import (
     Usage,
 )
 from qzdap_llm.config import LLMConfig
+from qzdap_llm.retry import RetryPolicy
 from qzdap_llm.transport import HTTPProviderClient, ProviderTransportError
 
 
 class OpenAICompatibleClient(HTTPProviderClient):
     name = "openai_compatible"
 
-    def __init__(self, config: LLMConfig, *, http: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        config: LLMConfig,
+        *,
+        http: httpx.AsyncClient | None = None,
+        retry_policy: RetryPolicy | None = None,
+    ) -> None:
         self._cfg = config
         super().__init__(
             base_url=config.base_url,
             headers={"Authorization": f"Bearer {config.api_key}"} if config.api_key else {},
             timeout_seconds=config.timeout_seconds,
             http=http,
+            retry_policy=retry_policy,
         )
 
     def _chat_path(self, model: str) -> str:

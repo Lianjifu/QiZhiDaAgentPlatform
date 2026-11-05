@@ -40,6 +40,7 @@ class _ScriptedLLM:
         *,
         model_id: ModelId | None = None,
         route_id: ModelId | None = None,
+        route_strategy: str | None = None,
         fallback_model_ids: list[ModelId] | None = None,
         actor: ActorContext | None = None,
     ) -> AsyncIterator[LLMChunk]:
@@ -48,6 +49,7 @@ class _ScriptedLLM:
                 "model": request.model,
                 "model_id": model_id,
                 "route_id": route_id,
+                "route_strategy": route_strategy,
                 "fallback_model_ids": fallback_model_ids,
                 "actor": actor,
             }

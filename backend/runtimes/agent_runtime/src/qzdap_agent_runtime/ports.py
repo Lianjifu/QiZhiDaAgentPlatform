@@ -212,6 +212,7 @@ class LLMPort(Protocol):
         model_id: ModelId | None = None,
         route_id: ModelId | None = None,
         fallback_model_ids: list[ModelId] | None = None,
+        route_strategy: str | None = None,
         actor: ActorContext | None = None,
     ) -> AsyncIterator[LLMChunk]:
         """流式产出增量 ✓（工具调用的 delta 分片到达 ✓ —— §5.2.2 ✓）。"""
@@ -297,6 +298,9 @@ class AgentSelection:
     model_id: ModelId | None = None
     #: **专家配置里绑的策略路由** ✓（**优先于** `model_id` ✓ —— §5.2.1 第 3 条 ✓）。
     route_id: ModelId | None = None
+    #: **专家配置里指定的路由策略** ✓（覆盖 route 自带的 strategy ✓ —— 同一
+    #: 条路由在不同 agent 上可以有不同取舍 ✓）。
+    route_strategy: str | None = None
     #: **失败转移链** ✓（§5.2.1 第 5 条 ✓ —— 交给端口执行 ✓）。
     fallback_model_ids: tuple[ModelId, ...] = ()
 

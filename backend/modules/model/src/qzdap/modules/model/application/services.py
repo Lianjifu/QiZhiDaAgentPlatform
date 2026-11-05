@@ -643,6 +643,14 @@ class ModelService:
         primary = await self._require_model(UUID(str(body.get("primaryModelId"))))
         if primary.tenant_id != tenant_id or primary.workspace_id != workspace_id:
             raise ModelNotFound("model not found")
+        # ⚠️ **失败转移链现在能配了** ✓ —— 之前 ``fallback_model_ids`` 恒为
+        # 空列表 ✓ → ``fallback`` 策略下链只有 primary 一个 ✓ → 所谓「转移」
+        # **从来没发生过** ✗✗。
+        fallbacks = await self._resolve_fallback_ids(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            raw=body.get("fallbackModelIds"),
+        )
         route = RouteRule.create(
             id=uuid4(),
             tenant_id=tenant_id,
@@ -653,9 +661,45 @@ class ModelService:
             priority=int(body.get("priority") or 0),
             primary_model_id=primary.id,
             description=str(body.get("description") or ""),
+            fallback_model_ids=fallbacks,
         )
         await self._routes.add(route)
         return route.to_admin_dict()
+
+    async def _resolve_fallback_ids(
+        self, *, tenant_id: UUID, workspace_id: UUID, raw: Any
+    ) -> list[str]:
+        """**校验失败转移链上的模型** ✓ —— 每个都必须是**本租户本工作区**的
+        模型 ✓。
+
+        ⚠️ **认两种形状** ✓ —— 纯 id 列表 ✓（``["uuid", ...]`` ✓）与
+        带权重的 dict 列表 ✓（``[{"id": ..., "weight": 2.0}, ...]`` ✓ ——
+        ``weighted`` 策略要用 ✓）。
+        """
+        if not raw:
+            return []
+        if not isinstance(raw, list):
+            raise TypeError("fallbackModelIds must be a list")
+        out: list[str | dict[str, Any]] = []
+        for item in raw:
+            if isinstance(item, dict):
+                raw_id = item.get("id")
+                weight = item.get("weight", 1.0)
+            else:
+                raw_id = item
+                weight = 1.0
+            try:
+                model_id = UUID(str(raw_id))
+            except (TypeError, ValueError):
+                raise ValueError(f"fallbackModelIds contains an invalid id: {raw_id!r}") from None
+            model = await self._require_model(model_id)
+            if model.tenant_id != tenant_id or model.workspace_id != workspace_id:
+                raise ModelNotFound("fallback model not found")
+            if isinstance(item, dict):
+                out.append({"id": str(model_id), "weight": float(weight)})
+            else:
+                out.append(str(model_id))
+        return out
 
     async def toggle_route(self, route_id: UUID) -> dict[str, Any]:
         route = await self._routes.get(route_id)
@@ -928,7 +972,7 @@ class ModelService:
     _rr_counters: ClassVar[dict[tuple[UUID, UUID], int]] = {}
 
     async def select_chain_for_strategy(
-        self, *, actor: ActorContext, route_id: ModelId
+        self, *, actor: ActorContext, route_id: ModelId, strategy: str | None = None
     ) -> list[ModelId]:
         """Phase 7: 策略路由选择.
 
@@ -960,13 +1004,25 @@ class ModelService:
         if not active:
             raise ModelNotFound("no active models in workspace")
 
-        strategy = rule.strategy
+        # ⚠️ **agent 可以覆盖 route 自带的 strategy** ✓ —— 同一条路由在不同
+        # agent 上取舍不同 ✓（例：同一个 route，客服 agent 走 cost-first ✓，
+        # 研发 agent 走 quality-first ✓）。
+        if strategy and strategy != rule.strategy:
+            _log.info(
+                "route_strategy_override",
+                extra={
+                    "route_id": str(route_id),
+                    "route_strategy": rule.strategy,
+                    "strategy": strategy,
+                },
+            )
+        effective_strategy = strategy or rule.strategy
         primary_id = UUID(str(rule.primary_model_id))
 
         # 找到 primary 在 active 里的位置
         primary_in_active = next((m for m in active if m.id == primary_id), None)
 
-        if strategy == "fallback":
+        if effective_strategy == "fallback":
             # 旧行为: primary + explicit fallback list
             chain: list[ModelId] = [ModelId(primary_id)]
             for fid in rule.fallback_model_ids:
@@ -976,7 +1032,7 @@ class ModelService:
                     continue
             return chain
 
-        if strategy == "quality-first":
+        if effective_strategy == "quality-first":
             tier_order = {"premium": 0, "balanced": 1, "economy": 2}
             sorted_models = sorted(
                 active,
@@ -986,16 +1042,16 @@ class ModelService:
                     m.latency_ms,
                 ),
             )
-        elif strategy == "cost-first":
+        elif effective_strategy == "cost-first":
             sorted_models = sorted(
                 active,
                 key=lambda m: (m.price_in + m.price_out, m.latency_ms),
             )
-        elif strategy == "latency-first":
+        elif effective_strategy == "latency-first":
             sorted_models = sorted(active, key=lambda m: (m.latency_ms, m.price_in))
         else:
             # 未知 strategy 当 fallback 处理
-            _log.warning("unknown_strategy_fallback", extra={"strategy": strategy})
+            _log.warning("unknown_strategy_fallback", extra={"strategy": effective_strategy})
             sorted_models = active
 
         # primary 排第一 (如果它在 active 里)
@@ -1009,14 +1065,14 @@ class ModelService:
             chain = [m.id for m in sorted_models]
 
         # Phase 21: round-robin / weighted — 替换 fallback 段
-        if strategy == "round-robin":
+        if effective_strategy == "round-robin":
             return self._apply_round_robin(
                 workspace_id=actor.workspace_id,  # type: ignore[arg-type]
                 route_id=UUID(str(route_id)),
                 chain=chain,
                 primary_id=primary_id,
             )
-        if strategy == "weighted":
+        if effective_strategy == "weighted":
             return self._apply_weighted(
                 chain=chain,
                 primary_id=primary_id,
@@ -1121,10 +1177,20 @@ class ModelService:
 
     # 给 facade 暴露新方法 (Phase 7): 用 route_id 走策略选择 + fallback chain
     async def stream_with_route(
-        self, *, actor: ActorContext, route_id: ModelId, req: ChatRequest
+        self,
+        *,
+        actor: ActorContext,
+        route_id: ModelId,
+        req: ChatRequest,
+        strategy: str | None = None,
     ) -> AsyncIterator[LLMChunk]:
-        """Phase 7: 策略路由 stream. select_chain_for_strategy 选链, 走 stream_with_fallback."""
-        chain = await self.select_chain_for_strategy(actor=actor, route_id=route_id)
+        """Phase 7: 策略路由 stream. select_chain_for_strategy 选链, 走 stream_with_fallback.
+
+        ⚠️ ``strategy`` 是 **agent 侧的覆盖值** ✓（不传就用 route 自带的 ✓）。
+        """
+        chain = await self.select_chain_for_strategy(
+            actor=actor, route_id=route_id, strategy=strategy
+        )
         if not chain:
             from qzdap.modules.model.domain.errors import ModelNotFound
 

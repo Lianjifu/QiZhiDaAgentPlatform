@@ -33,7 +33,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from time import monotonic
 from typing import Any, Protocol, runtime_checkable
@@ -89,6 +89,15 @@ class AgentSnapshot:
     raw: Any = None
 
 
+@runtime_checkable
+class CancelProbePort(Protocol):
+    """取消标记（实现在模块侧 ✓）。"""
+
+    async def is_cancel_requested(self, *, session_id: UUID) -> bool:
+        """用户是否请求停止这一轮 ✓（跨进程可见）。"""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class TurnRequest:
     """一轮的**输入** —— 由模块侧组装（读都在那边 ✓）。"""
@@ -106,6 +115,8 @@ class TurnRequest:
     model: str | None = None
     resume: dict[str, Any] | None = None
     route_id: ModelId | None = None
+    #: **路由策略覆盖** ✓（agent 自带的 ✓ —— 覆盖 route 自带的 strategy ✓）。
+    route_strategy: str | None = None
     rolling_summary: str = ""
     session_metadata: Mapping[str, Any] = field(default_factory=dict)
     #: **续传状态** ✓（上一轮的循环状态 ✓）—— ⚠️ **不再存 ``graph_state`` 列**
@@ -126,6 +137,13 @@ class TurnRequest:
     #: 挂起一个**永远不会被批准**的审批 ✓ = **这一轮永远卡住** ✗✗ →
     #: **需要审批的工具不暴露给模型** ✓ + 真被调到就**明确拒绝** ✓。
     allow_approval: bool = True
+    #: **取消探测** ✓（循环内要用 ✓）—— ⚠️ **之前没传** ✓ →
+    #: 循环里的取消条件①**永远为 False** ✗✗（用户点「停止生成」✓
+    #: 轮次内部不知道 ✓ —— 只有 turn_runner 在**收到 chunk 时**查一次 ✗
+    #: —— 长流式生成期间无响应 ✓）。
+    #:
+    #: ⚠️ **端口在实现侧** ✓ —— 契约层不碰 DB ✓。
+    cancel_probe: CancelProbePort | None = None
 
 
 @runtime_checkable
@@ -210,15 +228,6 @@ class SessionStatePort(Protocol):
         ⚠️ **续传状态归 ``metadata["resume"]``** ✓（不再有 ``graph_state``
         列 ✓ —— 台账 **X3** ✓）。
         """
-        ...
-
-
-@runtime_checkable
-class CancelProbePort(Protocol):
-    """取消标记（实现在模块侧 ✓）。"""
-
-    async def is_cancel_requested(self, *, session_id: UUID) -> bool:
-        """用户是否请求停止这一轮 ✓（跨进程可见）。"""
         ...
 
 
@@ -411,6 +420,12 @@ class TurnRunner:
         # ⚠️ **必须累加**：done 分支写回的是「快照 + 全部修改」，
         # 否则会把标题分支刚设的标题覆盖回旧值 ✗✗。
         metadata = dict(request.session_metadata)
+
+        # ⚠️ **取消探测装进请求** ✓ —— 循环内要用它 ✓（取消条件① ✓）。
+        # ⚠️ **这里做** ✓ —— probe 是本类的 ✓（它持有跨进程的取消标记 ✓）
+        # —— 模块侧组装请求时还没有它 ✓。
+        if request.cancel_probe is None:
+            request = replace(request, cancel_probe=self._cancel)
 
         await self._lifecycle.start_turn(request=request)
 

@@ -62,6 +62,8 @@ def _to_domain(row: CatalogAgentORM) -> CatalogAgent:
         memory_policy=dict(row.memory_policy or {}),
         flow_refs=list(row.flow_refs or []),
         profile=dict(row.profile) if row.profile else None,
+        route_id=row.route_id,
+        route_strategy=row.route_strategy,
     )
 
 
@@ -97,6 +99,8 @@ def _apply(row: CatalogAgentORM, agent: CatalogAgent) -> None:
     row.memory_policy = dict(agent.memory_policy)
     row.flow_refs = list(agent.flow_refs)
     row.profile = dict(agent.profile) if agent.profile else None
+    row.route_id = agent.route_id
+    row.route_strategy = agent.route_strategy
     row.updated_at = agent.updated_at
 
 

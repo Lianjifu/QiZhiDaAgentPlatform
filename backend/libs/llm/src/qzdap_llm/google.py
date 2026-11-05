@@ -11,6 +11,7 @@ import httpx
 from qzdap_kernel.error_codes import ErrorCode
 from qzdap_llm.client import ChatMessage, ChatRequest, ChatResponse, LLMChunk, Usage
 from qzdap_llm.config import LLMConfig
+from qzdap_llm.retry import RetryPolicy
 from qzdap_llm.transport import HTTPProviderClient, ProviderTransportError
 
 
@@ -157,12 +158,19 @@ def _parse(data: dict, model: str, *, tool_offset: int = 0) -> ChatResponse:
 class GoogleClient(HTTPProviderClient):
     name = "google"
 
-    def __init__(self, config: LLMConfig, *, http: httpx.AsyncClient | None = None):
+    def __init__(
+        self,
+        config: LLMConfig,
+        *,
+        http: httpx.AsyncClient | None = None,
+        retry_policy: RetryPolicy | None = None,
+    ):
         super().__init__(
             base_url=config.base_url,
             headers={"x-goog-api-key": config.api_key},
             timeout_seconds=config.timeout_seconds,
             http=http,
+            retry_policy=retry_policy,
         )
 
     def _path(self, model: str, *, stream: bool) -> str:

@@ -21,6 +21,7 @@ from qzdap_llm.providers import (
     get_provider_spec,
     list_provider_specs,
 )
+from qzdap_llm.retry import RetryPolicy
 from qzdap_llm.router import LLMRouter
 from qzdap_llm.transport import ProviderTransportError
 
@@ -40,6 +41,7 @@ __all__ = [
     "OpenAICompatibleClient",
     "ProviderSpec",
     "ProviderTransportError",
+    "RetryPolicy",
     "Usage",
     "build_provider_client",
     "embed",

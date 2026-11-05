@@ -19,6 +19,7 @@ from qzdap_llm.client import LLMClient
 from qzdap_llm.config import LLMConfig, LLMProvider
 from qzdap_llm.google import GoogleClient
 from qzdap_llm.openai_compatible import OpenAICompatibleClient
+from qzdap_llm.retry import RetryPolicy
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +71,7 @@ def build_provider_client(
     api_version: str = "",
     timeout_seconds: float = 30,
     http: httpx.AsyncClient | None = None,
+    retry_policy: RetryPolicy | None = None,
 ) -> LLMClient:
     spec = get_provider_spec(protocol)
     url = base_url.strip() or spec.default_base_url
@@ -97,9 +99,11 @@ def build_provider_client(
         timeout_seconds=timeout_seconds,
     )
     if spec.transport == "anthropic":
-        return AnthropicClient(config, http=http)
+        return AnthropicClient(config, http=http, retry_policy=retry_policy)
     if spec.transport == "google":
-        return GoogleClient(config, http=http)
+        return GoogleClient(config, http=http, retry_policy=retry_policy)
     if spec.transport == "azure":
-        return AzureOpenAIClient(config, api_version=api_version, http=http)
-    return OpenAICompatibleClient(config, http=http)
+        return AzureOpenAIClient(
+            config, api_version=api_version, http=http, retry_policy=retry_policy
+        )
+    return OpenAICompatibleClient(config, http=http, retry_policy=retry_policy)

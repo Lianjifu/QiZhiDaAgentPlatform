@@ -167,7 +167,14 @@ class _PricingLLM:
     """LLM fake that accepts the saved-model call shape."""
 
     async def stream(
-        self, req, *, model_id=None, route_id=None, actor=None, fallback_model_ids=None
+        self,
+        req,
+        *,
+        model_id=None,
+        route_id=None,
+        route_strategy=None,
+        actor=None,
+        fallback_model_ids=None,
     ):
         yield LLMChunk(model=req.model, delta="ok")
         yield LLMChunk(

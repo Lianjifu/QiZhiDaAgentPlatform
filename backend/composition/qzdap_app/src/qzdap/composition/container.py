@@ -644,7 +644,7 @@ class Container:
                         raise
 
             async def stream_with_route(  # type: ignore[no-untyped-def]
-                self, *, actor, route_id, req
+                self, *, actor, route_id, req, strategy=None
             ):
                 """Phase 7: 策略路由 stream. route_id → select_chain_for_strategy → stream_with_fallback."""
                 from contextlib import aclosing
@@ -662,7 +662,12 @@ class Container:
                     )
                     try:
                         async with aclosing(
-                            svc.stream_with_route(actor=actor, route_id=ModelId(route_id), req=req)
+                            svc.stream_with_route(
+                                actor=actor,
+                                route_id=ModelId(route_id),
+                                req=req,
+                                strategy=strategy,
+                            )
                         ) as stream:
                             async for chunk in stream:
                                 yield chunk

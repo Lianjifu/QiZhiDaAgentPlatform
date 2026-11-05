@@ -126,6 +126,9 @@ class SessionGraphRunner:
         # ``session_artifacts`` ✓（迁移 0064 ✓）—— **跟着会话走** ✓。
         # ⚠️ **没有它就不落库** ✓（测试里没有库 ✓ → 产物卡片不发 ✓）。
         artifact_store: ArtifactStore | None = None,
+        # ⚠️ **专家选择的留痕口** ✓ —— 之前**没人实例化** ✓ → 那套实现是
+        # 死的 ✗✗（``session_turns.agent_decision`` **恒为 NULL** ✗）。
+        agent_decision_store: Any | None = None,
     ) -> None:
         self._llm = llm
         self._skill_port = skill_port
@@ -138,6 +141,7 @@ class SessionGraphRunner:
         self._catalog_model_resolver = catalog_model_resolver
         self._context_manifest_store = context_manifest_store
         self._artifact_store = artifact_store
+        self._agent_decision_store = agent_decision_store
         # ⚠️ **专家装配器** ✓（Agent Stage 4 ✓）—— **请求作用域** ✓ ——
         # 绑定集与工具运行时都绑着租户 / 工作区 / 用户 ✓ → **按请求装配** ✓
         # （不是全局单例 ✗ —— 那样会串租户 ✗✗）。
@@ -232,6 +236,9 @@ class SessionGraphRunner:
         resume: dict[str, Any] | None = None,
         # Phase 12: 策略路由 ID (UUID). 优先于 model — 走 Phase 7 select_chain_for_strategy.
         route_id: ModelId | None = None,
+        # ⚠️ **路由策略覆盖** ✓（agent 自带一条路由 ✓ 但想换取舍 ✓ —— 比如
+        # 同一个 route 客服 agent 走 cost-first ✓ 研发 agent 走 quality-first ✓）。
+        route_strategy: str | None = None,
         # Phase 14: 父 session id. delegate_to_agent 工具需要用它 spawn sub-session.
         # 默认 None — 测试 / 评估场景没有父 session.
         session_id: UUID | None = None,
@@ -241,6 +248,9 @@ class SessionGraphRunner:
         # ⚠️ **这一轮能不能挂起审批** ✓ —— IM 渠道是 False ✓（没有人能完成
         # 审批 ✓ → 挂起 = 这一轮卡死 ✗✗）→ **需要审批的工具不暴露** ✓。
         allow_approval: bool = True,
+        # ⚠️ **取消探测** ✓（循环内的取消条件① ✓）—— 之前没传 ✓ → 那条
+        # 条件**永远为 False** ✗✗（用户点「停止生成」✓ 轮次内部不知道 ✓）。
+        cancel_probe: Any | None = None,
         # ⚠️ **本轮的降级标记盒子** ✓（C-22 ✓）—— 由 ``run_graph`` 建 ✓，
         # 这里**装配完**就填 ✓（第一块产出之前 ✓ → 每块都带得上 ✓）。
         flags_box: dict[str, tuple[str, ...]] | None = None,
@@ -272,12 +282,25 @@ class SessionGraphRunner:
             agent=agent,
             model=model,
             route_id=route_id,
+            route_strategy=route_strategy,
             user_input=user_input,
             history_count=len(history),
             actor=actor,
             protected=protected,
             allow_approval=allow_approval,
         )
+        # ⚠️ **专家选择的留痕** ✓ —— 载荷已经造好了 ✓（``expert.decision``
+        # ✓）—— 之前**没人写** ✗✗ → ``session_turns.agent_decision``
+        # **恒为 NULL** ✗ → 事件流里看不到「选了谁」✗。
+        if self._agent_decision_store is not None:
+            try:
+                await self._agent_decision_store.record(
+                    turn_id=turn_id,
+                    decision=dict(expert.decision or {}),
+                )
+            except Exception as exc:  # defensive
+                # ⚠️ **留痕失败不打断对话** ✓（观测不能拖垮业务 ✓）。
+                _log.warning("failed to record expert decision: %s", exc)
         # ⚠️ **走新的 ContextBuilder** ✓（A-26 ✓）—— 旧的上下文组装
         # **已删除** ✓（Context Stage 5 ✓ —— 台账 X8 ✓）。
         assembled, knowledge_hits = await self._assemble_context(
@@ -290,6 +313,7 @@ class SessionGraphRunner:
             session_id=session_id,
             context_window=context_window,
             expert_instruction=str(expert.instruction or ""),
+            rolling_summary=rolling_summary,
         )
         # ⚠️ **降级标记从 Context 出来** ✓（C-22 ✓ —— Context 侧**已经产出**
         # ✓ —— 之前**没有可投递的通道** ✗✗ → 现在有了 ✓）。
@@ -520,6 +544,7 @@ class SessionGraphRunner:
                 agent=agent,
                 model=model,
                 route_id=route_id,
+                route_strategy=route_strategy,
                 actor=actor,
                 protected=protected,
                 allow_approval=allow_approval,
@@ -535,6 +560,10 @@ class SessionGraphRunner:
             async for event in loop.run(
                 messages=to_base_messages(list(state.get("messages") or [])),
                 tools=bound_tools,
+                # ⚠️ **取消探测** ✓ —— 每步之前查一次 ✓（用户点「停止生成」
+                # 要立刻生效 ✓ —— 之前只在收到 chunk 时查 ✓ → 长流式生成期间
+                # 无响应 ✗✗）。
+                cancel_probe=_make_cancel_probe(cancel_probe, session_id=session_id),
             ):
                 if event.kind == "text":
                     seq += 1
@@ -741,6 +770,7 @@ class SessionGraphRunner:
         session_id: UUID | None = None,
         context_window: int | None = None,
         expert_instruction: str = "",
+        rolling_summary: str = "",
     ) -> tuple[AssembledContext, list[dict[str, Any]]]:
         """**用新的 ContextBuilder 装配上下文** ✓（Agent Stage 5 · A-26 ✓）。
 
@@ -764,6 +794,10 @@ class SessionGraphRunner:
             history=history,
             agent_prompts=dict(agent.prompts) if agent is not None else {},
             agent_version=agent.version if agent is not None else None,
+            # ⚠️ **上一轮的摘要** ✓ —— 之前**没传** ✓ → Builder 默认空 ✓ →
+            # 上一轮的结论**模型看不见** ✗✗（摘要只喂压缩器 ✓ —— 压缩器不
+            # 超限就原样返回 ✓ → 摘要不进上下文 ✗✗）。
+            summary=rolling_summary,
             # ⚠️ **专家自己的指令** ✓ —— 之前装配出来却被丢弃 ✗✗。
             expert_instruction=expert_instruction,
             tenant_context={
@@ -1128,6 +1162,7 @@ class SessionGraphRunner:
         agent: CatalogAgent | None,
         model: str,
         route_id: ModelId | None,
+        route_strategy: str | None,
         user_input: str,
         history_count: int,
         actor: ActorContext,
@@ -1166,6 +1201,7 @@ class SessionGraphRunner:
             actor=to_runtime_actor(actor),
             model_override=model or None,
             route_id_override=route_id,
+            route_strategy_override=route_strategy,
         )
 
     def _fallback_assembler(
@@ -1592,6 +1628,21 @@ def _build_synthetic_chunk(raw: dict[str, Any], *, turn_id: UUID, seq: int) -> T
     return None
 
 
+def _make_cancel_probe(probe: Any | None, *, session_id: UUID | None):
+    """**把取消探测包成循环能用的异步回调** ✓。
+
+    ⚠️ **没有探测口就返回 ``None``** ✓ —— 循环自己跳过 ✓
+    （没有就查不到 ✓ → 不是「一律为 False 的假探测」✗✗）。
+    """
+    if probe is None or session_id is None:
+        return None
+
+    async def _probe() -> bool:
+        return bool(await probe.is_cancel_requested(session_id=session_id))
+
+    return _probe
+
+
 def _make_step_expert(
     *,
     assemble: Any,
@@ -1601,6 +1652,7 @@ def _make_step_expert(
     agent: CatalogAgent | None,
     model: str,
     route_id: ModelId | None,
+    route_strategy: str | None,
     actor: Any,
     protected: bool,
     allow_approval: bool,
@@ -1635,6 +1687,7 @@ def _make_step_expert(
                 agent=agent,
                 model=model,
                 route_id=route_id,
+                route_strategy=route_strategy,
                 user_input=_step_user_input(loop_state),
                 history_count=int(getattr(loop_state, "step", 0)),
                 actor=actor,

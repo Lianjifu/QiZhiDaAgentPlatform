@@ -161,6 +161,10 @@ class ReleaseAgentVersionUseCase:
                         eval_run_id=saved_release.eval_run_id,
                         eval_score=saved_release.eval_score,
                         released_by=saved_release.released_by,
+                        # ⚠️ **路由随发布一起走** ✓ —— 否则 runtime 那侧的
+                        # catalog agent 永远不知道「这个 agent 走哪条路由」✓。
+                        route_id=version.route_id,
+                        route_strategy=version.route_strategy,
                     )
                 )
             except Exception:  # pragma: no cover - defensive

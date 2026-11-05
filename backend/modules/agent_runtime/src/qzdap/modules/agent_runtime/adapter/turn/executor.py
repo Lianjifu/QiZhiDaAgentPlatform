@@ -42,6 +42,9 @@ class SessionGraphExecutor:
             agent=request.agent.raw,
             model=request.model,
             route_id=request.route_id,
+            # ⚠️ **路由策略覆盖** ✓ —— agent 配置里指定的取舍 ✓（不传就用
+            # route 自带的 ✓）。
+            route_strategy=request.route_strategy,
             rolling_summary=request.rolling_summary,
             resume=merged if (merged.get("pending_approval") or resume) else None,
             session_id=request.session_id,
@@ -49,6 +52,9 @@ class SessionGraphExecutor:
             # ⚠️ **这一轮能不能挂起审批** ✓ —— IM 渠道是 False ✓（没有人能
             # 完成审批 ✓ → 挂起 = 卡死 ✗✗）。
             allow_approval=request.allow_approval,
+            # ⚠️ **取消探测** ✓ —— 循环内的取消条件①要用 ✓（之前没传 ✓
+            # → 那条条件**永远为 False** ✗✗）。
+            cancel_probe=request.cancel_probe,
         )
 
     def latest_state(self) -> Mapping[str, Any]:
