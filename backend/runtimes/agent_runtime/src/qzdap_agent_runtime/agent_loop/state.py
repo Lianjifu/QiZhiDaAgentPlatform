@@ -36,6 +36,13 @@ class LoopState:
     resolved_model_id: str | None = None
     #: **待审批的工具调用** ✓（挂起时非空 ✓ —— §3.5 ✓）。
     pending_approval: dict[str, Any] | None = None
+    #: **本轮的任务清单** ✓（模型用 ``write_todos`` 维护 ✓）。
+    #: ⚠️ **之前这个字段定义了但从未写入** ✓ —— 「规划」能力等于没有 ✗✗。
+    #: ⚠️ **形状 = 每项 ``{"content", "status"}``** ✓（status ∈
+    #: ``pending`` / ``in_progress`` / ``completed`` ✓）。
+    todos: list[dict[str, Any]] = field(default_factory=list)
+    #: **这一步选中的专家的指令** ✓（每步可换 ✓）。
+    expert_instruction: str = ""
     #: **错误** ✓（终止时带上 ✓）。
     errors: list[dict[str, Any]] = field(default_factory=list)
     #: **模型的最终回答** ✓。

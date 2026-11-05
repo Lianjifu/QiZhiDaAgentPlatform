@@ -47,6 +47,30 @@ def _roles(request: Request) -> frozenset[str]:
     return frozenset(str(role) for role in roles)
 
 
+def _governance_actor(request: Request):
+    """**治理判定用的 actor** ✓ —— 从 JWT 的 principal 造 ✓。
+
+    ⚠️ **没有 principal 就没有治理** ✓ —— 返回 ``None`` ✓
+    （调用方据此不装 guard ✓ —— 未鉴权的请求本来也跑不了对话 ✓）。
+    """
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        return None
+    tenant_id = getattr(principal, "tenant_id", None)
+    if tenant_id is None:
+        return None
+    from qzdap_kernel.ids import TenantId, UserId, WorkspaceId
+    from qzdap_vault.actor import ActorContext
+
+    workspace_raw = getattr(principal, "workspace_id", None)
+    return ActorContext(
+        tenant_id=TenantId(UUID(str(tenant_id))),
+        workspace_id=(WorkspaceId(UUID(str(workspace_raw))) if workspace_raw is not None else None),
+        principal_id=UserId(UUID(str(getattr(principal, "id", "")))),
+        roles=frozenset(str(r) for r in (getattr(principal, "roles", None) or ())),
+    )
+
+
 async def _write_audit(
     request: Request,
     *,
@@ -142,11 +166,26 @@ async def copilot_dependency(request: Request) -> AsyncIterator[CopilotSessionSe
                     _owner_id(request, UUID(int=0)),
                     session,
                 )
+            # ⚠️ **治理判定口** ✓（工具执行前问一遍 ✓）—— 请求作用域 ✓
+            # （判定按**这一轮的人**判 ✓ —— actor 来自 JWT ✓）。
+            policy_guard = None
+            guard = getattr(request.app.state, "policy_guard", None)
+            if guard is not None:
+                actor = _governance_actor(request)
+                if actor is not None:
+                    from qzdap.modules.agent_runtime.adapter.graph.governance_guard import (
+                        GovernancePolicyGuard,
+                    )
+
+                    # ⚠️ **能不能挂审批**由**这一轮**决定 ✓（IM 渠道不能 ✓）——
+                    # 所以 guard **不记这个** ✓ —— 它在 runner 里按轮次决定 ✓。
+                    policy_guard = GovernancePolicyGuard(guard=guard, actor=actor)
             svc.bind_ports(
                 skill_port=skill_port,
                 sandbox_port=sandbox_port,
                 tool_port=tool_port,
                 expert_assembler=expert_assembler,
+                policy_guard=policy_guard,
             )
         try:
             yield svc

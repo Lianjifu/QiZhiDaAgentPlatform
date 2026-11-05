@@ -130,9 +130,33 @@ POST /api/sessions/{id}/turns/stream
 
 `Evaluator.evaluate`（`agent_loop/evaluate.py:68`）一次性判六条：用户取消、步数上限、成本上限、上下文超限、审批挂起、工具空转。注释里写明了为什么不能分散——分散正是上一次重构失败的模式。
 
+**成本闸门的上限来自 agent 配置**：`profile.maxCostUsd`（JSONB 自由字段，不新增表列）。没配就是不限。计价回调在循环内按「本步用量」结算，累积进 `state.cost_usd`。
+
 ### 上下文装配的固定优先级
 
 `ContextBuilder` 六级：安全提示与治理约束 → agent 版本与工具白名单 → 租户/用户上下文 → 会话摘要与最近消息 → 记忆与知识召回 → 本轮输入与工具结果。**第 1/2/6 级永不降级**——用户这句话和工具结果丢了，模型就是在答空气。超预算时按 knowledge → memory → summary → tenant 顺序丢。
+
+**预算口径 = 窗口 × 0.70**，与压缩器同源（不再有「Builder 硬编码 8000、压缩器按 0.7」两套口径）。
+
+**专家的指令单独成段**（manifest source = `expert`），与 agent 的五段 prompt 分开溯源。
+
+### 任务清单（规划）
+
+模型用 `todo_write` 工具维护任务清单。工具输出带 `__qzdap_todos__:` 前缀 + JSON，循环解析后写进 `state.todos`，并把未完成项回灌成一段 system 消息——模型要看得见自己规划了什么，否则下一轮不会照着做。
+
+前缀常量在 `qzdap_kernel.todo_protocol`（tool 模块与 runtime 共享同一份，不违反分层）。
+
+### 并行工具调用
+
+一轮里模型返回多个工具调用时：**审批逐个判完**（挂起是控制流，不能并行）→ **只读工具并行执行** → 有副作用 / 高风险 / 需审批的**串行** → 结果按**请求顺序**还原（模型读结果的顺序有意义）。
+
+只读的判据：无副作用 + 风险 low + 不需审批。判不出来就串行——并行是优化，不是正确性。
+
+### 每步重选专家
+
+专家（模型 + 指令 + 工具集）可以**跟着步骤走**：每步之前问一次装配器，按这一步的上下文重新分类与选取。第一步沿用已装好的专家（上下文已按它装配过），之后每步重选。装配失败沿用当前专家——装配器故障不能打断对话。
+
+会话绑定的 agent 不变——换的是执行者，不是归属。
 
 ### SSE chunk 类型（17 种）
 
@@ -168,5 +192,9 @@ POST /api/sessions/{id}/turns/stream
 
 - ⚠️ `admin_agents` 与 agent_factory 的 `agent_templates` **是两套并行的目录**，靠 `admin_agents.id == template_id` 对齐，是脆弱耦合
 - ⚠️ `adapter/graph/runner.py:807 _absorb_mock_artifact` 是 mock 产物吸收路径（产物曾只在 `/tmp/qzdap-mock-artifacts`）
-- ⚠️ `ask_user_question` / `notify_user` / `plan_submit` / `todo_write` 四个工具是**前端桩**：后端立即返回 payload，交互由前端回填
+- ⚠️ `ask_user_question` / `notify_user` / `plan_submit` / `todo_write` 四个工具**同时**是前端桩与真实能力：`todo_write` 的清单会真的进循环状态（`todo_write` ✓），其余三个仍然只回 payload 由前端渲染
 - ⚠️ `session_turns.wait_status` 与 `agent_sessions.graph_state` 两列已退役，分别由 `current_turn_id` 与 `metadata["resume"]` 推导
+- ⚠️ **成本闸门只按单轮累计** ✓ —— 没有跨轮次的会话级预算 ✓（`session_turns.cost_usd` 有记 ✓ —— 但没有「这个会话已经花了 $X / 上限 $Y」的判据 ✓）
+- ⚠️ **上下文超限这条终止条件在循环内不可达** ✓ —— `Evaluator` 有 `context_overflow` 参数 ✓ —— 但压缩器自己处理超限 ✓ —— 走的是「压缩后仍超限就抛 `CONTEXT_TOO_LARGE`」✓（不是循环的终止条件 ✓）
+- ⚠️ **没有反思 / 自我修正机制** ✓ —— 工具失败只是把错误文本回灌给模型 ✓ —— 让它自己决定换不换策略 ✓（`apply_stall_guard` 只在「同样的工具连续空转」时插一句提示 ✓）
+- ⚠️ **子 agent 是串行同步派发** ✓ —— `delegate_to_agent` 会阻塞到子会话跑完 ✓（深度上限 3 ✓）—— 没有子 agent 并行 ✓

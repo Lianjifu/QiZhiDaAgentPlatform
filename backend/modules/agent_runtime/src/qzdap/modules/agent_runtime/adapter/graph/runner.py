@@ -112,6 +112,10 @@ class SessionGraphRunner:
         memory_port: MemoryPort | None = None,
         knowledge_port: KnowledgePort | None = None,
         approval_factory: Any | None = None,
+        # ⚠️ **治理判定口** ✓（工具执行前的统一判定 ✓）—— 没有它就只有
+        # 绑定声明的静态审批 ✓（``requires_approval`` ✓），**策略引擎的 DENY
+        # 走不到** ✗✗。
+        policy_guard: Any | None = None,
         # ⚠️ **manifest 的落库口** ✓（Context Stage 4 ✓）—— 每次模型调用
         # 一条 ✓（§5.1.1 ✓）。⚠️ **没有它就不落库** ✓（测试里没有库 ✓）。
         context_manifest_store: ContextManifestStore | None = None,
@@ -130,6 +134,7 @@ class SessionGraphRunner:
         self._memory_port = memory_port
         self._knowledge_port = knowledge_port
         self._approval_factory = approval_factory
+        self._policy_guard = policy_guard
         self._catalog_model_resolver = catalog_model_resolver
         self._context_manifest_store = context_manifest_store
         self._artifact_store = artifact_store
@@ -147,11 +152,15 @@ class SessionGraphRunner:
         sandbox_port: SandboxPort | None = None,
         tool_port: ToolPort | None = None,
         expert_assembler: ExpertAssembler | None = None,
+        policy_guard: Any | None = None,
     ) -> None:
         """Re-bind request-scoped ports.
 
         Tenant / workspace / owner are only known per request, so the
         HTTP layer replaces the ports it can scope before the turn runs.
+
+        ⚠️ **治理口也是请求作用域** ✓ —— 判定按**这一轮的人**判 ✓
+        （actor 来自 JWT ✓ —— 不能用服务账号判 ✓）。
         """
         if skill_port is not None:
             self._skill_port = skill_port
@@ -161,6 +170,8 @@ class SessionGraphRunner:
             self._tool_port = tool_port
         if expert_assembler is not None:
             self._expert_assembler = expert_assembler
+        if policy_guard is not None:
+            self._policy_guard = policy_guard
 
     async def run_graph(
         self, *, parent_span_context: Any = None, **kwargs: Any
@@ -250,6 +261,23 @@ class SessionGraphRunner:
         )
 
         whitelist = await self._whitelist(agent)
+        # ⚠️ **专家先装** ✓ —— 上下文里要带**专家自己的指令** ✓
+        # （之前专家在上下文之后才装 ✓ → 它的 instruction 拿不到 ✓
+        # → **选出来的专家等于没选** ✗✗）。
+        # ⚠️ **装配顺序不影响别的** ✓ —— 专家只依赖租户 / agent / 输入 ✓。
+        expert = await self._assemble_expert(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            owner_id=owner_id,
+            agent=agent,
+            model=model,
+            route_id=route_id,
+            user_input=user_input,
+            history_count=len(history),
+            actor=actor,
+            protected=protected,
+            allow_approval=allow_approval,
+        )
         # ⚠️ **走新的 ContextBuilder** ✓（A-26 ✓）—— 旧的上下文组装
         # **已删除** ✓（Context Stage 5 ✓ —— 台账 X8 ✓）。
         assembled, knowledge_hits = await self._assemble_context(
@@ -260,6 +288,8 @@ class SessionGraphRunner:
             history=history,
             agent=agent,
             session_id=session_id,
+            context_window=context_window,
+            expert_instruction=str(expert.instruction or ""),
         )
         # ⚠️ **降级标记从 Context 出来** ✓（C-22 ✓ —— Context 侧**已经产出**
         # ✓ —— 之前**没有可投递的通道** ✗✗ → 现在有了 ✓）。
@@ -447,19 +477,7 @@ class SessionGraphRunner:
 
         # ⚠️ **专家实例** ✓（Agent Stage 4 ✓）—— 专家 = 模型 + 工具集 ✓
         # （选专家 ✓ / 取模型 ✓ / 取工具 ✓ —— 全是「取」✓ 不是「挑」✓）。
-        expert = await self._assemble_expert(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            owner_id=owner_id,
-            agent=agent,
-            model=model,
-            route_id=route_id,
-            user_input=user_input,
-            history_count=len(history),
-            actor=actor,
-            protected=protected,
-            allow_approval=allow_approval,
-        )
+        # ⚠️ **上面已经装好了** ✓（上下文要用专家的指令 ✓ —— 所以提前了 ✓）。
         model_id = str((expert.decision.get("model") or {}).get("model_id") or "") or None
         bound_tools = [
             BoundTool(tool=tool, binding=binding)
@@ -467,13 +485,46 @@ class SessionGraphRunner:
         ]
         loop = AgentLoopRunner(
             reasoner=Reasoner(expert.model),
-            evaluator=Evaluator(max_steps=max_steps),
+            evaluator=Evaluator(
+                max_steps=max_steps,
+                # ⚠️ **成本闸门** ✓（轮次级硬闸门 ✓）—— 上限取 agent 配置 ✓
+                # （``profile.maxCostUsd`` ✓ —— 没配就是 0 = 不限 ✓）。
+                max_cost_usd=_max_cost_usd(agent),
+            ),
             observer=Observer(),
             actor=to_runtime_actor(actor),
             turn_id=str(turn_id),
             session_id=str(session_id) if session_id else None,
             protected=protected,
             allow_approval=allow_approval,
+            # ⚠️ **治理判定** ✓（工具执行前问一遍 ✓）—— 没有它就只有绑定
+            # 声明的静态审批 ✓，策略引擎的 DENY **走不到** ✗✗。
+            policy_guard=self._policy_guard,
+            # ⚠️ **计价回调** ✓ —— 循环自己按「本步用量」算成本 ✓，
+            # 累积进 ``state.cost_usd`` ✓ → 成本闸门才有数据可判 ✓。
+            cost_of=await _make_cost_of(
+                resolver=self._catalog_model_resolver,
+                resolved_model_id=model_id,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+            ),
+            # ⚠️ **每步重选专家** ✓ —— 装配器按**这一步的上下文**选 ✓
+            # （之前专家**一轮只装一次** ✓ → 后面几步都在用第一个专家 ✗✗）。
+            # ⚠️ **重选时不重算上下文** ✓ —— 上下文已经装好了 ✓
+            # （换专家只影响**下一步的推理与工具** ✓）。
+            step_expert=_make_step_expert(
+                assemble=self._assemble_expert,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_id=owner_id,
+                agent=agent,
+                model=model,
+                route_id=route_id,
+                actor=actor,
+                protected=protected,
+                allow_approval=allow_approval,
+                first_expert=expert,
+            ),
             hooks=LoopHooks(before_step=_before_step, after_step=_after_step),
         )
         # ⚠️ **把轮次的 span 设为当前** ✓ —— 模型 / 工具的子 span 挂在它
@@ -688,6 +739,8 @@ class SessionGraphRunner:
         history: list[dict[str, Any]],
         agent: CatalogAgent | None,
         session_id: UUID | None = None,
+        context_window: int | None = None,
+        expert_instruction: str = "",
     ) -> tuple[AssembledContext, list[dict[str, Any]]]:
         """**用新的 ContextBuilder 装配上下文** ✓（Agent Stage 5 · A-26 ✓）。
 
@@ -699,6 +752,9 @@ class SessionGraphRunner:
         builder = ContextBuilder(
             memory_port=self._memory_port,
             knowledge_port=self._knowledge_port,
+            # ⚠️ **预算与压缩器同口径** ✓（``window × 0.70`` ✓）—— 之前这里
+            # 没传 ✓ → Builder 用硬编码 8000 ✓ → 与压缩器**两套口径** ✗✗。
+            context_window=context_window,
         )
         assembled = await builder.build(
             tenant_id=tenant_id,
@@ -708,6 +764,8 @@ class SessionGraphRunner:
             history=history,
             agent_prompts=dict(agent.prompts) if agent is not None else {},
             agent_version=agent.version if agent is not None else None,
+            # ⚠️ **专家自己的指令** ✓ —— 之前装配出来却被丢弃 ✗✗。
+            expert_instruction=expert_instruction,
             tenant_context={
                 "tenant_id": str(tenant_id),
                 "workspace_id": str(workspace_id),
@@ -1532,6 +1590,156 @@ def _build_synthetic_chunk(raw: dict[str, Any], *, turn_id: UUID, seq: int) -> T
     except Exception:
         return None
     return None
+
+
+def _make_step_expert(
+    *,
+    assemble: Any,
+    tenant_id: UUID,
+    workspace_id: UUID,
+    owner_id: UUID,
+    agent: CatalogAgent | None,
+    model: str,
+    route_id: ModelId | None,
+    actor: Any,
+    protected: bool,
+    allow_approval: bool,
+    first_expert: Any,
+):
+    """**每步重选专家的钩子** ✓（喂给循环的 ``step_expert`` ✓）。
+
+    ⚠️ **第一步沿用已经装好的专家** ✓ —— 上下文里已经带了它的指令 ✓
+    （再装一遍是浪费 ✓ —— 而且**两次装配可能选出不同专家** ✓ → 上下文与
+    推理对不上 ✗✗）。
+
+    ⚠️ **之后每步重选** ✓ —— 分类器看的是**这一步的上下文** ✓
+    （本轮到目前为止说了什么 ✓ / 已经调了什么工具 ✓）。
+
+    ⚠️ **重选失败就沿用当前的** ✓ —— 装配器失败**不能打断对话** ✓
+    （与「治理故障放行」✓ / 「计价失败返回 0」✓ 同一条纪律 ✓）。
+    """
+    from qzdap_agent_runtime.agent_loop.runner import StepExpert
+
+    state_holder: dict[str, Any] = {"expert": first_expert}
+
+    async def _step_expert(loop_state: Any) -> StepExpert | None:  # type: ignore[no-untyped-def]
+        current = state_holder.get("expert")
+        # ⚠️ **第一步不重选** ✓（上下文已经按它装好了 ✓）
+        if current is first_expert and int(getattr(loop_state, "step", 0)) <= 1:
+            return None
+        try:
+            picked = await assemble(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                owner_id=owner_id,
+                agent=agent,
+                model=model,
+                route_id=route_id,
+                user_input=_step_user_input(loop_state),
+                history_count=int(getattr(loop_state, "step", 0)),
+                actor=actor,
+                protected=protected,
+                allow_approval=allow_approval,
+            )
+        except Exception as exc:  # defensive
+            _log.warning("per-step expert selection failed, keeping current: %s", exc)
+            return None
+        if picked is None:
+            return None
+        state_holder["expert"] = picked
+        return StepExpert(
+            reasoner=Reasoner(picked.model),
+            tools=[
+                BoundTool(tool=tool, binding=binding)
+                for tool, binding in zip(picked.tools, picked.bindings, strict=False)
+            ],
+            instruction=str(getattr(picked, "instruction", "") or ""),
+        )
+
+    return _step_expert
+
+
+def _step_user_input(loop_state: Any) -> str:
+    """**这一步的输入** ✓（给分类器看 ✓）。
+
+    ⚠️ **取最后一条 user 消息** ✓ —— 没有就空 ✓。
+    """
+    messages = list(getattr(loop_state, "messages", None) or [])
+    for item in reversed(messages):
+        role = item.get("role") if isinstance(item, dict) else getattr(item, "type", None)
+        if role in {"user", "human"}:
+            content = (
+                item.get("content") if isinstance(item, dict) else getattr(item, "content", "")
+            )
+            return str(content or "")
+    return ""
+
+
+def _max_cost_usd(agent: CatalogAgent | None) -> float:
+    """**这一轮的成本上限** ✓（0 = 不限 ✓）。
+
+    ⚠️ **落点 = agent 的 ``profile``** ✓ —— ``profile.maxCostUsd`` ✓。
+    ⚠️ **不新增表列** ✓ —— ``profile`` 已是 JSONB 自由字段 ✓（迁移里就有 ✓）
+    → 不用改 schema ✓ 不用写迁移 ✓。
+
+    ⚠️ **上限为 0 或未配置 = 不设闸门** ✓ —— 保留现状 ✓
+    （没有闸门时成本照记 ✓ —— 记账与闸门是两件事 ✓）。
+    """
+    if agent is None:
+        return 0.0
+    profile = agent.profile if isinstance(agent.profile, dict) else {}
+    raw = profile.get("maxCostUsd")
+    if raw is None:
+        raw = profile.get("max_cost_usd")
+    try:
+        value = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+    return value if value > 0 else 0.0
+
+
+async def _make_cost_of(
+    *,
+    resolver: CatalogModelResolver | None,
+    resolved_model_id: str | None,
+    tenant_id: UUID,
+    workspace_id: UUID,
+):
+    """**按本步用量算成本** ✓（喂给循环的 ``cost_of`` ✓）。
+
+    ⚠️ **契约层的 ``cost_of`` 是同步的** ✓（``state.cost_usd += ...`` ✓
+    —— 循环里是同步累加 ✓）→ **价格必须先查好** ✓（异步查询在这一步做 ✓
+    —— 循环里再查就 await 不了 ✓）。
+
+    ⚠️ **查不到价格就是「没有闸门」** ✓ —— 返回 ``None`` ✓
+    —— 计价失败**不能打断对话** ✓（与 ``_price_of`` 同口径 ✓ ——
+    那条是「步后结算」✓，这条是「步内闸门」✓）。
+    """
+    if resolver is None or not resolved_model_id:
+        return None
+    try:
+        model_uuid = UUID(str(resolved_model_id))
+    except (TypeError, ValueError):
+        return None
+    try:
+        prices = await resolver.price_of(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            model_id=ModelId(model_uuid),
+        )
+    except (RuntimeError, OSError, ValueError) as exc:  # defensive
+        _log.warning("cost lookup failed: %s", exc)
+        return None
+    if not prices:
+        return None
+    price_in, price_out = prices
+
+    def _cost_of(input_tokens: int, output_tokens: int) -> float:
+        return (input_tokens / 1000.0) * float(price_in) + (output_tokens / 1000.0) * float(
+            price_out
+        )
+
+    return _cost_of
 
 
 __all__ = ["SessionGraphRunner"]

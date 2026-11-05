@@ -77,7 +77,8 @@ backend/modules/tool/src/qzdap/modules/tool/
 
 ## 已知边界
 
-- ⚠️ `ask_user_question` / `notify_user` / `plan_submit` / `todo_write` 是**前端桩**（`builtin_extra_tools.py:1258` 返回 `_stub_hint`）
+- ⚠️ `ask_user_question` / `notify_user` / `plan_submit` 三个工具是**纯前端桩**（`builtin_extra_tools.py:1258` 返回 `_stub_hint`）
+- ⚠️ `todo_write` **是双重的**：前端渲染成待办卡 ✓，同时它的输出带 `__qzdap_todos__:` 前缀 ✓ —— agent 循环会解析并写进循环状态 ✓（任务清单是真的 ✓ —— 见 [agent-runtime](./agent-runtime.md)）
 - ⚠️ `web_search` 直接爬 Bing HTML，代码注释明写「生产环境应换成 Tavily/Serper（TODO）」
 - ⚠️ `adapter/workspace_paths.py:7` 的沙箱路径仍是 TODO——未读 `admin_workspaces.sandbox_path`，沙箱工具的工作目录没有和租户工作区绑定
 - ⚠️ `write_artifact` 上限 1MB，kind 白名单固定

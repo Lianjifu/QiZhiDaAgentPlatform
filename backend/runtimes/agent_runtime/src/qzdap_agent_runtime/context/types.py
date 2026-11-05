@@ -19,6 +19,7 @@ CONTEXT_SOURCES: frozenset[str] = frozenset(
     {
         "system",
         "agent",
+        "expert",
         "tenant",
         "summary",
         "memory",

@@ -44,6 +44,11 @@ from .types import AssembledContext, ContextManifest, ManifestEntry
 MEMORY_TOP_K = 8
 #: 知识召回条数 ✓（旧路径 ``runner.py:543`` ✓）。
 KNOWLEDGE_TOP_K = 6
+#: **预算比例** ✓ —— 与压缩器**同一个口径** ✓（``compressor.py`` 的
+#: ``WINDOW_RATIO = 0.70`` ✓）—— 装配按它裁 ✓ / 压缩按它触发 ✓ —— 一套 ✓。
+BUDGET_RATIO = 0.70
+#: **兜底预算** ✓ —— 没有模型窗口信息时用这个 ✓（8K ✓）。
+DEFAULT_MAX_TOKENS = 8_000
 
 
 @runtime_checkable
@@ -91,12 +96,24 @@ class ContextBuilder:
         *,
         memory_port: MemoryRecallPort | None = None,
         knowledge_port: KnowledgeSearchPort | None = None,
-        max_tokens: int = 8_000,
+        max_tokens: int | None = None,
+        context_window: int | None = None,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     ) -> None:
         self._memory = memory_port
         self._knowledge = knowledge_port
-        self._max_tokens = max_tokens
+        # ⚠️ **预算口径** ✓ —— **与压缩器同源** ✓（``window × 0.70`` ✓）。
+        # ⚠️ **之前这里是硬编码 8000** ✓ —— 与压缩器的 ``window×0.7`` 是
+        # **两套口径** ✗✗（压缩器按 A 裁 ✓ / Builder 按 B 裁 ✓ —— 谁先到
+        # 谁生效 ✗ → 行为不可预测 ✗）。
+        # ⚠️ **给了 ``context_window`` 就按比例算** ✓（``None`` 才用
+        # ``max_tokens`` ✓ —— 显式给死预算时尊重它 ✓）。
+        if context_window is not None and context_window > 0:
+            self._max_tokens = int(context_window * BUDGET_RATIO)
+        elif max_tokens is not None and max_tokens > 0:
+            self._max_tokens = int(max_tokens)
+        else:
+            self._max_tokens = DEFAULT_MAX_TOKENS
         self._system_prompt = system_prompt
 
     async def build(
@@ -114,11 +131,15 @@ class ContextBuilder:
         knowledge_package_ids: tuple[UUID, ...] = (),
         memory_policy: MemoryPolicy | None = None,
         session_id: UUID | None = None,
+        expert_instruction: str = "",
     ) -> AssembledContext:
         """拼一次上下文 ✓ —— 返回**可直接喂 LLM** 的消息列表 + manifest ✓。
 
         ⚠️ **记忆策略绑定要传下去** ✓（§7.1 ✓）—— 否则「agent 绑了作用域 /
         条目」运行时读不到 ✗✗（= §1.7 那个问题原地不动 ✗）。
+
+        ⚠️ **专家指令** ✓（``expert_instruction`` ✓）—— 选中的专家**自己的**
+        指令 ✓ —— 之前装配出来了却被丢弃 ✗✗（专家等于没选 ✓）。
         """
         history = list(history or [])
         degraded: dict[str, bool] = {}
@@ -157,6 +178,17 @@ class ContextBuilder:
                 pairs,
                 source="agent",
                 content=agent_text,
+                version=agent_version,
+            )
+        # ⚠️ **专家自己的指令** ✓ —— 选中的专家（Agent Router ✓）的
+        # instruction ✓ —— **之前装配出来却被丢弃** ✗✗（专家等于没选 ✓）。
+        # ⚠️ **与 agent 的五段 prompt 分开** ✓ —— 两者来源不同 ✓
+        # （agent 配置 ✓ vs 专家目录 ✓）—— 分段才能各自溯源 ✓。
+        if expert_instruction.strip():
+            self._append_system(
+                pairs,
+                source="expert",
+                content=expert_instruction.strip(),
                 version=agent_version,
             )
 

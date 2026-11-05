@@ -53,3 +53,19 @@
 - **错误码只有一个词汇表**：`qzdap_kernel.error_codes.ErrorCode`（160 个成员），生产代码里不允许出现错误码字面量——有架构测试守着。
 - **「一个关注点只有一套实现」**：台账的 47 条扫描规则进了 CI，违反即红。
 - **事件总线目前是断的**：model / skill / memory / knowledge / orchestration 五个模块**不发布领域事件**，导致 observability 订阅的 5 类记录恒为空、governance 审计对应条目恒为空。详见各篇的「已知边界」。
+
+## 能力缺口的现状
+
+| 能力 | 状态 |
+|---|---|
+| 成本闸门 | ✅ 已接（上限取 `profile.maxCostUsd` ✓） |
+| 治理拒绝（策略引擎） | ✅ 已接（`GovernancePolicyGuard` ✓） |
+| 专家指令 | ✅ 已进 system prompt ✓ |
+| 上下文预算口径 | ✅ 统一为窗口 × 0.70 ✓ |
+| 任务清单 / 规划 | ✅ `todo_write` 真进循环状态 ✓ |
+| 并行工具调用 | ✅ 只读并行、有副作用串行 ✓ |
+| 每步重选专家 | ✅ 专家跟着步骤走 ✓ |
+| 反思 / 失败后换策略 | ❌ 没有——只有空转护栏 ✓ |
+| 结构化输出约束 | ❌ LLM 层支持 `response_format` ✓ —— agent 链路未接 ✓ |
+| 子 agent 并行 | ❌ 串行同步派发 ✓ |
+| 多 agent 通信协议 / 共享状态 | ❌ 只有「父传子、子回传 final_response」✓ |

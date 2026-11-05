@@ -395,13 +395,19 @@ BUILTIN_TOOL_SPECS: dict[str, dict[str, Any]] = {
         "risk": "low",
     },
     "todo_write": {
-        "description": "更新待办事项列表（前端渲染成待办卡）。",
+        "description": (
+            "更新任务清单（计划）。"
+            "传完整的 todos 数组（不是增量）—— 每一项 {content, status}，"
+            "status ∈ pending / in_progress / completed。"
+            "清单会回到你自己的上下文，帮你按步骤推进；"
+            "同时前端会渲染成待办卡。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {
                 "todos": _p(
                     type="array",
-                    description="待办数组，每项 {id, content, status, active_form}。",
+                    description="完整的待办数组，每项 {content, status}。",
                     items=_OBJ,
                 ),
                 "content": _p(type="string", description="单条待办内容。"),

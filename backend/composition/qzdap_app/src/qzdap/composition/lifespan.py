@@ -979,6 +979,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.skill_factory = _SkillFactory()
 
     policy_guard = container.policy_guard() if container.settings.policy_enabled else None
+    # ⚠️ **治理判定口挂到 app.state** ✓ —— agent 循环的 HTTP 层按请求取它 ✓
+    # （装配成带 actor 的适配器 ✓ —— 判定按**这一轮的人**判 ✓）。
+    app.state.policy_guard = policy_guard
 
     # ── per-request memory factory ──────────────────────────────────────
     from qzdap.modules.memory.adapter.persistence.repositories import (

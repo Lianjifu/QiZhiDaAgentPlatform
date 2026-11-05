@@ -20,11 +20,12 @@ Reason（模型流式输出 ✓）
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.tools import BaseTool
 from pydantic import create_model
 
@@ -48,6 +49,7 @@ from .evaluate import Evaluator, Termination, apply_stall_guard
 from .observe import Observer, ToolOutcome
 from .reason import Reasoner
 from .state import LoopState
+from .todos import parse_todos, render_todos
 
 LoopEventKind = Literal[
     "text",
@@ -99,6 +101,24 @@ class BoundTool:
     binding: ToolBinding
 
 
+@dataclass(frozen=True, slots=True)
+class StepExpert:
+    """**这一步换一个专家** ✓（每步可变的执行者 ✓）。
+
+    ⚠️ **为什么是「每步」而不是「每轮」** ✓ —— 一个会话里不同步骤要做的事
+    不一样 ✓（先查数据 ✓ / 再写报告 ✓）—— **专家跟着步骤走** ✓。
+    ⚠️ **会话绑定的 agent 不变** ✓ —— 这是**专家**（执行者）✓ 不是
+    **会话归属** ✓ —— 换专家不改变会话属于谁 ✓。
+    """
+
+    #: **这一步用的推理器** ✓（模型可以换 ✓）。
+    reasoner: Reasoner
+    #: **这一步暴露给模型的工具** ✓（工具集可以换 ✓）。
+    tools: Sequence[BoundTool]
+    #: **这一步的专家指令** ✓（换专家时指令也跟着换 ✓）。
+    instruction: str = ""
+
+
 class AgentLoopRunner:
     """**Reason → Observe → Evaluate** ✓（§3 ✓）。"""
 
@@ -116,6 +136,9 @@ class AgentLoopRunner:
         allow_approval: bool = True,
         cost_of: Callable[[int, int], float] | None = None,
         hooks: LoopHooks | None = None,
+        #: ⚠️ **每步重选专家** ✓ —— 返回 ``None`` 就沿用当前的 ✓
+        # （没装配这个钩子 ✓ = 沿用「一轮一次」的老行为 ✓）。
+        step_expert: Callable[[LoopState], Awaitable[StepExpert | None]] | None = None,
     ) -> None:
         self._reasoner = reasoner
         self._evaluator = evaluator or Evaluator()
@@ -130,6 +153,7 @@ class AgentLoopRunner:
         self._allow_approval = allow_approval
         self._cost_of = cost_of
         self._hooks = hooks
+        self._step_expert = step_expert
 
     async def run(
         self,
@@ -140,16 +164,29 @@ class AgentLoopRunner:
     ) -> AsyncIterator[LoopEvent]:
         """**跑一轮** ✓（产出事件流 ✓）。"""
         state = LoopState(messages=list(messages))
-        by_name = {bound.tool.name: bound for bound in tools}
+        reasoner = self._reasoner
+        step_tools = list(tools)
+        by_name = {bound.tool.name: bound for bound in step_tools}
         while True:
             state.step += 1
             state.tool_calls = []
             state.step_input_tokens = 0
             state.step_output_tokens = 0
+            # ⚠️ **每步重选专家** ✓ —— 装配器按**这一步的上下文**选 ✓
+            # （之前专家**一轮只装一次** ✓ → 后面几步都在用第一个专家 ✗✗）。
+            # ⚠️ **换专家时工具集也换** ✓ —— 专家的工具集是它自己的 ✓。
+            if self._step_expert is not None:
+                override = await self._step_expert(state)
+                if override is not None:
+                    reasoner = override.reasoner
+                    step_tools = list(override.tools)
+                    by_name = {bound.tool.name: bound for bound in step_tools}
+                    if override.instruction:
+                        state.expert_instruction = override.instruction
             if self._hooks is not None and self._hooks.before_step is not None:
                 async for payload in self._hooks.before_step(state):
                     yield LoopEvent(kind="extra", payload=payload)
-            async for event in self._reason(state, by_name):
+            async for event in self._reason(state, by_name, reasoner=reasoner):
                 yield event
             state.input_tokens += state.step_input_tokens
             state.output_tokens += state.step_output_tokens
@@ -168,6 +205,9 @@ class AgentLoopRunner:
 
             # ── 执行工具（治理 → 执行） ──────────────────────────────
             outcomes: list[ToolOutcome] = []
+            # ⚠️ **两阶段** ✓ —— 先把**审批**逐个判完 ✓，再并行**执行** ✓
+            # （审批要挂起 ✓ —— 不能并行 ✓ —— 挂起是控制流 ✗）。
+            pending_calls: list[tuple[dict[str, Any], BoundTool]] = []
             for call in state.tool_calls:
                 bound = by_name.get(str(call.get("name") or ""))
                 if bound is None:
@@ -196,8 +236,11 @@ class AgentLoopRunner:
                     async for event in self._finish(state, termination):
                         yield event
                     return
-                outcome = await self._invoke(call, bound)
-                outcomes.append(outcome)
+                pending_calls.append((call, bound))
+            # ⚠️ **并行执行** ✓ —— 只读工具（无副作用 ✓ + 低风险 ✓）一起跑 ✓
+            # —— 写类工具**串行** ✓（顺序有意义 ✓）。
+            outcomes.extend(await self._invoke_all(pending_calls))
+            for outcome in outcomes[-len(pending_calls) :] if pending_calls else []:
                 yield LoopEvent(
                     kind="tool_result",
                     tool_result={
@@ -219,18 +262,36 @@ class AgentLoopRunner:
                 }
                 for outcome in outcomes
             ]
+            # ⚠️ **任务清单** ✓ —— 工具可以更新它 ✓（``write_todos`` ✓）——
+            # 解析出来的清单**写进状态** ✓（之前 ``state.todos`` 定义了
+            # 但**从未写入** ✗✗ → 「规划」能力等于没有 ✗✗）。
+            self._absorb_todos(state, outcomes)
             state.messages.extend(self._observer.messages(outcomes))
+            # ⚠️ **清单回灌给模型** ✓ —— 模型要看得见自己规划了什么 ✓
+            # （不然清单只是状态 ✓ —— 模型不知道 ✓ → 下一轮不会照着做 ✗✗）。
+            plan_text = render_todos(state.todos)
+            if plan_text:
+                state.messages.append(SystemMessage(content=plan_text))
             state = apply_stall_guard(state, state.tool_calls)
 
     # ── Reason ─────────────────────────────────────────────────────────
 
     async def _reason(
-        self, state: LoopState, by_name: dict[str, BoundTool]
+        self,
+        state: LoopState,
+        by_name: dict[str, BoundTool],
+        *,
+        reasoner: Reasoner | None = None,
     ) -> AsyncIterator[LoopEvent]:
-        """**跑一步推理** ✓（流式文本 ✓ + 工具调用 ✓）。"""
+        """**跑一步推理** ✓（流式文本 ✓ + 工具调用 ✓）。
+
+        ⚠️ **``reasoner`` 可以按步换** ✓ —— 每步重选专家时用它 ✓
+        （不传就用构造时那个 ✓）。
+        """
+        active = reasoner or self._reasoner
         schemas = [tool_schema(bound.tool) for bound in by_name.values()]
         text_parts: list[str] = []
-        async for chunk in self._reasoner.reason(messages=state.messages, tools=schemas):
+        async for chunk in active.reason(messages=state.messages, tools=schemas):
             if chunk.content:
                 text = _as_text(chunk.content)
                 text_parts.append(text)
@@ -260,6 +321,86 @@ class AgentLoopRunner:
         state.final_message = "".join(text_parts) or state.final_message
 
     # ── 治理与执行 ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def _absorb_todos(state: LoopState, outcomes: Sequence[ToolOutcome]) -> None:
+        """**从工具输出里吸收任务清单** ✓（写进 ``state.todos`` ✓）。
+
+        ⚠️ **后者覆盖前者** ✓ —— 一次工具调用带的就是**最新清单** ✓
+        （不是增量合并 ✓ —— 合并会让「删掉一项」永远做不到 ✗✗）。
+        ⚠️ **取最后一个** ✓ —— 一批工具调用里可能有多个 todo 更新 ✓
+        → **最后那个才是最新的** ✓（取第一个会停在旧清单上 ✗✗）。
+        ⚠️ **解析不出来就保持原样** ✓ —— 工具输出不能打断对话 ✓。
+        """
+        for outcome in outcomes:
+            parsed = parse_todos(outcome.output)
+            if parsed is not None:
+                state.todos = parsed
+
+    async def _invoke_all(
+        self, pending: Sequence[tuple[dict[str, Any], BoundTool]]
+    ) -> list[ToolOutcome]:
+        """**执行一批工具调用** ✓ —— **只读的并行** ✓，**有副作用的串行** ✓。
+
+        ⚠️ **为什么只读才并行** ✓ —— 并行的前提是「互不影响」✓：
+        - **有副作用**（写文件 ✓ / 改配置 ✓ / 发消息 ✓）→ **串行** ✓
+          （顺序有意义 ✓ —— 并行会乱序 ✗✗）
+        - **要审批**→ 已在上一阶段处理 ✓（挂起是控制流 ✗ 不能并行 ✓）
+        - **风险高**→ 串行 ✓（出错时能立刻停 ✓）
+
+        ⚠️ **结果顺序 = 请求顺序** ✓ —— 并行完成后**按原顺序**排 ✓
+        （模型读 tool_result 的顺序有意义 ✓ —— Observer 规则 3 ✓）。
+        """
+        if not pending:
+            return []
+        if len(pending) == 1:
+            call, bound = pending[0]
+            return [await self._invoke(call, bound)]
+
+        parallel_safe = [item for item in pending if _is_parallel_safe(item[1])]
+        serial = [item for item in pending if not _is_parallel_safe(item[1])]
+        if not parallel_safe:
+            out: list[ToolOutcome] = []
+            for call, bound in serial:
+                out.append(await self._invoke(call, bound))
+            return out
+
+        # ⚠️ **并行跑只读的那批** ✓
+        results = await asyncio.gather(
+            *(self._invoke(call, bound) for call, bound in parallel_safe),
+            return_exceptions=True,
+        )
+        parallel_outcomes: list[ToolOutcome] = []
+        for item, result in zip(parallel_safe, results, strict=False):
+            call, bound = item
+            if isinstance(result, BaseException):
+                # ⚠️ **并发里的异常不炸整批** ✓（与串行同口径 ✓ ——
+                # 工具失败是一个结果 ✓ 不是一次崩溃 ✓）。
+                parallel_outcomes.append(
+                    ToolOutcome(
+                        tool_call_id=str(call.get("id") or ""),
+                        name=bound.tool.name,
+                        output=f"{type(result).__name__}: {result}",
+                        is_error=True,
+                    )
+                )
+            else:
+                parallel_outcomes.append(result)
+        # ⚠️ **串行的那批照旧** ✓
+        serial_outcomes: list[ToolOutcome] = []
+        for call, bound in serial:
+            serial_outcomes.append(await self._invoke(call, bound))
+        # ⚠️ **按请求顺序还原** ✓（模型读结果的顺序有意义 ✓）
+        by_id = {
+            outcome.tool_call_id: outcome for outcome in (*parallel_outcomes, *serial_outcomes)
+        }
+        ordered: list[ToolOutcome] = []
+        for call, _bound in pending:
+            call_id = str(call.get("id") or "")
+            outcome = by_id.get(call_id)
+            if outcome is not None:
+                ordered.append(outcome)
+        return ordered
 
     async def _approval_for(self, call: dict[str, Any], bound: BoundTool) -> dict[str, Any] | None:
         """**这个工具要不要审批** ✓（§3.5 ✓）。
@@ -403,6 +544,26 @@ def tool_schema(tool: BaseTool) -> dict[str, Any]:
     from ..execution.tool_binding import tool_schema as _schema
 
     return _schema(tool)
+
+
+def _is_parallel_safe(bound: BoundTool) -> bool:
+    """**这个工具能并行跑吗** ✓。
+
+    ⚠️ **判据** ✓ —— 三条都满足才算安全 ✓：
+    1. **没有副作用** ✓（写文件 / 改配置 / 发消息 → 顺序有意义 ✗）
+    2. **风险低** ✓（高风险出错时应该立刻停 ✗ 而不是并行跑完 ✗）
+    3. **不需要审批** ✓（审批挂起是控制流 ✗ —— 已在上一阶段处理 ✓）
+
+    ⚠️ **默认保守** ✓ —— 判不出来就**串行** ✓（并行是优化 ✗✗
+    —— 不是正确性 ✗✗ —— 错判的代价是「顺序错乱」✗✗）。
+    """
+    binding = bound.binding
+    if getattr(binding, "side_effect", False):
+        return False
+    if str(getattr(binding, "risk", "low")) != "low":
+        return False
+    # ⚠️ **要审批的不能并行** ✓（审批挂起是控制流 ✗ —— 已在上一阶段处理 ✓）
+    return not getattr(binding, "requires_approval", False)
 
 
 def _tool_meta(bound: BoundTool) -> ToolMeta:

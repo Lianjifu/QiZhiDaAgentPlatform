@@ -71,6 +71,8 @@ import httpx
 import pypdf
 from PIL import Image as PILImage
 
+from qzdap_kernel.todo_protocol import TODO_PREFIX
+
 #: **LANCZOS 重采样** ✓ —— Pillow ≥ 9.1 把它挪进了 `Image.Resampling` ✓
 #: （顶层 `Image.LANCZOS` 是旧别名 ✓ —— 类型存根里没有 ✗ → 用新的那个 ✓）。
 _LANCZOS = PILImage.Resampling.LANCZOS
@@ -1371,10 +1373,21 @@ async def built_in_invoke_todo_write(
         )
     if not cleaned:
         return {"error": "todos must contain at least one valid entry"}
+    # ⚠️ **带上前缀载荷** ✓ —— 让 agent 循环能吸收这份清单 ✓
+    # （之前只返回给前端 ✓ → 循环**看不到** ✓ → 「规划」只是显示 ✗✗）。
+    # ⚠️ **前缀来自 kernel** ✓ —— tool 模块不依赖 runtime ✓（分层约束 ✓）——
+    # 两边共用同一份常量 ✓（单一真相 ✓）。
+    payload = json.dumps(
+        [{"content": item["content"], "status": item["status"]} for item in cleaned],
+        ensure_ascii=False,
+    )
     return {
         "todos": cleaned,
         "_pending_frontend_action": "render_todo_list",
         "_stub_hint": _STUB_HINT,
+        # ⚠️ **循环读这一行** ✓（前缀 + JSON ✓）—— 解析失败**不影响** ✓
+        # （工具输出永远不能打断对话 ✓）。
+        "output": f"{TODO_PREFIX}{payload}",
     }
 
 
