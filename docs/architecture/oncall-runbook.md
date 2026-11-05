@@ -1,6 +1,6 @@
 # 值班手册 · 会话架构重构期间 ✓
 
-> **什么时候用** ✓：告警响了 ✓（规则见 [`deploy/prometheus/alerts.yml`](../../../deploy/prometheus/alerts.yml) ✓）—— **先看这里** ✓（别猜 ✓ —— H2 的验收 ✓）。
+> **什么时候用** ✓：告警响了 ✓（规则见 [`deploy/prometheus/alerts.yml`](../../deploy/prometheus/alerts.yml) ✓）—— **先看这里** ✓（别猜 ✓ —— H2 的验收 ✓）。
 >
 > ⚠️ **每条告警都有回退步骤** ✓ —— 「出了事怎么办」写在下面 ✓（**不用翻代码** ✓）。
 >
@@ -152,7 +152,7 @@ print(json.loads(base64.urlsafe_b64decode(t+'='*(-len(t)%4)))['tid'])"
 
 ## 相关文档
 
-- 指标定义：[`backend/libs/observability/src/qzdap_observability/metrics.py`](../../../backend/libs/observability/src/qzdap_observability/metrics.py) ✓
-- 告警规则：[`deploy/prometheus/alerts.yml`](../../../deploy/prometheus/alerts.yml) ✓
+- 指标定义：[`backend/libs/observability/src/qzdap_observability/metrics.py`](../../backend/libs/observability/src/qzdap_observability/metrics.py) ✓
+- 告警规则：[`deploy/prometheus/alerts.yml`](../../deploy/prometheus/alerts.yml) ✓
 - 台账（`entry` 编号的来源）：[`cleanup-ledger.md`](cleanup-ledger.md) ✓
-- 实施计划：[`implementation-plan.md`](implementation-plan.md) ✓
+- 实施计划：[`cleanup-ledger.md`](./cleanup-ledger.md) ✓

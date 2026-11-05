@@ -1,7 +1,6 @@
 """新架构的轮次 + 事件日志 —— ``session_turns`` / ``session_events``。
 
-依据：``docs/refactor/session-architecture/gateway-refactor-plan.md`` §10
-Stage 4b（无感重放）、§4.5；``session-refactor-plan.md`` §7（事件落库与 outbox）。
+依据：``docs/architecture/session-lifecycle.md``（无感重放）；``docs/modules/agent-runtime.md``（事件落库与 outbox）。
 
 **这一层是 Session 侧对 Gateway 的硬交付**（Gateway 方案 §4.5 的前置依赖）：
 重放要成立，必须「**真的写、真的读**``session_events``」。

@@ -1,6 +1,6 @@
 """Router 层 —— 会话路由（**选出 agent**）。
 
-Router 方案（``docs/refactor/session-architecture/router-refactor-plan.md``）：
+Router 方案（``docs/modules/agent-runtime.md``）：
 Gateway → Router → Session。Router 只做两件事：**派生会话 key** 与
 **选出 agent** —— 不碰会话生命周期、不装上下文、不调 LLM。
 

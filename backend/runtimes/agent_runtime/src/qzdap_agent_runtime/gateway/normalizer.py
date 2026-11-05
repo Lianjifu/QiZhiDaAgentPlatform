@@ -1,7 +1,6 @@
 """③ Message Normalizer —— 端口与归一化上下文。
 
-依据：``docs/refactor/session-architecture/gateway-refactor-plan.md`` §2.2 / §3.3
-/ §9.1。
+依据：``docs/architecture/session-lifecycle.md``。
 
 **③ 只做格式翻译**：协议 → 标准字段。它**不做任何文本改写**（不清洗、不截断、
 不摘要），**不派生会话 key**（那是 Router 的事），**不决定 agent**（只透传

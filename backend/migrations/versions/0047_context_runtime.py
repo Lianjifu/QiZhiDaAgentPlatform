@@ -1,6 +1,6 @@
 """Context 运行时：rolling_summary 独立成列 + 上下文 manifest 表。
 
-依据：docs/refactor/session-architecture/context-refactor-plan.md §7.2
+依据：docs/modules/agent-runtime.md
 
 ⚠️ 物理顺序：本迁移在 0046 之后跑 —— Context 要读 ``session_messages.session_seq``
 （0046 新增的会话内单调序号）。

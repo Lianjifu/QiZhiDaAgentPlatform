@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 扫描「旧实现是否已清理」—— **规则表的唯一来源**是
-# docs/refactor/session-architecture/cleanup-ledger.md §3.1
+# docs/architecture/cleanup-ledger.md §3.1
 # （改规则先改那里；本脚本是它的可执行形态）。
 #
 # 用法：
@@ -191,7 +191,7 @@ RULES_EOF
 
 if [ "$failed" -ne 0 ]; then
   echo ""
-  echo "✗ 旧实现仍有残留 —— 见上面的命中列表（台账：docs/refactor/session-architecture/cleanup-ledger.md）"
+  echo "✗ 旧实现仍有残留 —— 见上面的命中列表（台账：docs/architecture/cleanup-ledger.md）"
   exit 1
 fi
 

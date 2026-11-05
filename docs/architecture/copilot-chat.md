@@ -1,13 +1,13 @@
 # 对话（Copilot）功能模块 — 架构梳理
 
-> 版本：1.4（2026-10-31 更新：**Agent Stage 5 + Stage 7**（循环本体迁到契约层 `agent_loop/` ✓ —— 旧手写循环与那批整包**已删** ✓）· **Router Stage 2/3**（规则链选 agent ✓ + 同会话 FIFO 排队 ✓）· **Memory Stage 4/5/6**（策略绑定接线 ✓ + 异步补向量 ✓ + 会话缓冲与提炼 ✓ + 使用统计与淘汰 ✓）· **Session 收口**（审批过期/幂等 ✓ + 旧续传状态列退役 ✓ + checkpoint saver 撤掉 ✓）之后的事实 —— 逐条见 **§12** ✓）
+> 版本：1.4（2026-10-31 更新：**Agent Stage 5 + Stage 7**（循环本体迁到契约层 `agent_loop/` ✓ —— 旧手写循环与那批整包**已删** ✓）· **Router Stage 2/3**（规则链选 agent ✓ + 同会话 FIFO 排队 ✓）· **Memory Stage 4/5/6**（策略绑定接线 ✓ + 异步补向量 ✓ + 会话缓冲与提炼 ✓ + 使用统计与淘汰 ✓）· **Session 收口**（审批过期/幂等 ✓ + 旧续传状态列退役 ✓ + checkpoint saver 撤掉 ✓）之后的事实 —— 逐条见 **§10** ✓）
 > 适用项目：`QiZhiDaAgentPlatform`
 > 状态：**现状（as-is）梳理**，描述当前代码已实现的行为，不含改造计划
 > 读者：需要理解「一次对话从点击发送到渲染完成」全链路的人
 
-本文只做现状记录。重构方案在 `docs/refactor/session-architecture/`（方案集：生命周期基线 + 清理台账 + 逐层方案）—— 那份讲**目标代码**，本文讲**当前代码**，两者不应混读。
+本文只做现状记录，讲**当前代码**。各能力域的职责与边界见 [功能模块文档](../modules/README.md)；会话链路的泳道划分见 [会话生命周期基线](./session-lifecycle.md)。
 
-⚠️ **§9–§11 是历史记录**（2026-10-28 ~ 10-30 的补齐过程与当时的回归数字）—— 它们记录「当时补了什么」，不代表今天的现状；**今天的现状看 §1–§8** ✓。
+⚠️ **§9 是历史记录**（2026-10-28 ~ 10-30 的补齐过程）—— 记录「当时补了什么」，不代表今天的现状；**今天的现状看 §1–§8 与 §10** ✓。
 
 ---
 
@@ -259,7 +259,7 @@ ChannelTurnService            # 会话按 channel_session_key 粘住 ✓
 
 HTTP 层每个请求再通过 `session_router.py` 的 `copilot_dependency` 按请求绑定的 tenant/workspace 重新绑定 skill 与 sandbox 适配器——即**作用域在请求级确定，不在单例上**。
 
-> **注意**：`tool_port` 在 `_CopilotFactory` 中**没有注入**（只传了 skill / sandbox / memory / knowledge）。因此 `tools.py` 中 `tool_port.invoke` 分支在 Copilot 路径上不可达，`backend/modules/tool` 里 30+ 内置工具当前无法被对话调用。详见 [§7 已知缺口](#7-已知缺口as-is)。
+> **工具端口已接线** ✓ —— `tool_port` 在**请求级**绑定（`session_router.py:125-148` 的 `ToolServiceAdapter` ✓），所以 `backend/modules/tool` 的 31 个内置工具在对话路径上**可以真正被调用** ✓（工具目录见 [功能模块 · tool](../modules/tool.md)）。
 
 ---
 
@@ -557,14 +557,14 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 | `session_router.py:454-497` | `tool.interactive_answer` | 前端提交交互问题的真实答案时 |
 | `backend/modules/tool/adapter/adapters/tool_audit.py` | 工具调用审计 | 每次 `ToolPort.invoke` 一行 `audit_log`，失败只记日志不抛出 |
 
-由于 `tool_port` 未接入（§3.3），**对话中的工具调用目前不产生 `audit_log` 记录**。README 宣称的「所有工具调用 100% 写 audit_log」在 Copilot 路径上尚未成立。
+由于 `tool_port` 已在请求级接线（§3.3），**对话中的工具调用会写 `audit_log`** ✓——README 宣称的「所有工具调用 100% 写 audit_log」在 Copilot 路径上成立 ✓。
 
 ### 6.6 其它横切能力
 
 | 关注点 | 现状 |
 |---|---|
 | 额度 / 计费 | 额度扣减在 `ModelService.stream` 里（走已保存模型时生效 ✓）；**成本落 `session_turns.cost_usd`** ✓（新表有这一列 ✓）；⚠️ **token 数不再入库** ✗ —— 新表没有 `input_tokens/output_tokens` 列 ✓，它们在 **`usage` 事件**里 ✓（`session_events` ✓） |
-| 可观测 | `libs/observability` 提供 OTel / Prometheus 基建；对话路径有显式 span 埋点 ✓（`http.chat.stream` ✓ → `agent.turn` ✓ → `agent.llm` / `agent.tool` ✓ —— 四层 ✓ —— 见 §11.8 ✓） |
+| 可观测 | `libs/observability` 提供 OTel / Prometheus 基建；对话路径有显式 span 埋点 ✓（`http.chat.stream` ✓ → `agent.turn` ✓ → `agent.llm` / `agent.tool` ✓ —— 四层 ✓ —— 见 §10 ✓） |
 | 审批服务 | `container.approval_service()`，创建时 `requester_id` 是会话 owner（`runner.py:658`）；`decide_approval` 的 `approver_id` 也是真实用户（`copilot.py` ✓）✅ |
 | 事件总线 | `AgentRuntimeEventPublisher(container.bus())` 发布 `session.opened` / `turn.started` / `session.closed` |
 | 多租户隔离 | 表级 `TenantScopedMixin` 自动过滤 + 应用层 `tenant/workspace/owner` 三重校验 |
@@ -574,9 +574,9 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 
 ## 7. 已知缺口（as-is）
 
-以下是梳理过程中在当前代码中确认的事实，**不是改造计划**。改造方案见 `docs/refactor/session-module-refactor-plan.md`。
+以下是梳理过程中在当前代码中确认的事实，**不是改造计划**。改造方案见 `docs/modules/agent-runtime.md`。
 
-> ⚠️ 本节记录的是**补齐前**的快照。其中若干条已在 [§11 补齐记录](#11-补齐记录2026-10-28) 里修掉：工具未接线、失败不落库、无心跳/超时、并发、停止生成、审批主体、计划 ack、知识召回事件、usage 消费。完整的当前状态见 [§10 功能完备性审查](#10-功能完备性审查)。
+> ⚠️ 本节记录的是**补齐前**的快照。其中若干条已在 §9 补齐记录里修掉：工具未接线、失败不落库、无心跳/超时、并发、停止生成、审批主体、计划 ack、知识召回事件、usage 消费。完整的当前状态见 §10 ✓。
 
 | # | 缺口 | 位置 | 影响 |
 |---|---|---|---|
@@ -600,253 +600,48 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 
 | 文档 | 内容 |
 |---|---|
-| `docs/refactor/session-architecture/` | **会话链路重构方案集**（当前入口）：生命周期基线 + 清理台账 + 逐层方案 |
-| `docs/refactor/session-module-refactor-plan.md` | 会话模块重构方案（状态模型与持久化设计仍有效；分层视角已被上一行取代） |
-| `docs/refactor/agent-builtin-tools-v2.md` | 内置工具集 v2 设计与接入方案（对应缺口 #1） |
-| `docs/refactor/frontend-interactive-tools.md` | 5 个前端交互桩工具的前端契约（对应 `interactive_action`） |
-| `docs/refactor/subagent-delegate-dispatch.md` | 多智能体委派与派发机制 |
-| `docs/refactor/sandbox-network-egress-control.md` | 沙箱网络出站管控 |
-| `docs/refactor/langgraph-1x-migration-notes.md` | LangGraph 1.x 迁移记录（对应缺口 #3） |
-| `README.md` §5 模块详解 | 15 个能力域概览，agent_runtime 为「流式对话引擎」 |
+| [../modules/agent-runtime.md](../modules/agent-runtime.md) | **agent_runtime 能力域**：职责、端点、数据表、已知边界 |
+| [../modules/tool.md](../modules/tool.md) | 31 个内置工具与执行链路 |
+| [../modules/knowledge.md](../modules/knowledge.md) | 知识召回如何注入上下文 |
+| [../modules/memory.md](../modules/memory.md) | 记忆分层与召回 |
+| [./session-lifecycle.md](./session-lifecycle.md) | 会话完整生命周期的泳道与时序基线 |
+| [./cleanup-ledger.md](./cleanup-ledger.md) | 旧实现收敛台账（CI 扫描规则的来源） |
+| [../planned/sandbox-network-egress-control.md](../planned/sandbox-network-egress-control.md) | 沙箱网络出站管控（**待实施**） |
+| [../modules/README.md](../modules/README.md) | 15 个能力域总表 |
 
 ---
 
-## 9. 功能回归
+## 9. 历史补齐记录（2026-10-28 ~ 10-30）
 
-回归时间：2026-10-28 · 工作区：`main`（含未提交改动）· 未启动 Postgres / Redis
+⚠️ **本节是过程记录** —— 记录当时补了什么、当时的回归数字，**不代表今天的现状** ✓。
+**今天的现状看 §1–§8 与 §10** ✓。
 
-### 9.1 结果
+那一轮补齐的内容（现已全部落地并被 §10 覆盖）：
 
-| 范围 | 命令 | 结果 |
-|---|---|---|
-| 后端 · 对话模块 | `cd backend && uv run pytest modules/agent_runtime/tests -q` | **93 passed**，6 skipped（跳过项为需要 Postgres 的集成测试） |
-| 后端 · 全量 | `cd backend && uv run pytest -q` | **1342 passed**，63 skipped，4 errors（error 全部来自 Redis 集成测试，本机无 Redis） |
-| 前端 · 对话模块 | `cd frontend/web && VITE_QZDAP_ENV=demo pnpm vitest run src/features/user/copilot` | **3 passed** |
-| 前端 · 类型检查 | `cd frontend/web && pnpm typecheck` | 通过 |
-| 前端 · 全量（default 模式） | `cd frontend/web && pnpm vitest run` | 41 文件 / 131 用例失败（192 passed） |
-| 前端 · 全量（demo 模式） | 同上 + `VITE_QZDAP_ENV=demo` | 同样 41 文件 / 131 用例失败 —— **与环境变量无关** |
+| 补齐项 | 结论 |
+|---|---|
+| 内置工具整条链路接线 | ✅ 已修 —— `tool_port` 请求级绑定（§3.3 ✓） |
+| 中途失败对用户不可见、turn 永久卡「执行中」 | ✅ 已修 —— 失败落 `error` chunk + turn 收尾 |
+| 网关静默超时与无心跳 | ✅ 已修 —— 15s `: keepalive` + 300s 读超时 |
+| 审批主体是常量 | ✅ 已修 —— 请求人与审批人都是真实用户 |
+| `UsageChunk.cost_usd` 恒 0 | ✅ 已修 —— 按 `admin_models.price_in/price_out` 计价，落 `session_turns.cost_usd` |
+| 计划批准端点是 ack 空实现 | ✅ 已修 —— 决定写进 `session.metadata["plan_decisions"]` |
+| 真实召回路径不下发 `knowledge_search` chunk | ✅ 已修 —— 召回路径现在也下发 |
+| 发送无幂等 | ✅ 已修 —— `clientRequestId` + 会话内去重 |
+| 知识召回事件 / usage 消费无前端消费方 | ✅ 已修 —— 两者现在都有 UI |
+| 续传（断线重连） | ❌ **仍未做** —— 见 §10 的边界 |
 
-### 9.2 回归中发现的两件事
-
-**① 对话模块的前端测试不隔离环境（测试缺陷，非产品缺陷）**
-
-`CopilotPage.test.tsx` 的「附件名写入输入框」用例在默认环境下必然失败：
-
-- 用例断言输入框出现 `[附件: 会议纪要.pdf]`；
-- 但 `CopilotPage.tsx:556` 的 `handleAttachment` 只在 `runtimeConfig().dataMode === 'demo'` 时才把该文本写进输入框；真实分支走 `POST /api/sessions/{id}/attachments`，且要求已有 `sessionId`；
-- 本地 `.env` 未设 `VITE_QZDAP_ENV=demo` / `VITE_USE_DEMO=true`，默认落在 `development-api` 模式 → 用例断言落空。
-
-也就是说，这个用例测的是**演示分支**。建议二选一：给该用例显式设置 demo 环境，或改测真实上传分支（断言上传请求与输入框内容）。在此之前，`pnpm test` 的默认结果里这条永远是红的。
-
-**② 前端全量测试大面积红，属分支既有状态**
-
-131 个失败集中在 admin 与 mock 数据驱动的页面（AdminAgents / AdminKnowledge / 工作流 / 技能 / 设置 / 首页摘要等），与对话模块无交集。判定依据：
-
-- 两种 env 模式下失败数完全一致（41 文件 / 131 用例），排除环境变量因素；
-- 失败文件与本次工作区改动（`TrendChart.tsx`、`CopilotPage.tsx`）不重叠，`TrendChart.test.tsx` 4 个用例全绿；
-- 单独验证过 `AdminOverview.test.tsx`：把未提交的 `TrendChart.tsx` 改动 stash 掉再跑，失败数不变（7 failed / 2 passed），确认与工作区改动无关；
-- 后端全量 1342 通过，说明不是构建或依赖层面的问题。
-
-### 9.3 回归盲区（本次未覆盖）
-
-- **真实端到端对话**：未启动 Postgres 与沙箱运行时，完整链路（真实 LLM → 工具执行 → SSE 回流）未跑通；上文所有描述来自代码静态阅读 + 单元测试。
-- **集成测试**：6 个 agent_runtime 集成用例与 63 个后端跳过用例需要 `QZDAP_TEST_DATABASE_URL` / Postgres。
-- **Redis 事件总线**：4 个 error 用例需要 Redis 实例。
-- **多智能体委派**：`delegate_subagent` 的深度限制与子会话创建只有单元测试覆盖，无端到端验证。
+当时的回归数字与盲区清单已随本节压缩删除；需要原始终稿可查 git 历史 ✓。
 
 ---
 
-## 10. 功能完备性审查
-
-审查时间：2026-10-28 · 判定口径：**该有的生产能力是否真的存在**，而不是「接口在不在」
-
-§11 记录了审查之后的补齐动作，下表的「状态」列是补齐后的最终状态。
-
-### 10.1 分维度结论
-
-| # | 维度 | 结论 | 状态 |
-|---|---|---|---|
-| 1 | 会话生命周期 | 基本完备 | ✅ |
-| 2 | 消息与上下文 | 基本完备 | ✅ |
-| 3 | 流式协议 | 缺 error 事件 / 无心跳 / 无续传 / 前端硬超时 | ✅ 已补齐（续传仍未做，见 §11.4） |
-| 4 | 工具与执行 | `tool_port` 未接线；计划批准空实现；产物下载读 mock 路径 | ✅ 工具与计划已补齐；产物持久化仍未做 |
-| 5 | 审批与人工介入 | 框架完备，审批主体是常量 ID | ✅ 主体已改为真实用户 |
-| 6 | 治理（额度/审计/合规） | 额度只在已保存模型路径生效；工具调用无审计 | ✅ 工具审计随接线恢复；额度见 §11.3 的修正 |
-| 7 | 可靠性 | 失败不落库、turn 永久 running；无并发保护；无停止生成；无幂等 | ✅ 前三项已补齐；幂等仍未做 |
-| 8 | 可观测 | 无 span 埋点；`cost_usd` 恒 0；`usage` 不消费 | ✅ 四层 span + 成本核算 + 用量展示（见 §11.6 / §11.8） |
-| 9 | 反馈闭环 | `self_evolution` 的反馈池与对话无连接 | ✅ 对话里的 👍/👎 写进 `feedback.list`（见 §11.6） |
-| 10 | 附件与安全 | 完备 | ✅ |
-
-**总评：设计骨架完备；补齐后生产闭环的主要断点已经接上，剩下的都是「更大的工程」而不是「洞」。**
-
-### 10.2 三个 P0 —— 已全部修复
-
-**P0-1　内置工具整条链路没接线** ✅ 已修复（见 §11.1）
-
-`tool_port` 原本没注入 Copilot 装配（`lifespan.py:297-307`），`tools.py` 的 `tool_port.invoke` 分支不可达。后果：
-
-- `backend/modules/tool` 的 30+ 内置工具（`web_search` / `http_fetch` / `bash` / `read_file` / `write_file` / `grep` / `apply_patch` …）在对话中**一个都调不到**；
-- README「30+ 内置工具（Claude Code 能力对标）」的能力宣称与实现不符；
-- 工具调用不写 `audit_log`（审计写在 `tool_audit.py`，只有 `tool_port` 路径才经过它）。
-
-**P0-2　中途失败对用户不可见，且 turn 永久卡在「执行中」** ✅ 已修复（见 §11.2）
-
-Copilot 路径**从不产出 `ErrorChunk`**——`ErrorChunk` 只在第二套 turn 实现（`application/use_cases/run_turn.py`，台账 **X2**，现只剩 IM 入口一个调用方）里产生。而 `/api/sessions/{id}/turns/stream` 的第一个 chunk 是预取的（`session_router.py:298`），所以：
-
-- 首 chunk 之前的错误（session 不存在、agent 未发布）→ 变成 HTTP 错误，用户看得到；
-- **首 chunk 之后的错误**（LLM 中途报错、工具抛异常、沙箱不可用）→ 响应已经以 200 开始，流静默结束。前端 `CopilotPage.tsx` 的 `error` 分支永远不触发，`streamCopilotTurn` 正常返回，用户看到的是一段**被截断的回答，且没有任何错误提示**。
-
-同时，`copilot.py` 只在 `DoneChunk` 时把 turn 置为 `succeeded`，**没有任何路径把它置为 `failed`**。客户端超时、用户关页面、后端异常——turn 行永远停在 `running`，`/api/tasks` 也就永远显示「执行中」。
-
-**P0-3　网关 60s 静默超时与无心跳** ✅ 已修复（见 §11.3）
-
-`infra/envoy/nginx.compose.conf` 配了 `proxy_read_timeout 60s`（且 `proxy_buffering off`）。而 SSE 流**不发心跳**，只在有 chunk 时才产生字节。一次慢的工具调用（沙箱超时上限就有 30s）、一次慢的知识召回、或模型首字延迟，都可能让链路静默超过 60 秒——**网关直接掐断连接**，用户看到流突然结束，而后端还在跑（且不会取消）。
-
-叠加前端 `frontend/packages/api/src/index.ts` 的 120s 硬超时，长轮次存在两道独立的截断。
-
-### 10.3 P1 —— 补齐情况
-
-| 缺口 | 位置 | 状态 |
-|---|---|---|
-| 额度未扣减、`cost_usd` 恒 0 | `runner.py` | ⚠️ **修正**：额度其实在 `ModelService.stream` 里扣（`backend/modules/model/src/qzdap/modules/model/application/services.py:765`），走已保存模型时生效；只有走 legacy 模型名（agent.model 是字符串别名）才绕过。`cost_usd` 恒 0 仍然成立 |
-| 工具调用无审计 | `tool_audit.py` | ✅ 随 `tool_port` 接线自动恢复 |
-| 审批主体是常量 | `copilot.py` / `runner.py` | ✅ 改为真实 owner |
-| 无会话级并发保护 | `copilot.py` | ✅ 增加原子占用（`try_claim`），第二个轮次返回 409 `SESSION_BUSY` |
-| 无「停止生成」 | 前端无按钮；后端无 cancel 路由 | ✅ 增加 `POST /api/sessions/{id}/cancel` + 前端停止按钮 |
-| 发送无幂等 | 前端无 request id | ✅ `clientRequestId` + 会话内去重（见 §11.6） |
-| 计划批准/拒绝是 ack 空实现 | `session_router.py` | ✅ 决策落库 + 写审计 |
-| 产物下载读 mock 路径 | `session_router.py` | ❌ 未做（需产物表；产物链路本身仍是 mock） |
-| 知识召回不下发 chunk | `runner.py` | ✅ 真实路径补发 `knowledge_search` |
-| `usage` / `skill_invocation` 前端不消费 | `CopilotPage.tsx` | ✅ 前端已消费；后端补发 `skill_invocation` |
-| 模型选择无 UI 入口 | 后端支持 `body.model`，前端只发 `{content}` | ❌ 未做（需产品决定） |
-| 策略路由 `route_id` 前端从不传 | `session_router.py` | ❌ 未做（同上） |
-| 反馈闭环未接 | `agent_runtime` 无任何 `feedback` 引用 | ❌ 未做 |
-| 会话标题恒为「与 X 对话」 | `copilot.py` | ✅ 用第一句用户输入生成（见 §11.6） |
-
----
-
-## 11. 补齐记录（2026-10-28）
-
-这一节记录上面那些缺口是怎么补的，以及补完之后的行为契约。
-
-### 11.1 P0-1 内置工具接线
-
-| 改动 | 位置 |
-|---|---|
-| 新增内置工具的**参数契约目录**（30 个工具的 description / parameters / risk / needConfirm） | `backend/modules/tool/src/qzdap/modules/tool/application/tool_catalog.py` |
-| `ToolPort` 增加 `list_tools()`，返回 `{name, description, parameters, risk, needConfirm}` | `application/ports/__init__.py` |
-| `ToolServiceAdapter.list_tools()` 把 DB 行与静态目录合并：内置工具取目录里的 schema，管理员注册的工具退化为宽松 schema | `adapter/tools/tool_service_adapter.py` |
-| 工具白名单纳入目录工具；**只有 agent 显式列出的目录工具才会暴露给模型**（未配置工具列表时保持旧行为：只给技能 + `sandbox_exec`） | `adapter/graph/runner.py` `_whitelist` |
-| 函数 schema 用真实 `parameters`，不再是空 `properties` | `adapter/graph/runner.py` `_openai_tools` |
-| 每次请求按 tenant/workspace/owner 绑定 `tool_port` | `adapter/http/session_router.py` `copilot_dependency` |
-| 工具执行异常不再掀翻整轮，改成失败的工具结果回灌给模型 | `adapter/graph/tools.py` `execute_tool` |
-| 高风险内置工具（`bash` / `write_file` / `edit_file` / `apply_patch` / `fetch_url_with_auth`）走既有审批闸门 | `risk: high` + `needConfirm` |
-
-工具调用审计（`tool_audit.py`）挂在 `tool_port` 路径上，接线后自动生效。
-
-### 11.2 P0-2 失败可见 + turn 收尾
-
-- Copilot 路径补 `ErrorChunk`：**首 chunk 之前**的失败仍然抛异常（HTTP 层给状态码），**首 chunk 之后**的失败转成 `error` 事件（前端 `streamCopilotTurn` 见到 `error` 即抛，用户看到「请求失败：…」）。
-- turn 收尾补全：成功 → `succeeded`；异常 → `failed(TURN_FAILED)`；客户端断开/取消 → `failed(TURN_CANCELLED)`。**不会再有永久停在 `running` 的轮次**。
-- 取消路径同时覆盖 `asyncio.CancelledError`（任务取消）与 `GeneratorExit`（响应体生成器被关闭 = 用户关页面）。
-- 工具自身失败不再算「轮次失败」——它是一条失败的工具结果，轮次照常收尾。
-- 挂起等审批时，任务列表从「执行中」改成「等你确认」（`session.wait_status`）。
-
-### 11.3 P0-3 心跳与超时
-
-| 层 | 改动 |
-|---|---|
-| SSE 编码器 | 空闲时每 15s 发一帧 `: keepalive`（SSE 注释帧，客户端按规范忽略）；前端解析器不匹配 `event:`/`data:` 前缀，自动跳过 |
-| 网关 | `proxy_read_timeout` 60s → 300s，另加 `proxy_send_timeout 300s` |
-| 前端 | SSE 超时从写死的 120s 改为可配置，对话流用 600s |
-
-### 11.4 本轮补齐的其他能力
-
-| 能力 | 说明 |
-|---|---|
-| 会话级并发保护 | `try_claim` 用一条 `UPDATE ... WHERE wait_status != 'running'` + 立即 commit 做原子占用；第二个轮次得到 409 `SESSION_BUSY`。占用超过 30 分钟视为上一轮已死，可被接管 |
-| 停止生成 | `POST /api/sessions/{id}/cancel` 把停止标记写进 session 行（跨 worker 有效），运行中的轮次在下一个 chunk 边界发现标记后收尾；前端发送按钮在生成中变成「停止」，点击即断流 + 通知后端 |
-| 审批主体 | 请求人 / 审批人从常量 `UUID(0)`/`UUID(1)` 改为真实 owner |
-| 知识召回事件 | 真实召回路径补发 `knowledge_search` chunk（hits + citations） |
-| 技能执行事件 | 后端补发 `skill_invocation` chunk（带 `tool_call_id`，前端可合并进工具条目）；`SkillInvocationChunk` 新增可选 `tool_call_id` 字段 |
-| 计划决策 | 批准 / 拒绝不再只是 ack：决策落库到 `session.graph_state["plan_decisions"]`，并各写一行审计 |
-| token 用量 | 前端消费 `usage` chunk，助手消息下方显示本轮输入 / 输出 token |
-
-### 11.5 仍未做（需要更大的工程或产品决策）
-
-| 项 | 为什么没做 |
-|---|---|
-| 断线续传 / SSE 重放 | 需要给 chunk 加事件日志与 `Last-Event-ID` 语义 |
-| ~~发送幂等~~ | 已完成：`clientRequestId` + 会话内最近 8 个 id 去重 |
-| 产物持久化 | 需要一张产物表 + 对象存储，当前产物仍从 mock 路径读 |
-| ~~成本核算~~ | 已完成：`admin_models.price_in/price_out` 已在用 |
-| 模型选择 / 策略路由的前端入口 | 需要产品决定暴露哪些模型、是否给普通用户看 |
-| ~~反馈闭环~~ | 已完成：对话里的 👍/👎 写进平台 `feedback.list` 集合 |
-| ~~可观测埋点~~ | 已完成：`http.chat.stream` / `agent.turn` / `agent.llm` / `agent.tool` 四层 span |
-
-### 11.6 第二轮补齐
-
-| 能力 | 做了什么 | 位置 |
-|---|---|---|
-| **可观测埋点** | `agent.turn` / `agent.llm` / `agent.tool` 三层 span，父 span 带 tenant/workspace/session/turn/model，子 span 带 token 用量、工具名、耗时、成功与否 | `adapter/graph/runner.py` |
-| **成本核算** | `admin_models.price_in` / `price_out`（每 1K token）第一次被真正用上：`UsageChunk.cost_usd` 不再恒为 0；新增 `agent_turns.cost_usd` 列（迁移 `0043`），轮次成本落库；前端显示本轮成本 | `chat_model.py`（暴露解析后的 model id）、`runner.py`、`catalog_model_resolver.py`（新增 `price_of`）、`domain/entities.py`、`persistence/models.py`、迁移 `0043_turn_cost_usd.py` |
-| **发送幂等** | 前端每次发送带 `clientRequestId`；后端按幂等键判重，重复到达**不跑第二轮**（双击 / 网络重试安全 ✓）—— web 侧**重放上一轮事件流** ✓（200 ✓，不是 202 降级 ✓） | `copilotApi.ts`、`CopilotPage.tsx`、契约层 `session/turn_runner.py`（幂等 accept ✓）、模块侧 `application/turn_entry.py`（翻成 `DuplicateRequestError` ✓） |
-| **反馈闭环** | 助手消息下方加 👍/👎；`POST /api/sessions/{id}/feedback` 校验会话归属后写进平台已有的 `feedback.list` 集合（管理员在「管理 → 反馈池」直接可见），同时写一行 `chat.feedback` 审计 | `session_router.py`、`copilotApi.ts`、`CopilotPage.tsx` |
-| **会话标题** | 会话标题不再恒为「与 XX 对话」——用户说的第一句话会成为标题 | 契约层 `session/turn_runner.py` `_auto_title` ✓（2026-10-31 S-21b：随薄壳删除一起迁走 ✓） |
-
-**顺带修掉的一个真 bug**：页面在每轮结束后会重新拉一次会话并**用服务端消息整体替换本地状态**，于是刚渲染出来的工具卡片、产物、用量行会在回答结束的瞬间消失。根因是那个 effect 依赖了 `isSending`。现在每个会话只同步一次（`syncedSessionRef`），本地新建的会话直接标记为已同步。
-
-**关于 OTel span 的一个坑**：`start_as_current_span` 依赖 ContextVar 的 token 复位，而异步生成器每次恢复可能跑在不同的 Context 里，退出时会抛 `created in a different Context`。所以这里用的是显式 parent/child（`start_span(..., context=...)`），不用 context manager。
-
-### 11.7 回归结果
-
-| 范围 | 结果 |
-|---|---|
-| 后端 · agent_runtime | **107 passed** / 6 skipped（累计新增 14 个用例） |
-| 后端 · 全量 | **1356 passed** / 63 skipped / 4 errors（error 全部来自 Redis 集成测试，本机无 Redis） |
-| 前端 · 对话模块 | **5 passed**（新增停止生成、反馈两个 UI 用例） |
-| 前端 · 类型检查 | 通过 |
-| 前端 · 全量 | 与补齐前一致：41 文件 / 131 用例失败（分支既有状态，见 §9.2）；新增用例全绿 |
-| 静态检查 | `ruff`（改动文件无新增告警）、`mypy`（无新增错误，另修掉 1 处历史报错）、`lint-imports`（3 条边界契约全部保持） |
-
-新增用例覆盖：工具失败不杀轮次、中途失败产出 error 事件且 turn 落 failed、首 chunk 失败仍抛异常、取消不留 running 轮次、目录工具带真实 schema 进模型、并发第二轮被拒、取消请求能停住运行中的轮次、遗留停止标记不影响新一轮、SSE 心跳帧与前端解析兼容、停止按钮断流、重复的 clientRequestId 不跑第二轮、第一句话成为会话标题、usage 带出真实成本。
-
-### 11.8 第三轮补齐
-
-这一轮只做三件事：把 trace 树补完整、清掉静态检查上的历史欠账、修一个前端既有失败用例。
-
-| 项 | 做了什么 | 位置 |
-|---|---|---|
-| **HTTP 层 span** | 新增 `http.chat.stream` span 覆盖整个 SSE 请求（含首 chunk 预取与后续流式输出），并把它的 context 显式传下去，让 `agent.turn` 成为它的子节点。整条 trace 现在是 `http.chat.stream → agent.turn → agent.llm / agent.tool` 四层，一眼能看出「这次请求慢在模型还是在工具」。发消息和审批恢复两条 SSE 路径共用同一个 `_sse_response` 助手 | `adapter/http/session_router.py`（`_sse_response` 助手，建 span、错误/断连时置 ERROR 状态）、`application/copilot.py`（`parent_span_context` 逐层透传）、`adapter/graph/runner.py`（`run_turn` 接 `parent_span_context`） |
-| **mypy 收尾** | `run_turn` / `_run_turn_inner` 的返回类型从 `AsyncIterator` 改成 `AsyncGenerator` —— `aclosing()` 需要 `aclose()`，只有 `AsyncGenerator` 有。顺手修掉了 `copilot.py` 里一处历史的 `route_id` 类型不匹配 | `adapter/graph/runner.py`、`application/copilot.py` |
-| **前端既有失败用例** | `CopilotPage.test.tsx` 的附件用例依赖 demo 模式，但测试环境解析出来是 `development-api`，于是走的是「先要会话」分支、文件名没进输入框 —— 这条用例在 HEAD 上就是失败的。改成显式 mock `runtimeConfig()`，用例不再依赖环境变量 | `CopilotPage.test.tsx` |
-
-**新增用例**（`backend/modules/agent_runtime/tests/unit/test_copilot_tracing.py`，4 个）：用 `InMemorySpanExporter` 收集 span，断言 `agent.llm` / `agent.tool` 的 parent 就是 `agent.turn`，`agent.turn` 的 parent 是 HTTP 层传下来的 span，`agent.turn` 上带着 session/tenant/model 属性，以及**走真实 HTTP 路由**时 `http.chat.stream` 确实被创建、且 `agent.turn` 挂在它底下。
-
-**为什么 HTTP span 要显式传 context 而不是用 `start_as_current_span`**：见 §11.6 的说明 —— 异步生成器跨 Context 时 ContextVar token 复位会抛 `created in a different Context`。这里 HTTP 层同样用显式的 `start_span(...)` + `set_span_in_context(...)`，并把 context 当参数一路传到 `run_turn`。
-
-### 11.9 回归结果（第三轮后）
-
-| 范围 | 结果 |
-|---|---|
-| 后端 · agent_runtime | **111 passed** / 6 skipped（新增 4 个 tracing 用例） |
-| 后端 · 全量 | **1360 passed** / 63 skipped / 4 errors，连跑 3 次稳定（error 全部来自 Redis 集成测试，本机无 Redis） |
-| 前端 · 对话模块 | **5 passed** |
-| 前端 · 全量 | **40 文件 / 130 用例失败**（比补齐前少 1 个 —— 修好的就是那条附件用例；其余是分支既有状态，见 §9.2） |
-| 静态检查 | `mypy` 在 `agent_runtime` 下 **24** 处，比 HEAD 的 26 处**少 2 处**，**零新增**；`ruff` **55** 处，比 HEAD 的 57 处**少 2 处**，无新增；`lint-imports` 3 条边界契约全部保持 |
-
-> 顺带一提：`modules/model` 里那条 `test_weighted_dict_list_picks_by_weight` 是**概率性用例**（50 次加权采样后断言大小关系，源码里用的是未播种的 `random.Random()`），约 30 次里有 1 次会失败。它在 `modules/model` 里，与本次对话模块的改动无关，但排查时容易被误判成回归——真正判断本次改动是否引入问题，要看**同一套命令连跑 3 次是否稳定**。
-
-
----
-
-## 12. 会话架构重构落地后的现状（2026-10-31）
+## 10. 会话架构重构落地后的现状（2026-10-31）
 
 > 本节记录 **2026-10-31 之前**落地的重构对**本文所述现状**的影响 ✓ —— 逐条对应
-> `docs/refactor/session-architecture/` 的方案集 ✓（Gateway / Router / Session /
+> 会话链路各层 ✓（Gateway / Router / Session /
 > Context / Memory / Agent 六层 ✓）。
 
-### 12.1 Agent 层：循环本体归契约层
+### 10.1 Agent 层：循环本体归契约层
 
 | 变化 | 现状 |
 |---|---|
@@ -855,7 +650,7 @@ Copilot 路径**从不产出 `ErrorChunk`**——`ErrorChunk` 只在第二套 tu
 | **工具白名单** | 模型**只能调用 agent 绑定的工具** ✓（此前是「模型说什么就执行什么」✗✗ —— 那是个洞 ✓） |
 | **专家装配** | 模型与工具**只来自 agent 配置** ✓（契约层 `expert.py` ✓） |
 
-### 12.2 Router 层：规则链 + 同会话有序
+### 10.2 Router 层：规则链 + 同会话有序
 
 | 变化 | 现状 |
 |---|---|
@@ -864,7 +659,7 @@ Copilot 路径**从不产出 `ErrorChunk`**——`ErrorChunk` 只在第二套 tu
 | **同会话有序** | **FIFO 排队** ✓（序号分配 ✓ + 入队 ✓ + 放行 ✓ —— 权威是**轮次行状态 CAS** ✓）；**开关 `QZDAP_ROUTER_QUEUE_ENABLED`** ✓（默认关 ✓ —— 关掉即旧语义 ✓） |
 | **排队可见性** | 排队期间前端能收到 `queued` chunk ✓（位置 / 已等时长 ✓） |
 
-### 12.3 Session 层：唯一 turn 实现 + 收口
+### 10.3 Session 层：唯一 turn 实现 + 收口
 
 | 变化 | 现状 |
 |---|---|
@@ -875,18 +670,18 @@ Copilot 路径**从不产出 `ErrorChunk`**——`ErrorChunk` 只在第二套 tu
 | **续传状态** | 归 `metadata["resume"]` ✓ —— 旧的 `graph_state` **列已 DROP** ✓（迁移 0056 ✓） |
 | **checkpoint saver** | **不再起** ✓（唯一的消费者是那张已删的 LangGraph 图 ✓）—— 新的循环用会话 metadata + 轮次行续传 ✓ |
 
-### 12.4 Memory 层：策略绑定 + 异步向量 + 淘汰
+### 10.4 Memory 层：策略绑定 + 异步向量 + 淘汰
 
 见 §6.4 ✓（策略绑定 ✓ / 会话缓冲与提炼 ✓ / 异步补向量 ✓ / 使用统计与淘汰 ✓）。
 
-### 12.5 Gateway 层：降级标记 + 结果形状只有一套
+### 10.5 Gateway 层：降级标记 + 结果形状只有一套
 
 | 变化 | 现状 |
 |---|---|
 | **降级标记** | **有可投递的通道** ✓ —— `ChunkEnvelope.flags` ✓（挂在**信封**上 ✓ —— 每一块都带 ✓）+ 内部 `ResultEvent.flags` ✓（**同一个词汇** ✓ —— 前端不用写两套判断 ✓）；词汇只有三个 ✓（`recall_degraded` ✓ / `compaction_degraded` ✓ / `interactive_degraded` ✓ —— Gateway 方案 §9.0 ✓）—— Context 产出的 `recall_degraded` **现在到得了前端** ✓（此前**没有通道** ✗✗） |
 | **结果形状** | **只有一套** ✓ —— 内部那 16 种 `*Event` **已删** ✓（台账 **X1-a** ✓）→ `result/` 只剩**一个工厂** ✓（`to_chunk` ✓ —— 「事件 → chunk」只有这一处 ✓ —— 之前**两份** ✗✗）；⚠️ **换之前先扩了 chunk 契约** ✓（usage 的 6 维 ✓ / error 的 `detailed` ✓ / `event_id` ✓ …—— **没丢字段** ✓） |
 
-### 12.6 现状文档的边界
+### 10.6 现状文档的边界
 
-§9–§11 仍是 2026-10-28 ~ 10-30 的**历史记录** ✓ —— 数字与当时的文件行号**不再代表今天** ✓；
-**今天的现状看 §1–§8 + §12** ✓。
+§9 是 2026-10-28 ~ 10-30 的**历史记录** ✓ —— 当时的数字与文件行号**不再代表今天** ✓；
+**今天的现状看 §1–§8 + §10** ✓。

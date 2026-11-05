@@ -1,7 +1,6 @@
 """② Auth Identity —— 端口 + 三种实现（web JWT / IM HMAC / internal）。
 
-依据：``docs/refactor/session-architecture/gateway-refactor-plan.md`` §2.2 / §3.2 /
-§10 Stage 2。
+依据：``docs/architecture/session-lifecycle.md``。
 
 **信任模型差异必须保留**（§3.2）：web 的 actor 是「已认证用户带租户头」，IM 的 actor
 是「平台签名证明的机器身份」。两者都归一成 :class:`ActorContext`，但 ``trust`` /

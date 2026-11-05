@@ -1,6 +1,6 @@
 """Session 运行时：会话唯一化 + 轮次留痕列 + 消息会话内序号 + LangGraph checkpoint 表。
 
-依据：docs/refactor/session-architecture/session-refactor-plan.md §10.2
+依据：docs/modules/agent-runtime.md
 
 1) agent_sessions：外部会话映射唯一化 —— 部分唯一索引
    ``(tenant_id, channel_session_key) WHERE channel_session_key IS NOT NULL``。

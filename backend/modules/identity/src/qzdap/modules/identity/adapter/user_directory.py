@@ -1,6 +1,6 @@
 """identity 侧的 ``UserDirectoryPort`` 实现 —— **用户属性成为可查询的数据**。
 
-依据：``docs/refactor/session-architecture/router-refactor-plan.md`` §1.5。
+依据：``docs/modules/agent-runtime.md``。
 
 ⚠️ **现状的诚实说明**：identity 的 ``User`` 只有 ``metadata``（JSONB 自由
 格式），**部门没有结构化字段**。这里做的是**把既有约定收敛成一个端口**：

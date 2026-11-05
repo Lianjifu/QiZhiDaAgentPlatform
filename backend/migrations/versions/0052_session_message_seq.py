@@ -1,6 +1,6 @@
 """Session 会话内消息序号：agent_sessions 加 next_message_seq。
 
-依据：docs/refactor/session-architecture/session-refactor-plan.md §5.2（消息序）
+依据：docs/modules/agent-runtime.md（消息序）
 
 - ``next_message_seq``：下一个待分配的会话内消息序号，分配方式是会话行
   **原子自增**（``UPDATE ... SET next_message_seq = next_message_seq + 1

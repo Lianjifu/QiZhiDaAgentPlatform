@@ -1,6 +1,6 @@
 """Gateway Stage 5：清理 —— 幂等残留键 + 孤儿索引。
 
-依据：docs/refactor/session-architecture/gateway-refactor-plan.md §10 Stage 5
+依据：docs/architecture/session-lifecycle.md
 （「删 ``agent_sessions.metadata.recent_request_ids`` 残留列」+「删孤儿索引」）、
 台账 **G1**。
 

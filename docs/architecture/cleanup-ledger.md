@@ -4,7 +4,9 @@
 > 建立日期：2026-10-29
 > 最后更新：2026-10-31（状态核对：**X4 → 已清理** ✓（S-36 · 迁移 0062 DROP ✓）/ **X18 → 已清理** ✓（S-21b · 薄壳删了 ✓）；**扫描规则 X4 段已启用** ✓ → **47 条全部启用** ✓ —— **未开始 / 已弃用 均为 0** ✓ —— 2026-10-31 用户决定**提前结束只读 / 清理窗口** ✓（原定 2026-11-06 ✓））
 > 状态：**生效中**
-> 适用范围：`docs/refactor/session-architecture/` 下全部重构方案（Gateway / Router / Session / Context / Memory / Agent Loop / Agent Router / Execution）
+> 适用范围：会话链路各层（Gateway / Router / Session / Context / Memory / Agent Loop / Agent Router / Execution）
+> ⚠️ **台账保留** ✓ —— 47 条扫描规则的**唯一来源**（`backend/scripts/check_no_legacy_impl.sh` 是它的可执行形态 ✓）——
+> 即使各层方案已归档删除，这份台账**不能删** ✓。
 
 ---
 
@@ -118,7 +120,7 @@
 
 #### X1 已核实的具体缺陷（2026-10-29 读码核对）
 
-Agent / Execution 层方案**已编写** ✓（[`agent-refactor-plan.md`](agent-refactor-plan.md) ✓ —— 已评审 v1.2 ✓）；下面记的是**读码时核实到的事实** ✓（登记在此以免丢失 ✓）：
+Agent / Execution 层方案**已编写** ✓（[`../modules/agent-runtime.md`](../modules/agent-runtime.md) ✓ —— 已评审 v1.2 ✓）；下面记的是**读码时核实到的事实** ✓（登记在此以免丢失 ✓）：
 
 | # | 事实 | 位置 | 后果 |
 |---|---|---|---|
@@ -133,7 +135,7 @@ Agent / Execution 层方案**已编写** ✓（[`agent-refactor-plan.md`](agent-
 
 > **结论**：Agent 层与其它层的形态**不同** —— 别的层是「旧实现完整、新实现未接线」，这一层是「**两套都不完整**」：旧路径循环是真的但图是残留物，新 runtime 图是真的但推理节点是空的。处置原则应是「**取旧的真逻辑 + 用新骨架重写**」，而不是「把新 runtime 接上线」。
 >
-> **方案已写**：[`agent-refactor-plan.md`](agent-refactor-plan.md)（2026-10-29，**已评审 v1.2**），附录 A 8 条决策（**#4 已定**）。技术栈定为 **LangGraph 1.2 + LangChain（langchain-core 1.6）+ Deep Agents**；其中 `deepagents` **不接** ✓（2026-10-31 · Agent Stage 6 **已关闭** ✓ —— 决策 #8 未采纳 ✓ —— 不造第三套循环 ✓）→ **这条前置不存在了** ✓。
+> **方案已写**：[`../modules/agent-runtime.md`](../modules/agent-runtime.md)（2026-10-29，**已评审 v1.2**），附录 A 8 条决策（**#4 已定**）。技术栈定为 **LangGraph 1.2 + LangChain（langchain-core 1.6）+ Deep Agents**；其中 `deepagents` **不接** ✓（2026-10-31 · Agent Stage 6 **已关闭** ✓ —— 决策 #8 未采纳 ✓ —— 不造第三套循环 ✓）→ **这条前置不存在了** ✓。
 >
 > **骨架（v1.2 重排后）**：**执行轴**（每步推理：循环 → 选专家 → 执行）与**配置轴**（管理员配置 → agent 绑定 → 运行时取值）**两条正交轴**。**模型与工具在配置轴上** —— 决策 #4 取消 Model Router / Tool Router 后，⑧ 只剩「选专家」一路，模型 / 工具的**取值**归 ⑨ Execution（Agent 方案 §0.2 / §5.2.1 / §5.3.1）。
 
@@ -153,7 +155,7 @@ Agent / Execution 层方案**已编写** ✓（[`agent-refactor-plan.md`](agent-
 | # | 平行实现 | 生产里的唯一实现 | 语义落地于 | **删除** |
 |---|---|---|---|---|
 | **X1-a** | `result/events.py` 的 **16 种 `*Event`** | `libs/schema/src/qzdap_schema/dtos/turn.py` 的 **17 种 `TurnChunk`**（前端 SSE 契约在这；`*Event` 还**少了 `InteractiveActionEvent`**） | Gateway Stage 4a（出站编码） | ✅ **已清理**（2026-10-31 · **A-39** ✓）—— **16 种 `*Event` 全删** ✓（`result/events.py` **整个文件没了** ✓）→ `result/` 只剩**一个工厂** ✓（`to_chunk` ✓ —— 「事件 → chunk」只有这一处实现 ✓ —— 之前是**两份** ✗✗）；⚠️ **换的过程中没丢字段** ✓（usage 的 6 维 ✓ / error 的 `detailed` ✓ / `event_id` ✓ / `source_turn_id` ✓ / `query_hash` ✓ / `removed_ids` ✓ / `expires_at` ✓ / done 的状态与版本 ✓ —— **先扩 chunk 契约** ✓ 再换 ✓）；出站编码器改吃 chunk ✓（`isinstance` → 按 `kind` 分支 ✓） |
-| **X1-b** | **16 个 `InMemory*` 假实现** | 各对应的真实实现（DB / `modules/governance` / `modules/tool` / `modules/memory`） | 逐条见 [`implementation-plan.md`](implementation-plan.md) §1.5 的表 | ✅ **Agent Stage 7 已删**（2026-10-31 —— 生产包只剩 2 个 ✓：`InMemoryOutboxRepository` ✓ —— **已被 Session Stage 4b 取用** ✓ + `InMemoryDraftStore` ✓ —— self_evolution ✓）|
+| **X1-b** | **16 个 `InMemory*` 假实现** | 各对应的真实实现（DB / `modules/governance` / `modules/tool` / `modules/memory`） | 逐条见 [`./cleanup-ledger.md`](./cleanup-ledger.md) §1.5 的表 | ✅ **Agent Stage 7 已删**（2026-10-31 —— 生产包只剩 2 个 ✓：`InMemoryOutboxRepository` ✓ —— **已被 Session Stage 4b 取用** ✓ + `InMemoryDraftStore` ✓ —— self_evolution ✓）|
 
 > **X17 / X18 / X5 的区别**（三者都属「旧路径」，但处置方式不同）：
 >
@@ -313,7 +315,7 @@ _scan "InMemoryToolExecutor"      runtimes/         "X1"
 >
 > 本节的 grep 脚本查的是「**某个旧符号还在不在**」—— 它能回答「删干净了吗」，但答不了「**有没有两套同时存在**」。
 >
-> 后者由一条 pytest 守卫负责：[`implementation-plan.md`](implementation-plan.md) §6.2 的 `test_single_implementation.py`，数据源是该文档 §1.2 的「关注点 → 唯一实现 → 旧实现 → 归属层 · Stage」表（**29 条**）。
+> 后者由一条 pytest 守卫负责：[`./cleanup-ledger.md`](./cleanup-ledger.md) §6.2 的 `test_single_implementation.py`，数据源是该文档 §1.2 的「关注点 → 唯一实现 → 旧实现 → 归属层 · Stage」表（**29 条**）。
 >
 > | 守卫 | 查什么 | 何时进 CI |
 > |---|---|---|
@@ -548,7 +550,7 @@ def record_legacy_call(entry: str) -> None:
 
 > **处置原则**：`runtimes/agent_runtime/` 里的部件**按需取用**（`result/events.py` 的事件类型、`outbox/` 的死信状态机、`result/sink.py` 的重放语义、`channels/gateway.py` 的 DTO 形状、`governance/approval.py` 的 TTL 与幂等校验、`graph/routing.py` 的分类器、`tools/registry.py` 的 LangChain `BaseTool` 适配），**不整体接线**。整体接线的路径已被证伪一次，不再尝试第二次。
 >
-> **具体到 Agent 层**（见 [`agent-refactor-plan.md`](agent-refactor-plan.md) §2.3）：19 节点图**收敛为 6 节点**（`reason → governance → execute → observe → evaluate`），其中 `agent` / `execute` / `governance` 三个节点的逻辑迁入新目录，其余 13 个节点**按归属层删除**（Context / Session / Memory / Gateway 的职责不该塞在 Agent Loop 的图里）。**19 节点图的骨架不保留，但也不整体丢弃** —— 这正是「按需取用」与「整体接线」的区别。
+> **具体到 Agent 层**（见 [`../modules/agent-runtime.md`](../modules/agent-runtime.md) §2.3）：19 节点图**收敛为 6 节点**（`reason → governance → execute → observe → evaluate`），其中 `agent` / `execute` / `governance` 三个节点的逻辑迁入新目录，其余 13 个节点**按归属层删除**（Context / Session / Memory / Gateway 的职责不该塞在 Agent Loop 的图里）。**19 节点图的骨架不保留，但也不整体丢弃** —— 这正是「按需取用」与「整体接线」的区别。
 
 ### 5.4 台账与方案文档的对应
 

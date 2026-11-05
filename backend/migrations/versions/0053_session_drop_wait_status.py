@@ -1,6 +1,6 @@
 """Session 状态字段归一：agent_sessions 删掉 wait_status 列。
 
-依据：docs/refactor/session-architecture/session-refactor-plan.md §4.4（状态与字段的
+依据：docs/modules/agent-runtime.md（状态与字段的
 归一：废弃 ``wait_status``）+ §10（表终态）
 
 ⚠️ **为什么现在才 DROP**：

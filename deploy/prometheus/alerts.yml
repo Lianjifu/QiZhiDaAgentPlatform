@@ -4,7 +4,7 @@
 # `promtool check rules deploy/prometheus/alerts.yml` 先验一遍 ✓）。
 #
 # ⚠️ **每条规则都有 runbook 链接** ✓ —— 「告警了怎么办」写在
-# `docs/refactor/session-architecture/oncall-runbook.md` ✓（**值班人不用猜**
+# `docs/architecture/oncall-runbook.md` ✓（**值班人不用猜**
 # ✓ —— H2 的验收 ✓）。
 #
 # ⚠️ **阈值为什么这么定** ✓ —— 每个指标**一个起步值** ✓（不是「拍脑袋」✓
@@ -26,7 +26,7 @@ groups:
           description: >-
             台账条目 {{ $labels.entry }} 对应的旧实现 15 分钟内被调用过。
             清理窗口内该指标必须归零 —— 上涨说明有代码路径绕过了新实现。
-          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#legacycallresurrected"
+          runbook_url: "docs/architecture/oncall-runbook.md#legacycallresurrected"
 
       - alert: LegacyCallNotZero
         expr: qzdap_legacy_calls_total > 0
@@ -39,7 +39,7 @@ groups:
           description: >-
             该 entry 的清理窗口已到，但计数仍非零 —— **不许删旧实现** ✓
             （删了就是删了还在用的路径 ✗✗）。
-          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#legacycallnotzero"
+          runbook_url: "docs/architecture/oncall-runbook.md#legacycallnotzero"
 
       # ── Router ────────────────────────────────────────────────
       - alert: RouterSeqSnapshotDrift
@@ -53,7 +53,7 @@ groups:
           description: >-
             轮次终态与会话快照的更新不在同一个事务里 —— 兜底放行被触发。
             正常应恒为 0。
-          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#routerseqsnapshotdrift"
+          runbook_url: "docs/architecture/oncall-runbook.md#routerseqsnapshotdrift"
 
       - alert: RouterFallbackRateHigh
         expr: >-
@@ -67,7 +67,7 @@ groups:
           summary: "路由兜底命中率超过 20%"
           description: >-
             兜底占比长期偏高 = 规则覆盖不足（粘住 / 显式 / 业务线 / 标签都没命中）。
-          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#routerfallbackratehigh"
+          runbook_url: "docs/architecture/oncall-runbook.md#routerfallbackratehigh"
 
       - alert: RouterConcurrencyRejected
         expr: increase(qzdap_router_concurrency_rejected_total[10m]) > 0
@@ -80,7 +80,7 @@ groups:
           description: >-
             队列满（queue_full）或等超时（queue_timeout）—— 同一会话的请求
             来得比处理得快。
-          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#routerconcurrencyrejected"
+          runbook_url: "docs/architecture/oncall-runbook.md#routerconcurrencyrejected"
 
       # ── Memory ────────────────────────────────────────────────
       - alert: MemoryVectorDropped
@@ -94,7 +94,7 @@ groups:
           description: >-
             丢掉的向量由**兜底补写**捡回来 ✓（不会永久缺失 ✓）—— 但持续丢说明
             embedding 服务跟不上或队列太小。
-          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#memoryvectordropped"
+          runbook_url: "docs/architecture/oncall-runbook.md#memoryvectordropped"
 
       - alert: MemoryEvictionSpike
         expr: increase(qzdap_memory_eviction_total[1h]) > 50
@@ -107,7 +107,7 @@ groups:
           description: >-
             淘汰是**保留策略在执行** ✓（不是错误 ✓）—— 突然变多要么是保留天数
             被改短了，要么是写入量上涨。
-          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#memoryevictionspike"
+          runbook_url: "docs/architecture/oncall-runbook.md#memoryevictionspike"
 
       # ── 通用 ──────────────────────────────────────────────────
       - alert: HttpServerErrorRateHigh
@@ -121,7 +121,7 @@ groups:
         annotations:
           summary: "5xx 比例超过 5%"
           description: "服务整体在报错 —— 先看是不是刚发的版本。"
-          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#httpservererrorratehigh"
+          runbook_url: "docs/architecture/oncall-runbook.md#httpservererrorratehigh"
 
       - alert: SseFirstChunkSlow
         expr: >-
@@ -133,7 +133,7 @@ groups:
         annotations:
           summary: "SSE 首块 P95 超过 5 秒"
           description: "用户要等很久才看到第一个字 —— 通常是模型慢或上下文太大。"
-          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#ssefirstchunkslow"
+          runbook_url: "docs/architecture/oncall-runbook.md#ssefirstchunkslow"
 
       - alert: ActiveTurnsStuck
         expr: qzdap_active_turns > 20
@@ -146,7 +146,7 @@ groups:
           description: >-
             轮次卡住 —— 先看是不是审批挂起（那是有意停在 waiting 的 ✓ —— 但
             挂着不动就要有人处理 ✓）。
-          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#activeturnsstuck"
+          runbook_url: "docs/architecture/oncall-runbook.md#activeturnsstuck"
 
       - alert: LlmCostSpike
         expr: increase(qzdap_llm_cost_usd_total[1h]) > 50
@@ -157,4 +157,4 @@ groups:
         annotations:
           summary: "一小时 LLM 成本超过 50 美元"
           description: "起步阈值 —— 按真实基线调整（**调整要留痕** ✓）。"
-          runbook_url: "docs/refactor/session-architecture/oncall-runbook.md#llmcostspike"
+          runbook_url: "docs/architecture/oncall-runbook.md#llmcostspike"

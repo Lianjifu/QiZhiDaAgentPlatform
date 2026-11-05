@@ -1,7 +1,6 @@
 """Router 层的契约 —— Strategy 的输入/输出形状。
 
-依据：``docs/refactor/session-architecture/router-refactor-plan.md``
-§3.2（``RouteDecision``）、§7.1（新增文件）、§9（与相邻层的接口）。
+依据：``docs/modules/agent-runtime.md``（``RouteDecision`` 与策略链的落点）。
 
 **这一层是契约层** —— 不引框架、不引模块、不装上下文、不调 LLM
 （架构测试 ``backend/tests/architecture/test_router_boundary.py`` 守着这条线）。

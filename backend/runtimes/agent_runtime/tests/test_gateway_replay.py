@@ -1,6 +1,6 @@
 """Gateway 的无感重放 —— 端口、摘要与门面编排。
 
-依据：``docs/refactor/session-architecture/gateway-refactor-plan.md`` §4.5
+依据：``docs/architecture/session-lifecycle.md``
 （重复时返回什么）、§10 Stage 4b（启用无感重放）。
 
 **这一层没有 DB、没有框架** —— 只验契约：读什么、怎么读、怎么证明重放与原流

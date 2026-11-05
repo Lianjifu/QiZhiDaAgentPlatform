@@ -1,6 +1,6 @@
 """单实现守卫 —— 「同一关注点不得有两套实现并存」。
 
-**数据源 =** [`implementation-plan.md`](../../docs/refactor/session-architecture/implementation-plan.md)
+**数据源 =** [`implementation-plan.md`](../../docs/architecture/cleanup-ledger.md)
 §1.2 的「关注点 → 唯一实现 → 旧实现 → 归属层 · Stage」表（30 条），
 §6.2 是它的落地形态。
 

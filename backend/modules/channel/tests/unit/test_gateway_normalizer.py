@@ -1,7 +1,6 @@
 """Stage 3 验收：五个入口归一化后是**同一个形状**。
 
-依据：``docs/refactor/session-architecture/gateway-refactor-plan.md``
-§10 Stage 3 验收 —— 「5 种入口归一化后，除 ``channel_type`` /
+依据：``docs/architecture/session-lifecycle.md`` 验收 —— 「5 种入口归一化后，除 ``channel_type`` /
 ``raw_metadata`` 外字段完全一致（参数化测试）；附件三套语义收敛为一个
 ``AttachmentRef``」。
 

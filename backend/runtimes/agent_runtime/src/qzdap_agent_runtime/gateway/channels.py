@@ -1,6 +1,6 @@
 """① Channel Gateway —— 渠道注册表与**能力声明**。
 
-依据：``docs/refactor/session-architecture/gateway-refactor-plan.md`` §2.2 / §3.5。
+依据：``docs/architecture/session-lifecycle.md``。
 
 **能力在入站时就确定**（§3.5）：渠道支不支持卡片 / 交互 / 流式，不再由出站
 按 ``channel_type`` 硬判断 —— 那是旧实现的做法，能力散落在各处 if。

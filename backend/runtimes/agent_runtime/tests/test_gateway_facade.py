@@ -1,6 +1,6 @@
 """Gateway 门面的编排测试 —— ①→②→③ 与 ④ 的三个动作。
 
-依据：``docs/refactor/session-architecture/gateway-refactor-plan.md`` §2.3
+依据：``docs/architecture/session-lifecycle.md``
 （三条顺序规则）、§10 Stage 4a。
 
 **顺序是硬要求**：查渠道（①）在验签（②）之前 —— 验签要用渠道的密钥；

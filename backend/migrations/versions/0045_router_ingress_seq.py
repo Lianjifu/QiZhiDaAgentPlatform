@@ -1,6 +1,6 @@
 """Router 会话内入站序号：agent_sessions 加 next_ingress_seq / last_completed_seq。
 
-依据：docs/refactor/session-architecture/router-refactor-plan.md §6.1（决策 #5）
+依据：docs/modules/agent-runtime.md（决策 #5）
 
 - ``next_ingress_seq``：下一个待分配的入站序号，分配方式是会话行原子自增
   （``UPDATE ... SET next_ingress_seq = next_ingress_seq + 1 RETURNING``），

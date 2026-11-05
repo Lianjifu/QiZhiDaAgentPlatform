@@ -1,6 +1,6 @@
 """web 入口的 ② 与 ③ —— 身份与归一化。
 
-依据：``docs/refactor/session-architecture/gateway-refactor-plan.md`` §3.2
+依据：``docs/architecture/session-lifecycle.md``
 （web 的信任模型）、§3.3（标准入站数据）、§4.2（幂等键阶梯）。
 """
 

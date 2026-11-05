@@ -1,6 +1,6 @@
 """Gateway 门面 —— ①→②→③ 的编排，④ 的三个动作。
 
-依据：``docs/refactor/session-architecture/gateway-refactor-plan.md`` §2.3
+依据：``docs/architecture/session-lifecycle.md``
 （三条必须写死的顺序规则）、§9.1（``facade.py``）、§10 Stage 4a。
 
 **编排顺序不可换**：

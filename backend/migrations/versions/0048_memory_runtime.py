@@ -1,6 +1,6 @@
 """Memory 运行时：L2 补用户维度与幂等列 + STM 缓冲表 + 策略约束放开 + 死表下线。
 
-依据：docs/refactor/session-architecture/memory-refactor-plan.md §9.2
+依据：docs/modules/memory.md
 
 1) ``admin_memory_l2`` 补 8 列：``user_id`` / ``content_hash`` /
    ``content_hash_version`` / ``source_turn_id`` / ``last_used_at`` /

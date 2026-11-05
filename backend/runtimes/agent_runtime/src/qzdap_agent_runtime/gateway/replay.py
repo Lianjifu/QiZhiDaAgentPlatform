@@ -1,6 +1,6 @@
 """Gateway 的无感重放 —— 事件读取端口与一致性摘要。
 
-依据：``docs/refactor/session-architecture/gateway-refactor-plan.md`` §4.5
+依据：``docs/architecture/session-lifecycle.md``
 （重复时返回什么）、§10 Stage 4b（启用无感重放）。
 
 **这一层只定义契约**：重放读什么（:class:`StoredEvent`）、怎么读

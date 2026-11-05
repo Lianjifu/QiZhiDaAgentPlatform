@@ -12,7 +12,7 @@ follows the same signature:
         actor_id: UUID,
     ) -> dict[str, Any]
 
-18 tools in 3 categories (see docs/refactor/agent-builtin-tools-v2.md):
+18 tools in 3 categories (see docs/modules/tool.md):
 
   EDIT / DIFF
     - apply_patch       (multi-file exact-match replacements)

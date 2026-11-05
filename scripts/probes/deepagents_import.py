@@ -1,6 +1,6 @@
 """Probe whether a usable `deepagents`-style package exists on PyPI.
 
-Per §2.5 阻塞 4 of docs/refactor/session-module-refactor-plan.md:
+Per docs/modules/agent-runtime.md:
 - Try the three candidate package names: deepagents, langchain_deepagents, deep_agents.
 - Record presence, version, and minimum-usable API surface (create_deep_agent, DeepAgent, SubAgent).
 - Run with `uv run --with <name> --with <name> ...` so each candidate gets a clean venv.

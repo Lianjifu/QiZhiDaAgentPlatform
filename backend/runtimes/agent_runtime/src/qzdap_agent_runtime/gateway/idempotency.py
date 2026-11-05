@@ -1,6 +1,6 @@
 """Gateway ④ Idempotency Guard —— 端口、键阶梯与编排（无框架、无 DB）。
 
-依据：``docs/refactor/session-architecture/gateway-refactor-plan.md`` §4.2 / §4.4。
+依据：``docs/architecture/session-lifecycle.md``。
 
 **这一层只定义契约**：键怎么来（阶梯）、判定怎么表达（:class:`IdempotencyDecision`）、
 落库走哪个端口（:class:`IdempotencyStore`）。**没有 SQL、没有框架依赖** ——

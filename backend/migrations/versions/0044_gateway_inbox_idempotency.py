@@ -1,6 +1,6 @@
 """Gateway 幂等键分层：session_inbox 加列 + 唯一约束换成只覆盖 strong 的部分唯一索引。
 
-依据：docs/refactor/session-architecture/gateway-refactor-plan.md §4.3（决策 #3 / #5）
+依据：docs/architecture/session-lifecycle.md（决策 #3 / #5）
 
 - ``external_message_id`` 放开 NOT NULL —— web / api 的幂等键来自 clientRequestId，
   没有平台消息 ID 的语义。

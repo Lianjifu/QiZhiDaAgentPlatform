@@ -1,6 +1,6 @@
 """出站（① Channel Gateway 的另一半）—— 端口 + 投递结果 + 降级标记。
 
-依据：``docs/refactor/session-architecture/gateway-refactor-plan.md`` §6
+依据：``docs/architecture/session-lifecycle.md``
 （出站：统一编码与投递）、§9.1（``facade.py`` 的 ``Gateway.emit``）。
 
 **决策 #1：出站归 ①**（与入站对称）—— 不单列「Result Encoder」，那会让渠道知识

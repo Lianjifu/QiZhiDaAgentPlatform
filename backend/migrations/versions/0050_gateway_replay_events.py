@@ -1,6 +1,6 @@
 """Gateway Stage 4b：重放的落点 —— session_turns 补两列 + 幂等唯一索引换成部分索引。
 
-依据：docs/refactor/session-architecture/gateway-refactor-plan.md §10 Stage 4b
+依据：docs/architecture/session-lifecycle.md
 （无感重放）、§4.2（决策 #5：weak 键只记录不抑制）、§4.6（三层键的传递链）。
 
 1) ``session_turns.created_at`` —— 0035 建表时给了 ``started_at`` 却漏了

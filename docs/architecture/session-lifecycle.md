@@ -1,9 +1,8 @@
 # 会话完整生命周期 —— 分层与时序基线
 
-> 版本：1.1（2026-10-29：时序图补幂等去重与 Knowledge 泳道；补 §2.1 选 agent 的两处边界、§4.1 数据形状演进链、§6 跨层不变量）
-> 状态：**权威基线**。本文件定义的泳道划分与时序，是会话各层重构方案（Gateway / Router / Session / Context / Memory / Agent Loop / Agent Router / Execution）的共同上游契约。
-> 方案集入口：[`README.md`](README.md)
-> 上位方案：[`../session-module-refactor-plan.md`](../session-module-refactor-plan.md)（v3.1，19 节点 LangGraph 方案——**已被本基线取代其分层视角**，保留其状态模型与持久化设计）
+> 版本：1.2（2026-11-05：重构方案集已实施完毕并归档，方案文档索引改为功能模块文档索引）
+> 状态：**权威基线**。本文件定义的泳道划分与时序，是会话各层（Gateway / Router / Session / Context / Memory / Agent Loop / Agent Router / Execution）的共同上游契约。
+> 相关文档：[功能模块文档](../modules/README.md) · [旧实现清理台账](./cleanup-ledger.md) · [对话链路梳理](./copilot-chat.md)
 
 ![会话完整生命周期时序](images/session-lifecycle-sequence.webp)
 
@@ -56,7 +55,7 @@ sequenceDiagram
 
 > **相对原始时序图的三处补充**（2026-10-29）：① Gateway 内部四步展开（对齐 `gateway-refactor-plan.md` §2）；② 补上**幂等去重**这一步（原本只在正文提过、图上没有）；③ 补 **Knowledge** 泳道（Memory 决策 #1 定 L3 退役后，知识检索不再经 Memory）。
 >
-> **Knowledge 不是本方案集的一层** —— 它是既有的 `modules/knowledge` 模块，出现在图上是为了说明「知识检索**不经过 Memory**」。
+> **Knowledge 不是本基线的一层** —— 它是既有的 `modules/knowledge` 模块，出现在图上是为了说明「知识检索**不经过 Memory**」。
 
 ---
 
@@ -65,15 +64,15 @@ sequenceDiagram
 | 泳道 | 职责 | 图中的交互 | 方案文档 | 状态 |
 |---|---|---|---|---|
 | **用户/渠道** | 消息来源与结果接收 | → 原始消息；← 渠道回包 | — | 现状 |
-| **Gateway** | 协议边界：鉴权、归一化、幂等去重、协议编解码、渠道回包 | 收原始消息 → 出标准消息 → 回包 | [`gateway-refactor-plan.md`](gateway-refactor-plan.md) | **已定稿** |
-| **Router** | 把标准消息路由到目标会话；决定目标 agent | 标准消息 → 路由到会话 | [`router-refactor-plan.md`](router-refactor-plan.md) | **已定稿** |
-| **Session** | 会话身份与生命周期、轮次状态机、并发控制、消息与事件落库 | 路由到会话 → 构建上下文 → 更新会话状态 | [`session-refactor-plan.md`](session-refactor-plan.md) | **已定稿** |
-| **Context** | 组装模型输入：提示词、租户上下文、历史与摘要、记忆与知识片段；token 预算与压缩 | ← Session；→ Memory 检索；→ Knowledge 检索；→ Agent Loop 完整上下文 | [`context-refactor-plan.md`](context-refactor-plan.md) | **已定稿** |
-| **Memory** | 记忆的召回与写入（STM 会话 / L2 事实；**L3 已定退役**，知识归 `modules/knowledge`） | ← Context 检索；← Agent Loop 写入 | [`memory-refactor-plan.md`](memory-refactor-plan.md) | **已定稿** |
-| **Agent Loop** | 推理循环：Reason/Plan → Observe/Evaluate；决定下一步 | ← Context 完整上下文；→ Agent Router；← Execution 结果；→ Memory 写入；→ Session 更新状态 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | **已定稿** |
-| **Agent Router** | 在一步推理之后**选专家 Agent**（客服 / 销售 / 订单…）。⚠️ **不选模型、不选工具** —— 那两样由管理员在 agent 配置里绑定，运行时**取值**（Agent 决策 #4） | ← Agent Loop；→ Execution 调度执行 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | **已定稿** |
-| **Execution** | 实际调用 LLM / SLM / 工具 / 沙箱 | ← Agent Router；→ Agent Loop 执行结果 | [`agent-refactor-plan.md`](agent-refactor-plan.md) | **已定稿** |
-| **Knowledge**（非本方案集的一层） | 工作区知识的存储与检索 | ← Context 检索 | `modules/knowledge`（既有模块） | 现状 |
+| **Gateway** | 协议边界：鉴权、归一化、幂等去重、协议编解码、渠道回包 | 收原始消息 → 出标准消息 → 回包 | [`gateway-refactor-plan.md`](../modules/agent-runtime.md) | **已定稿** |
+| **Router** | 把标准消息路由到目标会话；决定目标 agent | 标准消息 → 路由到会话 | [`router-refactor-plan.md`](../modules/agent-runtime.md) | **已定稿** |
+| **Session** | 会话身份与生命周期、轮次状态机、并发控制、消息与事件落库 | 路由到会话 → 构建上下文 → 更新会话状态 | [`session-refactor-plan.md`](../modules/agent-runtime.md) | **已定稿** |
+| **Context** | 组装模型输入：提示词、租户上下文、历史与摘要、记忆与知识片段；token 预算与压缩 | ← Session；→ Memory 检索；→ Knowledge 检索；→ Agent Loop 完整上下文 | [`context-refactor-plan.md`](../modules/agent-runtime.md) | **已定稿** |
+| **Memory** | 记忆的召回与写入（STM 会话 / L2 事实；**L3 已定退役**，知识归 `modules/knowledge`） | ← Context 检索；← Agent Loop 写入 | [`memory-refactor-plan.md`](../modules/memory.md) | **已定稿** |
+| **Agent Loop** | 推理循环：Reason/Plan → Observe/Evaluate；决定下一步 | ← Context 完整上下文；→ Agent Router；← Execution 结果；→ Memory 写入；→ Session 更新状态 | [`agent-refactor-plan.md`](../modules/agent-runtime.md) | **已定稿** |
+| **Agent Router** | 在一步推理之后**选专家 Agent**（客服 / 销售 / 订单…）。⚠️ **不选模型、不选工具** —— 那两样由管理员在 agent 配置里绑定，运行时**取值**（Agent 决策 #4） | ← Agent Loop；→ Execution 调度执行 | [`agent-refactor-plan.md`](../modules/agent-runtime.md) | **已定稿** |
+| **Execution** | 实际调用 LLM / SLM / 工具 / 沙箱 | ← Agent Router；→ Agent Loop 执行结果 | [`agent-refactor-plan.md`](../modules/agent-runtime.md) | **已定稿** |
+| **Knowledge**（非本基线的一层） | 工作区知识的存储与检索 | ← Context 检索 | `modules/knowledge`（既有模块） | 现状 |
 
 ### 2.1 「选 agent」有两处，边界必须分清
 
@@ -156,20 +155,20 @@ Router（标准消息）
 
 ---
 
-## 5. 各层方案文档索引
+## 5. 各层实现文档索引
 
-| 层 | 文档 | 状态 | 台账条目 |
-|---|---|---|---|
-| 方案集入口 | [`README.md`](README.md) | 生效中 | — |
-| 全局基线（本文） | `session-lifecycle-sequence.md` | **已定稿** | — |
-| 旧实现清理台账 | `cleanup-ledger.md` | **生效中**（全局收敛机制） | 全部 |
-| Gateway | `gateway-refactor-plan.md` | **已定稿**（附录 A 9 条决策已确认 + 1 条补充条目 #2b） | G1–G9 |
-| Router | `router-refactor-plan.md` | **已定稿**（附录 A 10 条决策于 2026-10-29 确认） | R1–R4 |
-| Session | `session-refactor-plan.md` | **已定稿**（附录 A 7 条决策于 2026-10-29 确认） | X2、X3、X4、X6、X7 |
-| Context | `context-refactor-plan.md` | **已定稿**（附录 A 7 条决策于 2026-10-29 确认） | X8、X9、X10 |
-| Memory | `memory-refactor-plan.md` | **已定稿**（附录 A 12 条决策于 2026-10-29 确认） | X11、X12、X13、X14、X15、X16 |
-| Agent Loop / Agent Router / Execution | [`agent-refactor-plan.md`](agent-refactor-plan.md) | **已评审（v1.2）**（附录 A **8** 条决策，其中 **#4 已定**） | X5、X1（Agent 部分） |
-| **实施方案** | [`implementation-plan.md`](implementation-plan.md) | **已定稿**（**按层组织**：六层各一节 + 跨层编排） | 全部（编排层） |
+> 泳道的**目标形态**与**实施过程**已归档（2026-10-31 全部实施完毕）；下表指向**当前代码的实况文档** ✓。
+
+| 层 | 实现文档 | 台账条目 |
+|---|---|---|
+| 全局基线（本文） | `session-lifecycle.md` | — |
+| 旧实现清理台账 | [`cleanup-ledger.md`](./cleanup-ledger.md) | 全部 |
+| Gateway（入站归一化 / 幂等 / 出站） | [`../modules/channel.md`](../modules/channel.md) · [`../modules/agent-runtime.md`](../modules/agent-runtime.md) | G1–G12 |
+| Router（策略选 agent / 会话路由） | [`../modules/agent-runtime.md`](../modules/agent-runtime.md) | R1–R4 |
+| Session（生命周期 / 状态机 / 唯一 turn） | [`../modules/agent-runtime.md`](../modules/agent-runtime.md) | X2–X7 |
+| Context（装配 / 压缩 / manifest） | [`../modules/agent-runtime.md`](../modules/agent-runtime.md) | X8–X10 |
+| Memory（检索 / 写入 / 分层） | [`../modules/memory.md`](../modules/memory.md) | X11–X16 |
+| Agent Loop / Agent Router / Execution | [`../modules/agent-runtime.md`](../modules/agent-runtime.md) · [`../modules/tool.md`](../modules/tool.md) | X1、X5 |
 
 ## 6. 跨层不变量（违反即为 bug，不是风格问题）
 
@@ -195,4 +194,4 @@ Router（标准消息）
 
 **某层的台账未清零，该层不得进入下一层的「切换」阶段；未完成项不允许滚到下个 Stage。**
 
-> **写作要求**（完整版见 [`README.md`](README.md) §5）：每份层方案必须明确标出自己在本基线图上的位置与相邻层的接口数据形状；**不得引入与本基线冲突的层次**，也不得在同一层内并存两套实现；每个阶段验收必须包含「旧代码减少了什么」。
+> **写作要求**（完整版见 [`../modules/README.md`](../modules/README.md) §5）：每份层方案必须明确标出自己在本基线图上的位置与相邻层的接口数据形状；**不得引入与本基线冲突的层次**，也不得在同一层内并存两套实现；每个阶段验收必须包含「旧代码减少了什么」。

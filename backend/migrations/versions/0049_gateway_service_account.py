@@ -1,6 +1,6 @@
 """Gateway 服务账号物化：channels 加 ``service_account`` 列。
 
-依据：docs/refactor/session-architecture/gateway-refactor-plan.md §10 Stage 2
+依据：docs/architecture/session-lifecycle.md
 （台账 **G3**：``dispatch_subscriber.py`` 的硬编码 ``SYSTEM_USER_ID`` /
 ``SYSTEM_AGENT_ID``）。
 

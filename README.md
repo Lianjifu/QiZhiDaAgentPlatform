@@ -181,7 +181,7 @@ open http://127.0.0.1:9152
 | 成员 | `user@dev.qzdap.dev` / `dev-user-password-change-me` | `user@acme.com` / `demo-password-change-me` |
 | 起停 | `make qzdap-up` / `make qzdap-down` | `bin/qzdap-stack/run-qzdap-demo-stack.sh` / `stop-qzdap-demo-stack.sh` |
 
-详见 [`docs/refactor/session-architecture/oncall-runbook.md`](docs/refactor/session-architecture/oncall-runbook.md) 的「两套栈:账号与入口」一节。
+详见 [`docs/architecture/oncall-runbook.md`](docs/architecture/oncall-runbook.md) 的「两套栈:账号与入口」一节。
 
 ---
 
@@ -572,7 +572,7 @@ curl http://127.0.0.1:9151/metrics     # Prometheus 指标
 <details>
 <summary><b>Q: 工具调用失败 "TOOL_NOT_FOUND"?</b></summary>
 
-- 检查 `docs/refactor/agent-builtin-tools.md` 看工具注册情况
+- 检查 `docs/modules/tool.md` 看工具注册情况
 - 沙箱工具 (bash / read_file / etc.) 需要 workspace 已挂载
 - 网络工具 (web_search / http_fetch) 需要网络出站白名单
 
@@ -591,11 +591,13 @@ curl http://127.0.0.1:9151/metrics     # Prometheus 指标
 
 | 文档 | 路径 | 用途 |
 | --- | --- | --- |
-| **会话架构方案集** | [`docs/refactor/session-architecture/`](./docs/refactor/session-architecture/) | 会话链路的目标形态 · 清理台账 · 逐层方案 |
-| **重构 ticket** | [`docs/refactor/`](./docs/refactor/) | 正在 / 已完成的功能演进 |
-| **值班手册** | [`docs/refactor/session-architecture/oncall-runbook.md`](./docs/refactor/session-architecture/oncall-runbook.md) | 告警阈值 · 排查 · 回退步骤 · 两套栈入口 |
-| **演示 / 开发数据分离** | [`docs/demo-vs-api-data-separation.md`](./docs/demo-vs-api-data-separation.md) | 两条数据通道的现状与拆分方案 |
-| **对话模块架构** | [`docs/copilot-chat-module-architecture.md`](./docs/copilot-chat-module-architecture.md) | 一次对话从发送到渲染的链路梳理 |
+| **功能模块文档** | [`docs/modules/`](./docs/modules/) | **15 个能力域各一篇** —— 当前代码已实现的行为 + 已知边界 |
+| **会话生命周期基线** | [`docs/architecture/session-lifecycle.md`](./docs/architecture/session-lifecycle.md) | 泳道划分与时序（Gateway / Router / Session / Context / Memory / Agent） |
+| **对话链路梳理** | [`docs/architecture/copilot-chat.md`](./docs/architecture/copilot-chat.md) | 一次对话从发送到渲染的逐层链路 + 读代码顺序 |
+| **清理台账** | [`docs/architecture/cleanup-ledger.md`](./docs/architecture/cleanup-ledger.md) | 旧实现收敛台账 —— **CI 扫描规则的唯一来源** |
+| **值班手册** | [`docs/architecture/oncall-runbook.md`](./docs/architecture/oncall-runbook.md) | 告警阈值 · 排查 · 回退步骤 · 两套栈入口 |
+| **演示 / 开发数据分离** | [`docs/architecture/data-separation.md`](./docs/architecture/data-separation.md) | 两条数据通道的现状 |
+| **待实施项** | [`docs/planned/`](./docs/planned/) | 方案已写好、代码未实现的 ticket |
 | **功能审查方法论** | [`docs/audit/functional-review-methodology.md`](./docs/audit/functional-review-methodology.md) | 「怎么审」的框架 |
 | **部署说明** | [`deploy/README.md`](./deploy/README.md) · [`deploy/PRODUCTION.md`](./deploy/PRODUCTION.md) | 生产 compose · staging 沙箱 · 环境变量 |
 | **API 文档** | `http://127.0.0.1:9151/docs` (本地) | OpenAPI 自动生成 |
