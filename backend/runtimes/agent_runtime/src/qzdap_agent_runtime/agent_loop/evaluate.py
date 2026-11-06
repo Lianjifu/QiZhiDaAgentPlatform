@@ -6,12 +6,14 @@
 
 | # | 条件 | 上限来源 | 触发后的行为 |
 |---|---|---|---|
+| 0 | 致命错误 | 模型调用失败 ✓ / 单步超时 ✓ | ``abort`` + 明确错误码 ✓ |
 | 1 | 最大步数 | agent 配置 | ``abort`` + ``DEEP_AGENT_BUDGET_EXCEEDED`` ✓ |
-| 2 | 最大成本 | ``max_cost_usd`` | ``abort`` ✓（决策 #7 的轮次级硬闸门 ✓） |
+| 2 | 最大成本 | ``max_cost_usd`` + ``base_cost_usd`` | ``abort`` ✓（决策 #7 的硬闸门 ✓ —— **会话级累计** ✓） |
 | 3 | 上下文超限 | 模型报错 | ``abort`` + ``CONTEXT_TOO_LARGE`` ✓ |
 | 4 | 用户取消 | ``session_turns.cancel_requested`` | ``abort`` ✓（产出部分结果 ✓） |
 | 5 | 审批挂起 | 策略判定 | ``suspend`` ✓（→ ``interrupt()`` ✓） |
 | 6 | 工具连续失败 / 空转 | 熔断器 ✓ / ``apply_stall_guard`` ✓ | ``exit`` + 明确错误 ✓ |
+| 7 | 工具调用配额 | ``max_tool_calls`` | ``abort`` + 明确错误 ✓ |
 
 ⚠️ **闸门是「两级都有」** ✓（决策 #7 ✓）—— 轮次级是硬闸门 ✓；深度任务级
 是它的一个子集 ✓（更深但仍有上限 ✓）。
@@ -59,10 +61,18 @@ class Evaluator:
         *,
         max_steps: int = 8,
         max_cost_usd: float = 0.0,
+        base_cost_usd: float = 0.0,
+        max_tool_calls: int = 0,
         stall_limit: int = 2,
     ) -> None:
         self._max_steps = max_steps
         self._max_cost_usd = max_cost_usd
+        # ⚠️ **会话级累计** ✓ —— 之前那些轮已经花掉的 ✓（闸门要算上 ✓ ——
+        # 只看这一轮的话 ✓ → 预算每轮重置 ✓ → 「一个会话烧掉一百倍的钱」
+        # **没人拦得住** ✗✗）。
+        self._base_cost_usd = base_cost_usd
+        # ⚠️ **0 = 不限** ✓（与 ``max_cost_usd`` 同一口径 ✓）。
+        self._max_tool_calls = max_tool_calls
         self._stall_limit = stall_limit
 
     def evaluate(
@@ -78,6 +88,14 @@ class Evaluator:
             return Termination(
                 "abort", reason="用户取消了这一轮", error_code=ErrorCode.TURN_CANCELLED.value
             )
+        # ①' 致命错误 ✓（模型调用失败 ✓ / 单步超时 ✓）—— 排在取消之后 ✓
+        # （其余条件之前 ✓ —— 失败原因要**原样带出去** ✓）。
+        if state.fatal_error:
+            return Termination(
+                "abort",
+                reason=str(state.fatal_error.get("message") or "本轮执行失败"),
+                error_code=str(state.fatal_error.get("code") or "AGENT_LOOP_ABORTED"),
+            )
         # ② 步数闸门 ✓
         if state.step > self._max_steps:
             return Termination(
@@ -85,12 +103,21 @@ class Evaluator:
                 reason=f"超过最大步数 {self._max_steps}",
                 error_code=BUDGET_EXCEEDED,
             )
-        # ③ 成本闸门 ✓（决策 #7 的轮次级硬闸门 ✓）
-        if self._max_cost_usd > 0 and state.cost_usd > self._max_cost_usd:
+        # ③ 成本闸门 ✓（决策 #7 的硬闸门 ✓ —— **会话级累计** ✓）
+        session_cost = self._base_cost_usd + state.cost_usd
+        if self._max_cost_usd > 0 and session_cost > self._max_cost_usd:
             return Termination(
                 "abort",
                 reason=f"超过成本上限 {self._max_cost_usd}",
                 error_code=BUDGET_EXCEEDED,
+            )
+        # ③' 工具调用配额 ✓ —— 模型一次吐 N 个调用 ✓ → 全部执行 ✗✗
+        # （成本 ✓ / 副作用 ✓ 都可能被放大 N 倍 ✗✗）。
+        if self._max_tool_calls > 0 and state.tool_call_count > self._max_tool_calls:
+            return Termination(
+                "abort",
+                reason=f"超过单轮工具调用上限 {self._max_tool_calls}",
+                error_code=ErrorCode.AGENT_TOOL_QUOTA_EXCEEDED.value,
             )
         # ④ 上下文超限 ✓（连续两次仍超限 → 明确错误 ✓ —— §3.4 条件 3 ✓）
         if context_overflow:

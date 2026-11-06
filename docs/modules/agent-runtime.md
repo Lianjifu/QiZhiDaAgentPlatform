@@ -108,7 +108,7 @@ backend/runtimes/agent_runtime/src/qzdap_agent_runtime/
 | application | `DelegateSubagentUseCase` | 多智能体派发 |
 | contract | `TurnRunner` | 幂等 → 排队 → 执行 → 落库 → 投递 |
 | contract | `AgentLoopRunner` | 循环本体：Reason → Evaluate → 审批 → 执行 → Observe |
-| contract | `Evaluator` | **六个终止条件的单一判定点** |
+| contract | `Evaluator` | **终止条件的单一判定点**（取消 / 致命错误 / 步数 / 成本 / 工具配额 / 上下文 / 审批 / 空转） |
 | contract | `ContextBuilder` | 上下文按固定优先级装配 |
 | contract | `IdempotencyGuard` | 入站去重 |
 
@@ -128,9 +128,40 @@ POST /api/sessions/{id}/turns/stream
 
 ### 终止条件收在一点
 
-`Evaluator.evaluate`（`agent_loop/evaluate.py:68`）一次性判六条：用户取消、步数上限、成本上限、上下文超限、审批挂起、工具空转。注释里写明了为什么不能分散——分散正是上一次重构失败的模式。
+`Evaluator.evaluate`（`agent_loop/evaluate.py`）一次性判八条：用户取消、致命错误、步数上限、成本上限、工具调用配额、上下文超限、审批挂起、工具空转。注释里写明了为什么不能分散——分散正是上一次重构失败的模式。
 
 **成本闸门的上限来自 agent 配置**：`profile.maxCostUsd`（JSONB 自由字段，不新增表列）。没配就是不限。计价回调在循环内按「本步用量」结算，累积进 `state.cost_usd`。
+
+**成本闸门是会话级的**——`Evaluator.base_cost_usd` 是**之前那些轮**已经花掉的（`PostgresSessionCostStore` 对 `session_turns.cost_usd` 求和）。之前只看单轮，预算每轮重置，一个会话能烧掉 N 倍的钱而没人拦得住。
+
+**工具调用配额**（`profile.maxToolCalls`，默认 24）：数的是**模型请求的**调用数，不是执行数——模型一次吐 100 个调用，全部执行的话成本与副作用都放大 100 倍。超了直接 `abort`，错误码 `AGENT_TOOL_QUOTA_EXCEEDED`。
+
+### 三道时间闸门
+
+| 闸门 | 位置 | 默认 | 错误码 |
+|---|---|---|---|
+| 单步超时 | `agent_loop/runner.py`（等下一片模型输出时） | 120s | `AGENT_STEP_TIMEOUT` |
+| 整轮超时 | `session/turn_runner.py`（等下一个 chunk 时） | 300s | `AGENT_TURN_TIMEOUT` |
+| LLM 调用失败 | `agent_loop/runner.py` | — | `LLM_CALL_FAILED` |
+
+**超时卡在「等下一片」上**，不是整段的总时长：消费者的处理时间不算进去（慢客户端不该被误杀）。配置在 `composition/settings.py` 的 `agent_step_timeout_seconds` / `agent_turn_timeout_seconds`。
+
+### 模型调用失败不当场判死
+
+`_reason` 之前没有 try/except，上游一抖异常就穿透、整轮死掉。现在：
+
+- **一个 chunk 都没吐过** → 照旧抛出去（HTTP 层要能用状态码表达失败，200 + error 事件是骗人的）
+- **已经吐过东西** → 就地收尾：错误进 `state.fatal_error` → 判定点 `abort` → 错误事件 → **这一轮的用量、滚动摘要、记忆写入照常落库**（之前异常穿透会把这些全跳过，成本根本没记上）
+
+轮次终态也跟着改：收到过错误事件的轮次落 `failed`，不再落 `succeeded`（之前错误事件一过轮次照样算成功，排查时看到的和用户看到的不一致）。
+
+### 路由绑定
+
+`admin_agents` 多了 `route_id` + `route_strategy` 两列（迁移 0066）——「这个 agent 走哪条路由」是 agent 的配置，不是每轮现传的东西。
+
+- 请求里显式传的 `route_id` 优先，没传就用 **agent 自己绑的**
+- `route_strategy` 一路传到 `select_chain_for_strategy`，覆盖 route 自带的 strategy——同一条路由在不同 agent 上可以有不同取舍
+- factory release 事件（`agent_factory.version.released`）把版本上的路由搬进 catalog 行（`agent_factory_release_subscriber`）——`agent_versions.route_id` 之前存着从不生效，现在这道桥通了
 
 ### 上下文装配的固定优先级
 
@@ -194,7 +225,7 @@ POST /api/sessions/{id}/turns/stream
 - ⚠️ `adapter/graph/runner.py:807 _absorb_mock_artifact` 是 mock 产物吸收路径（产物曾只在 `/tmp/qzdap-mock-artifacts`）
 - ⚠️ `ask_user_question` / `notify_user` / `plan_submit` / `todo_write` 四个工具**同时**是前端桩与真实能力：`todo_write` 的清单会真的进循环状态（`todo_write` ✓），其余三个仍然只回 payload 由前端渲染
 - ⚠️ `session_turns.wait_status` 与 `agent_sessions.graph_state` 两列已退役，分别由 `current_turn_id` 与 `metadata["resume"]` 推导
-- ⚠️ **成本闸门只按单轮累计** ✓ —— 没有跨轮次的会话级预算 ✓（`session_turns.cost_usd` 有记 ✓ —— 但没有「这个会话已经花了 $X / 上限 $Y」的判据 ✓）
 - ⚠️ **上下文超限这条终止条件在循环内不可达** ✓ —— `Evaluator` 有 `context_overflow` 参数 ✓ —— 但压缩器自己处理超限 ✓ —— 走的是「压缩后仍超限就抛 `CONTEXT_TOO_LARGE`」✓（不是循环的终止条件 ✓）
 - ⚠️ **没有反思 / 自我修正机制** ✓ —— 工具失败只是把错误文本回灌给模型 ✓ —— 让它自己决定换不换策略 ✓（`apply_stall_guard` 只在「同样的工具连续空转」时插一句提示 ✓）
 - ⚠️ **子 agent 是串行同步派发** ✓ —— `delegate_to_agent` 会阻塞到子会话跑完 ✓（深度上限 3 ✓）—— 没有子 agent 并行 ✓
+- ⚠️ **成本闸门的上限仍然只能通过 `profile` 配** ✓ —— 前端的智能体表单没有这个字段 ✓（`PATCH /api/admin/agents/{id}` 传 `profile.maxCostUsd` 可以配 ✓）

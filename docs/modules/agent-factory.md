@@ -85,5 +85,6 @@ backend/modules/agent_factory/src/qzdap/modules/agent_factory/
 ## 已知边界
 
 - ⚠️ **与 agent_runtime 的 `admin_agents` 是两套并行的目录**：`agent_factory` 写 `agent_templates` / `agent_versions`，`agent_runtime` 写 `admin_agents`。生效靠 release subscriber 把 `admin_agents.id == template_id` 对齐——**两表 ID 不同源**，是脆弱耦合
+- ⚠️ **版本上的路由靠 release 事件搬过去**：`agent_versions.route_id` / `route_strategy` 存着 → `agent_factory.version.released` 事件带上 → `agent_factory_release_subscriber` 写进 catalog 行 → 对话路径读 catalog 行。之前这两列存着从不生效（对话路径读的是 `admin_agents`，而它没有路由字段）
 - ⚠️ `EvaluationQueryPort` 在 container 里没有显式 provider，由 lifespan 闭包提供——装配关系不显式
 - ⚠️ 模板与版本**只落库，不发外部副作用**（邮件 / 通知 / webhook 之类）

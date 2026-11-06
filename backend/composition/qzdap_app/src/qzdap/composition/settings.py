@@ -255,6 +255,15 @@ class Settings(BaseSettings):
     llm_retry_base_delay_seconds: float = 0.2
     llm_retry_max_delay_seconds: float = 5.0
 
+    # ── agent 循环（runtime）──────────────────────────────────────────
+    #: **整轮超时** ✓（秒 ✓）—— 之前没有 ✓ → 上游挂住时连接一直占着 ✗✗。
+    agent_turn_timeout_seconds: float = 300.0
+    #: **单步超时** ✓（秒 ✓）—— 一步推理 / 一次模型调用的上限 ✓。
+    agent_step_timeout_seconds: float = 120.0
+    #: **单轮工具调用上限** ✓（0 = 不限 ✓）—— 模型一次吐 N 个调用 ✓ →
+    #: 全部执行 ✓ → 成本 ✓ / 副作用 ✓ 都放大 N 倍 ✗✗。
+    agent_max_tool_calls: int = 24
+
     # P6 channel
     channel_webhook_signature_tolerance_seconds: int = 300
     channel_default_inbound_max_body_bytes: int = 1 * 1024 * 1024

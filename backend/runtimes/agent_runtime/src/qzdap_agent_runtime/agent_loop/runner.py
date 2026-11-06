@@ -21,6 +21,7 @@ Reason（模型流式输出 ✓）
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -142,6 +143,9 @@ class AgentLoopRunner:
         #: ⚠️ **每步重选专家** ✓ —— 返回 ``None`` 就沿用当前的 ✓
         # （没装配这个钩子 ✓ = 沿用「一轮一次」的老行为 ✓）。
         step_expert: Callable[[LoopState], Awaitable[StepExpert | None]] | None = None,
+        #: ⚠️ **单步超时** ✓（0 = 不限 ✓）—— 一步推理 / 一次模型调用超过
+        #: 这个秒数就**掐掉** ✓（上游挂住时轮次不会永远占着连接 ✗✗）。
+        step_timeout_seconds: float = 0.0,
     ) -> None:
         self._reasoner = reasoner
         self._evaluator = evaluator or Evaluator()
@@ -157,6 +161,7 @@ class AgentLoopRunner:
         self._cost_of = cost_of
         self._hooks = hooks
         self._step_expert = step_expert
+        self._step_timeout_seconds = float(step_timeout_seconds or 0.0)
 
     async def run(
         self,
@@ -220,7 +225,12 @@ class AgentLoopRunner:
                 async for payload in self._hooks.before_step(state):
                     yield LoopEvent(kind="extra", payload=payload)
             async for event in self._reason(state, by_name, reasoner=reasoner):
+                state.emitted = True
                 yield event
+            # ⚠️ **工具调用计数** ✓ —— 配额闸门看它 ✓（判定在 evaluator ✓）。
+            # ⚠️ **数「模型请求的」而不是「实际执行的」** ✓ —— 模型一次吐
+            # 100 个调用 ✓ → 全部执行 ✓ → 成本 ✓ / 副作用 ✓ 都放大 100 倍 ✗✗。
+            state.tool_call_count += len(state.tool_calls)
             state.input_tokens += state.step_input_tokens
             state.output_tokens += state.step_output_tokens
             if self._hooks is not None and self._hooks.after_step is not None:
@@ -274,6 +284,7 @@ class AgentLoopRunner:
             # —— 写类工具**串行** ✓（顺序有意义 ✓）。
             outcomes.extend(await self._invoke_all(pending_calls))
             for outcome in outcomes[-len(pending_calls) :] if pending_calls else []:
+                state.emitted = True
                 yield LoopEvent(
                     kind="tool_result",
                     tool_result={
@@ -320,38 +331,103 @@ class AgentLoopRunner:
 
         ⚠️ **``reasoner`` 可以按步换** ✓ —— 每步重选专家时用它 ✓
         （不传就用构造时那个 ✓）。
+
+        ⚠️ **模型调用失败不当场判死** ✓ —— 之前这里**没有 try** ✓ →
+        上游一抖 ✓ → 异常穿透 ✓ → **整轮死掉** ✗✗（工具失败是能被模型看见的 ✓
+        —— 模型调用失败却不是 ✓ —— **两边的待遇不一样** ✗✗）。
         """
         active = reasoner or self._reasoner
         schemas = [tool_schema(bound.tool) for bound in by_name.values()]
         text_parts: list[str] = []
-        async for chunk in active.reason(messages=state.messages, tools=schemas):
-            if chunk.content:
-                text = _as_text(chunk.content)
-                text_parts.append(text)
-                yield LoopEvent(kind="text", text=text)
-            if chunk.tool_calls:
-                state.tool_calls = [dict(call) for call in chunk.tool_calls]
-                for call in state.tool_calls:
-                    yield LoopEvent(kind="tool_call", tool_call=call)
-            usage = getattr(chunk, "usage_metadata", None)
-            if usage:
-                # ⚠️ **用量取本步最后一份** ✓（与旧路径同口径 ✓）—— 多个 chunk
-                # 都带用量时**不重复累加** ✓。
-                state.step_input_tokens = int(usage.get("input_tokens") or 0)
-                state.step_output_tokens = int(usage.get("output_tokens") or 0)
-                if self._cost_of is not None:
-                    state.cost_usd += self._cost_of(
-                        state.step_input_tokens,
-                        state.step_output_tokens,
+        try:
+            async for chunk in self._reason_chunks(active, state, schemas):
+                if chunk.content:
+                    text = _as_text(chunk.content)
+                    text_parts.append(text)
+                    yield LoopEvent(kind="text", text=text)
+                if chunk.tool_calls:
+                    state.tool_calls = [dict(call) for call in chunk.tool_calls]
+                    for call in state.tool_calls:
+                        yield LoopEvent(kind="tool_call", tool_call=call)
+                usage = getattr(chunk, "usage_metadata", None)
+                if usage:
+                    # ⚠️ **用量取本步最后一份** ✓（与旧路径同口径 ✓）—— 多个 chunk
+                    # 都带用量时**不重复累加** ✓。
+                    state.step_input_tokens = int(usage.get("input_tokens") or 0)
+                    state.step_output_tokens = int(usage.get("output_tokens") or 0)
+                    if self._cost_of is not None:
+                        state.cost_usd += self._cost_of(
+                            state.step_input_tokens,
+                            state.step_output_tokens,
+                        )
+                    yield LoopEvent(
+                        kind="usage",
+                        usage={
+                            "input_tokens": state.step_input_tokens,
+                            "output_tokens": state.step_output_tokens,
+                        },
                     )
-                yield LoopEvent(
-                    kind="usage",
-                    usage={
-                        "input_tokens": state.step_input_tokens,
-                        "output_tokens": state.step_output_tokens,
-                    },
-                )
+        except asyncio.CancelledError:
+            raise
+        except TimeoutError as exc:
+            # ⚠️ **单步超时** ✓ —— 上游挂住 ✓ → 掐掉 ✓ → 明确报错 ✓
+            # （不是「转圈转到天荒地老」✗✗）。
+            code = ErrorCode.AGENT_STEP_TIMEOUT.value
+            message = f"本步推理超过 {self._step_timeout_seconds:.0f} 秒，已中断"
+            state.errors.append({"code": code, "message": message})
+            state.fatal_error = {"code": code, "message": message}
+            state.final_message = "".join(text_parts) or state.final_message
+            _log.warning("agent step timed out: %s", exc)
+            return
+        except Exception as exc:
+            # ⚠️ **不当场判死** ✓ —— 这一轮**带着已有的内容收尾** ✓
+            # （前面几步的结果留着 ✓ —— 用户看得到发生了什么 ✓）。
+            # ⚠️ **一个 chunk 都没吐过就照旧抛出去** ✓ —— HTTP 层要能用
+            # **状态码**表达失败 ✓（没吐过东西 ✓ → 200 + error 事件是骗人的 ✓）。
+            if not state.emitted:
+                raise
+            code = str(getattr(exc, "code", "") or ErrorCode.LLM_CALL_FAILED.value)
+            message = str(exc) or type(exc).__name__
+            state.errors.append({"code": code, "message": message})
+            state.fatal_error = {"code": code, "message": message}
+            state.final_message = "".join(text_parts) or state.final_message
+            _log.warning("llm call failed in agent loop: %s", exc)
+            return
         state.final_message = "".join(text_parts) or state.final_message
+
+    async def _reason_chunks(
+        self,
+        active: Reasoner,
+        state: LoopState,
+        schemas: list[dict[str, Any]],
+    ) -> AsyncIterator[Any]:
+        """**拉模型的分片** ✓ —— **每一片都有超时** ✓。
+
+        ⚠️ **超时卡在「等下一片」上** ✓ —— 不是整步的总时长 ✓：
+        - 上游**一个片都不吐** ✓ → 第一次等就超时 ✓（挂住了 ✗✗）；
+        - 上游**吐到一半停了** ✓ → 下一片等不到 ✓ → 超时 ✓。
+        ⚠️ **消费者的处理时间不算进去** ✓ —— 超时只覆盖**等模型** ✓
+        （否则慢客户端会被误杀 ✗✗）。
+        """
+        iterator = active.reason(messages=state.messages, tools=schemas).__aiter__()
+        timeout = self._step_timeout_seconds
+        try:
+            while True:
+                try:
+                    if timeout > 0:
+                        chunk = await asyncio.wait_for(iterator.__anext__(), timeout)
+                    else:
+                        chunk = await iterator.__anext__()
+                except StopAsyncIteration:
+                    return
+                yield chunk
+        finally:
+            # ⚠️ **掐断之后要把上游流关掉** ✓ —— 否则连接挂着 ✗✗
+            # （被 timeout 掐断时 ✓ 生成器还开着 ✓）。
+            close = getattr(iterator, "aclose", None)
+            if close is not None:
+                with contextlib.suppress(Exception):
+                    await close()
 
     # ── 治理与执行 ─────────────────────────────────────────────────────
 

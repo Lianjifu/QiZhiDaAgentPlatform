@@ -47,7 +47,9 @@ async def _models(svc: ModelService, specs: list[tuple[str, float]]) -> list[UUI
 
 
 async def _two_models(svc: ModelService) -> tuple[UUID, UUID]:
-    primary_id, fallback_id, _ = await _models(svc, [("gpt-4o", 10.0), ("gpt-4o-mini", 5.0), ("qwen-max", 1.0)])
+    primary_id, fallback_id, _ = await _models(
+        svc, [("gpt-4o", 10.0), ("gpt-4o-mini", 5.0), ("qwen-max", 1.0)]
+    )
     return primary_id, fallback_id
 
 
@@ -98,12 +100,8 @@ async def test_the_fallback_strategy_chain_has_more_than_the_primary() -> None:
             "fallbackModelIds": [str(fallback_id)],
         },
     )
-    actor = ActorContext(
-        tenant_id=TENANT, workspace_id=WORKSPACE, principal_id=UUID(int=1)
-    )
-    chain = await svc.select_chain_for_strategy(
-        actor=actor, route_id=ModelId(UUID(route["id"]))
-    )
+    actor = ActorContext(tenant_id=TENANT, workspace_id=WORKSPACE, principal_id=UUID(int=1))
+    chain = await svc.select_chain_for_strategy(actor=actor, route_id=ModelId(UUID(route["id"])))
     assert chain == [ModelId(primary_id), ModelId(fallback_id)]
 
 
@@ -124,9 +122,7 @@ async def test_the_agent_can_override_the_routes_strategy() -> None:
             "fallbackModelIds": [str(fallback_id)],
         },
     )
-    actor = ActorContext(
-        tenant_id=TENANT, workspace_id=WORKSPACE, principal_id=UUID(int=1)
-    )
+    actor = ActorContext(tenant_id=TENANT, workspace_id=WORKSPACE, principal_id=UUID(int=1))
     route_id = ModelId(UUID(route["id"]))
     default_chain = await svc.select_chain_for_strategy(actor=actor, route_id=route_id)
     overridden = await svc.select_chain_for_strategy(

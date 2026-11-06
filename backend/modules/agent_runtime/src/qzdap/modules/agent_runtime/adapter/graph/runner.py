@@ -129,6 +129,15 @@ class SessionGraphRunner:
         # ⚠️ **专家选择的留痕口** ✓ —— 之前**没人实例化** ✓ → 那套实现是
         # 死的 ✗✗（``session_turns.agent_decision`` **恒为 NULL** ✗）。
         agent_decision_store: Any | None = None,
+        # ⚠️ **会话累计成本的读取口** ✓ —— 成本闸门要算上**之前那些轮** ✓
+        # （之前只看这一轮 ✓ → 预算每轮重置 ✗✗）。
+        session_cost_store: Any | None = None,
+        # ⚠️ **单步超时** ✓（秒 ✓；0 = 不限 ✓）—— 上游挂住时轮次不会
+        # 永远占着连接 ✗✗。
+        step_timeout_seconds: float = 0.0,
+        # ⚠️ **单轮工具调用上限** ✓（0 = 不限 ✓）—— 模型一次吐 N 个调用 ✓
+        # → 全部执行 ✓ → 成本 ✓ / 副作用 ✓ 都放大 N 倍 ✗✗。
+        max_tool_calls: int = 0,
     ) -> None:
         self._llm = llm
         self._skill_port = skill_port
@@ -142,6 +151,9 @@ class SessionGraphRunner:
         self._context_manifest_store = context_manifest_store
         self._artifact_store = artifact_store
         self._agent_decision_store = agent_decision_store
+        self._session_cost_store = session_cost_store
+        self._step_timeout_seconds = float(step_timeout_seconds or 0.0)
+        self._max_tool_calls = int(max_tool_calls or 0)
         # ⚠️ **专家装配器** ✓（Agent Stage 4 ✓）—— **请求作用域** ✓ ——
         # 绑定集与工具运行时都绑着租户 / 工作区 / 用户 ✓ → **按请求装配** ✓
         # （不是全局单例 ✗ —— 那样会串租户 ✗✗）。
@@ -511,9 +523,16 @@ class SessionGraphRunner:
             reasoner=Reasoner(expert.model),
             evaluator=Evaluator(
                 max_steps=max_steps,
-                # ⚠️ **成本闸门** ✓（轮次级硬闸门 ✓）—— 上限取 agent 配置 ✓
+                # ⚠️ **成本闸门** ✓（硬闸门 ✓）—— 上限取 agent 配置 ✓
                 # （``profile.maxCostUsd`` ✓ —— 没配就是 0 = 不限 ✓）。
+                # ⚠️ **会话级累计** ✓ —— ``base_cost_usd`` 是**之前那些轮**
+                # 花掉的 ✓（预算不再每轮重置 ✓）。
                 max_cost_usd=_max_cost_usd(agent),
+                base_cost_usd=await self._session_cost_usd(
+                    tenant_id=tenant_id, session_id=session_id
+                ),
+                # ⚠️ **工具调用配额** ✓（agent 配置优先 ✓）。
+                max_tool_calls=_max_tool_calls(agent, default=self._max_tool_calls),
             ),
             observer=Observer(),
             actor=to_runtime_actor(actor),
@@ -524,6 +543,9 @@ class SessionGraphRunner:
             # ⚠️ **治理判定** ✓（工具执行前问一遍 ✓）—— 没有它就只有绑定
             # 声明的静态审批 ✓，策略引擎的 DENY **走不到** ✗✗。
             policy_guard=self._policy_guard,
+            # ⚠️ **单步超时** ✓ —— 卡在「等下一片模型输出」上 ✓
+            # （上游挂住 ✓ → 掐断 ✓ → 明确报错 ✓）。
+            step_timeout_seconds=self._step_timeout_seconds,
             # ⚠️ **计价回调** ✓ —— 循环自己按「本步用量」算成本 ✓，
             # 累积进 ``state.cost_usd`` ✓ → 成本闸门才有数据可判 ✓。
             cost_of=await _make_cost_of(
@@ -820,6 +842,20 @@ class SessionGraphRunner:
         # 记忆里**不再有团队知识** ✓ → 「运行时双份注入」**没有了** ✓
         # （团队知识只从 knowledge 进「相关知识」✓ —— 台账 **X15 已清理** ✓）。
         return assembled, knowledge
+
+    async def _session_cost_usd(self, *, tenant_id: UUID, session_id: UUID | None) -> float:
+        """**这个会话到目前为止花了多少钱** ✓。
+
+        ⚠️ **读不到就是 0** ✓ —— 不是错误 ✓（没有库 ✓ / 没有历史轮次 ✓）。
+        """
+        store = self._session_cost_store
+        if store is None or session_id is None:
+            return 0.0
+        try:
+            return float(await store.sum_cost(tenant_id=tenant_id, session_id=session_id) or 0.0)
+        except Exception:
+            _log.exception("session cost lookup failed session_id=%s", session_id)
+            return 0.0
 
     async def _save_rolling_summary(
         self,
@@ -1749,6 +1785,27 @@ def _max_cost_usd(agent: CatalogAgent | None) -> float:
     except (TypeError, ValueError):
         return 0.0
     return value if value > 0 else 0.0
+
+
+def _max_tool_calls(agent: CatalogAgent | None, *, default: int = 0) -> int:
+    """**单轮工具调用上限** ✓（0 = 不限 ✓）。
+
+    ⚠️ **落点 = agent 的 ``profile``** ✓（``profile.maxToolCalls`` ✓）——
+    **没配就用平台默认** ✓（``default`` ✓）。
+    """
+    limit = default
+    if agent is not None:
+        profile = agent.profile if isinstance(agent.profile, dict) else {}
+        raw = profile.get("maxToolCalls")
+        if raw is None:
+            raw = profile.get("max_tool_calls")
+        try:
+            value = int(raw)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            limit = value
+    return limit if limit > 0 else 0
 
 
 async def _make_cost_of(

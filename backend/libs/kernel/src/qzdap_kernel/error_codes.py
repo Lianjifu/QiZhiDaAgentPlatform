@@ -235,6 +235,16 @@ class ErrorCode(str, Enum):
     # ── 轮次（契约层）──────────────────────────────────────────────────
     TURN_CANCELLED = "TURN_CANCELLED"
     TURN_FAILED = "TURN_FAILED"
+    # ── agent 循环（runtime）──────────────────────────────────────────
+    #: **单步超时** ✓（一步推理 / 一次模型调用超过预算 ✓）。
+    AGENT_STEP_TIMEOUT = "AGENT_STEP_TIMEOUT"
+    #: **整轮超时** ✓（这一轮跑太久 ✓ —— 连接还占着 ✓）。
+    AGENT_TURN_TIMEOUT = "AGENT_TURN_TIMEOUT"
+    #: **工具调用配额用完** ✓（单轮上限 ✓）。
+    AGENT_TOOL_QUOTA_EXCEEDED = "AGENT_TOOL_QUOTA_EXCEEDED"
+    #: **模型调用失败** ✓（LLM 层重试过还是失败 ✓）—— ⚠️ **可重试** ✓
+    #: （换一次可能就好了 ✓ —— 与「配置错了」不同 ✓）。
+    LLM_CALL_FAILED = "LLM_CALL_FAILED"
     # ── libs/vault ─────────────────────────────────────────────────────
     SECRET_NOT_FOUND = "SECRET_NOT_FOUND"  # noqa: S105 —— 错误码 ✓ 不是口令 ✓
     SECRET_ACCESS_DENIED = "SECRET_ACCESS_DENIED"  # noqa: S105 —— 错误码 ✓ 不是口令 ✓
@@ -469,6 +479,11 @@ _HTTP_STATUS: dict[ErrorCode, int] = {
     ErrorCode.LLM_INVALID_RESPONSE: 502,
     ErrorCode.LLM_ALL_FAILED: 502,
     ErrorCode.LLM_STREAM_ERROR: 502,
+    ErrorCode.LLM_CALL_FAILED: 502,
+    # ── agent 循环（runtime）──────────────────────────────────────────
+    ErrorCode.AGENT_STEP_TIMEOUT: 504,
+    ErrorCode.AGENT_TURN_TIMEOUT: 504,
+    ErrorCode.AGENT_TOOL_QUOTA_EXCEEDED: 429,
 }
 
 
@@ -500,6 +515,11 @@ _RETRIABLE: frozenset[ErrorCode] = frozenset(
         ErrorCode.TOOL_STALLED,
         ErrorCode.SANDBOX_TIMEOUT,
         ErrorCode.SANDBOX_FAILED,
+        # ⚠️ **agent 循环的三个** ✓ —— 超时 ✓ / 模型调用失败 ✓ 都是
+        # 「换个时间再来一次可能就好了」✓。
+        ErrorCode.AGENT_STEP_TIMEOUT,
+        ErrorCode.AGENT_TURN_TIMEOUT,
+        ErrorCode.LLM_CALL_FAILED,
     }
 )
 
@@ -1156,6 +1176,27 @@ ERROR_PROJECTION: Mapping[ErrorCode, ErrorCopy] = {
         http="全部模型都失败",
         im="所有模型都没能响应，请稍后重试。",
         web="所有模型都没能响应，请稍后重试。",
+    ),
+    # ── agent 循环（runtime）──────────────────────────────────────────
+    ErrorCode.AGENT_STEP_TIMEOUT: ErrorCopy(
+        http="单步推理超时",
+        im="这一步想得太久了，先停一下，你再试一次。",
+        web="这一步耗时过长，已中断，请重试。",
+    ),
+    ErrorCode.AGENT_TURN_TIMEOUT: ErrorCopy(
+        http="本轮生成超时",
+        im="这次回答超时了，请再问一次。",
+        web="本轮生成超时，请重试。",
+    ),
+    ErrorCode.AGENT_TOOL_QUOTA_EXCEEDED: ErrorCopy(
+        http="工具调用次数超限",
+        im="这一步用到的工具次数太多，已停下。",
+        web="本轮工具调用次数已达上限，已停止。",
+    ),
+    ErrorCode.LLM_CALL_FAILED: ErrorCopy(
+        http="模型调用失败",
+        im="模型这次没响应，请再问一次。",
+        web="模型调用失败，请重试。",
     ),
     ErrorCode.LLM_STREAM_ERROR: ErrorCopy(
         http="模型流式响应中断", im="模型响应中断了，请重试。", web="模型响应中断了，请重试。"

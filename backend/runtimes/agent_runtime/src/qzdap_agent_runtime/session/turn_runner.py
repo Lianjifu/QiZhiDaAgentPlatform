@@ -251,6 +251,27 @@ class TurnBusy(Exception):
     """**会话已有轮次在飞** ✓ —— 上层翻成 409 ``SESSION_BUSY`` ✓。"""
 
 
+#: **轮次行里保留具体码的那些** ✓ —— 平台自己判的闸门 ✓（超时 ✓ / 配额 ✓ /
+#: 预算 ✓）—— 运维要能从轮次行一眼看出「为什么停」✓。
+#: ⚠️ **供应商侧的错不算** ✓ —— 那就是「这一轮失败了」✓（``TURN_FAILED`` ✓）。
+_LOOP_ERROR_CODES = frozenset(
+    {
+        ErrorCode.AGENT_STEP_TIMEOUT.value,
+        ErrorCode.AGENT_TURN_TIMEOUT.value,
+        ErrorCode.AGENT_TOOL_QUOTA_EXCEEDED.value,
+        "DEEP_AGENT_BUDGET_EXCEEDED",
+    }
+)
+
+
+class TurnTimeout(Exception):
+    """**这一轮超时了** ✓（跑太久 ✓ —— 连接还占着 ✗✗）。
+
+    ⚠️ **与「取消」分开** ✓ —— 取消是用户点的 ✓（``TURN_CANCELLED`` ✓），
+    超时是系统判的 ✓（``AGENT_TURN_TIMEOUT`` ✓）—— 排查时要看得出区别 ✓。
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class TurnContext:
     """跑一轮的**输入** ✓ —— 模块侧读完会话之后交给契约层的东西 ✓。
@@ -311,6 +332,9 @@ class TurnRunner:
         # （薄壳只管「读 + 组装」✓ —— 台账 X18 的最后一层 ✓）。
         idempotency: IdempotencyGuard | None = None,
         claim: TurnClaimPort | None = None,
+        # ⚠️ **整轮超时** ✓（0 = 不限 ✓）—— 之前**没有整轮预算** ✓ →
+        # 上游挂住 ✓ → 连接一直占着 ✓ → 用户干等 ✗✗。
+        timeout_seconds: float = 0.0,
     ) -> None:
         self._executor = executor
         self._lifecycle = lifecycle
@@ -321,6 +345,7 @@ class TurnRunner:
         self._sequence = sequence
         self._idempotency = idempotency
         self._claim = claim
+        self._timeout_seconds = float(timeout_seconds or 0.0)
 
     async def run_turn(
         self,
@@ -458,17 +483,34 @@ class TurnRunner:
 
         assistant_parts: list[str] = []
         turn_usage: UsageChunk | None = None
+        # ⚠️ **这一轮见过的错误码** ✓ —— 有错 ✓ → 轮次**不算成功** ✓
+        # （之前错误事件一过 ✓ → 轮次照样落 succeeded ✗✗ —— 排查时看到的
+        # 是「成功」✓ 但用户看到的是报错 ✗✗）。
+        seen_error_code: str | None = None
         event_seq = 1
         emitted = False
         last_cancel_check = monotonic()
+        # ⚠️ **整轮预算** ✓ —— 0 = 不限 ✓。
+        deadline = monotonic() + self._timeout_seconds if self._timeout_seconds > 0 else None
         try:
-            async for chunk in self._executor.run(request=request):
+            async for chunk in self._chunks_with_deadline(request=request, deadline=deadline):
                 emitted = True
                 now = monotonic()
                 if now - last_cancel_check >= CANCEL_POLL_SECONDS:
                     last_cancel_check = now
                     if await self._cancel.is_cancel_requested(session_id=request.session_id):
                         raise TurnCancelled("用户请求停止生成")
+                if isinstance(chunk, ErrorChunk):
+                    # ⚠️ **错误事件的文案要投影** ✓ —— 与异常路径同一口径 ✓
+                    # （已知码给人话 ✓ / 未知码保留细节 ✓）。
+                    chunk = chunk.model_copy(
+                        update={
+                            "message": project_error_message(
+                                str(chunk.code or ""), str(chunk.message or ""), "web"
+                            )
+                        }
+                    )
+                    seen_error_code = str(chunk.code or "")
                 stamped = await self._publish_chunk(
                     turn_id=request.turn_id, chunk=chunk, seq=event_seq
                 )
@@ -518,15 +560,41 @@ class TurnRunner:
                         metadata=metadata,
                         resume_state=self._executor.latest_state(),
                     )
+                    # ⚠️ **出过错就不算成功** ✓ —— 轮次行要如实反映 ✓。
+                    turn_failed = seen_error_code is not None
                     await self._lifecycle.finish_turn(
                         turn_id=request.turn_id,
-                        status=TurnStatus.SUCCEEDED.value,
+                        status=(
+                            TurnStatus.FAILED.value if turn_failed else TurnStatus.SUCCEEDED.value
+                        ),
                         final_response=final,
                         input_tokens=turn_usage.input_tokens if turn_usage else None,
                         output_tokens=(turn_usage.output_tokens if turn_usage else None),
                         cost_usd=turn_usage.cost_usd if turn_usage else None,
+                        error_code=(
+                            seen_error_code
+                            if seen_error_code in _LOOP_ERROR_CODES
+                            else ErrorCode.TURN_FAILED.value
+                        )
+                        if turn_failed
+                        else None,
                     )
                     await self._lifecycle.mark_delivered(turn_id=request.turn_id)
+        except TurnTimeout as exc:
+            await self._lifecycle.fail_turn(
+                turn_id=request.turn_id, code=ErrorCode.AGENT_TURN_TIMEOUT.value, message=str(exc)
+            )
+            yield await self._publish_chunk(
+                turn_id=request.turn_id,
+                chunk=ErrorChunk(
+                    turn_id=request.turn_id,
+                    seq=0,
+                    code=ErrorCode.AGENT_TURN_TIMEOUT.value,
+                    message="本轮生成超时，请重试",
+                    retriable=True,
+                ),
+                seq=event_seq,
+            )
         except TurnCancelled as exc:
             await self._lifecycle.fail_turn(
                 turn_id=request.turn_id, code=ErrorCode.TURN_CANCELLED.value, message=str(exc)
@@ -582,6 +650,36 @@ class TurnRunner:
                 ),
                 seq=event_seq,
             )
+
+    async def _chunks_with_deadline(
+        self, *, request: TurnRequest, deadline: float | None
+    ) -> AsyncIterator[Any]:
+        """**按整轮预算取 chunk** ✓（``deadline is None`` = 不限 ✓）。
+
+        ⚠️ **超时卡在「等下一片」上** ✓ —— 与单步超时同一口径 ✓：
+        **消费者自己的处理时间不算进去** ✓（慢客户端不该被误杀 ✗✗）。
+        """
+        iterator = self._executor.run(request=request).__aiter__()
+        try:
+            while True:
+                try:
+                    if deadline is None:
+                        chunk = await iterator.__anext__()
+                    else:
+                        remaining = deadline - monotonic()
+                        if remaining <= 0:
+                            raise TimeoutError
+                        chunk = await asyncio.wait_for(iterator.__anext__(), remaining)
+                except StopAsyncIteration:
+                    return
+                except TimeoutError as exc:
+                    raise TurnTimeout(f"turn exceeded {self._timeout_seconds:.0f}s") from exc
+                yield chunk
+        finally:
+            close = getattr(iterator, "aclose", None)
+            if close is not None:
+                with contextlib.suppress(Exception):
+                    await close()
 
     async def _wait_for_slot(self, *, request: TurnRequest) -> AsyncIterator[Any]:
         """**等 FIFO 位** ✓（Router 方案 §4.2 ✓）。

@@ -361,8 +361,11 @@ async def test_mid_stream_failure_emits_error_chunk_and_fails_the_turn() -> None
 
     kinds = [c.kind for c in chunks]
     assert "message" in kinds
-    assert kinds[-1] == "error"
-    assert "upstream exploded" in chunks[-1].message
+    # ⚠️ **错误后面还有 done** ✓ —— SSE 流要有终止块 ✓（前端在 error 上就抛了 ✓
+    # —— 后面的块它根本不看 ✓）。
+    assert "error" in kinds
+    error_chunk = next(c for c in chunks if c.kind == "error")
+    assert "upstream exploded" in error_chunk.message
     turn = await deps["turns"].latest_for_session(UUID(sid))
     assert turn is not None
     assert turn.status.value == "failed"
@@ -1120,8 +1123,8 @@ async def test_a_known_error_code_is_projected_into_the_web_copy() -> None:
         )
     ]
 
-    assert chunks[-1].kind == "error"
-    assert chunks[-1].message == project_error(ErrorCode.EXTERNAL_SERVICE_ERROR, "web")
+    error_chunk = next(c for c in chunks if c.kind == "error")
+    assert error_chunk.message == project_error(ErrorCode.EXTERNAL_SERVICE_ERROR, "web")
     # 轮次行里留的仍是技术细节（运维看这个）。
     turn = await deps["turns"].latest_for_session(UUID(sid))
     assert turn is not None

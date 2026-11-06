@@ -65,7 +65,7 @@ backend/modules/model/src/qzdap/modules/model/
 |---|---|---|
 | `admin_model_providers` | 供应商 | id / name / protocol / base_url / **encrypted_payload**(LargeBinary) / api_key_masked / error_rate / avg_latency_ms / qps |
 | `admin_models` | 模型 | id / provider_id / model_name / context_window / price_in / price_out / status |
-| `admin_model_routes` | 路由策略 | id / strategy / model_ids / priority / enabled |
+| `admin_model_routes` | 路由策略 | id / strategy / primary_model_id / fallback_model_ids / priority / enabled |
 | `admin_model_health` | 健康事件 | id / model_id / status / latency_ms / error / at |
 | `model_quotas` | 额度定义 | id / tenant_id / workspace_id / period / limit_value |
 | `model_quota_usage` | 用量计数 | id / quota_id / used / period |
@@ -78,11 +78,14 @@ backend/modules/model/src/qzdap/modules/model/
 - **目录探测按协议分**：`HttpCatalogProber` 支持 openai / anthropic / google / qwen 四种协议；无标准 `/models` 的供应商抛 `CatalogDiscoveryUnsupported`（qwen 即如此）
 - **连通性测试防内网**：`PublicNetworkTransport` 阻断内网地址 + 响应体限流 + key 脱敏
 - **额度的硬闸门**：`QuotaService.check_and_consume` 在调用前检查并扣减，超额直接拒绝
+- **上游重试住在传输层**：`libs/llm/retry.py` 的 `RetryPolicy` —— 只重试**瞬时**失败（限流 / 5xx / 连接错 / 超时），4xx 与鉴权错不重试；指数退避 + jitter（惊群会把刚恢复的上游再打死）。**流式吐过第一个 chunk 之后不重试**——重放会重复吐字。**连通性探测不重试**（`max_attempts=1`）——它要的是当下的真实状态码，管理侧看到的不能是「等了三次才失败」
+- **失败转移链现在能配了**：`POST /api/admin/models/routes` 收 `fallbackModelIds`（每个都要是本租户本工作区的模型）。之前 `fallback_model_ids` 恒为 `[]`，`fallback` 策略下链只有 primary 一个——所谓「失败转移」从来没发生过
 - **成本可追溯到 turn**：`UsageChunk` 带 6 个归属维度（tenant / workspace / user / agent / agent_version / model_version），成本同时落 `session_turns.cost_usd`
 
 ## 已知边界
 
 - ⚠️ **健康检查靠事件累积，没有主动探活调度器**——`admin_model_health` 只在真实调用后追加
+- ⚠️ **重试次数没有按供应商分别配置**——全局一套 `RetryPolicy`（`llm_retry_*` 三个设置项）——某个供应商要单独调，得改代码
 - ⚠️ `LLMAuditService` 只落审计事件，**不做合规分析**
 - ⚠️ `preview-chain` 是静态预览，**实际的 failover 决策在 kernel 侧**（`libs/llm/router.py`），不在本模块
 - ⚠️ 未配置真实供应商时，装的是 `UnavailableLLMClient`——目录与数据库 API 照常启动，但任何 chat / embed 调用一律 503（不是返回 mock）

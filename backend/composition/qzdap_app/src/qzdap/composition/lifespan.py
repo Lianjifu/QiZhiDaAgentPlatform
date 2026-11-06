@@ -312,6 +312,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
                 PostgresIdempotencyStore,
             )
+            from qzdap.modules.agent_runtime.adapter.persistence.session_cost_store import (
+                PostgresSessionCostStore,
+            )
             from qzdap.modules.agent_runtime.adapter.sandbox import (
                 SandboxRuntimeAdapter,
             )
@@ -376,6 +379,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 # ``session_turns.agent_decision`` **恒为 NULL** ✗✗
                 # （事件流里也看不到「选了谁」✗）。
                 agent_decision_store=JournalAgentDecisionStore(container.session_journal()),
+                # ⚠️ **会话累计成本** ✓ —— 成本闸门要算上**之前那些轮** ✓
+                # （之前只看这一轮 ✓ → 预算每轮重置 ✗✗）。
+                session_cost_store=PostgresSessionCostStore(session),
+                # ⚠️ **单步超时** ✓（上游挂住 ✓ → 掐断 ✓）。
+                step_timeout_seconds=container.settings.agent_step_timeout_seconds,
+                # ⚠️ **单轮工具调用上限** ✓。
+                max_tool_calls=container.settings.agent_max_tool_calls,
             )
             _ = (TenantId, UserId, WorkspaceId)
             sessions_repo = SqlSessionRepository(session)
@@ -414,6 +424,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 # 的第二个请求看不到它, 两轮都会起 ✓）。
                 idempotency=IdempotencyGuard(PostgresIdempotencyStore(container.session_factory())),
                 claim=PostgresTurnClaim(session),
+                # ⚠️ **整轮超时** ✓（0 = 不限 ✓）—— 上游挂住时连接一直占着 ✗✗。
+                timeout_seconds=container.settings.agent_turn_timeout_seconds,
             )
             # ⚠️ **跑一轮的模块侧入口** ✓（S-21b ✓）—— 读 + 组装 ✓，
             # 幂等 / claim / 转发在契约层 ✓。

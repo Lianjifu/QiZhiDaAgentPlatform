@@ -70,3 +70,13 @@ def test_publishing_keeps_the_binding_in_the_snapshot() -> None:
     snapshot = published.versions[0]["snapshot"]
     assert snapshot["routeId"] == str(ROUTE)
     assert snapshot["routeStrategy"] == "cost-first"
+
+
+def test_the_tool_call_quota_falls_back_to_the_platform_default() -> None:
+    """⚠️ **agent 没配就用平台默认** ✓ —— 配额不能「没人配就没有」✗✗。"""
+    from qzdap.modules.agent_runtime.adapter.graph.runner import _max_tool_calls
+
+    assert _max_tool_calls(None, default=24) == 24
+    assert _max_tool_calls(_agent(), default=24) == 24
+    agent = _agent().apply_patch({"profile": {"maxToolCalls": 5}})
+    assert _max_tool_calls(agent, default=24) == 5

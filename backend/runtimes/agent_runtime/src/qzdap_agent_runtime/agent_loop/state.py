@@ -24,8 +24,12 @@ class LoopState:
     tool_results: list[dict[str, Any]] = field(default_factory=list)
     #: **走到第几步了** ✓（步数闸门看它 ✓）。
     step: int = 0
-    #: **这一轮花了多少钱** ✓（成本闸门看它 ✓ —— 决策 #7 的轮次级硬闸门 ✓）。
+    #: **这一轮花了多少钱** ✓（成本闸门看它 ✓ —— 决策 #7 的硬闸门 ✓）。
+    #: ⚠️ **只算这一轮** ✓ —— 会话级的累计成本是**闸门的那一半** ✓
+    #: （``Evaluator.base_cost_usd`` ✓ —— 那是**之前那些轮**花掉的 ✓）。
     cost_usd: float = 0.0
+    #: **这一轮一共调了多少次工具** ✓（配额闸门看它 ✓）。
+    tool_call_count: int = 0
     #: **用量** ✓（input ✓ / output ✓）。
     input_tokens: int = 0
     output_tokens: int = 0
@@ -45,6 +49,13 @@ class LoopState:
     expert_instruction: str = ""
     #: **错误** ✓（终止时带上 ✓）。
     errors: list[dict[str, Any]] = field(default_factory=list)
+    #: **这一轮已经往外吐过东西了吗** ✓ —— 模型调用失败时用它决定
+    #: 「重新抛出去」还是「就地收尾」 ✓（一个 chunk 都没吐 ✓ → 抛 ✓ →
+    #: HTTP 层能给状态码 ✓；吐过了 ✓ → 就地收尾 ✓）。
+    emitted: bool = False
+    #: **致命错误** ✓（模型调用失败 ✓ / 单步超时 ✓）—— **判定点看它** ✓
+    #: （不在推理层直接发错误事件 ✓ —— 终止条件要**集中在一点** ✓）。
+    fatal_error: dict[str, Any] | None = None
     #: **模型的最终回答** ✓。
     final_message: str | None = None
     #: **空转计数** ✓（同一组工具调用重复出现 ✓ —— §3.4 条件 6 ✓）。

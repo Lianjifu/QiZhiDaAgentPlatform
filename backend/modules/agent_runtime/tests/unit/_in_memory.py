@@ -461,6 +461,7 @@ def make_turn_entry(
     queue: Any = None,
     sequence: Any = None,
     executor: Any = None,
+    timeout_seconds: float = 0.0,
 ) -> Any:
     """模块侧的**跑一轮入口** ✓（S-21b ✓）—— 读 + 组装 ✓。
 
@@ -483,6 +484,7 @@ def make_turn_entry(
             idempotency=idempotency,
             claim=claim,
             executor=executor,
+            timeout_seconds=timeout_seconds,
         ),
     )
 
@@ -499,6 +501,7 @@ def make_turn_runner(
     claim: Any = None,
     sequence: Any = None,
     executor: Any = None,
+    timeout_seconds: float = 0.0,
 ) -> Any:
     """契约层的**真** ``TurnRunner`` + 模块侧的真实适配器 ✓。
 
@@ -527,6 +530,8 @@ def make_turn_runner(
         # ⚠️ **准入** ✓（S-21b ✓）—— 幂等 + 会话占用 ✓。
         idempotency=idempotency,
         claim=claim,
+        # ⚠️ **整轮超时** ✓（0 = 不限 ✓）。
+        timeout_seconds=timeout_seconds,
     )
 
 

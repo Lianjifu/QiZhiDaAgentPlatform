@@ -645,7 +645,7 @@ POST /api/sessions/{id}/approvals/{aid}/approve|deny
 
 | 变化 | 现状 |
 |---|---|
-| **循环本体** | 在契约层 `qzdap_agent_runtime/agent_loop/` ✓（`reason` ✓ / `observe` ✓ / `evaluate` ✓ / `runner` ✓）—— **终止条件只有一处** ✓（§3.4 的六条 ✓）；模块侧只做**装配 + 事件翻译** ✓ |
+| **循环本体** | 在契约层 `qzdap_agent_runtime/agent_loop/` ✓（`reason` ✓ / `observe` ✓ / `evaluate` ✓ / `runner` ✓）—— **终止条件只有一处** ✓（判定点 `Evaluator` ✓ —— 取消 / 致命错误 / 步数 / 成本 / 工具配额 / 上下文 / 审批 / 空转 ✓）；模块侧只做**装配 + 事件翻译** ✓ |
 | **旧的实现** | **已删** ✓（手写 `while True` 循环 ✓ / 占位图 ✓ / 那批整包 ✓ —— Agent Stage 7 ✓，约 11k 行 ✓） |
 | **工具白名单** | 模型**只能调用 agent 绑定的工具** ✓（此前是「模型说什么就执行什么」✗✗ —— 那是个洞 ✓） |
 | **专家装配** | 模型与工具**只来自 agent 配置** ✓（契约层 `expert.py` ✓） |
