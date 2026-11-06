@@ -5,7 +5,6 @@
 评测中心    /api/admin/evaluations/*
 回归追踪    /api/admin/regressions/*
 用户反馈    /api/admin/feedback/*
-调用链路    /api/admin/operations/*
 工具审计    /api/admin/audit/*
 运行指标    /api/admin/metrics/*
 """
@@ -441,46 +440,6 @@ def build_ops_router() -> APIRouter:
     ) -> list[dict[str, Any]]:
         return await svc.list_collection(
             tenant_id=x_tenant_id, workspace_id=x_workspace_id, collection="feedback.rules"
-        )
-
-    @router.get("/api/admin/operations/sessions")
-    async def list_sessions(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
-        svc: AdminOpsService = Depends(ops_dependency),
-    ) -> list[dict[str, Any]]:
-        return await svc.list_collection(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id, collection="operations.sessions"
-        )
-
-    @router.get("/api/admin/operations/spans")
-    async def list_spans(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
-        svc: AdminOpsService = Depends(ops_dependency),
-    ) -> list[dict[str, Any]]:
-        return await svc.list_collection(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id, collection="operations.spans"
-        )
-
-    @router.get("/api/admin/operations/incidents")
-    async def list_incidents(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
-        svc: AdminOpsService = Depends(ops_dependency),
-    ) -> list[dict[str, Any]]:
-        return await svc.list_collection(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id, collection="operations.incidents"
-        )
-
-    @router.get("/api/admin/operations/kind-stats")
-    async def list_kind_stats(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
-        svc: AdminOpsService = Depends(ops_dependency),
-    ) -> list[dict[str, Any]]:
-        return await svc.list_collection(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id, collection="operations.kind-stats"
         )
 
     @router.get("/api/admin/audit/entries")

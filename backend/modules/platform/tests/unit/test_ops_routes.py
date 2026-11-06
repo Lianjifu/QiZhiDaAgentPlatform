@@ -101,25 +101,6 @@ async def test_invalid_import_is_atomic_and_422(client):
     assert (await client.get("/api/admin/feedback/list")).json() == []
 
 
-async def test_incidents_batch_uses_session_ids_and_boolean_field(client):
-    # Persist through the same service used by import; use channels as a scoped seed route
-    # then import incident documents through the dedicated import endpoint.
-    response = await client.post(
-        "/api/admin/operations/incidents/import",
-        json={
-            "content": '[{"id":"inc-a","sessionId":"session-a","resolved":false}]',
-            "format": "json",
-        },
-    )
-    assert response.status_code == 200, response.text
-    response = await client.post(
-        "/api/admin/operations/incidents/batch-resolve", json={"sessionIds": ["session-a"]}
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["updated"] == 1
-    assert (await client.get("/api/admin/operations/incidents")).json()[0]["resolved"] is True
-
-
 async def test_run_requires_real_cases_and_executor(client):
     created = (
         await client.post(

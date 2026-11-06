@@ -127,9 +127,7 @@ class AdminOpsService:
                 workspace_id=workspace_id,
                 collection=collection,
                 doc_key=doc_key,
-                patch={"resolved": True}
-                if collection == "operations.incidents"
-                else {"status": status},
+                patch={"status": status},
             )
         raise ValueError(f"unsupported action: {action}")
 
@@ -667,9 +665,6 @@ class AdminOpsService:
         )
         if stored:
             return stored
-        incidents = await self.list_collection(
-            tenant_id=tenant_id, workspace_id=workspace_id, collection="operations.incidents"
-        )
         quota_alerts = await self.list_collection(
             tenant_id=tenant_id, workspace_id=workspace_id, collection="quotas.alerts"
         )
@@ -692,31 +687,9 @@ class AdminOpsService:
                     "suggestion": str(item.get("description") or ""),
                 }
             )
-        for item in incidents:
-            if item.get("resolved"):
-                continue
-            severity = str(item.get("severity") or "medium")
-            if severity not in {"high", "medium", "low", "info"}:
-                severity = "medium"
-            out.append(
-                {
-                    "id": str(item.get("id") or ""),
-                    "severity": severity,
-                    "title": str(item.get("title") or "调用异常"),
-                    "time": str(item.get("occurredAt") or "—"),
-                    "affected": str(item.get("affectedUser") or "会话"),
-                    "suggestion": str(item.get("message") or ""),
-                }
-            )
         return out[:12]
 
     async def overview_summary(self, *, tenant_id: UUID, workspace_id: UUID) -> dict[str, Any]:
-        sessions = await self.list_collection(
-            tenant_id=tenant_id, workspace_id=workspace_id, collection="operations.sessions"
-        )
-        incidents = await self.list_collection(
-            tenant_id=tenant_id, workspace_id=workspace_id, collection="operations.incidents"
-        )
         models = await self.list_collection(
             tenant_id=tenant_id, workspace_id=workspace_id, collection="metrics.models"
         )
@@ -742,14 +715,13 @@ class AdminOpsService:
             else 0.0
         )
         p95 = int(sum(int(item.get("p95") or 0) for item in models) / max(len(models), 1))
-        open_incidents = [item for item in incidents if not item.get("resolved")]
         high_alerts = [item for item in alerts if item.get("severity") == "high"]
         active_agents = {str(item.get("target") or "") for item in suites if item.get("target")}
         kpis = [
             {
                 "label": "今日调用",
                 "value": f"{calls:,}",
-                "delta": f"{len(sessions)} 个会话",
+                "delta": "运行指标均值",
                 "deltaTone": "up" if calls else "flat",
                 "tone": "brand",
                 "href": "/admin/metrics",
@@ -779,10 +751,10 @@ class AdminOpsService:
             {
                 "label": "错误率",
                 "value": f"{error_rate:.2f}%" if models else "—",
-                "delta": f"{len(open_incidents)} 条未解决异常",
-                "deltaTone": "up" if open_incidents else "flat",
-                "tone": "danger" if open_incidents or error_rate else "success",
-                "href": "/admin/operations",
+                "delta": "运行指标均值",
+                "deltaTone": "flat",
+                "tone": "danger" if error_rate else "success",
+                "href": "/admin/metrics",
                 "sparkline": [],
                 "iconName": "AlertTriangle",
             },

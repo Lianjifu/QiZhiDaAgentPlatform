@@ -1,5 +1,4 @@
 import {
-  Activity,
   Bot,
   Brain,
   Boxes,
@@ -72,7 +71,6 @@ export const adminNavigationSections: NavigationSection[] = [
     { label: '用户反馈', href: '/admin/feedback', icon: ThumbsUp, description: '收集用户对智能体回答的赞踩与修正建议' },
   ] },
   { title: '可观测', items: [
-    { label: '调用链路', href: '/admin/operations', icon: Activity, description: '会话追溯：还原智能体 / 工具 / MCP 的完整调用链与上下文' },
     { label: '工具审计', href: '/admin/tool-audit', icon: ShieldAlert, description: '工具风险：追踪工具调用、权限越界与异常敏感操作' },
     { label: '运行指标', href: '/admin/metrics', icon: LineChart, description: '成本效率：可用率、延迟、Token 与成本等关键指标' },
   ] },

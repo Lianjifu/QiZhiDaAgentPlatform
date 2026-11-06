@@ -99,14 +99,6 @@ export const qk = {
     notifications: {
       root: ['admin', 'notifications'] as const,
     },
-    operations: {
-      root: ['admin', 'operations'] as const,
-      summary: ['admin', 'operations', 'summary'] as const,
-      sessions: ['admin', 'operations', 'sessions'] as const,
-      spans: ['admin', 'operations', 'spans'] as const,
-      incidents: ['admin', 'operations', 'incidents'] as const,
-      kindStats: ['admin', 'operations', 'kind-stats'] as const,
-    },
     audit: {
       root: ['admin', 'audit'] as const,
       entries: ['admin', 'audit', 'entries'] as const,

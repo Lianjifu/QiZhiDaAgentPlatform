@@ -23,8 +23,6 @@ RESOURCES = {
     "audit/entries": "audit.entries",
     "audit/risks": "audit.risks",
     "audit/rules": "audit.rules",
-    "operations/sessions": "operations.sessions",
-    "operations/incidents": "operations.incidents",
     "metrics/dashboards": "metrics.dashboards",
     "metrics/thresholds": "metrics.thresholds",
 }
@@ -85,12 +83,6 @@ def _batch(collection: str, action: str):
         svc: Service,
     ) -> dict[str, Any]:
         ids = body.get("ids")
-        if collection == "operations.incidents" and body.get("sessionIds") is not None:
-            sessions = body["sessionIds"]
-            rows = await svc.list_collection(
-                tenant_id=x_tenant_id, workspace_id=x_workspace_id, collection=collection
-            )
-            ids = [row["id"] for row in rows if row.get("sessionId") in sessions]
         if not isinstance(ids, list) or any(not isinstance(i, str) for i in ids):
             raise HTTPException(422, "ids must be an array of strings")
         ids = list(dict.fromkeys(ids))
@@ -125,9 +117,7 @@ def _batch(collection: str, action: str):
                 ]
                 return {"updated": len(results), "results": results}
             patch: dict[str, Any]
-            if collection == "operations.incidents":
-                patch = {"resolved": True}
-            elif action in {"enable", "disable"}:
+            if action in {"enable", "disable"}:
                 patch = {"enabled": action == "enable"}
             else:
                 status = {
@@ -252,7 +242,6 @@ def build_mutation_router() -> APIRouter:
         "regressions/tracks": ("investigate", "resolve", "delete"),
         "feedback": ("triage", "resolve", "delete"),
         "audit/entries": ("resolve", "review"),
-        "operations/incidents": ("resolve",),
         "metrics/dashboards": ("enable", "disable", "delete"),
     }.items():
         for action in actions:
@@ -271,7 +260,6 @@ def build_mutation_router() -> APIRouter:
         "quotas/budgets": "bg",
         "notifications/channels": "ch",
         "metrics/dashboards": "db",
-        "operations/incidents": "incident",
     }.items():
         collection = RESOURCES.get(resource, resource.replace("/", "."))
         add(resource + "/import", _import(collection, prefix), "POST")
@@ -284,7 +272,6 @@ def build_mutation_router() -> APIRouter:
     for resource, fields in {
         "feedback": ("history",),
         "quotas/budgets": ("history",),
-        "operations/sessions": ("context", "logs"),
         "audit/entries": ("logs", "response"),
     }.items():
         for field in fields:
@@ -298,7 +285,6 @@ def build_mutation_router() -> APIRouter:
         "regressions/tracks": ("run", "duplicate"),
         "feedback": ("reply",),
         "audit/entries": ("resolve",),
-        "operations/incidents": ("resolve",),
     }.items():
         for action in actions:
             add(f"{resource}/{{doc_id}}/{action}", _action(RESOURCES[resource], action), "POST")

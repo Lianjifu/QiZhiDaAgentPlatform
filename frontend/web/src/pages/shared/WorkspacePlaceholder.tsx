@@ -17,7 +17,6 @@ const pageCopy: Record<string, { title: string; description: string; actions: st
   '/admin/feedback': { title: '用户反馈', description: '收集用户对智能体回答的赞踩、修正建议和 badcase。', actions: ['反馈列表', '修正建议', '反馈转用例'] },
   '/admin/models': { title: '模型配置', description: '配置模型服务、算力资源和运行策略。', actions: ['模型服务', '运行策略', '健康状态'] },
   '/admin/quotas': { title: '额度管理', description: '管理企业用量、预算和成本策略。', actions: ['用量概览', '预算策略', '成本明细'] },
-  '/admin/operations': { title: '调用链路', description: '会话追溯：还原智能体 / 工具 / MCP 的完整调用链与上下文。', actions: ['实时链路', '慢调用分析', '错误追踪', '调用检索'] },
   '/admin/settings': { title: '平台设置', description: '配置品牌与界面、合规策略、审计日志与成员管理。模型、渠道配置与额度请在「平台治理」侧栏处理。', actions: ['品牌与界面', '合规策略', '审计日志', '成员管理'] },
   '/admin/notifications': { title: '渠道配置', description: '对接飞书、企业微信、钉钉与 Web，让用户在熟悉的入口与智能体对话。', actions: ['飞书', '企业微信', '钉钉', 'Web'] },
 };

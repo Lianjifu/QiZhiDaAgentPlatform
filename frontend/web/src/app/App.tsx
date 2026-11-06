@@ -56,8 +56,6 @@ const AdminQuotaDetail = lazy(() => import('@/features/quotas/QuotaDetailPage'))
 const AdminNotifications = lazy(() => import('@/features/notifications'));
 const AdminChannelCreate = lazy(() => import('@/features/notifications/ChannelCreatePage'));
 const AdminChannelDetail = lazy(() => import('@/features/notifications/ChannelDetailPage'));
-const AdminOperations = lazy(() => import('@/features/operations'));
-const AdminSessionDetail = lazy(() => import('@/features/operations/SessionDetailPage'));
 const AdminToolAudit = lazy(() => import('@/features/audit'));
 const AdminAuditRuleCreate = lazy(() => import('@/features/audit/AuditRuleCreatePage'));
 const AdminAuditDetail = lazy(() => import('@/features/audit/AuditDetailPage'));
@@ -165,8 +163,6 @@ export default function App() {
             <Route path="/admin/notifications" element={<AdminNotifications />} />
             <Route path="/admin/notifications/new" element={<AdminChannelCreate />} />
             <Route path="/admin/notifications/:id" element={<AdminChannelDetail />} />
-            <Route path="/admin/operations" element={<AdminOperations />} />
-            <Route path="/admin/operations/:id" element={<AdminSessionDetail />} />
             <Route path="/admin/tool-audit" element={<AdminToolAudit />} />
             <Route path="/admin/tool-audit/rules/new" element={<AdminAuditRuleCreate />} />
             <Route path="/admin/tool-audit/:id" element={<AdminAuditDetail />} />
