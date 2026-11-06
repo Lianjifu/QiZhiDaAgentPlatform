@@ -5,7 +5,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/qzdap-env.sh"
 
 stopped=0
-for name in qzdap-gateway qzdap-vite qzdap-app; do
+for name in qzdap-gateway qzdap-vite qzdap-app qzdap-sandbox; do
   pidfile="$QZDAP_LOG_DIR/$name.pid"
   if [ -f "$pidfile" ]; then
     pid=$(cat "$pidfile")
@@ -19,12 +19,12 @@ for name in qzdap-gateway qzdap-vite qzdap-app; do
 done
 
 # also kill anything listening on QZDAP ports (in case pidfile is stale)
-for p in "$QZDAP_FRONTEND_PORT" "$QZDAP_LISTEN_PORT" "$QZDAP_APP_PORT"; do
+for p in "$QZDAP_FRONTEND_PORT" "$QZDAP_LISTEN_PORT" "$QZDAP_APP_PORT" "$QZDAP_SANDBOX_PORT"; do
   pids=$(lsof -tiTCP:"$p" -sTCP:LISTEN 2>/dev/null || true)
   for pid in $pids; do
     if kill -0 "$pid" 2>/dev/null; then
       cmdline=$(ps -p "$pid" -o command= 2>/dev/null || true)
-      if [[ "$cmdline" == *qzdap-* ]] || [[ "$cmdline" == *qzdap.composition* ]] || [[ "$cmdline" == *"vite.js"* && "$cmdline" == *"--port $QZDAP_FRONTEND_PORT"* ]]; then
+      if [[ "$cmdline" == *qzdap-* ]] || [[ "$cmdline" == *qzdap.composition* ]] || [[ "$cmdline" == *qzdap_mock_sandbox* ]] || [[ "$cmdline" == *"vite.js"* && "$cmdline" == *"--port $QZDAP_FRONTEND_PORT"* ]]; then
         echo "stopping port :$p occupant (pid=$pid)"
         kill "$pid" 2>/dev/null || true
         stopped=$((stopped+1))

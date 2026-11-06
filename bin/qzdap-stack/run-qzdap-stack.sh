@@ -56,6 +56,13 @@ else
   log "WARN: postgres not reachable after 30s — qzdap-app will likely fail to start"
 fi
 
+log "starting mock sandbox on :$QZDAP_SANDBOX_PORT — log: $QZDAP_LOG_DIR/qzdap-sandbox.log"
+QZDAP_MOCK_SANDBOX_PORT="$QZDAP_SANDBOX_PORT" \
+QZDAP_SPAWN_LOG="$QZDAP_LOG_DIR/qzdap-sandbox.log" QZDAP_SPAWN_CWD="$REPO/backend/dev" \
+  spawn "$QZDAP_LOG_DIR/qzdap-sandbox.pid" \
+    python3 qzdap_mock_sandbox.py
+sleep 1
+
 log "starting qzdap-app on :$QZDAP_APP_PORT — log: $QZDAP_LOG_DIR/qzdap-app.log"
 QZDAP_SPAWN_LOG="$QZDAP_LOG_DIR/qzdap-app.log" QZDAP_SPAWN_CWD="$REPO/backend" \
   spawn "$QZDAP_LOG_DIR/qzdap-app.pid" \

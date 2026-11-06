@@ -32,6 +32,7 @@ check() {
 check qzdap-gateway "$QZDAP_LISTEN_PORT"
 check qzdap-vite     "$QZDAP_FRONTEND_PORT"
 check qzdap-app      "$QZDAP_APP_PORT"
+check qzdap-sandbox "$QZDAP_SANDBOX_PORT"
 
 echo ""
 echo "── Health checks ──"

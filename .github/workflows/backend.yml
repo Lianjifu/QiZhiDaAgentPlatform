@@ -158,7 +158,6 @@ jobs:
       QZDAP_REDIS_URL: redis://localhost:6379/0
       QZDAP_ENV: ci
       QZDAP_BAN_MOCK_TOKEN: '1'
-      QZDAP_ALLOW_DEMO_TOKEN: '0'
       QZDAP_LLM_PROVIDER: mock
       QZDAP_LLM_MOCK_LATENCY_MS: '50'
       QZDAP_JWT_SECRET: ci-test-secret-not-for-production-use
@@ -224,7 +223,6 @@ jobs:
       QZDAP_OBJECT_STORAGE_SECRET_KEY: minioadmin
       QZDAP_ENV: ci
       QZDAP_BAN_MOCK_TOKEN: '1'
-      QZDAP_ALLOW_DEMO_TOKEN: '0'
       QZDAP_LLM_PROVIDER: mock
       QZDAP_JWT_SECRET: ci-smoke-secret-not-for-production
     steps:
