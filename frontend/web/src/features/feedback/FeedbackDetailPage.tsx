@@ -16,13 +16,14 @@ import type { DrawerPanel, Feedback, FeedbackPriority, FeedbackStatus } from './
 import { useFeedbackList } from './useFeedback';
 import { DRAWER_NAV_ITEMS, PRIORITY_BADGE, SENTIMENT_META, STATUS_BADGE, TYPE_LABEL } from './components/constants';
 import { StarRow } from './components/Primitives';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 const navIconMap: Record<string, typeof BookOpen> = { BookOpen, Send, Clock };
 const sentimentIconMap: Record<string, typeof ThumbsUp> = { ThumbsUp, ThumbsDown, Smile };
 
 function NotFound() {
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/feedback" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <span aria-hidden="true">←</span>返回用户反馈
       </Link>
@@ -30,7 +31,7 @@ function NotFound() {
         <p className="text-sm font-semibold">反馈不存在或已被删除</p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">请返回列表重新选择。</p>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -203,7 +204,7 @@ export default function FeedbackDetailPage() {
   const handleCreateTicket = () => navigate(`/admin/feedback/new?fromFeedback=${draft.id}`);
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       {notice && <p role="alert" className="text-sm text-rose-700">{notice}</p>}
       <Link to="/admin/feedback" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <span aria-hidden="true">←</span>返回用户反馈
@@ -249,6 +250,6 @@ export default function FeedbackDetailPage() {
       </section>
 
 
-    </div>
+    </AdminPage>
   );
 }

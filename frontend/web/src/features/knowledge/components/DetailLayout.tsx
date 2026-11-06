@@ -6,6 +6,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 const BACK_DEFAULT = '/admin/knowledge';
 
@@ -21,14 +22,14 @@ export function DetailShell({
   children: ReactNode;
 }) {
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-6">
+    <AdminPage density="lg">
       {showBack && (
         <Link to={backTo} className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
           <ArrowLeft className="h-3.5 w-3.5" />{backLabel}
         </Link>
       )}
       {children}
-    </div>
+    </AdminPage>
   );
 }
 

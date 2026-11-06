@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useCreateModel } from './useModels';
 import { CatalogNotice, ConnectivityTestPanel, ProviderConnectionForm, useProviderConnectionWorkflow } from './components/ProviderConnectionForm';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 export default function ModelCreatePage() {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ export default function ModelCreatePage() {
   const selected = verified ? [connection.testModel.trim()] : models;
   const canSubmit = !!connection.value.name.trim() && connection.canConnect && selected.length > 0 && !createModel.isPending;
   const toggle = (id: string) => { setVerifiedSelection(undefined); setSelection({ catalog: connection.catalog, models: models.includes(id) ? models.filter(x => x !== id) : [...models, id] }); };
-  return <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+  return <AdminPage density="lg">
     <Link to="/admin/models" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)]"><ArrowLeft className="h-3.5 w-3.5" />返回模型配置</Link>
     <header><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">模型配置</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">新建模型</h1><p className="mt-2 text-sm text-[var(--text-muted)]">选择供应商目录中的模型，或验证目录外模型后接入。</p></header>
     <form className="grid items-start gap-5 xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]" onSubmit={e => {
@@ -35,5 +36,5 @@ export default function ModelCreatePage() {
         <div className="mt-5 flex justify-end gap-2 border-t border-[var(--border)] pt-5"><Link to="/admin/models" className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold">取消</Link><button type="submit" disabled={!canSubmit} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">{createModel.isPending ? '创建中…' : `创建${selected.length ? ` ${selected.length} 个` : ''}模型`}</button></div>
       </section>
     </form>
-  </div>;
+  </AdminPage>;
 }

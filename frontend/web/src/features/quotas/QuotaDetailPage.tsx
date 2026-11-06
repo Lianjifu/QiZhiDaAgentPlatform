@@ -14,12 +14,13 @@ import {
   DrawerSidebar,
 } from './components/DrawerPanels';
 import { BUDGET_BADGE, PERIOD_LABEL } from './components/constants';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 type DrawerPanel = 'detail' | 'trend' | 'allocation' | 'history';
 
 function NotFound() {
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/quotas" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回额度管理
       </Link>
@@ -27,7 +28,7 @@ function NotFound() {
         <p className="text-sm font-semibold">预算不存在或已被删除</p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">请返回列表重新选择。</p>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -57,7 +58,7 @@ export default function QuotaDetailPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/quotas" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回额度管理
       </Link>
@@ -97,6 +98,6 @@ export default function QuotaDetailPage() {
           </button>
         </div>
       </section>
-    </div>
+    </AdminPage>
   );
 }

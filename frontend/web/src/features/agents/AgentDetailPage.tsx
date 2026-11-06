@@ -13,10 +13,11 @@ import { useAgentDetail, useAgentVersions, useDiffVersions, useRunEval, useUpdat
 import { DiffDialog, type DiffPair } from './components/DiffDialog';
 import { EvalProgress } from './components/Primitives';
 import { AgentEditor } from './AgentEditor';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 function NotFound({ reason }: { reason: 'loading' | 'notfound' | 'error' }) {
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-4 p-5 pb-16 sm:p-8 xl:px-6">
+    <AdminPage density="sm">
       <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-1)] p-8 text-center">
         <p className="text-sm font-semibold">
           {reason === 'loading' && '正在加载智能体…'}
@@ -27,7 +28,7 @@ function NotFound({ reason }: { reason: 'loading' | 'notfound' | 'error' }) {
           {reason === 'error' ? '请检查后端服务是否启动。' : '请返回列表重新选择。'}
         </p>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -112,7 +113,7 @@ export default function AgentDetailPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-4 p-5 pb-16 sm:p-8 xl:px-6">
+    <AdminPage density="sm">
       {/* 顶部 mode 切换 + 返回 */}
       <div className="mb-3 flex items-center justify-between">
         <button
@@ -167,6 +168,6 @@ export default function AgentDetailPage() {
         targetContent={diffTarget}
         onChangePair={setDiffPair}
       />
-    </div>
+    </AdminPage>
   );
 }

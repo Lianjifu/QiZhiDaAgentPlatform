@@ -5,13 +5,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { ChannelCreateForm } from './components/ChannelCreateForm';
 import { useCreateChannel } from './useNotifications';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 export default function ChannelCreatePage() {
   const navigate = useNavigate();
   const createChannel = useCreateChannel();
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link
         to="/admin/notifications"
         className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]"
@@ -44,6 +45,6 @@ export default function ChannelCreatePage() {
           }
         />
       </section>
-    </div>
+    </AdminPage>
   );
 }

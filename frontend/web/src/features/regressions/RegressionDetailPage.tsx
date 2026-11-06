@@ -15,13 +15,14 @@ import { useRegressionTracks } from './useRegressions';
 import { DRAWER_NAV_ITEMS, RISK_BADGE, STATUS_BADGE } from './components/constants';
 import { Delta } from './components/Primitives';
 import { Sparkline } from '@/components/feedback/Sparkline';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 const navIconMap: Record<string, typeof History> = { History, LineChart, ListChecks, Settings };
 const riskIconMap: Record<string, typeof ShieldCheck> = { ShieldCheck, ShieldQuestion, AlertTriangle, ShieldAlert };
 
 function NotFound() {
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/regressions" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <span aria-hidden="true">←</span>返回回归追踪
       </Link>
@@ -29,7 +30,7 @@ function NotFound() {
         <p className="text-sm font-semibold">追踪不存在或已被删除</p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">请返回列表重新选择。</p>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -209,7 +210,7 @@ export default function RegressionDetailPage() {
   const handleRun = () => server.mutate({ path: `/api/admin/regressions/tracks/${draft.id}/run`, success: '已提交运行' });
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       {notice && <p role="alert" className="text-sm text-rose-700">{notice}</p>}
       <Link to="/admin/regressions" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <span aria-hidden="true">←</span>返回回归追踪
@@ -256,6 +257,6 @@ export default function RegressionDetailPage() {
       </section>
 
 
-    </div>
+    </AdminPage>
   );
 }

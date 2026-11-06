@@ -8,6 +8,7 @@ import type { BudgetPeriod } from './schema';
 import { useCreateBudget } from './useQuotas';
 import { PERIOD_LABEL } from './components/constants';
 import { StepIndicator } from './components/Primitives';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 export default function BudgetCreatePage() {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export default function BudgetCreatePage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/quotas" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回额度管理
       </Link>
@@ -112,6 +113,6 @@ export default function BudgetCreatePage() {
           {step === 3 && <button type="button" onClick={handleSubmit} disabled={createBudget.isPending} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">创建预算</button>}
         </div>
       </section>
-    </div>
+    </AdminPage>
   );
 }

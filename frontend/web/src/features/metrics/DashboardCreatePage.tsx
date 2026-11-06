@@ -7,6 +7,7 @@ import { ArrowLeft, LayoutDashboard } from 'lucide-react';
 import type { MetricsTimeRange } from './schema';
 import { TIME_RANGES } from './components/constants';
 import { useCreateDashboard } from './useMetrics';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 export default function DashboardCreatePage() {
   const navigate = useNavigate();
@@ -17,7 +18,7 @@ export default function DashboardCreatePage() {
   const canSubmit = name.trim().length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/metrics" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回运行指标
       </Link>
@@ -62,6 +63,6 @@ export default function DashboardCreatePage() {
           </div>
         </form>
       </section>
-    </div>
+    </AdminPage>
   );
 }

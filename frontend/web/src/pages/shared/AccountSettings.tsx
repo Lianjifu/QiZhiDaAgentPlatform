@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { useAuthStore } from '@/features/auth';
 import { useUiStore } from '@/stores/uiStore';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 type SettingTab = '个人资料' | '偏好设置' | '通知' | '账号安全';
 type TabDef = { id: SettingTab; label: string; description: string; icon: typeof UserRound };
@@ -46,7 +47,7 @@ export default function AccountSettings() {
   const handleLogout = () => { logout(); navigate('/login', { replace: true }); };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage>
       <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
         <div aria-hidden="true" className="pointer-events-none absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,var(--brand-light),transparent_68%)]" />
         <div className="relative flex flex-col justify-between gap-5 xl:flex-row xl:items-end">
@@ -165,7 +166,7 @@ export default function AccountSettings() {
           </div>
         </section>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 

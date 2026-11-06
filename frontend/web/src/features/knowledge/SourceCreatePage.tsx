@@ -9,13 +9,14 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Database } from 'lucide-react';
 import { useCreateSource } from './useKnowledge';
 import SourceCreateModal from './components/SourceCreateModal';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 export default function SourceCreatePage() {
   const navigate = useNavigate();
   const createSource = useCreateSource();
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-6">
+    <AdminPage density="lg">
       <Link
         to="/admin/knowledge"
         className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]"
@@ -49,6 +50,6 @@ export default function SourceCreatePage() {
           isPending={createSource.isPending}
         />
       </section>
-    </div>
+    </AdminPage>
   );
 }

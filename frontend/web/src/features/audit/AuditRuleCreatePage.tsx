@@ -6,6 +6,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Shield } from 'lucide-react';
 import type { AuditCategory, AuditRuleAction, AuditSeverity } from './schema';
 import { useCreateAuditRule } from './useAudit';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 export default function AuditRuleCreatePage() {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ export default function AuditRuleCreatePage() {
   const canSubmit = name.trim().length > 0 && condition.trim().length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/tool-audit" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回工具审计
       </Link>
@@ -86,6 +87,6 @@ export default function AuditRuleCreatePage() {
           </div>
         </form>
       </section>
-    </div>
+    </AdminPage>
   );
 }

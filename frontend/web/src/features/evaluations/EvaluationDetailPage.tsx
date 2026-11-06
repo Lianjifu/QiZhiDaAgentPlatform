@@ -14,12 +14,13 @@ import {
 import type { DrawerPanel, EvalCaseEntry, EvalSuite, EvalSuiteType } from './schema';
 import { useEvalSuites } from './useEvaluations';
 import { DRAWER_NAV_ITEMS, STATUS_BADGE, TYPE_META, uid } from './components/constants';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 const iconMap: Record<string, typeof BookOpen> = { BookOpen, Calendar, History, Layers, ListChecks };
 
 function NotFound() {
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/evaluations" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回评测中心
       </Link>
@@ -27,7 +28,7 @@ function NotFound() {
         <p className="text-sm font-semibold">套件不存在或已被删除</p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">请返回列表重新选择。</p>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -262,7 +263,7 @@ export default function EvaluationDetailPage() {
   const handleRun = () => server.mutate({ path: `/api/admin/evaluations/suites/${draft.id}/run`, success: '评测已完成' });
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       {notice && <p role="alert" className="text-sm text-rose-700">{notice}</p>}
       <Link to="/admin/evaluations" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回评测中心
@@ -312,6 +313,6 @@ export default function EvaluationDetailPage() {
       </section>
 
 
-    </div>
+    </AdminPage>
   );
 }

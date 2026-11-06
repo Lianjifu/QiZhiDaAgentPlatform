@@ -10,6 +10,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { GitBranch } from 'lucide-react';
 import { StepIndicator } from './components/Primitives';
 import { useCreateRegressionTrack } from './useRegressions';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 export default function RegressionCreatePage() {
   const navigate = useNavigate();
@@ -40,7 +41,7 @@ export default function RegressionCreatePage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/regressions" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <span aria-hidden="true">←</span>返回回归追踪
       </Link>
@@ -126,6 +127,6 @@ export default function RegressionCreatePage() {
           {step === 3 && <button type="button" onClick={handleCreate} disabled={createTrack.isPending} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">创建追踪</button>}
         </div>
       </section>
-    </div>
+    </AdminPage>
   );
 }

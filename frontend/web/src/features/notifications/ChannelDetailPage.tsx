@@ -13,10 +13,11 @@ import {
   DrawerSidebar,
 } from './components/ChannelDetailDrawer';
 import { KIND_META, STATUS_BADGE, type DrawerPanel } from './components/constants';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 function NotFound() {
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/notifications" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回渠道配置
       </Link>
@@ -24,7 +25,7 @@ function NotFound() {
         <p className="text-sm font-semibold">渠道不存在或已被删除</p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">请返回列表重新选择。</p>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -57,7 +58,7 @@ export default function ChannelDetailPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/notifications" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回渠道配置
       </Link>
@@ -99,6 +100,6 @@ export default function ChannelDetailPage() {
           </button>
         </div>
       </section>
-    </div>
+    </AdminPage>
   );
 }

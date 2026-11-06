@@ -12,6 +12,7 @@ import { Plus } from 'lucide-react';
 import type { FeedbackPriority } from './schema';
 import { useCreateFeedbackTicket, useFeedbackList } from './useFeedback';
 import { StepIndicator } from './components/Primitives';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 export default function FeedbackCreatePage() {
   const navigate = useNavigate();
@@ -57,7 +58,7 @@ export default function FeedbackCreatePage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/feedback" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <span aria-hidden="true">←</span>返回用户反馈
       </Link>
@@ -149,6 +150,6 @@ export default function FeedbackCreatePage() {
           {step === 3 && <button type="button" onClick={handleCreate} disabled={createTicket.isPending} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">创建工单</button>}
         </div>
       </section>
-    </div>
+    </AdminPage>
   );
 }

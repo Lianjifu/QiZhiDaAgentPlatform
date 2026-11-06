@@ -9,6 +9,7 @@ import { Building2, Check, ListTodo, Save, Search, ShieldCheck, Upload, UsersRou
 import { useMemo, useState, type ReactNode } from 'react';
 import { BrandLogo } from '@/components/feedback/BrandLogo';
 import { NoticeBanner, type NoticeTone } from '@/components/feedback/NoticeBanner';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 type SettingTab = 'brand' | 'compliance' | 'audit' | 'members';
 type MemberRole = '管理员' | '成员';
@@ -77,7 +78,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-5 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="md">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--brand)]">ADMIN / 平台设置</p>
@@ -243,7 +244,7 @@ export default function SettingsPage() {
           </div>
         )}
       </section>
-    </div>
+    </AdminPage>
   );
 }
 

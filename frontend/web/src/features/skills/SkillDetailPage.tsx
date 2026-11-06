@@ -10,15 +10,16 @@ import type { DrawerPanel } from './components/constants';
 import { SkillWorkspace } from './components/SkillWorkspace';
 import { useAdminSkill, useUpdateSkill } from './useAdminSkills';
 import { normalizeError } from '@/api/shared/http-error';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 function NotFound() {
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-4 p-5 pb-16 sm:p-8 xl:px-6">
+    <AdminPage density="sm">
       <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-1)] p-8 text-center">
         <p className="text-sm font-semibold">技能不存在或已被删除</p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">请返回列表重新选择。</p>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -46,14 +47,14 @@ export default function SkillDetailPage() {
 
   if (isLoading || (skill && !draft)) {
     return (
-      <div className="mx-auto w-full max-w-[1440px] p-5 pb-16 sm:p-8 xl:px-6">
+      <AdminPage density="sm">
         <p className="text-sm text-[var(--text-muted)]">加载中…</p>
-      </div>
+      </AdminPage>
     );
   }
 
   if (isError) {
-    return <div className="mx-auto w-full max-w-[1440px] p-5 pb-16 sm:p-8 xl:px-6"><p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700">加载失败：{normalizeError(error).message}</p></div>;
+    return <AdminPage density="sm"><p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700">加载失败：{normalizeError(error).message}</p></AdminPage>;
   }
   if (!skill || !draft) return <NotFound />;
 

@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCreateAgent } from './useAgents';
 import { AgentEditor } from './AgentEditor';
 import type { AgentEntry, Status } from './schema';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 function makeEmptyDraft(): AgentEntry {
   const today = new Date().toISOString().slice(0, 10);
@@ -51,7 +52,7 @@ export default function AgentCreatePage() {
   const createAgent = useCreateAgent();
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-4 p-5 pb-16 sm:p-8 xl:px-6">
+    <AdminPage density="sm">
       <AgentEditor
         mode="create"
         initialDraft={makeEmptyDraft()}
@@ -62,6 +63,6 @@ export default function AgentCreatePage() {
           });
         }}
       />
-    </div>
+    </AdminPage>
   );
 }

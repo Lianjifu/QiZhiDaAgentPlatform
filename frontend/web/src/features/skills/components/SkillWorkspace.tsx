@@ -7,6 +7,7 @@ import {
   DrawerPanelAgents, DrawerPanelAudit, DrawerPanelBasic, DrawerPanelMonitor,
   DrawerPanelPermission, DrawerPanelRuntime, DrawerPanelSchema, DrawerPanelVersions,
 } from './DrawerPanels';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 export function SkillWorkspace({
   skill,
@@ -35,7 +36,7 @@ export function SkillWorkspace({
   const risk = RISK_BADGE[skill.risk];
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-4 p-5 pb-16 sm:p-8 xl:px-6">
+    <AdminPage density="sm">
       {notice && onCloseNotice ? (
         <NoticeBanner tone="violet" onClose={onCloseNotice}>
           {notice}
@@ -108,6 +109,6 @@ export function SkillWorkspace({
         <span>{editing ? '改完后点「完成」保存并退出编辑。' : '当前为只读查看。'}</span>
         <span>{skill.version} · 最近更新 {skill.lastUpdate}</span>
       </footer>
-    </div>
+    </AdminPage>
   );
 }

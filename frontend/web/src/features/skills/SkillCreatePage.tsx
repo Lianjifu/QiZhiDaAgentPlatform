@@ -13,6 +13,7 @@ import type { Skill, SkillType } from './schema';
 import { useCreateSkill } from './useAdminSkills';
 import { CreateSkillWizard } from './components/CreateSkillWizard';
 import { SkillTypePicker } from './components/SkillTypePicker';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 function isSkillType(value: string | null): value is SkillType {
   return value === 'Skill' || value === 'Tool' || value === 'MCP';
@@ -48,7 +49,7 @@ export default function SkillCreatePage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-4 p-5 pb-16 sm:p-8 xl:px-6">
+    <AdminPage density="sm">
       {error && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">创建失败：{error}</p>}
       {locked ? (
         <CreateSkillWizard
@@ -62,6 +63,6 @@ export default function SkillCreatePage() {
       ) : (
         <SkillTypePicker />
       )}
-    </div>
+    </AdminPage>
   );
 }

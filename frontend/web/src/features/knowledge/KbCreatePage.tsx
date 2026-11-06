@@ -11,6 +11,7 @@ import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Database, Info, Search }
 import type { CreateKbVars } from './schema';
 import { useKnowledgeSources, useCreateKb } from './useKnowledge';
 import CreateKbWizard from './components/CreateKbWizard';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 type Step = 1 | 2 | 3;
 
@@ -37,7 +38,7 @@ export default function KbCreatePage() {
   const activeStep = STEPS.find((s) => s.index === step) ?? STEPS[0];
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link
         to="/admin/knowledge"
         className="inline-flex w-fit items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]"
@@ -140,6 +141,6 @@ export default function KbCreatePage() {
           />
         </section>
       </div>
-    </div>
+    </AdminPage>
   );
 }

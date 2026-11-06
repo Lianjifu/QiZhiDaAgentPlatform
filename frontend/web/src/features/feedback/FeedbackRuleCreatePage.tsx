@@ -11,6 +11,7 @@ import { Workflow } from 'lucide-react';
 import type { FeedbackSentiment, RoutingAction } from './schema';
 import { ROUTING_ACTION_LABEL } from './components/constants';
 import { useCreateFeedbackRule } from './useFeedback';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 export default function FeedbackRuleCreatePage() {
   const navigate = useNavigate();
@@ -41,7 +42,7 @@ export default function FeedbackRuleCreatePage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/feedback" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <span aria-hidden="true">←</span>返回用户反馈
       </Link>
@@ -101,6 +102,6 @@ export default function FeedbackRuleCreatePage() {
           <button type="button" onClick={handleCreate} disabled={!canSubmit || createRule.isPending} className="rounded-xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40">创建规则</button>
         </div>
       </section>
-    </div>
+    </AdminPage>
   );
 }

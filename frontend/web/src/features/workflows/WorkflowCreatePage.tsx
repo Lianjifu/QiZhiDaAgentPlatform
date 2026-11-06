@@ -13,6 +13,7 @@ import { useCreateWorkflow } from './useWorkflows';
 import { normalizeError } from '@/api/shared/http-error';
 import type { Flow, TriggerType } from './schema';
 import { TEMPLATE_CHOICES, TRIGGER_BADGE, TRIGGERS, uid } from './components/constants';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 type StepKey = 'basic' | 'template' | 'review';
 interface StepDef {
@@ -80,7 +81,7 @@ export default function WorkflowCreatePage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-6">
+    <AdminPage density="lg">
       <Link
         to="/admin/workflows"
         className="inline-flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--brand)]"
@@ -294,6 +295,6 @@ export default function WorkflowCreatePage() {
           </div>
         </section>
       </div>
-    </div>
+    </AdminPage>
   );
 }

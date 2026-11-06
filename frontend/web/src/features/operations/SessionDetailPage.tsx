@@ -14,10 +14,11 @@ import {
   DrawerPanelSpans,
   DrawerSidebar,
 } from './components/DrawerPanels';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 function NotFound() {
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/operations" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回调用链路
       </Link>
@@ -25,7 +26,7 @@ function NotFound() {
         <p className="text-sm font-semibold">会话不存在或已被删除</p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">请返回列表重新选择。</p>
       </div>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -47,7 +48,7 @@ export default function SessionDetailPage() {
   const badge = SESSION_BADGE[session.status];
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
+    <AdminPage density="lg">
       <Link to="/admin/operations" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回调用链路
       </Link>
@@ -95,6 +96,6 @@ export default function SessionDetailPage() {
           </button>
         </div>
       </section>
-    </div>
+    </AdminPage>
   );
 }
