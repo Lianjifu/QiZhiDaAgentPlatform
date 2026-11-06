@@ -41,6 +41,9 @@ export function DrawerPanelBasic({ draft, onChange }: { draft: AgentEntry; onCha
   // 包装一层做 name <-> id 映射, 让 PATCH 拿到的就是 name.
   const { data: models } = useModelsList();
   const selectedModelId = models?.find((m) => m.name === draft.model)?.id ?? null;
+  // ⚠️ **绑了但目录里没有** ✓ —— 例如模型被下架/改名 ✓ → 列表里选不中 ✓
+  // → 光看单选圈分不清「没绑」还是「绑了个不存在的」✓ → 单独说清楚 ✓。
+  const boundModelMissing = Boolean(draft.model) && !models?.some((m) => m.name === draft.model);
   const handleModelChange = (id: string | null) => {
     if (id === null) {
       update({ model: '' });
@@ -185,6 +188,11 @@ export function DrawerPanelBasic({ draft, onChange }: { draft: AgentEntry; onCha
           allowedStatuses={['active', 'graying', 'draft']}
           emptyText="暂无可用模型, 先去「模型配置」添加"
         />
+        {boundModelMissing && (
+          <p className="mt-2 text-[10px] font-medium text-amber-600">
+            已绑定模型「{draft.model}」不在模型配置里 —— 列表里选不中它, 换个模型或去「模型配置」补上.
+          </p>
+        )}
         <p className="mt-2 text-[10px] text-[var(--text-muted)]">
           PATCH /api/admin/agents/{'{id}'} 时随 <code>model</code> 字段写入, 每次 turn 隐式使用, 不再写死.
         </p>

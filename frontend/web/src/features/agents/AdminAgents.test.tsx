@@ -10,6 +10,7 @@ import AgentsPage from './AgentsPage';
 import AgentDetailPage from './AgentDetailPage';
 import AgentCreatePage from './AgentCreatePage';
 import { mockAgents } from './fixtures';
+import { mockModels } from '@/features/models/fixtures';
 import { childPageTitle, PageCrumbNav } from '@/widgets/app-shell/pageCrumb';
 
 function CrumbLayout() {
@@ -50,6 +51,8 @@ function renderApp(initialPath: string) {
           key: pageQueryKey(qk.admin.agents.detail(a.id)),
           data: a,
         })),
+        // 模型选择面板要一份模型目录(否则 picker 是空的 ✓)
+        { key: pageQueryKey(qk.admin.models.list), data: mockModels },
       ],
     },
   );
@@ -167,6 +170,41 @@ describe('AdminAgents', () => {
     const dialog = screen.getByRole('dialog', { name: '导出智能体' });
     expect(dialog).toBeTruthy();
     expect(within(dialog).getByText(/选择导出范围/)).toBeTruthy();
+  });
+
+  it('keeps the read-only view read-only when a model row is clicked', () => {
+    // 只读页点模型行 —— 之前会「选中」但不落库 ✓(看着像绑定了、重新进来又没绑 ✓)
+    renderApp('/admin/agents/a-customer-v3');
+    const row = screen.getByText('GPT-4o').closest('[role="button"]') as HTMLElement;
+    fireEvent.click(row);
+    expect(screen.queryByText(/^当前 · /)).toBeNull();
+    // 行也没被标成选中
+    expect(row.className).not.toContain('brand-light');
+  });
+
+  it('explains a bound model that is missing from the model catalog', () => {
+    // 模型被下架/改名 → 列表里选不中 → 得说清楚是「绑了个不存在的」而不是「没绑」✓
+    const orphan = { ...mockAgents[0], id: 'a-orphan', model: 'retired-model' };
+    renderWithProviders(
+      <Routes>
+        <Route path="/admin/agents/:id" element={<AgentDetailPage />} />
+      </Routes>,
+      {
+        initialEntries: ['/admin/agents/a-orphan'],
+        seeds: [
+          { key: pageQueryKey(qk.admin.agents.detail('a-orphan')), data: orphan },
+          { key: pageQueryKey(qk.admin.models.list), data: mockModels },
+        ],
+      },
+    );
+    expect(screen.getByText(/已绑定模型「retired-model」不在模型配置里/)).toBeTruthy();
+  });
+
+  it('binds the model in edit mode', () => {
+    renderApp('/admin/agents/a-customer-v3?edit=1');
+    const row = screen.getByText('GPT-4o').closest('[role="button"]') as HTMLElement;
+    fireEvent.click(row);
+    expect(screen.getByText(/^当前 · /)).toBeTruthy();
   });
 
   it('switches detail page panel to versions and eval', () => {

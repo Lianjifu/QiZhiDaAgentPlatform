@@ -88,6 +88,11 @@ export function AgentEditor({
   const badge = statusBadge[draft.status];
 
   const patch = (next: Partial<AgentEntry>) => {
+    // ⚠️ **只读模式不改草稿** ✓ —— picker 的行是 `div[role="button"]` ✓，
+    // CSS 那层 pointer-events-none 只挡 button / input ✓ → 在只读页点模型行
+    // 会「选中」但**不落库** ✓（看着像绑定了、重新进来又没绑 ✓）。
+    // 这里统一挡掉 ✓ —— 只读就是只读 ✓。
+    if (isReadonly) return;
     setDraft((d) => ({ ...d, ...next }));
     onChange?.(next);
   };
@@ -115,7 +120,7 @@ export function AgentEditor({
         <main
           className={
             isReadonly
-              ? 'min-w-0 flex-1 overflow-auto bg-[var(--bg-app] p-5 [&_button:not([data-view])]:pointer-events-none [&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_[role=switch]]:pointer-events-none'
+              ? 'min-w-0 flex-1 overflow-auto bg-[var(--bg-app] p-5 [&_button:not([data-view])]:pointer-events-none [&_[role=button]:not([data-view])]:pointer-events-none [&_input]:pointer-events-none [&_select]:pointer-events-none [&_textarea]:pointer-events-none [&_[role=switch]]:pointer-events-none'
               : 'min-w-0 flex-1 overflow-auto bg-[var(--bg-app] p-5'
           }
         >
