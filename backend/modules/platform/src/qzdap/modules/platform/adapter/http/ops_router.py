@@ -56,14 +56,6 @@ def build_ops_router() -> APIRouter:
     ) -> dict[str, Any]:
         return await svc.overview_summary(tenant_id=x_tenant_id, workspace_id=x_workspace_id)
 
-    @router.get("/api/admin/overview/alerts")
-    async def overview_alerts(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
-        svc: AdminOpsService = Depends(ops_dependency),
-    ) -> list[dict[str, Any]]:
-        return await svc.overview_alerts(tenant_id=x_tenant_id, workspace_id=x_workspace_id)
-
     @router.get("/api/admin/overview/trend/{range_key}")
     async def overview_trend(
         range_key: str,
@@ -95,28 +87,6 @@ def build_ops_router() -> APIRouter:
         svc: AdminOpsService = Depends(ops_dependency),
     ) -> dict[str, Any]:
         return await svc.create_overview_alert(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
-        )
-
-    @router.post("/api/admin/overview/services", status_code=201)
-    async def create_overview_service(
-        body: dict[str, Any],
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
-        svc: AdminOpsService = Depends(ops_dependency),
-    ) -> dict[str, Any]:
-        return await svc.upsert_overview_service(
-            tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
-        )
-
-    @router.post("/api/admin/overview/top-agents", status_code=201)
-    async def create_overview_top_agent(
-        body: dict[str, Any],
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
-        svc: AdminOpsService = Depends(ops_dependency),
-    ) -> dict[str, Any]:
-        return await svc.upsert_overview_top_agent(
             tenant_id=x_tenant_id, workspace_id=x_workspace_id, body=body
         )
 
@@ -472,14 +442,6 @@ def build_ops_router() -> APIRouter:
         return await svc.list_collection(
             tenant_id=x_tenant_id, workspace_id=x_workspace_id, collection="feedback.rules"
         )
-
-    @router.get("/api/admin/operations/summary")
-    async def operations_summary(
-        x_tenant_id: UUID = Header(..., alias="X-Tenant-Id"),
-        x_workspace_id: UUID = Header(..., alias="X-Workspace-Id"),
-        svc: AdminOpsService = Depends(ops_dependency),
-    ) -> dict[str, Any]:
-        return await svc.operations_summary(tenant_id=x_tenant_id, workspace_id=x_workspace_id)
 
     @router.get("/api/admin/operations/sessions")
     async def list_sessions(

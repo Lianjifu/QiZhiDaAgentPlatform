@@ -60,8 +60,7 @@ export interface TopAgent {
 export interface OverviewSummary {
   kpis: KpiTile[];
   alerts: OverviewAlert[];
-  services: OverviewService[];
-  topAgents: TopAgent[];
+  /** ⚠️ **服务健康 / Top 智能体不在这里** ✓ —— 那是真实数据 ✓，各读各的端点 ✓。 */
 }
 
 export type { ComponentType, LucideIcon };

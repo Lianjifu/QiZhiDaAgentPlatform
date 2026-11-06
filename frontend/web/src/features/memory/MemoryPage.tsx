@@ -10,6 +10,7 @@ import { Settings } from 'lucide-react';
 import {
   useL1Sessions, useL2Facts, useL3Entries, useMemoryStats, usePromotions,
   useFlushMemorySession, useFlushAllMemorySessions, useUpdateMemoryFact, usePromoteMemoryFacts, useUpdateMemoryEntry, useCreateL3Entry,
+  useMemoryTrend,
 } from './useMemory';
 import { useKnowledgeBases } from '@/features/knowledge/useKnowledge';
 import { normalizeError } from '@/api/shared/http-error';
@@ -25,6 +26,8 @@ import { L2Tab } from './components/tabs/L2Tab';
 import { L3Tab } from './components/tabs/L3Tab';
 import { AdminHero } from '@/components/feedback/AdminHero';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { MemoryTrendPanel } from './components/TrendPanel';
+import { RANGE_LABEL } from './components/constants';
 
 const EMPTY_L1: L1Session[] = [];
 const EMPTY_L2: L2Fact[] = [];
@@ -34,6 +37,7 @@ export default function MemoryPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<MemoryTabId>('l1');
   const [range, setRange] = useState<MemoryRange>('7d');
+  const trendQuery = useMemoryTrend(range);
   const [l1Query, setL1Query] = useState('');
   const [l1StatusFilter, setL1StatusFilter] = useState<'all' | L1Session['status']>('all');
 
@@ -197,6 +201,12 @@ export default function MemoryPage() {
           <TimeRangeDropdown value={range} onChange={setRange} />
         </div>
       </div>
+
+      <MemoryTrendPanel
+        l1Active={trendQuery.data?.l1Active ?? []}
+        l2Hits={trendQuery.data?.l2Hits ?? []}
+        rangeLabel={RANGE_LABEL[range]}
+      />
 
       {tab === 'l1' && (
         <L1Tab

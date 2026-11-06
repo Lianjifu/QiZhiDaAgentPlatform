@@ -10,6 +10,7 @@ import type {
   ConnectivityTestVars, ConnectivityTestResult,
   CreateModelVars, ProbeModelsVars, ProbeModelsResult, CreateRouteVars, UpdateModelVars,
   ToggleRouteVars, DeleteModelVars, ToggleStarVars, BatchStatusVars,
+  QuotaUsage, LlmAuditLog, RouteChain,
 } from './schema';
 
 const ROOT = qk.admin.models.root;
@@ -131,5 +132,35 @@ export function useBatchSetStatus() {
   return useApiMutation<{ ids: string[] }, BatchStatusVars>(
     '/api/admin/models/batch-status',
     { invalidateKeys: [ROOT] },
+  );
+}
+
+/** 配额用量 —— 每个 (模型, 周期) 的用量与上限 ✓ */
+export function useModelQuotaUsage() {
+  return useApiQuery<QuotaUsage[]>(
+    [...ROOT, 'quotaUsage'],
+    '/api/admin/models/quotas/usage',
+    {},
+    { staleTime: 30_000 },
+  );
+}
+
+/** LLM 调用审计 —— audit_log 里的 llm.* 事件 ✓ */
+export function useLlmAudit(limit = 50) {
+  return useApiQuery<LlmAuditLog>(
+    [...ROOT, 'llmAudit', limit],
+    `/api/admin/llm/audit?limit=${limit}`,
+    {},
+    { staleTime: 30_000 },
+  );
+}
+
+/** 路由预览链 —— 解析主备顺序 ✓（不发请求 ✓）。 */
+export function useRouteChain(routeId: string | null) {
+  return useApiQuery<RouteChain>(
+    [...ROOT, 'routeChain', routeId ?? 'none'],
+    routeId ? `/api/admin/models/routes/${routeId}/preview-chain` : '/api/admin/models/routes/none/preview-chain',
+    undefined,
+    { enabled: Boolean(routeId), staleTime: 60_000 },
   );
 }

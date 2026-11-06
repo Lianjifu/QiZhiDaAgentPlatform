@@ -14,7 +14,7 @@ from __future__ import annotations
 import builtins
 from datetime import UTC, datetime, timedelta
 from logging import getLogger
-from typing import Any
+from typing import Any, Mapping
 from uuid import UUID, uuid4
 
 from qzdap.modules.memory.application.admin_rules import AdminEditRules
@@ -385,15 +385,19 @@ class MemoryAdminService:
             "config": config.to_agent_policy(label=label),
         }
 
+    #: **时间范围 → 天数** ✓ —— 前端下拉给的就是这三档 ✓。
+    _RANGE_DAYS: Mapping[str, int] = {"7d": 7, "30d": 30, "90d": 90}
+
     async def trend(self, *, workspace_id: UUID, range: str = "7d") -> dict[str, Any]:
         """**真实使用趋势** ✓（C7 ✓ —— M-33 ✓）。
 
         ⚠️ **不再编序列** ✓（旧的 ``_series(n)`` 是拿条目数编出来的 ✗✗ ——
         看着像趋势，其实不是 ✓）。
         ⚠️ **按天分组在 SQL 里做** ✓（拉到 Python 再数 = 全量扫描 ✗✗）。
+        ⚠️ **``range`` 真的生效** ✓ —— 之前这里直接把它扔了 ✓（``_ = range`` ✓）
+        → 前端选「最近 30 天」拿到的还是 12 天 ✗✗（死控件 ✓）。
         """
-        _ = range
-        days = 12
+        days = self._RANGE_DAYS.get(range, 7)
         today = datetime.now(UTC).date()
         # ⚠️ **参数名叫 ``range``** ✓（前端那个字段 ✓）→ 这里的 ``range``
         # 是**字符串** ✗✗ → 用 ``builtins.range`` ✓（别被遮蔽了 ✓）。

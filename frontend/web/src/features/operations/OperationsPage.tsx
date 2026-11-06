@@ -100,7 +100,12 @@ export default function OperationsPage() {
   };
 
   const handleResolveSession = (session: Session) => server.mutate({ path: '/api/admin/operations/incidents/batch-resolve', body: { sessionIds: [session.id] }, success: '已解决会话相关异常' });
-  const handleResolve = (id: string) => server.mutate({ path: `/api/admin/operations/incidents/${id}`, method: 'PATCH', body: { resolved: !incidents.find((i) => i.id === id)?.resolved } });
+  // ⚠️ **走 action 端点** ✓（``POST /api/admin/operations/incidents/{id}/resolve`` ✓）
+  // —— 语义就是「标记已解决」✓（后端置 resolved=true ✓）——
+  // 之前那个 PATCH 开关 ✓ 会把已解决的**再打开** ✗✗（语义反了 ✓）。
+  const handleResolve = (id: string) => server.mutate({ path: `/api/admin/operations/incidents/${id}/resolve`, method: 'POST', body: {}, success: '已标记解决' });
+  /** 重新打开 —— action 端点只会置 resolved=true ✓ → 重开走 PATCH ✓。 */
+  const handleReopen = (id: string) => server.mutate({ path: `/api/admin/operations/incidents/${id}`, method: 'PATCH', body: { resolved: false }, success: '已重新打开' });
 
   const handleFilter = (f: FilterSelection) => setFilters(f);
 
@@ -233,7 +238,7 @@ export default function OperationsPage() {
                 total={baseKindStats.reduce((s, k) => s + k.count, 0)}
               />
             )}
-            {view === 'incident' && <IncidentTab incidents={incidents} onToggleResolve={handleResolve} />}
+            {view === 'incident' && <IncidentTab incidents={incidents} onResolve={handleResolve} onReopen={handleReopen} />}
           </div>
         </div>
       )}

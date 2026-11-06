@@ -108,7 +108,20 @@ export function useMemoryStats(l1: L1Session[], l2: L2Fact[], l3: L3Entry[], eve
   };
 }
 
-const TREND_FALLBACK: MemoryTrend = { l1Active: [0, 0, 0, 0, 0, 0, 0, 0], l2Hits: [0, 0, 0, 0, 0, 0, 0, 0] };
+/**
+ * 记忆趋势 —— 后端按所选范围聚合 ✓（``/api/admin/memory/trend?range=`` ✓）。
+ * ⚠️ **不再有前端兜底序列** ✓ —— 之前那个 ``TREND_FALLBACK`` ✓ 是死常量 ✓
+ * （页面根本不读它 ✓）—— 数据要么来自后端 ✓，要么显示空 ✓。
+ */
+export function useMemoryTrend(range: string) {
+  return useApiQuery<MemoryTrend & { l2Total: number }>(
+    [...qk.admin.memory.root, 'trend', range],
+    `/api/admin/memory/trend?range=${encodeURIComponent(range)}`,
+    undefined,
+    { staleTime: 60_000 },
+  );
+}
+
 /** Writes deliberately target backend endpoints; there is no client-side fallback. */
 export function useFlushMemorySession() {
   return useApiMutation<unknown, { id: string }>((vars) => `/api/admin/memory/l1/${encodeURIComponent(vars.id)}/flush`, { invalidateKeys: [qk.admin.memory.root] }, 'POST');

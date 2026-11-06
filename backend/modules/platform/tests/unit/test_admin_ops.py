@@ -123,20 +123,10 @@ async def test_toggle_alert_and_channel_create(service: AdminOpsService) -> None
 
 
 @pytest.mark.asyncio
-async def test_operations_summary_empty(service: AdminOpsService) -> None:
-    summary = await service.operations_summary(tenant_id=TENANT, workspace_id=WORKSPACE)
-    assert summary["sessions"] == []
-    assert summary["spans"] == []
-    assert "kindStats" in summary
-
-
-@pytest.mark.asyncio
 async def test_overview_and_create_dashboard_rule(service: AdminOpsService) -> None:
     summary = await service.overview_summary(tenant_id=TENANT, workspace_id=WORKSPACE)
     assert len(summary["kpis"]) == 6
     assert summary["alerts"] == []
-    assert summary["services"] == []
-    assert summary["topAgents"] == []
     assert next(kpi for kpi in summary["kpis"] if kpi["label"] == "可用率")["value"] == "—"
     assert all(not kpi["sparkline"] for kpi in summary["kpis"])
     assert (
@@ -176,16 +166,6 @@ async def test_overview_write_then_read(service: AdminOpsService) -> None:
         },
     )
     assert alert["severity"] == "high"
-    await service.upsert_overview_service(
-        tenant_id=TENANT,
-        workspace_id=WORKSPACE,
-        body={"name": "模型服务", "status": "ok", "latency": "42 ms", "detail": "1 个模型"},
-    )
-    await service.upsert_overview_top_agent(
-        tenant_id=TENANT,
-        workspace_id=WORKSPACE,
-        body={"name": "客户沟通助手", "calls": "18.2k", "share": 0.42, "tone": "brand"},
-    )
     await service.upsert_overview_trend(
         tenant_id=TENANT,
         workspace_id=WORKSPACE,
@@ -195,8 +175,6 @@ async def test_overview_write_then_read(service: AdminOpsService) -> None:
     summary = await service.overview_summary(tenant_id=TENANT, workspace_id=WORKSPACE)
     assert any(item["label"] == "活跃智能体" for item in summary["kpis"])
     assert summary["alerts"][0]["title"] == "模型错误率突增"
-    assert summary["services"][0]["name"] == "模型服务"
-    assert summary["topAgents"][0]["name"] == "客户沟通助手"
     trend = await service.overview_trend(tenant_id=TENANT, workspace_id=WORKSPACE, range_key="24h")
     assert trend["points"][0]["calls"] == 3200
 

@@ -6,10 +6,14 @@ import { SEVERITY_BADGE } from '../constants';
 
 export function IncidentTab({
   incidents,
-  onToggleResolve,
+  onResolve,
+  onReopen,
 }: {
   incidents: Incident[];
-  onToggleResolve: (id: string) => void;
+  /** 标记解决 —— 走 action 端点 ✓ */
+  onResolve: (id: string) => void;
+  /** 重新打开 —— 走 PATCH ✓（置 resolved=false ✓） */
+  onReopen: (id: string) => void;
 }) {
   return (
     <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5">
@@ -37,7 +41,7 @@ export function IncidentTab({
                 </span>
                 <button
                   type="button"
-                  onClick={() => onToggleResolve(i.id)}
+                  onClick={() => (i.resolved ? onReopen(i.id) : onResolve(i.id))}
                   className="rounded-lg border border-[var(--border)] px-2 py-1 text-[10px] font-semibold hover:border-[var(--brand)]"
                 >
                   {i.resolved ? '重新打开' : '标记解决'}

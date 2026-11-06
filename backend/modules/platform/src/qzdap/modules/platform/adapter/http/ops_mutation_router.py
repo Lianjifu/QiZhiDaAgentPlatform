@@ -278,9 +278,10 @@ def build_mutation_router() -> APIRouter:
     for resource, collection in RESOURCES.items():
         add(resource + "/{doc_id}", _crud(collection, "patch"), "PATCH")
         add(resource + "/{doc_id}", _crud(collection, "delete"), "DELETE", 204)
+    # ⚠️ **评测套件 / 回归追踪的历史不在这里** ✓ —— 列表接口已经把整份文档
+    # 带出来了 ✓（``list_docs`` 返回完整 payload ✓）→ 详情页直接用文档里的
+    # ``history`` ✓ → 这两个端点是**没人调的重复读** ✓（建而不切 ✓）。
     for resource, fields in {
-        "evaluations/suites": ("history",),
-        "regressions/tracks": ("history",),
         "feedback": ("history",),
         "quotas/budgets": ("history",),
         "operations/sessions": ("context", "logs"),

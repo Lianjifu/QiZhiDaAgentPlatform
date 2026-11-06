@@ -1,7 +1,7 @@
 /**
  * 管理侧「运营总览」fixtures — 6 个 KPI / 4 段时间序列 / 5 条告警 / 5 项服务 / 5 个 Top 智能体。
  */
-import type { KpiTile, OverviewAlert, OverviewService, OverviewSummary, TopAgent, TrendSeries } from './schema';
+import type { KpiTile, OverviewAlert, OverviewSummary, TrendSeries } from './schema';
 
 export const mockKpis: KpiTile[] = [
   { label: '今日调用', value: '128,432', delta: '+12.4%', deltaTone: 'up', tone: 'brand', href: '/admin/metrics', sparkline: [62, 70, 55, 80, 72, 90, 85, 95, 100, 88, 92, 105], iconName: 'Activity' },
@@ -76,25 +76,7 @@ export const mockAlerts: OverviewAlert[] = [
   { id: 'a5', severity: 'low', title: '审计日志归档已完成', time: '今天 03:00', affected: '平台', suggestion: '归档后可清理 30 天前的明细日志。' },
 ];
 
-export const mockServices: OverviewService[] = [
-  { name: '模型服务', status: 'ok', latency: '42 ms', detail: '10 个模型 · 平均可用率 99.95%' },
-  { name: '知识检索', status: 'ok', latency: '87 ms', detail: '32 个索引 · 平均召回 0.91' },
-  { name: '工具网关', status: 'ok', latency: '23 ms', detail: '128 个工具在线' },
-  { name: '模型降级池', status: 'degraded', latency: '—', detail: '1 个模型触发降级 · qzdap-gpt-4o 切到 qzdap-deepseek-v3' },
-  { name: '审计服务', status: 'ok', latency: '—', detail: '实时落库 · 队列 12 / 10000' },
-];
-
-export const mockTopAgents: TopAgent[] = [
-  { name: '客户沟通助手', calls: '18.2k', share: 0.42, tone: 'brand' },
-  { name: '销售支持', calls: '14.7k', share: 0.34, tone: 'success' },
-  { name: '数据洞察助手', calls: '9.8k', share: 0.23, tone: 'info' },
-  { name: '财务问答', calls: '6.1k', share: 0.14, tone: 'purple' },
-  { name: '工作流编排', calls: '5.4k', share: 0.12, tone: 'warn' },
-];
-
 export const mockOverviewSummary: OverviewSummary = {
   kpis: mockKpis,
   alerts: mockAlerts,
-  services: mockServices,
-  topAgents: mockTopAgents,
 };

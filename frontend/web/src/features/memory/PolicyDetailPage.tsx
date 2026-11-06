@@ -3,18 +3,20 @@
  *
  * Wave 5:迁移到 DetailLayout + 4 section(参数/状态/数据量/被 Agent 引用)。
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Activity, BarChart3, Clock, HardDrive, Hash, Layers, Percent, Settings, Trash2, Users,
 } from 'lucide-react';
 import { useRetentionPolicy, useL1Sessions, useL2Facts, useL3Entries } from './useMemory';
+import { useServerAction } from '@/services/useServerAction';
 import { useApiQuery } from '@/services/query';
 import type { AgentEntry } from '@/features/agents/schema';
 import {
   DetailShell, DetailHeader, DetailStatGrid, DetailStat,
   DetailSection, DetailField, DetailNotFound, DetailSkeleton,
 } from '@/features/knowledge/components/DetailLayout';
+import { PublishPolicyModal, type PublishPolicyVars } from './components/PublishPolicyModal';
 
 const LAYER_LABEL: Record<string, { label: string; className: string; full: string }> = {
   l1: { label: '短期记忆', className: 'bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300', full: '短期记忆' },
@@ -42,6 +44,17 @@ export default function PolicyDetailPage() {
   const { data: l1Sessions } = useL1Sessions();
   const { data: l2Facts } = useL2Facts();
   const { data: l3Entries } = useL3Entries();
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [notice, setNotice] = useState('');
+  const server = useServerAction(setNotice);
+  const publishPolicy = (vars: PublishPolicyVars) =>
+    server.mutate({
+      path: `/api/admin/memory/policies/${encodeURIComponent(decoded)}/publish`,
+      method: 'POST',
+      body: vars,
+      success: '策略已发布到绑定的 Agent。',
+      onSuccess: () => setPublishOpen(false),
+    });
 
   // ⚠️ **保留策略只有 L2 了** ✓ —— L1（M-46 ✓）/ L3（M-47 ✓）都退役了 ✓。
   const layerCount = useMemo(() => {
@@ -92,6 +105,11 @@ export default function PolicyDetailPage() {
 
   return (
     <DetailShell backTo="/admin/memory" backLabel="返回记忆管理">
+      {notice && (
+        <p role="status" className="rounded-xl border border-[var(--border)] bg-[var(--surface-1)] px-4 py-3 text-sm">
+          {notice}
+        </p>
+      )}
       <DetailHeader
         eyebrow={`保留策略 · ${layerBadge.full}`}
         title={policy.label}
@@ -102,6 +120,15 @@ export default function PolicyDetailPage() {
           { label: layerBadge.full, className: layerBadge.className },
           { label: `淘汰 ${policy.eviction}`, className: 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]' },
         ]}
+        actions={
+          <button
+            type="button"
+            onClick={() => setPublishOpen(true)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--brand)] px-3 text-xs font-semibold text-white hover:bg-[var(--brand-hover)]"
+          >
+            发布到 Agent
+          </button>
+        }
       />
 
       <DetailStatGrid columns={4}>
@@ -190,6 +217,14 @@ export default function PolicyDetailPage() {
           </ul>
         )}
       </DetailSection>
+      <PublishPolicyModal
+        open={publishOpen}
+        onClose={() => setPublishOpen(false)}
+        submitting={server.isPending}
+        boundCount={boundAgents.length}
+        defaultRetentionDays={Math.max(1, Math.round(policy.ttlMinutes / 1440))}
+        onSubmit={publishPolicy}
+      />
     </DetailShell>
   );
 }

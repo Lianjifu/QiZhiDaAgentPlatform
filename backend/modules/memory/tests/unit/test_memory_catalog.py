@@ -401,8 +401,8 @@ async def test_the_lists_and_policies_are_readable() -> None:
     keep = await admin.get_policy(workspace_id=WORKSPACE, label="长期记忆")
     assert keep["layer"] == "l2"
     trend = await admin.trend(workspace_id=WORKSPACE)
-    # ⚠️ **真实使用趋势** ✓（M-33 ✓）—— 12 天 ✓（不再编序列 ✓）。
-    assert len(trend["l1Active"]) == 12
+    # ⚠️ **真实使用趋势** ✓（M-33 ✓）—— 默认 7 天 ✓（range 真的生效 ✓）。
+    assert len(trend["l1Active"]) == 7
 
 
 @pytest.mark.asyncio

@@ -11,6 +11,8 @@ import {
   mockOverviewSummary,
   mockTrendByRange,
 } from './fixtures';
+import { mockProviders } from '@/features/models/fixtures';
+import { mockAgents } from '@/features/agents/fixtures';
 
 function renderPage() {
   return renderWithProviders(<OverviewPage />, {
@@ -22,6 +24,8 @@ function renderPage() {
       { key: pageQueryKey(qk.admin.overview.trend('1h')), data: mockTrendByRange['1h'] },
       { key: pageQueryKey(qk.admin.overview.trend('6h')), data: mockTrendByRange['6h'] },
       { key: pageQueryKey(qk.admin.overview.trend('7d')), data: mockTrendByRange['7d'] },
+      { key: pageQueryKey([...qk.admin.overview.root, 'providers']), data: mockProviders },
+      { key: pageQueryKey([...qk.admin.overview.root, 'agents']), data: mockAgents },
     ],
   });
 }
@@ -71,25 +75,22 @@ describe('AdminOverview', () => {
     expect(screen.getByText(/审计日志归档已完成/)).toBeTruthy();
   });
 
-  it('renders all 5 services with status dots', () => {
+  it('renders service health from model providers', () => {
     renderPage();
-    expect(screen.getByText('模型服务')).toBeTruthy();
-    expect(screen.getByText('知识检索')).toBeTruthy();
-    expect(screen.getByText('工具网关')).toBeTruthy();
-    expect(screen.getByText('模型降级池')).toBeTruthy();
-    expect(screen.getByText('审计服务')).toBeTruthy();
+    expect(screen.getByText('OpenAI 官方')).toBeTruthy();
+    expect(screen.getByText('Anthropic Claude')).toBeTruthy();
+    expect(screen.getByText('DeepSeek')).toBeTruthy();
     expect(screen.getAllByText('健康').length).toBeGreaterThan(0);
     expect(screen.getByText('降级')).toBeTruthy();
+    expect(screen.getByText('异常')).toBeTruthy();
   });
 
-  it('renders all 5 top agents with share bars', () => {
+  it('renders top agents from real agent call counts', () => {
     renderPage();
-    expect(screen.getByText('客户沟通助手')).toBeTruthy();
-    expect(screen.getByText('销售支持')).toBeTruthy();
-    expect(screen.getByText('数据洞察助手')).toBeTruthy();
-    expect(screen.getByText('财务问答')).toBeTruthy();
-    expect(screen.getByText('工作流编排')).toBeTruthy();
-    expect(screen.getByText('18.2k')).toBeTruthy();
+    const ranked = [...mockAgents].sort((a, b) => b.calls - a.calls).slice(0, 5);
+    for (const agent of ranked) {
+      expect(screen.getByText(agent.name)).toBeTruthy();
+    }
   });
 
   it('opens SideDrawer when an alert row is clicked', () => {

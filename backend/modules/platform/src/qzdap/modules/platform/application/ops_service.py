@@ -472,26 +472,6 @@ class AdminOpsService:
             },
         )
 
-    async def operations_summary(self, *, tenant_id: UUID, workspace_id: UUID) -> dict[str, Any]:
-        sessions = await self.list_collection(
-            tenant_id=tenant_id, workspace_id=workspace_id, collection="operations.sessions"
-        )
-        spans = await self.list_collection(
-            tenant_id=tenant_id, workspace_id=workspace_id, collection="operations.spans"
-        )
-        incidents = await self.list_collection(
-            tenant_id=tenant_id, workspace_id=workspace_id, collection="operations.incidents"
-        )
-        kind_stats = await self.list_collection(
-            tenant_id=tenant_id, workspace_id=workspace_id, collection="operations.kind-stats"
-        )
-        return {
-            "sessions": sessions,
-            "spans": spans,
-            "incidents": incidents,
-            "kindStats": kind_stats,
-        }
-
     async def create_regression_track(
         self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
     ) -> dict[str, Any]:
@@ -634,48 +614,6 @@ class AdminOpsService:
                 "time": str(body.get("time") or "刚刚"),
                 "affected": str(body.get("affected") or "工作空间"),
                 "suggestion": str(body.get("suggestion") or ""),
-            },
-        )
-
-    async def upsert_overview_service(
-        self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
-    ) -> dict[str, Any]:
-        name = str(body.get("name") or "未命名服务")
-        status = str(body.get("status") or "ok")
-        if status not in {"ok", "degraded", "down"}:
-            status = "ok"
-        return await self.create(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            collection="overview.services",
-            prefix="sv",
-            body={
-                "id": str(body.get("id") or name),
-                "name": name,
-                "status": status,
-                "latency": str(body.get("latency") or "—"),
-                "detail": str(body.get("detail") or ""),
-            },
-        )
-
-    async def upsert_overview_top_agent(
-        self, *, tenant_id: UUID, workspace_id: UUID, body: dict[str, Any]
-    ) -> dict[str, Any]:
-        tone = str(body.get("tone") or "brand")
-        if tone not in {"brand", "success", "info", "purple", "warn"}:
-            tone = "brand"
-        name = str(body.get("name") or "未命名智能体")
-        return await self.create(
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            collection="overview.top-agents",
-            prefix="ta",
-            body={
-                "id": str(body.get("id") or name),
-                "name": name,
-                "calls": str(body.get("calls") or "0"),
-                "share": float(body.get("share") or 0),
-                "tone": tone,
             },
         )
 
@@ -866,17 +804,12 @@ class AdminOpsService:
                 "iconName": "BellRing",
             },
         ]
-        stored_services = await self.list_collection(
-            tenant_id=tenant_id, workspace_id=workspace_id, collection="overview.services"
-        )
-        services = stored_services
-        stored_agents = await self.list_collection(
-            tenant_id=tenant_id, workspace_id=workspace_id, collection="overview.top-agents"
-        )
-        top_agents = stored_agents
+        # ⚠️ **服务健康 / Top 智能体不进 summary** ✓ ——
+        # 这两块是**真实数据** ✓（模型供应商健康 ✓ + 智能体调用量 ✓）→
+        # 前端直接读各自的域端点 ✓（``/api/admin/models/providers`` ✓
+        # ``/api/admin/agents`` ✓）—— 之前塞在文档集合里 ✓ →
+        # **没人写** ✓ → 面板**永远是空的** ✗✗（建而不切 ✓）。
         return {
             "kpis": kpis,
             "alerts": alerts,
-            "services": services,
-            "topAgents": top_agents,
         }

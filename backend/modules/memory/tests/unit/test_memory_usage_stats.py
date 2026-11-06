@@ -72,7 +72,9 @@ async def test_the_trend_is_real_usage() -> None:
     catalog.l2[fact.id] = fact
     admin = MemoryAdminService(catalog)
     trend = await admin.trend(workspace_id=WORKSPACE)
-    assert len(trend["l2Hits"]) == 12
+    # ⚠️ **默认 7 天** ✓ —— range 真的生效 ✓（之前固定 12 天 ✗✗）。
+    assert len(trend["l2Hits"]) == 7
+    assert len((await admin.trend(workspace_id=WORKSPACE, range="30d"))["l2Hits"]) == 30
     # ⚠️ **今天有 1 次使用** ✓（真实计数 ✓）。
     assert trend["l2Hits"][-1] == 1
     assert trend["l2Total"] == 1

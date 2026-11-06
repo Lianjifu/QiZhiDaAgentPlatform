@@ -3,7 +3,7 @@ import { useServerAction } from '@/services/useServerAction';
  * ModelsPage — 对齐技能管理：无子模块 Tab，Hero 轻量，列表工具栏承载导入/新建。
  * 视图筛选：模型 / 提供商 / 路由 / 健康。
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, CircleAlert, KeyRound, LineChart, Plus, Power, RefreshCw, Search, ShieldCheck, Trash2, Upload } from 'lucide-react';
 import { AdminListPagination, paginateItems } from '@/components/feedback/AdminListPagination';
@@ -15,6 +15,7 @@ import {
   useModelsList, useProviders, useRouteRules, useHealthEvents,
   useUpdateModel, useDeleteModel, useToggleStar,
   useToggleRoute, useDeleteRoute, useBatchSetStatus,
+  useModelQuotaUsage, useLlmAudit, useRouteChain,
 } from './useModels';
 import type { Model, ModelFilters, ExchangeFormat } from './schema';
 import { STATUS_FILTER, TIER_FILTER, PROVIDER_BADGE, STRATEGY_META, TASK_LABEL } from './components/constants';
@@ -23,8 +24,11 @@ import { ModelCard } from './components/ModelCard';
 import { ImportModelModal, ExportModelModal, DeleteModelModal } from './components/ImportExportModals';
 import { AdminBatchBar } from '@/components/feedback/AdminBatchBar';
 import { AdminEmptyState } from '@/components/feedback/AdminEmptyState';
+import { QuotaUsagePanel } from './components/QuotaUsagePanel';
+import { LlmAuditPanel } from './components/LlmAuditPanel';
+import { RouteChainModal } from './components/RouteChainModal';
 
-type ViewId = 'model' | 'provider' | 'route' | 'health';
+type ViewId = 'model' | 'provider' | 'route' | 'health' | 'quota' | 'audit';
 
 export default function ModelsPage() {
   const navigate = useNavigate();
@@ -42,6 +46,10 @@ export default function ModelsPage() {
   const providersQ = useProviders();
   const routesQ = useRouteRules();
   const healthQ = useHealthEvents();
+  const quotaUsageQ = useModelQuotaUsage();
+  const llmAuditQ = useLlmAudit();
+  const [chainRouteId, setChainRouteId] = useState<string | null>(null);
+  const chainQ = useRouteChain(chainRouteId);
 
   const models = useMemo(() => modelsQ.data ?? [], [modelsQ.data]);
   const providers = useMemo(() => providersQ.data ?? [], [providersQ.data]);
@@ -54,6 +62,11 @@ export default function ModelsPage() {
   const toggleRoute = useToggleRoute();
   const deleteRoute = useDeleteRoute();
   const batchStatus = useBatchSetStatus();
+
+  const findModelName = useCallback(
+    (id: string) => models.find((m) => m.id === id)?.name ?? id,
+    [models],
+  );
 
   const counts = useMemo(() => {
     const total = models.length;
@@ -194,6 +207,8 @@ export default function ModelsPage() {
                 <option value="provider">提供商</option>
                 <option value="route">路由策略</option>
                 <option value="health">健康监控</option>
+                <option value="quota">配额用量</option>
+                <option value="audit">LLM 审计</option>
               </select>
               <select
                 aria-label="状态"
@@ -260,6 +275,8 @@ export default function ModelsPage() {
               <option value="provider">提供商</option>
               <option value="route">路由策略</option>
               <option value="health">健康监控</option>
+              <option value="quota">配额用量</option>
+              <option value="audit">LLM 审计</option>
             </select>
             {view === 'route' && (
               <button type="button" onClick={() => navigate('/admin/models/routes/new')} className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--brand)] px-3 text-xs font-semibold text-white hover:bg-[var(--brand-hover)]">
@@ -324,6 +341,15 @@ export default function ModelsPage() {
                       </span>
                       <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] font-medium">{TASK_LABEL[r.task]}</span>
                       <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] font-medium">优先级 {r.priority}</span>
+                      <button
+                        type="button"
+                        onClick={() => setChainRouteId(r.id)}
+                        aria-label={`预览 ${r.name} 的链路`}
+                        className="inline-flex h-7 items-center gap-1 rounded-lg border border-[var(--border)] px-2 text-[11px] font-semibold text-[var(--text-secondary)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                      >
+                        <LineChart className="h-3.5 w-3.5" />
+                        预览链路
+                      </button>
                       <button type="button" onClick={() => handleRouteDelete(r.id)} aria-label="删除规则" className="grid h-7 w-7 place-items-center rounded-lg text-[var(--text-muted)] hover:bg-rose-50 hover:text-rose-600">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -340,6 +366,14 @@ export default function ModelsPage() {
                 );
               })}
             </div>
+          )}
+
+          {view === 'quota' && (
+            <QuotaUsagePanel usage={quotaUsageQ.data ?? []} modelName={findModelName} />
+          )}
+
+          {view === 'audit' && (
+            <LlmAuditPanel items={llmAuditQ.data?.items ?? []} total={llmAuditQ.data?.total ?? 0} />
           )}
 
           {view === 'health' && (
@@ -379,6 +413,13 @@ export default function ModelsPage() {
           )}
         </div>
       )}
+
+      <RouteChainModal
+        open={chainRouteId !== null}
+        onClose={() => setChainRouteId(null)}
+        chain={chainQ.data}
+        loading={chainQ.isLoading}
+      />
 
       <DeleteModelModal
         open={deleteTarget !== null}

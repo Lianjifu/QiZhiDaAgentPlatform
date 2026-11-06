@@ -157,3 +157,48 @@ export type ToggleRouteVars = { id: string };
 export type DeleteModelVars = { id: string };
 export type ToggleStarVars = { id: string; starred: boolean };
 export type BatchStatusVars = { ids: string[]; status: ModelStatus };
+
+/** 配额用量 —— 后端按 (模型, 周期) 聚合 ✓（GET /api/admin/models/quotas/usage ✓）。 */
+export interface QuotaUsage {
+  modelId: string;
+  period: string;
+  latestPeriodKey: string;
+  tokensIn: number;
+  tokensOut: number;
+  requests: number;
+  maxTokensIn: number | null;
+  maxTokensOut: number | null;
+  maxRequests: number | null;
+}
+
+/** LLM 调用审计 —— 直接读 audit_log ✓（GET /api/admin/llm/audit ✓）。 */
+export interface LlmAuditItem {
+  id: string;
+  actor_id: string | null;
+  event_type: string;
+  payload: Record<string, unknown> | null;
+  created_at: string | null;
+}
+
+export interface LlmAuditLog {
+  items: LlmAuditItem[];
+  count: number;
+  total: number;
+}
+
+/** 路由预览链 —— 解析后的主备模型顺序 ✓（不发请求 ✓ 不消耗额度 ✓）。 */
+export interface RouteChain {
+  routeId: string;
+  routeName: string;
+  strategy: string;
+  primaryModelId: string;
+  chain: Array<{
+    id: string;
+    name: string;
+    upstreamModel: string | null;
+    tier: string | null;
+    successRate: number | null;
+    latencyMs: number | null;
+    isPrimary: boolean;
+  }>;
+}

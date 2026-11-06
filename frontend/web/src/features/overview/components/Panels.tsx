@@ -14,7 +14,7 @@ const BAR_CLASS: Record<TopAgent['tone'], string> = {
   warn: 'bg-[var(--chart-warning)]',
 };
 
-export function AlertsPanel({ alerts, onSelect }: { alerts: OverviewAlert[]; onSelect: (alert: OverviewAlert) => void }) {
+export function AlertsPanel({ alerts, onSelect, onCreate }: { alerts: OverviewAlert[]; onSelect: (alert: OverviewAlert) => void; onCreate: () => void }) {
   return (
     <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-7">
       <div className="flex items-center justify-between">
@@ -22,9 +22,18 @@ export function AlertsPanel({ alerts, onSelect }: { alerts: OverviewAlert[]; onS
           <h3 className="text-base font-semibold">实时告警与待处理事件</h3>
           <p className="mt-1 text-xs text-[var(--text-muted)]">按严重度排序 · 点击查看详情</p>
         </div>
-        <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--danger-bg)] text-[var(--danger)]">
-          <span className="text-xs font-semibold">{alerts.filter((a) => a.severity === 'high').length}</span>
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onCreate}
+            className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-secondary)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
+          >
+            登记告警
+          </button>
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--danger-bg)] text-[var(--danger)]">
+            <span className="text-xs font-semibold">{alerts.filter((a) => a.severity === 'high').length}</span>
+          </span>
+        </div>
       </div>
       <div className="mt-5 divide-y divide-[var(--border)]">
         {alerts.length === 0
@@ -86,7 +95,7 @@ export function TopAgentsPanel({ topAgents }: { topAgents: TopAgent[] }) {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-base font-semibold">Top 智能体</h3>
-          <p className="mt-1 text-xs text-[var(--text-muted)]">按 24h 调用量排序</p>
+          <p className="mt-1 text-xs text-[var(--text-muted)]">按累计调用量排序</p>
         </div>
         <button type="button" onClick={() => navigate('/admin/agents')} className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--brand)] hover:underline">
           全部 <ChevronRight className="h-3.5 w-3.5" />

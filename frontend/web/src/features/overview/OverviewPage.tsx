@@ -8,12 +8,16 @@ import { TimeRangeDropdown } from '@/components/TimeRangeDropdown';
 import {
   useOverviewSummary,
   useOverviewTrend,
+  useOverviewProviders,
+  useOverviewAgents,
+  useCreateOverviewAlert,
 } from './useOverview';
-import type { OverviewAlert, Range } from './schema';
+import type { OverviewAlert, OverviewService, Range, TopAgent } from './schema';
 import { KpiTileCard } from './components/KpiTileCard';
 import { TrendChart } from './components/TrendChart';
 import { AlertsPanel, ServicesPanel, TopAgentsPanel } from './components/Panels';
 import { AlertDetail } from './components/AlertDetail';
+import { AlertCreateModal } from './components/AlertCreateModal';
 import { SEVERITY_BADGE } from './components/Primitives';
 import { AdminHero } from '@/components/feedback/AdminHero';
 import { AdminPage } from '@/components/feedback/AdminPage';
@@ -28,15 +32,38 @@ const RANGE_OPTIONS: { id: Range; label: string }[] = [
 export default function OverviewPage() {
   const [range, setRange] = useState<Range>('24h');
   const [activeAlert, setActiveAlert] = useState<OverviewAlert | null>(null);
+  const [alertCreateOpen, setAlertCreateOpen] = useState(false);
+  const createAlert = useCreateOverviewAlert();
 
   const summaryQuery = useOverviewSummary();
   const trendQuery = useOverviewTrend(range);
+  const providersQuery = useOverviewProviders();
+  const agentsQuery = useOverviewAgents();
 
   const summary = summaryQuery.data;
   const alerts = summary?.alerts ?? [];
   const kpiTiles = summary?.kpis ?? [];
-  const services = summary?.services ?? [];
-  const topAgents = summary?.topAgents ?? [];
+
+  /** 服务健康 ← 模型供应商的真实健康检查 ✓ */
+  const services: OverviewService[] = (providersQuery.data ?? []).map((provider) => ({
+    name: provider.name,
+    status:
+      provider.status === 'healthy' ? 'ok' : provider.status === 'degraded' ? 'degraded' : 'down',
+    latency: `${provider.avgLatencyMs} ms`,
+    detail: `错误率 ${provider.errorRate}%`,
+  }));
+
+  /** Top 智能体 ← 智能体的真实调用量 ✓ */
+  const topAgents: TopAgent[] = (() => {
+    const agents = [...(agentsQuery.data ?? [])].sort((a, b) => b.calls - a.calls).slice(0, 5);
+    const total = agents.reduce((sum, agent) => sum + agent.calls, 0);
+    return agents.map((agent) => ({
+      name: agent.name,
+      calls: agent.calls.toLocaleString('zh-CN'),
+      share: total > 0 ? agent.calls / total : 0,
+      tone: 'brand',
+    }));
+  })();
 
   const eyebrow = activeAlert
     ? (() => {
@@ -98,7 +125,7 @@ export default function OverviewPage() {
           </div>
         </section>
 
-        <AlertsPanel alerts={alerts} onSelect={setActiveAlert} />
+        <AlertsPanel alerts={alerts} onSelect={setActiveAlert} onCreate={() => setAlertCreateOpen(true)} />
       </div>
 
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
@@ -110,13 +137,24 @@ export default function OverviewPage() {
               severity: 'info',
               title: '查看全部服务',
               time: '现在',
-              affected: '全部 5 项',
-              suggestion: '点击进入 渠道配置 查看完整健康度。',
+              affected: `全部 ${services.length} 项`,
+              suggestion: '点击进入 模型配置 查看完整健康度。',
             })
           }
         />
         <TopAgentsPanel topAgents={topAgents} />
       </div>
+
+      <AlertCreateModal
+        open={alertCreateOpen}
+        onClose={() => setAlertCreateOpen(false)}
+        submitting={createAlert.isPending}
+        onSubmit={(vars) =>
+          createAlert.mutate(vars, {
+            onSuccess: () => setAlertCreateOpen(false),
+          })
+        }
+      />
 
       <SideDrawer
         open={activeAlert != null}
@@ -127,7 +165,7 @@ export default function OverviewPage() {
         {activeAlert && <AlertDetail alert={activeAlert} />}
       </SideDrawer>
 
-      <p className="text-center text-xs text-[var(--text-muted)]">数据来自 /api/admin/overview，随工作空间指标与告警更新。</p>
+      <p className="text-center text-xs text-[var(--text-muted)]">KPI / 告警来自 /api/admin/overview；服务健康来自模型供应商，Top 智能体来自智能体调用量。</p>
     </AdminPage>
   );
 }
