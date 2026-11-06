@@ -14,7 +14,7 @@ import { DOC_TYPE_LABEL } from './components/constants';
 import {
   DetailShell, DetailHeader, DetailStatGrid, DetailStat, DetailSection,
   DetailNotFound, DetailSkeleton,
-} from './components/DetailLayout';
+} from '@/components/feedback/DetailLayout';
 
 export default function DocDetailPage() {
   const { id = '' } = useParams<{ id: string }>();

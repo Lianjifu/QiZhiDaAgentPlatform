@@ -11,7 +11,7 @@ import { useL1Sessions } from './useMemory';
 import {
   DetailShell, DetailHeader, DetailStatGrid, DetailStat,
   DetailSection, DetailField, DetailNotFound, DetailSkeleton,
-} from '@/features/knowledge/components/DetailLayout';
+} from '@/components/feedback/DetailLayout';
 import { L1_STATUS_BADGE, LAYER_META } from './components/constants';
 
 export default function L1DetailPage() {

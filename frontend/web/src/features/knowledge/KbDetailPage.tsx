@@ -13,7 +13,7 @@ import { DOC_TYPE_LABEL } from './components/constants';
 import {
   DetailShell, DetailStatGrid, DetailStat, DetailSection, DetailField,
   DetailNotFound, DetailSkeleton,
-} from './components/DetailLayout';
+} from '@/components/feedback/DetailLayout';
 import { normalizeError } from '@/api/shared/http-error';
 
 export default function KbDetailPage() {

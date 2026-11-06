@@ -8,6 +8,7 @@ import type { AlertRule, AlertSeverity } from './schema';
 import { useCreateAlert } from './useQuotas';
 import { SEVERITY_BADGE } from './components/constants';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { DetailHeader } from '@/components/feedback/DetailLayout';
 
 export default function AlertCreatePage() {
   const navigate = useNavigate();
@@ -26,11 +27,11 @@ export default function AlertCreatePage() {
       <Link to="/admin/quotas" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回额度管理
       </Link>
-      <header>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">额度管理</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">新建告警规则</h1>
-        <p className="mt-2 max-w-2xl text-sm text-[var(--text-muted)]">为额度使用配置告警阈值与通知渠道。</p>
-      </header>
+      <DetailHeader
+        eyebrow="额度管理"
+        title="新建告警规则"
+        subtitle="为额度使用配置告警阈值与通知渠道。"
+      />
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
         <div className="mb-5 flex items-center gap-2 border-b border-[var(--border)] pb-4">
           <Bell className="h-4 w-4 text-[var(--brand)]" />

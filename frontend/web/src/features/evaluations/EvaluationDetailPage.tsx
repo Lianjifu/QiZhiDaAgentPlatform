@@ -15,6 +15,7 @@ import type { DrawerPanel, EvalCaseEntry, EvalSuite, EvalSuiteType } from './sch
 import { useEvalSuites } from './useEvaluations';
 import { DRAWER_NAV_ITEMS, STATUS_BADGE, TYPE_META, uid } from './components/constants';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { DetailHeader } from '@/components/feedback/DetailLayout';
 
 const iconMap: Record<string, typeof BookOpen> = { BookOpen, Calendar, History, Layers, ListChecks };
 
@@ -269,24 +270,11 @@ export default function EvaluationDetailPage() {
         <ArrowLeft className="h-3.5 w-3.5" />返回评测中心
       </Link>
 
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">评测 · {meta.label}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{draft.name}</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-muted)]">{draft.description}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-semibold ${STATUS_BADGE[draft.status].className}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${STATUS_BADGE[draft.status].dot}`} aria-hidden="true" />
-              {STATUS_BADGE[draft.status].label}
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium">{draft.owner}</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium">对象:{draft.target}</span>
-          </div>
-        </div>
-        <span className={`grid h-12 w-12 place-items-center rounded-2xl ${meta.tone}`}>
-          <Icon className="h-5 w-5" />
-        </span>
-      </header>
+      <DetailHeader
+  eyebrow={<>评测 · {meta.label}</>}
+  title={draft.name}
+  subtitle={draft.description}
+/>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
         <div className="flex flex-col gap-5 sm:flex-row">

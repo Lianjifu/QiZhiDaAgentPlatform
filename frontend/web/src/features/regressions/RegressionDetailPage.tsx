@@ -16,6 +16,7 @@ import { DRAWER_NAV_ITEMS, RISK_BADGE, STATUS_BADGE } from './components/constan
 import { Delta } from './components/Primitives';
 import { Sparkline } from '@/components/feedback/Sparkline';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { DetailHeader } from '@/components/feedback/DetailLayout';
 
 const navIconMap: Record<string, typeof History> = { History, LineChart, ListChecks, Settings };
 const riskIconMap: Record<string, typeof ShieldCheck> = { ShieldCheck, ShieldQuestion, AlertTriangle, ShieldAlert };
@@ -216,22 +217,14 @@ export default function RegressionDetailPage() {
         <span aria-hidden="true">←</span>返回回归追踪
       </Link>
 
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">回归追踪 · {badge.label}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{draft.name}</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-muted)]">{draft.notes}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${risk.className}`}><RiskIcon className="h-3 w-3" />{risk.label}</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium">{draft.owner}</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium">对象:{draft.agent}</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium">{draft.baselineVersion} → {draft.currentVersion}</span>
-          </div>
-        </div>
-        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[var(--brand-light)] text-[var(--brand)]">
-          <GitBranch className="h-5 w-5" />
-        </span>
-      </header>
+      <DetailHeader
+  eyebrow={<>回归追踪 · {badge.label}</>}
+  title={draft.name}
+  subtitle={draft.notes}
+  badges={[{ label: risk.label, className: risk.className, icon: RiskIcon }, { label: draft.owner, className: "bg-[var(--bg-elevated)]" }, { label: <>对象:{draft.agent}</>, className: "bg-[var(--bg-elevated)]" }, { label: <>{draft.baselineVersion} → {draft.currentVersion}</>, className: "bg-[var(--bg-elevated)]" }]}
+  icon={GitBranch}
+  iconClass="bg-[var(--brand-light)] text-[var(--brand)]"
+/>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
         <div className="flex flex-col gap-5 sm:flex-row">

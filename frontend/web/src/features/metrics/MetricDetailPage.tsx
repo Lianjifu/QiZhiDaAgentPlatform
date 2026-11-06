@@ -11,6 +11,7 @@ import {
 import { DRAWER_NAV } from './components/constants';
 import { AlertPanel, BreakdownPanel, OverviewPanel, TrendPanel } from './components/DrawerPanels';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { DetailHeader } from '@/components/feedback/DetailLayout';
 
 function NotFound() {
   return (
@@ -77,12 +78,12 @@ export default function MetricDetailPage() {
         <ArrowLeft className="h-3.5 w-3.5" />返回运行指标
       </Link>
 
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">{model.provider}</p>
-          <h1 className="mt-1 font-mono text-3xl font-semibold tracking-tight">{model.model}</h1>
-        </div>
-      </header>
+      <DetailHeader
+  eyebrow={model.provider}
+  eyebrowClassName="text-[var(--text-muted)]"
+  title={model.model}
+  titleClassName="font-mono"
+/>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
         <div className="flex flex-col gap-5 sm:flex-row">

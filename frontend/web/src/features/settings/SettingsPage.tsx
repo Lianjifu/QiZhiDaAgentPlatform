@@ -10,6 +10,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { BrandLogo } from '@/components/feedback/BrandLogo';
 import { NoticeBanner, type NoticeTone } from '@/components/feedback/NoticeBanner';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { AdminHero } from '@/components/feedback/AdminHero';
 
 type SettingTab = 'brand' | 'compliance' | 'audit' | 'members';
 type MemberRole = '管理员' | '成员';
@@ -79,17 +80,17 @@ export default function SettingsPage() {
 
   return (
     <AdminPage density="md">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--brand)]">ADMIN / 平台设置</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">配置品牌、合规开关和成员。</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">品牌、合规、审计记录与成员。</p>
-        </div>
-        <button type="button" onClick={save} className="inline-flex h-9 items-center gap-2 self-start rounded-lg bg-[var(--brand)] px-3.5 text-xs font-semibold text-white hover:bg-[var(--brand-hover)] sm:self-auto">
-          {saved ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
-          {saved ? '已保存' : '保存设置'}
-        </button>
-      </header>
+      <AdminHero
+        eyebrow="ADMIN / 平台设置"
+        title="配置品牌、合规开关和成员。"
+        description="品牌、合规、审计记录与成员。"
+        aside={
+          <button type="button" onClick={save} className="inline-flex h-9 items-center gap-2 self-start rounded-lg bg-[var(--brand)] px-3.5 text-xs font-semibold text-white hover:bg-[var(--brand-hover)] sm:self-auto">
+            {saved ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
+            {saved ? '已保存' : '保存设置'}
+          </button>
+        }
+      />
 
       {notice ? <NoticeBanner tone={notice.tone} onClose={() => setNotice(null)}>{notice.text}</NoticeBanner> : null}
 

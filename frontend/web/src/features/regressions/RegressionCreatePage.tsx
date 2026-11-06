@@ -11,6 +11,7 @@ import { GitBranch } from 'lucide-react';
 import { StepIndicator } from './components/Primitives';
 import { useCreateRegressionTrack } from './useRegressions';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { DetailHeader } from '@/components/feedback/DetailLayout';
 
 export default function RegressionCreatePage() {
   const navigate = useNavigate();
@@ -46,15 +47,11 @@ export default function RegressionCreatePage() {
         <span aria-hidden="true">←</span>返回回归追踪
       </Link>
 
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">回归追踪</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">新建追踪</h1>
-        </div>
-        <p className="max-w-sm text-xs leading-5 text-[var(--text-muted)]">
-          {step === 1 ? '追踪基本信息与对象' : step === 2 ? '选择基线版本与调度' : '确认后将以「稳定」状态加入列表'}
-        </p>
-      </header>
+      <DetailHeader
+  eyebrow="回归追踪"
+  title="新建追踪"
+  aside={step === 1 ? '追踪基本信息与对象' : step === 2 ? '选择基线版本与调度' : '确认后将以「稳定」状态加入列表'}
+/>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
         <div className="mb-5 flex items-center gap-2 border-b border-[var(--border)] pb-4">

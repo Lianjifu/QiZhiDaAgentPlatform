@@ -1,9 +1,11 @@
 /**
- * Admin 知识详情 — 共享 layout 组件。
- * KbDetailPage / DocDetailPage / SourceDetailPage 共用同一形态:
- * wrapper(+ 可选返回 Link)→ DetailHeader → DetailStatGrid → DetailSection → NotFound / Skeleton。
+ * 管理侧详情页共享件 —— 页框 / 详情头 / 指标块 / 分节 / 字段 / 空态 / 骨架。
+ *
+ * ⚠️ **这里是跨域共享件** ✓ —— knowledge ✓ / memory ✓ 两个域都在用 ✓
+ * （以前它住在 ``features/knowledge/components/`` ✓ —— 共享件放在域里 ✓
+ * 会让别的域跨域 import ✓ ✗✗ → 挪到共享层 ✓）。
  */
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { AdminPage } from '@/components/feedback/AdminPage';
@@ -34,9 +36,11 @@ export function DetailShell({
 }
 
 export type DetailBadge = {
-  label: string;
+  label: ReactNode;
   className: string;
   dot?: string;
+  /** 徽标前面的图标 ✓（有些域用图标代替圆点 ✓） */
+  icon?: ComponentType<{ className?: string }>;
 };
 
 export function DetailHeader({
@@ -46,43 +50,61 @@ export function DetailHeader({
   iconClass,
   subtitle,
   badges = [],
+  meta,
+  aside,
   actions,
+  titleClassName,
+  eyebrowClassName,
 }: {
-  eyebrow?: string;
-  title: string;
-  icon?: React.ComponentType<{ className?: string }>;
+  eyebrow?: ReactNode;
+  title: ReactNode;
+  /** 标题额外类（记录类页面用等宽字体 ✓） */
+  titleClassName?: string;
+  /** 眉标额外类（不同域的眉标颜色 ✓） */
+  eyebrowClassName?: string;
+  icon?: ComponentType<{ className?: string }>;
   iconClass?: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   badges?: DetailBadge[];
+  /** 徽标行里不是徽标的东西（评分星条之类 ✓） */
+  meta?: ReactNode;
+  /** 右侧插槽（说明文字之类 ✓） */
+  aside?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0 flex-1">
         {eyebrow && (
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">{eyebrow}</p>
+          <p className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${eyebrowClassName ?? 'text-[var(--brand)]'}`}>{eyebrow}</p>
         )}
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{title}</h1>
-        {subtitle && <p className="mt-1 text-xs text-[var(--text-muted)]">{subtitle}</p>}
-        {badges.length > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {badges.map((b, idx) => (
-              <span key={idx} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${b.className}`}>
-                {b.dot && <span className={`h-1.5 w-1.5 rounded-full ${b.dot}`} aria-hidden="true" />}
-                {b.label}
-              </span>
-            ))}
+        <h1 className={`mt-1 text-3xl font-semibold tracking-tight ${titleClassName ?? ''}`}>{title}</h1>
+        {subtitle && <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-muted)]">{subtitle}</p>}
+        {(badges.length > 0 || meta) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {badges.map((b, idx) => {
+              const BadgeIcon = b.icon;
+              return (
+                <span key={idx} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${b.className}`}>
+                  {BadgeIcon ? <BadgeIcon className="h-3 w-3" /> : null}
+                  {!BadgeIcon && b.dot ? <span className={`h-1.5 w-1.5 rounded-full ${b.dot}`} aria-hidden="true" /> : null}
+                  {b.label}
+                </span>
+              );
+            })}
+            {meta}
           </div>
         )}
       </div>
-      {(actions || Icon) && (
+      {(actions || Icon || aside) && (
         <div className="flex shrink-0 items-center gap-2">
           {actions}
           {!actions && Icon ? (
-            <span className={`grid h-12 w-12 place-items-center rounded-xl ${iconClass ?? 'bg-[var(--brand-soft)] text-[var(--brand)]'}`}>
-              <Icon className="h-6 w-6" />
+            <span className={`grid h-12 w-12 place-items-center rounded-2xl ${iconClass ?? 'bg-[var(--brand-light)] text-[var(--brand)]'}`}>
+              <Icon className="h-5 w-5" />
             </span>
           ) : null}
+          {aside}
         </div>
       )}
     </header>

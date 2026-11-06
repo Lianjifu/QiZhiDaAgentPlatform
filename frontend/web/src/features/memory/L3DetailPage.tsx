@@ -15,7 +15,7 @@ import { useL3Entry, useL3Entries, useL2Facts } from './useMemory';
 import {
   DetailShell, DetailHeader, DetailStatGrid, DetailStat,
   DetailSection, DetailField, DetailNotFound, DetailSkeleton,
-} from '@/features/knowledge/components/DetailLayout';
+} from '@/components/feedback/DetailLayout';
 import { useAgentsList } from '@/features/agents/useAgents';
 import { L3_STATUS_BADGE, LAYER_META } from './components/constants';
 

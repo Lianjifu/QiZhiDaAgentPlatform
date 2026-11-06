@@ -12,6 +12,7 @@ import type { CreateKbVars } from './schema';
 import { useKnowledgeSources, useCreateKb } from './useKnowledge';
 import CreateKbWizard from './components/CreateKbWizard';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { DetailHeader } from '@/components/feedback/DetailLayout';
 
 type Step = 1 | 2 | 3;
 
@@ -46,17 +47,11 @@ export default function KbCreatePage() {
         <ArrowLeft className="h-3.5 w-3.5" />返回知识管理
       </Link>
 
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">
-            知识管理
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">新建知识库</h1>
-        </div>
-        <p className="max-w-sm text-xs leading-5 text-[var(--text-muted)]">
-          填写后将自动同步数据源,完成后可关联到 Agent。
-        </p>
-      </header>
+      <DetailHeader
+  eyebrow="知识管理"
+  title="新建知识库"
+  aside="填写后将自动同步数据源,完成后可关联到 Agent。"
+/>
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         <aside aria-label="创建步骤" className="lg:sticky lg:top-5 lg:self-start">

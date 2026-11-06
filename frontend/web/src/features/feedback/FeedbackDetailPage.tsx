@@ -17,6 +17,7 @@ import { useFeedbackList } from './useFeedback';
 import { DRAWER_NAV_ITEMS, PRIORITY_BADGE, SENTIMENT_META, STATUS_BADGE, TYPE_LABEL } from './components/constants';
 import { StarRow } from './components/Primitives';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { DetailHeader } from '@/components/feedback/DetailLayout';
 
 const navIconMap: Record<string, typeof BookOpen> = { BookOpen, Send, Clock };
 const sentimentIconMap: Record<string, typeof ThumbsUp> = { ThumbsUp, ThumbsDown, Smile };
@@ -210,22 +211,14 @@ export default function FeedbackDetailPage() {
         <span aria-hidden="true">←</span>返回用户反馈
       </Link>
 
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">用户反馈 · {TYPE_LABEL[draft.type]}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{draft.topic}</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-muted)]">{draft.comment}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${sen.tone}`}><SenIcon className="h-3 w-3" />{sen.label}</span>
-            <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-1 text-[11px] font-medium">智能体:{draft.agent}</span>
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-semibold ${badge.className}`}><span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} aria-hidden="true" />{badge.label}</span>
-            <StarRow rating={draft.rating} />
-          </div>
-        </div>
-        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[var(--brand-light)] text-[var(--brand)]">
-          <MessageSquare className="h-5 w-5" />
-        </span>
-      </header>
+      <DetailHeader
+  eyebrow={<>用户反馈 · {TYPE_LABEL[draft.type]}</>}
+  title={draft.topic}
+  subtitle={draft.comment}
+  badges={[{ label: sen.label, className: sen.tone, icon: SenIcon }, { label: <>智能体:{draft.agent}</>, className: "bg-[var(--bg-elevated)]" }]}
+  icon={MessageSquare}
+  iconClass="bg-[var(--brand-light)] text-[var(--brand)]"
+/>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
         <div className="flex flex-col gap-5 sm:flex-row">

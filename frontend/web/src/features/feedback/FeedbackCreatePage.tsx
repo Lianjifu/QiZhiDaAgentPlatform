@@ -13,6 +13,7 @@ import type { FeedbackPriority } from './schema';
 import { useCreateFeedbackTicket, useFeedbackList } from './useFeedback';
 import { StepIndicator } from './components/Primitives';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { DetailHeader } from '@/components/feedback/DetailLayout';
 
 export default function FeedbackCreatePage() {
   const navigate = useNavigate();
@@ -63,20 +64,11 @@ export default function FeedbackCreatePage() {
         <span aria-hidden="true">←</span>返回用户反馈
       </Link>
 
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">用户反馈 · 工单管理</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">新建工单</h1>
-          {preset && (
-            <p className="mt-2 max-w-2xl text-xs leading-5 text-[var(--text-muted)]">
-              来自反馈「{preset.id}」 · {preset.user} · {preset.topic}
-            </p>
-          )}
-        </div>
-        <p className="max-w-sm text-xs leading-5 text-[var(--text-muted)]">
-          {step === 1 ? '工单基本信息' : step === 2 ? '处理人与时限' : '确认创建'}
-        </p>
-      </header>
+      <DetailHeader
+  eyebrow="用户反馈 · 工单管理"
+  title="新建工单"
+  aside={step === 1 ? '工单基本信息' : step === 2 ? '处理人与时限' : '确认创建'}
+/>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
         <div className="mb-5 flex items-center gap-2 border-b border-[var(--border)] pb-4">

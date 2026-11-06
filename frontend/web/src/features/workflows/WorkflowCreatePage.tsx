@@ -14,6 +14,7 @@ import { normalizeError } from '@/api/shared/http-error';
 import type { Flow, TriggerType } from './schema';
 import { TEMPLATE_CHOICES, TRIGGER_BADGE, TRIGGERS, uid } from './components/constants';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { DetailHeader } from '@/components/feedback/DetailLayout';
 
 type StepKey = 'basic' | 'template' | 'review';
 interface StepDef {
@@ -89,15 +90,10 @@ export default function WorkflowCreatePage() {
         <ArrowLeft className="h-3.5 w-3.5" />返回工作流管理
       </Link>
 
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">ADMIN / 工作流管理</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">新建工作流</h1>
-        </div>
-        <p className="max-w-sm text-xs leading-5 text-[var(--text-muted)]">
-          跟随向导完成 3 个步骤 — 命名、模板与确认。创建后将自动进入画布继续编排节点。
-        </p>
-      </header>
+      <DetailHeader
+  title="新建工作流"
+  aside="跟随向导完成 3 个步骤 — 命名、模板与确认。创建后将自动进入画布继续编排节点。"
+/>
 
       {notice && (
         <NoticeBanner tone="amber" onClose={() => setNotice('')}>

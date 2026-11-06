@@ -8,6 +8,7 @@ import type { MetricsTimeRange } from './schema';
 import { TIME_RANGES } from './components/constants';
 import { useCreateDashboard } from './useMetrics';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { DetailHeader } from '@/components/feedback/DetailLayout';
 
 export default function DashboardCreatePage() {
   const navigate = useNavigate();
@@ -22,11 +23,11 @@ export default function DashboardCreatePage() {
       <Link to="/admin/metrics" className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--brand)]">
         <ArrowLeft className="h-3.5 w-3.5" />返回运行指标
       </Link>
-      <header>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">运行指标</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">新建看板</h1>
-        <p className="mt-2 max-w-2xl text-sm text-[var(--text-muted)]">配置看板名称与默认时间范围。</p>
-      </header>
+      <DetailHeader
+        eyebrow="运行指标"
+        title="新建看板"
+        subtitle="配置看板名称与默认时间范围。"
+      />
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
         <div className="mb-5 flex items-center gap-2 border-b border-[var(--border)] pb-4">
           <LayoutDashboard className="h-4 w-4 text-[var(--brand)]" />

@@ -15,7 +15,7 @@ import type { AgentEntry } from '@/features/agents/schema';
 import {
   DetailShell, DetailHeader, DetailStatGrid, DetailStat,
   DetailSection, DetailField, DetailNotFound, DetailSkeleton,
-} from '@/features/knowledge/components/DetailLayout';
+} from '@/components/feedback/DetailLayout';
 import { PublishPolicyModal, type PublishPolicyVars } from './components/PublishPolicyModal';
 
 const LAYER_LABEL: Record<string, { label: string; className: string; full: string }> = {

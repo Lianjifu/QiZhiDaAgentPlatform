@@ -11,6 +11,7 @@ import { useAuditEntries, useAuditRules } from './useAudit';
 import { DRAWER_NAV, SEVERITY_BADGE } from './components/constants';
 import { DrawerPanelArgs, DrawerPanelLog, DrawerPanelOverview, DrawerPanelRule } from './components/DrawerPanels';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { DetailHeader } from '@/components/feedback/DetailLayout';
 
 function NotFound() {
   return (
@@ -86,25 +87,19 @@ export default function AuditDetailPage() {
         </NoticeBanner>
       )}
 
-      <header className="flex flex-wrap items-start gap-4">
-        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300">
-          <ShieldAlert className="h-5 w-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-700 dark:text-rose-300">工具审计</p>
-          <h1 className="mt-1 font-mono text-3xl font-semibold tracking-tight">{entry.id}</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-muted)]">
-            记录工具调用 · 权限校验 · 风险命中全过程,用于事后追责与策略优化。
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-semibold ${sev.className}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${sev.dot}`} aria-hidden="true" />
-              {sev.label}
-            </span>
-            <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-1 font-mono text-[11px] font-medium">{entry.toolName}</span>
-          </div>
-        </div>
-      </header>
+      <DetailHeader
+  eyebrow="工具审计"
+  eyebrowClassName="text-rose-700 dark:text-rose-300"
+  title={entry.id}
+  titleClassName="font-mono"
+  subtitle="记录工具调用 · 权限校验 · 风险命中全过程,用于事后追责与策略优化。"
+  badges={[
+    { label: sev.label, className: sev.className, dot: sev.dot },
+    { label: entry.toolName, className: "bg-[var(--bg-elevated)] font-mono" },
+  ]}
+  icon={ShieldAlert}
+  iconClass="bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300"
+/>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
         <div className="flex flex-col gap-5 sm:flex-row">

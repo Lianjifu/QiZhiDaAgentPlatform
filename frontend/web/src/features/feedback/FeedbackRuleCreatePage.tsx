@@ -12,6 +12,7 @@ import type { FeedbackSentiment, RoutingAction } from './schema';
 import { ROUTING_ACTION_LABEL } from './components/constants';
 import { useCreateFeedbackRule } from './useFeedback';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { DetailHeader } from '@/components/feedback/DetailLayout';
 
 export default function FeedbackRuleCreatePage() {
   const navigate = useNavigate();
@@ -47,13 +48,11 @@ export default function FeedbackRuleCreatePage() {
         <span aria-hidden="true">←</span>返回用户反馈
       </Link>
 
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">用户反馈 · 规则模板</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">新建规则模板</h1>
-        </div>
-        <p className="max-w-sm text-xs leading-5 text-[var(--text-muted)]">设置主题、情感、动作与目标团队</p>
-      </header>
+      <DetailHeader
+  eyebrow="用户反馈 · 规则模板"
+  title="新建规则模板"
+  aside="设置主题、情感、动作与目标团队"
+/>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5 sm:p-6">
         <div className="mb-5 flex items-center gap-2 border-b border-[var(--border)] pb-4">

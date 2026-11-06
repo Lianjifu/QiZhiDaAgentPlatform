@@ -8,6 +8,7 @@ import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { useAuthStore } from '@/features/auth';
 import { useUiStore } from '@/stores/uiStore';
 import { AdminPage } from '@/components/feedback/AdminPage';
+import { AdminHero } from '@/components/feedback/AdminHero';
 
 type SettingTab = '个人资料' | '偏好设置' | '通知' | '账号安全';
 type TabDef = { id: SettingTab; label: string; description: string; icon: typeof UserRound };
@@ -48,14 +49,11 @@ export default function AccountSettings() {
 
   return (
     <AdminPage>
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,var(--brand-light),transparent_68%)]" />
-        <div className="relative flex flex-col justify-between gap-5 xl:flex-row xl:items-end">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--brand)]">ACCOUNT / 设置</p>
-            <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">把工作台调成你的样子。</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">管理个人信息、通知偏好和账号安全。设置通过后端 API 保存。</p>
-          </div>
+      <AdminHero
+        eyebrow="ACCOUNT / 设置"
+        title="把工作台调成你的样子。"
+        description="管理个人信息、通知偏好和账号安全。设置通过后端 API 保存。"
+        aside={
           <div className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-3">
             <span className="grid h-11 w-11 place-items-center rounded-xl bg-[var(--brand-light)] text-lg font-bold text-[var(--brand)]">{displayName.slice(0, 1)}</span>
             <div>
@@ -63,8 +61,8 @@ export default function AccountSettings() {
               <p className="mt-1 text-xs text-[var(--text-muted)]">{email}</p>
             </div>
           </div>
-        </div>
-      </section>
+        }
+      />
       {notice && <NoticeBanner tone="emerald" onClose={() => setNotice('')}>{notice}</NoticeBanner>}
       <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-3">
