@@ -32,3 +32,22 @@ def test_test_environment_can_explicitly_use_mock_provider() -> None:
     """test env 保留 mock 逃生通道(单元测试用)."""
     container = Container(Settings(env="test", embedding_provider="noop"))
     assert isinstance(container.llm_client(), MockLLMClient)
+
+
+def test_knowledge_embedding_degrades_to_none_in_development() -> None:
+    """**知识库**那条线在开发环境没配供应商时给 ``None`` ✓。
+
+    → 文档照存(切块 + 预览 ✓)✓ → 检索退化成关键词匹配 ✓；
+    → **不生成假向量** ✓（记忆那条线仍然报 ``ProviderUnavailable`` ✓）。
+    """
+    dev = Container(Settings(env="development", embedding_provider="noop"))
+    assert dev.knowledge_embedding_adapter() is None
+    assert dev.memory_embedding_adapter() is not None  # 记忆那条线照旧吵 ✓
+
+    with_provider = Container(
+        Settings(env="development", embedding_provider="http", embedding_runtime_url="http://x")
+    )
+    assert with_provider.knowledge_embedding_adapter() is not None
+
+    test_env = Container(Settings(env="test", embedding_provider="noop"))
+    assert test_env.knowledge_embedding_adapter() is not None

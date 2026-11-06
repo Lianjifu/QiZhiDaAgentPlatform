@@ -1173,7 +1173,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             dim=EMBEDDING_DIM,
         )
     )
-    knowledge_embedding = container.memory_embedding_adapter()
+    knowledge_embedding = container.knowledge_embedding_adapter()
 
     class _KnowledgeFactory:
         def for_session(self, session):  # type: ignore[no-untyped-def]

@@ -452,6 +452,9 @@ class AdminOpsService:
             collection="evaluations.suites",
             prefix="suite",
             body={
+                # ⚠️ **id 透传** ✓ —— 不传就退回随机 id ✓；传了就用调用方的
+                # id ✓（开发目录靠这个做到幂等 ✓）。
+                "id": body.get("id"),
                 "name": str(body.get("name") or "未命名套件"),
                 "description": str(body.get("description") or "新创建的评测套件"),
                 "type": body.get("type") or "capability",

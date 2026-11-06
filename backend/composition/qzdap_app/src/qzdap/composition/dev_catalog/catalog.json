@@ -1,0 +1,659 @@
+{
+  "version": 1,
+  "namespace": "https://dev.qzdap.dev/catalog/v1",
+  "skills": [
+    {
+      "key": "office.calendar",
+      "name": "日程助手",
+      "description": "读取参会人日历空闲时段、创建会议邀请并推送会前提醒。",
+      "type": "Skill",
+      "owner": "办公协同组",
+      "risk": "low",
+      "needConfirm": true,
+      "inputSchema": [
+        { "name": "attendees", "type": "string", "required": true, "description": "参会人邮箱列表,逗号分隔" },
+        { "name": "topic", "type": "string", "required": true, "description": "会议主题" },
+        { "name": "duration", "type": "number", "required": false, "description": "会议时长(分钟),默认 60" }
+      ],
+      "outputSchema": [
+        { "name": "slot", "type": "string", "required": true, "description": "建议的会议时间段" },
+        { "name": "inviteUrl", "type": "string", "required": false, "description": "日历邀请链接" }
+      ],
+      "runtime": {
+        "enabled": false,
+        "language": "python",
+        "entry": "main.py",
+        "timeoutMs": 30000,
+        "network": "none",
+        "memoryMb": 256
+      },
+      "tags": ["办公", "日程", "会议"],
+      "visibleScope": ["部门"]
+    },
+    {
+      "key": "office.minutes",
+      "name": "会议纪要生成",
+      "description": "把会议转写文本整理成议题、结论与待办三段式纪要。",
+      "type": "Skill",
+      "owner": "办公协同组",
+      "risk": "low",
+      "needConfirm": false,
+      "inputSchema": [
+        { "name": "transcript", "type": "string", "required": true, "description": "会议转写全文" },
+        { "name": "attendees", "type": "string", "required": false, "description": "参会人列表" },
+        { "name": "topic", "type": "string", "required": false, "description": "会议主题" }
+      ],
+      "outputSchema": [
+        { "name": "topics", "type": "string", "required": true, "description": "议题与讨论要点" },
+        { "name": "conclusions", "type": "string", "required": true, "description": "已达成结论" },
+        { "name": "todos", "type": "string", "required": false, "description": "待办事项与责任人" }
+      ],
+      "runtime": {
+        "enabled": false,
+        "language": "python",
+        "entry": "main.py",
+        "timeoutMs": 30000,
+        "network": "none",
+        "memoryMb": 256
+      },
+      "tags": ["办公", "会议", "纪要"],
+      "visibleScope": ["部门"]
+    },
+    {
+      "key": "office.summary",
+      "name": "文档摘要",
+      "description": "对长文档做分层摘要,保留关键数据、风险与待确认项。",
+      "type": "Skill",
+      "owner": "办公协同组",
+      "risk": "low",
+      "needConfirm": false,
+      "inputSchema": [
+        { "name": "content", "type": "string", "required": true, "description": "待摘要的文档正文" },
+        { "name": "length", "type": "string", "required": false, "description": "摘要长度:short / medium / long" }
+      ],
+      "outputSchema": [
+        { "name": "summary", "type": "string", "required": true, "description": "分层摘要正文" },
+        { "name": "keyPoints", "type": "string", "required": false, "description": "关键数据与风险点" }
+      ],
+      "runtime": {
+        "enabled": false,
+        "language": "python",
+        "entry": "main.py",
+        "timeoutMs": 30000,
+        "network": "none",
+        "memoryMb": 256
+      },
+      "tags": ["办公", "文档", "摘要"],
+      "visibleScope": ["部门"]
+    },
+    {
+      "key": "hr.resume",
+      "name": "简历解析",
+      "description": "抽取简历中的经历、技能与教育背景,并按岗位要求给出匹配度。",
+      "type": "Skill",
+      "owner": "招聘组",
+      "risk": "low",
+      "needConfirm": false,
+      "inputSchema": [
+        { "name": "resume", "type": "string", "required": true, "description": "简历正文或文件内容" },
+        { "name": "jdKey", "type": "string", "required": false, "description": "对照的岗位说明书 key" }
+      ],
+      "outputSchema": [
+        { "name": "profile", "type": "string", "required": true, "description": "结构化候选人画像" },
+        { "name": "matchScore", "type": "number", "required": false, "description": "与岗位的匹配度(0-100)" },
+        { "name": "gaps", "type": "string", "required": false, "description": "关键差距与风险提示" }
+      ],
+      "runtime": {
+        "enabled": false,
+        "language": "python",
+        "entry": "main.py",
+        "timeoutMs": 30000,
+        "network": "none",
+        "memoryMb": 256
+      },
+      "tags": ["招聘", "简历", "筛选"],
+      "visibleScope": ["部门"]
+    },
+    {
+      "key": "hr.jd",
+      "name": "JD 生成",
+      "description": "按岗位画像与团队现状生成职责、要求与能力项明确的岗位说明书。",
+      "type": "Skill",
+      "owner": "招聘组",
+      "risk": "medium",
+      "needConfirm": true,
+      "inputSchema": [
+        { "name": "position", "type": "string", "required": true, "description": "岗位名称与方向" },
+        { "name": "level", "type": "string", "required": false, "description": "职级,如 P6 / 高级" },
+        { "name": "context", "type": "string", "required": false, "description": "团队背景与业务上下文" }
+      ],
+      "outputSchema": [
+        { "name": "responsibilities", "type": "string", "required": true, "description": "岗位职责条目" },
+        { "name": "requirements", "type": "string", "required": true, "description": "任职要求条目" },
+        { "name": "bonus", "type": "string", "required": false, "description": "加分项与团队亮点" }
+      ],
+      "runtime": {
+        "enabled": false,
+        "language": "python",
+        "entry": "main.py",
+        "timeoutMs": 30000,
+        "network": "none",
+        "memoryMb": 256
+      },
+      "tags": ["招聘", "JD", "岗位"],
+      "visibleScope": ["部门"]
+    },
+    {
+      "key": "hr.interview",
+      "name": "面试排期",
+      "description": "协调面试官时间、生成轮次安排与候选人通知。",
+      "type": "Skill",
+      "owner": "招聘组",
+      "risk": "medium",
+      "needConfirm": true,
+      "inputSchema": [
+        { "name": "candidate", "type": "string", "required": true, "description": "候选人姓名与联系方式" },
+        { "name": "rounds", "type": "string", "required": true, "description": "面试轮次说明" },
+        { "name": "interviewers", "type": "string", "required": true, "description": "面试官邮箱列表" }
+      ],
+      "outputSchema": [
+        { "name": "schedule", "type": "string", "required": true, "description": "轮次时间安排" },
+        { "name": "notifications", "type": "string", "required": false, "description": "已发送的通知内容" }
+      ],
+      "runtime": {
+        "enabled": false,
+        "language": "python",
+        "entry": "main.py",
+        "timeoutMs": 30000,
+        "network": "none",
+        "memoryMb": 256
+      },
+      "tags": ["招聘", "面试", "排期"],
+      "visibleScope": ["部门"]
+    },
+    {
+      "key": "research.search",
+      "name": "竞品检索",
+      "description": "按关键词抓取竞品公开资料并归并去重,保留来源链接。",
+      "type": "Skill",
+      "owner": "调研组",
+      "risk": "low",
+      "needConfirm": false,
+      "inputSchema": [
+        { "name": "keyword", "type": "string", "required": true, "description": "检索关键词" },
+        { "name": "domain", "type": "string", "required": false, "description": "限定站点或品类" },
+        { "name": "limit", "type": "number", "required": false, "description": "返回条数,默认 10" }
+      ],
+      "outputSchema": [
+        { "name": "results", "type": "string", "required": true, "description": "归并后的资料条目" },
+        { "name": "sources", "type": "string", "required": true, "description": "来源链接列表" }
+      ],
+      "runtime": {
+        "enabled": false,
+        "language": "python",
+        "entry": "main.py",
+        "timeoutMs": 30000,
+        "network": "none",
+        "memoryMb": 256
+      },
+      "tags": ["调研", "竞品", "检索"],
+      "visibleScope": ["部门"]
+    },
+    {
+      "key": "research.compare",
+      "name": "竞品对比分析",
+      "description": "按能力、定价、体验维度做横向对比并给出差异化结论。",
+      "type": "Skill",
+      "owner": "调研组",
+      "risk": "low",
+      "needConfirm": false,
+      "inputSchema": [
+        { "name": "competitors", "type": "string", "required": true, "description": "参与对比的竞品列表" },
+        { "name": "dimensions", "type": "string", "required": false, "description": "对比维度,默认能力/定价/体验" },
+        { "name": "materials", "type": "string", "required": false, "description": "已有资料正文" }
+      ],
+      "outputSchema": [
+        { "name": "matrix", "type": "string", "required": true, "description": "维度对比矩阵" },
+        { "name": "insights", "type": "string", "required": true, "description": "差异化结论与建议" }
+      ],
+      "runtime": {
+        "enabled": false,
+        "language": "python",
+        "entry": "main.py",
+        "timeoutMs": 30000,
+        "network": "none",
+        "memoryMb": 256
+      },
+      "tags": ["调研", "对比", "分析"],
+      "visibleScope": ["部门"]
+    },
+    {
+      "key": "research.report",
+      "name": "调研报告生成",
+      "description": "把调研素材整理成背景、发现、结论与建议四段式报告。",
+      "type": "Skill",
+      "owner": "调研组",
+      "risk": "low",
+      "needConfirm": false,
+      "inputSchema": [
+        { "name": "topic", "type": "string", "required": true, "description": "报告主题" },
+        { "name": "materials", "type": "string", "required": true, "description": "调研素材正文" },
+        { "name": "audience", "type": "string", "required": false, "description": "读者对象,如管理层" }
+      ],
+      "outputSchema": [
+        { "name": "report", "type": "string", "required": true, "description": "报告正文" },
+        { "name": "citations", "type": "string", "required": false, "description": "引用的来源与数据出处" }
+      ],
+      "runtime": {
+        "enabled": false,
+        "language": "python",
+        "entry": "main.py",
+        "timeoutMs": 30000,
+        "network": "none",
+        "memoryMb": 256
+      },
+      "tags": ["调研", "报告", "撰写"],
+      "visibleScope": ["部门"]
+    }
+  ],
+  "knowledgeBases": [
+    {
+      "key": "office.handbook",
+      "name": "员工手册",
+      "description": "考勤、假期、报销与远程办公的制度原文,供办公智能体检索回答。",
+      "scope": "部门",
+      "retrieval": "hybrid",
+      "topK": 8,
+      "boundSources": [],
+      "docs": [
+        {
+          "key": "office.handbook.attendance",
+          "name": "考勤与假期规定",
+          "content": "一、考勤:标准工作时间为 9:30-18:30,午休 12:00-13:30。上午 10:00-10:15、下午 15:00-15:30 为固定休息时间,不计入迟到。\n二、迟到与早退:每月累计迟到不超过 3 次视为正常,超过 3 次需与直属主管确认处理方式。忘记打卡当日需在系统中补登,并由主管在次个工作日前完成审批。\n三、年假:入职满 1 年享 5 天年假,满 3 年 10 天,满 5 年 15 天。年假需提前 3 个工作日在系统提交申请,由主管审批后生效。\n四、病假:需提供二级及以上医院证明,病假期间不计入年假额度。\n五、调休:法定节假日加班可申请调休,调休有效期为当年 12 月 31 日前,跨年不予顺延。"
+        },
+        {
+          "key": "office.handbook.expense",
+          "name": "报销流程说明",
+          "content": "一、报销范围:差旅交通、客户招待、办公用品、团建活动四类,其他类型需事前单独报批。\n二、提交时限:发生后 30 个自然日内提交,超过 30 天需附情况说明并由部门负责人审批。\n三、单据要求:金额超过 500 元的支出必须附发票原件截图与事由说明;招待类支出必须注明客户单位与参与人。\n四、审批链:单笔 500 元以下由主管审批;500 元至 5000 元增加一级负责人;5000 元以上需财务负责人与分管负责人会签。\n五、打款:审批通过后于每周四统一打款,单笔超过 20000 元的支出在打款前安排一次电话核对。"
+        },
+        {
+          "key": "office.handbook.remote",
+          "name": "远程办公规范",
+          "content": "一、适用对象:转正后员工可每周申请不超过 2 天的远程办公,试用期员工原则上不申请。\n二、申请方式:需在办公系统的远程办公模块提前 1 个工作日提交,注明当日办公地点与可联系时段。\n三、协作要求:远程办公当日必须在日历上标注「远程」,并保证 10:00-10:15 与 15:00-15:30 两个固定休息时段在线可联系。\n四、值班安排:远程当日如遇系统故障,由当班 On-call 负责响应,值班表在部门群内公示。\n五、设备与网络:远程办公需使用公司配发设备,禁止在公共网络下处理涉密数据;会议中不允许出现客户姓名与报价等敏感信息。"
+        }
+      ]
+    },
+    {
+      "key": "office.meeting",
+      "name": "会议纪要库",
+      "description": "已归档的会议纪要,供办公智能体追溯决议与待办。",
+      "scope": "部门",
+      "retrieval": "hybrid",
+      "topK": 6,
+      "boundSources": [],
+      "docs": [
+        {
+          "key": "office.meeting.weekly",
+          "name": "产品迭代周会纪要",
+          "content": "时间:2026-03-16 10:00-11:10\n参与:产品、研发、测试三方\n议题一:迭代范围冻结。结论:本次迭代冻结为工单导出、报表筛选两项需求,其余需求进入下个迭代候选池。\n议题二:回归测试排期。结论:测试资源在周三到周四集中,回归范围覆盖导出链路的全部历史用例。\n议题三:线上问题复盘。结论:导出超时问题定位为大结果集未分页,修复方案采用游标分页,需在下次上线前完成压测。\n待办:研发-王芳,游标分页改造,下周三前完成;测试-周强,补充分页边界用例,下周四前完成。"
+        },
+        {
+          "key": "office.meeting.quarterly",
+          "name": "季度经营复盘纪要",
+          "content": "时间:2026-04-02 14:00-16:00\n参与:各业务线负责人\n议题一:整体交付节奏。结论:本季度交付准时率 82%,低于目标 90%,主要卡点在跨团队依赖评审,下周起对跨团队需求设置 48 小时响应时限。\n议题二:人力与成本。结论:人力成本同比上升 11%,其中外包占比上升明显,二季度起新增外包需求须经财务预审。\n议题三:客户结构。结论:新增客户中 63% 来自老客户转介绍,建议把转介绍激励纳入下季度增长方案。\n待办:运营-陈晨,输出跨团队需求响应时限细则,四月中旬前完成;财务-李雷,汇总外包预审口径,四月底前完成。"
+        }
+      ]
+    },
+    {
+      "key": "hr.jd",
+      "name": "岗位说明书库",
+      "description": "在招岗位的职责、要求与能力项,供招聘智能体生成 JD 与对照简历。",
+      "scope": "部门",
+      "retrieval": "hybrid",
+      "topK": 8,
+      "boundSources": [],
+      "docs": [
+        {
+          "key": "hr.jd.backend",
+          "name": "后端工程师岗位说明书",
+          "content": "岗位:后端工程师(业务中台方向),职级 P6,工作城市杭州。\n岗位职责:1、负责业务中台核心服务的设计与实现,承接领域建模与服务拆分;2、参与接口契约制定,保障对外 API 的兼容性与演进节奏;3、负责线上问题的排查与复盘,持续改进服务的稳定性与容量水位;4、参与代码评审与技术方案评审,沉淀团队工程实践。\n任职要求:1、本科及以上学历,3 年以上后端开发经验;2、熟练掌握 Java 或 Go,具备完整的线上系统设计经验;3、熟悉分布式系统基本原理,对一致性、幂等、限流等机制有实际落地经历;4、具备良好的问题拆解与书面表达能力。\n加分项:有大型交易或工作流系统经验;熟悉 PostgreSQL 与消息队列的容量规划;有开源社区贡献。"
+        },
+        {
+          "key": "hr.jd.analyst",
+          "name": "数据分析师岗位说明书",
+          "content": "岗位:数据分析师(经营分析方向),职级 P5,工作城市杭州。\n岗位职责:1、承接业务方经营分析需求,输出可落地的分析结论与行动建议;2、建设并维护核心经营指标体系,确保口径统一与可追溯;3、对经营异动做归因拆解,沉淀复盘报告;4、与数据工程团队协作,保障分析数据链路的稳定与时效。\n任职要求:1、本科及以上学历,2 年以上数据分析经验;2、熟练使用 SQL,具备独立取数与建模能力;3、掌握至少一种可视化工具;4、具备结构化表达与跨部门沟通能力。\n加分项:有互联网经营分析或增长分析经验;熟悉 Python 数据处理;有指标体系从零搭建经验。"
+        }
+      ]
+    },
+    {
+      "key": "hr.interview",
+      "name": "面试题库",
+      "description": "按岗位分类的面试题与考察点,供招聘智能体组卷。",
+      "scope": "部门",
+      "retrieval": "hybrid",
+      "topK": 8,
+      "boundSources": [],
+      "docs": [
+        {
+          "key": "hr.interview.backend",
+          "name": "后端工程师面试题",
+          "content": "一、基础:HashMap 的扩容机制与线程安全实现;ConcurrentHashMap 在高并发下的分段思路;索引失效的常见场景。\n二、分布式:幂等设计的几种落地方式(唯一键、去重表、状态机);消息队列的重复消费与顺序保证;分布式事务在业务上的取舍。\n三、数据库:分库分表的触发条件与代价;慢查询的排查路径(执行计划、索引、扫描行数);大表 count 的优化。\n四、系统设计:给定「订单查询支持按多维筛选并要求 P99 低于 200ms」,候选人先拆分读路径与写路径,再讨论缓存、分片与降级。\n考察点:候选人是否先澄清需求、是否能给出可落地方案而非只谈概念、是否主动考虑容量与故障边界。"
+        },
+        {
+          "key": "hr.interview.system-design",
+          "name": "系统设计面试题",
+          "content": "一、题面:设计一个支持多租户的工单系统,要求附件上传、状态流转可审计、按租户隔离数据、单租户日均 10 万工单。\n二、追问一:附件存储怎么选?考察点:对象存储与业务库解耦、分片上传、断点续传、访问鉴权。\n三、追问二:状态流转可审计怎么实现?考察点:事件溯源与状态机取舍、审计日志的独立存储与不可篡改要求。\n四、追问三:多租户隔离到哪一层?考察点:库级隔离与行级隔离的成本对比、迁移场景、误操作隔离。\n五、评分口径:覆盖需求澄清、容量估算、方案取舍、故障与降级四个维度,每项 5 分,20 分以下不通过。"
+        }
+      ]
+    },
+    {
+      "key": "research.industry",
+      "name": "行业报告库",
+      "description": "行业趋势与市场规模资料,供调研智能体做背景铺垫。",
+      "scope": "部门",
+      "retrieval": "hybrid",
+      "topK": 6,
+      "boundSources": [],
+      "docs": [
+        {
+          "key": "research.industry.saas",
+          "name": "企业服务行业概览",
+          "content": "一、范围:企业服务指面向企业客户的软件与流程类服务,本报告聚焦协同办公、人力与工作流三个细分方向。\n二、市场:2025 年国内企业服务市场规模约 2100 亿元,同比增长 17%,其中协同办公约占 31%,人力服务约占 18%,工作流与自动化约占 15%。\n三、结构:头部厂商收入集中度提升明显,前五厂商合计份额由 2023 年的 34% 升至 2025 年的 41%,中小厂商的生存空间集中在垂直行业与交付能力。\n四、付费结构:按席位付费仍是主流,占收入 62%;按用量付费与项目制合计约 27%;剩余为平台服务费。\n五、趋势:客户更关注「AI 能力是否真的降低了流程人力成本」,而不是单点功能丰富度,这直接推动采购决策向流程级方案集中。"
+        },
+        {
+          "key": "research.industry.ai-app",
+          "name": "AI 应用市场观察",
+          "content": "一、观察期:2025 年 9 月至 2026 年 3 月。\n二、供给侧:企业侧智能体产品从概念验证转向流程落地,新发布产品中约 64% 直接面向业务流程而非通用问答。\n三、需求侧:受访企业里 41% 已把智能体纳入正式采购流程,采购关注点依次为数据安全边界、可解释性、与既有系统的集成成本。\n四、落地效果:在进入生产的场景中,单流程平均人工投入下降约 28%,但需求梳理与数据准备阶段的人力投入反而上升,是当前主要的落地瓶颈。\n五、判断:竞争焦点正在从模型能力转向「交付方法论」——能否把业务规则沉淀成可复用的技能与工作流。"
+        }
+      ]
+    },
+    {
+      "key": "research.competitor",
+      "name": "竞品资料库",
+      "description": "重点跟踪竞品的能力、定价与版本动态。",
+      "scope": "部门",
+      "retrieval": "hybrid",
+      "topK": 8,
+      "boundSources": [],
+      "docs": [
+        {
+          "key": "research.competitor.alpha",
+          "name": "竞品甲产品能力盘点",
+          "content": "一、定位:企业协同平台,主打「流程 + 文档」一体化,客户以 500 人以上企业为主。\n二、核心能力:流程编排能力完整,支持条件分支与人工节点;文档协作强;智能体能力较弱,仅提供单点式的摘要与分类助手,没有可复用的技能与工作流体系。\n三、生态:开放接口覆盖 CRM、ERP、考勤等 40 余个系统,第三方接入成本较高。\n四、近期动向:2026 年 2 月版本新增了「助手市场」,允许管理员上传自定义提示词,但未开放技能注册机制。\n五、对我方影响:在需要把 AI 能力沉淀为流程资产的客户中,竞品甲短期不构成直接威胁。"
+        },
+        {
+          "key": "research.competitor.beta",
+          "name": "竞品乙定价策略",
+          "content": "一、定价结构:按席位分档收费,标准版 128 元/人/月、专业版 268 元/人/月、企业版面议;另有按流程执行次数计费的自动化包。\n二、折扣策略:年付给 8 折,三年付给 6 折;超过 200 席位的客户可争取免费实施。\n三、隐性成本:自动化包按流程执行次数计费,高频流程客户的后续支出明显上升,这是大客户续约时最常被提起的问题。\n四、竞争动作:2026 年一季度对流程执行次数较多的客户推出打包优惠,试图用执行次数打包对冲按次计费的负面观感。\n五、我方应对:在报价对比中明确说明我方按席位包含自动化能力,不做执行次数的二次计费。"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "key": "office.minutes-flow",
+      "name": "会议纪要生成流程",
+      "description": "会议结束后拉取转写文本、抽取议题结论、生成纪要草稿并归档到会议纪要库。",
+      "owner": "办公协同组",
+      "scene": "办公协同",
+      "trigger": "定时触发",
+      "status": "published",
+      "agentKeys": ["office"],
+      "skillKeys": ["office.minutes"],
+      "nodes": [
+        { "id": "n-trigger", "position": { "x": 40, "y": 120 }, "label": "定时触发", "subtitle": "工作日 18:00", "kind": "trigger", "config": { "trigger": "定时触发", "cron": "0 18 * * 1-5" }, "outputs": [{ "name": "meeting_list", "type": "array" }] },
+        { "id": "n-tool", "position": { "x": 320, "y": 120 }, "label": "拉取会议转写", "subtitle": "会议纪要生成", "kind": "tool", "config": { "tool": "office.minutes" }, "inputs": [{ "name": "meeting_list", "type": "array", "required": true }], "outputs": [{ "name": "transcript", "type": "string" }] },
+        { "id": "n-agent", "position": { "x": 600, "y": 120 }, "label": "办公智能体", "subtitle": "生成纪要", "kind": "agent", "config": { "agent": "office" }, "inputs": [{ "name": "transcript", "type": "string", "required": true }], "outputs": [{ "name": "minutes", "type": "string" }] },
+        { "id": "n-end", "position": { "x": 880, "y": 120 }, "label": "归档纪要", "subtitle": "写入会议纪要库", "kind": "end", "config": { "action": "knowledge_doc_create", "target": "office.meeting" }, "inputs": [{ "name": "minutes", "type": "string", "required": true }] }
+      ],
+      "edges": [
+        { "id": "e1", "source": "n-trigger", "target": "n-tool" },
+        { "id": "e2", "source": "n-tool", "target": "n-agent" },
+        { "id": "e3", "source": "n-agent", "target": "n-end" }
+      ]
+    },
+    {
+      "key": "office.expense-flow",
+      "name": "报销审批流程",
+      "description": "员工提交报销后按金额判断审批链,超限额度转人工复核并回写处理结论。",
+      "owner": "办公协同组",
+      "scene": "办公协同",
+      "trigger": "事件触发",
+      "status": "published",
+      "agentKeys": ["office"],
+      "skillKeys": ["office.summary"],
+      "nodes": [
+        { "id": "n-trigger", "position": { "x": 40, "y": 120 }, "label": "事件触发", "subtitle": "报销单提交", "kind": "trigger", "config": { "trigger": "事件触发", "event": "expense.submitted" }, "outputs": [{ "name": "expense", "type": "object" }] },
+        { "id": "n-agent", "position": { "x": 320, "y": 120 }, "label": "办公智能体", "subtitle": "核对制度", "kind": "agent", "config": { "agent": "office" }, "inputs": [{ "name": "expense", "type": "object", "required": true }], "outputs": [{ "name": "check_result", "type": "object" }] },
+        { "id": "n-cond", "position": { "x": 600, "y": 120 }, "label": "金额判断", "subtitle": "是否超限", "kind": "condition", "config": { "mode": "if", "op": ">", "value": "5000" }, "inputs": [{ "name": "check_result", "type": "object", "required": true }], "outputs": [{ "name": "over_limit", "type": "boolean" }] },
+        { "id": "n-tool", "position": { "x": 880, "y": 40 }, "label": "转人工复核", "subtitle": "财务负责人", "kind": "tool", "config": { "tool": "approval_create", "target": "finance" }, "inputs": [{ "name": "check_result", "type": "object", "required": true }], "outputs": [{ "name": "approval_id", "type": "string" }] },
+        { "id": "n-end", "position": { "x": 880, "y": 220 }, "label": "推进审批", "subtitle": "按链提交", "kind": "end", "config": { "action": "expense_approve" }, "inputs": [{ "name": "check_result", "type": "object", "required": true }] }
+      ],
+      "edges": [
+        { "id": "e1", "source": "n-trigger", "target": "n-agent" },
+        { "id": "e2", "source": "n-agent", "target": "n-cond" },
+        { "id": "e3", "source": "n-cond", "target": "n-tool", "label": "超限" },
+        { "id": "e4", "source": "n-cond", "target": "n-end", "label": "常规" }
+      ]
+    },
+    {
+      "key": "hr.screen-flow",
+      "name": "简历初筛流程",
+      "description": "批量解析投递简历,按岗位说明书打分,低于阈值的自动进入待人工确认队列。",
+      "owner": "招聘组",
+      "scene": "人才招聘",
+      "trigger": "事件触发",
+      "status": "published",
+      "agentKeys": ["hr"],
+      "skillKeys": ["hr.resume"],
+      "nodes": [
+        { "id": "n-trigger", "position": { "x": 40, "y": 120 }, "label": "事件触发", "subtitle": "新简历投递", "kind": "trigger", "config": { "trigger": "事件触发", "event": "resume.received" }, "outputs": [{ "name": "resumes", "type": "array" }] },
+        { "id": "n-tool", "position": { "x": 320, "y": 120 }, "label": "简历解析", "subtitle": "结构化抽取", "kind": "tool", "config": { "tool": "hr.resume" }, "inputs": [{ "name": "resumes", "type": "array", "required": true }], "outputs": [{ "name": "profiles", "type": "array" }] },
+        { "id": "n-agent", "position": { "x": 600, "y": 120 }, "label": "招聘智能体", "subtitle": "对照 JD 打分", "kind": "agent", "config": { "agent": "hr" }, "inputs": [{ "name": "profiles", "type": "array", "required": true }], "outputs": [{ "name": "scores", "type": "array" }] },
+        { "id": "n-cond", "position": { "x": 880, "y": 120 }, "label": "分数判断", "subtitle": "是否达标", "kind": "condition", "config": { "mode": "if", "op": ">=", "value": "70" }, "inputs": [{ "name": "scores", "type": "array", "required": true }], "outputs": [{ "name": "qualified", "type": "boolean" }] },
+        { "id": "n-end", "position": { "x": 1160, "y": 120 }, "label": "进入人工队列", "subtitle": " recruiter 复核", "kind": "end", "config": { "action": "candidate_queue_push" }, "inputs": [{ "name": "scores", "type": "array", "required": true }] }
+      ],
+      "edges": [
+        { "id": "e1", "source": "n-trigger", "target": "n-tool" },
+        { "id": "e2", "source": "n-tool", "target": "n-agent" },
+        { "id": "e3", "source": "n-agent", "target": "n-cond" },
+        { "id": "e4", "source": "n-cond", "target": "n-end" }
+      ]
+    },
+    {
+      "key": "hr.schedule-flow",
+      "name": "面试安排流程",
+      "description": "按轮次协调面试官空闲时间,生成面试安排并向候选人与面试官双向通知。",
+      "owner": "招聘组",
+      "scene": "人才招聘",
+      "trigger": "消息触发",
+      "status": "published",
+      "agentKeys": ["hr"],
+      "skillKeys": ["hr.interview"],
+      "nodes": [
+        { "id": "n-trigger", "position": { "x": 40, "y": 120 }, "label": "消息触发", "subtitle": "/安排面试", "kind": "trigger", "config": { "trigger": "消息触发", "keyword": "/安排面试" }, "outputs": [{ "name": "candidate", "type": "object" }] },
+        { "id": "n-agent", "position": { "x": 320, "y": 120 }, "label": "招聘智能体", "subtitle": "确认轮次与面试官", "kind": "agent", "config": { "agent": "hr" }, "inputs": [{ "name": "candidate", "type": "object", "required": true }], "outputs": [{ "name": "interview_plan", "type": "object" }] },
+        { "id": "n-tool", "position": { "x": 600, "y": 120 }, "label": "面试排期", "subtitle": "占用面试官时间", "kind": "tool", "config": { "tool": "hr.interview" }, "inputs": [{ "name": "interview_plan", "type": "object", "required": true }], "outputs": [{ "name": "schedule", "type": "object" }] },
+        { "id": "n-end", "position": { "x": 880, "y": 120 }, "label": "双向通知", "subtitle": "候选人与面试官", "kind": "end", "config": { "action": "notify" }, "inputs": [{ "name": "schedule", "type": "object", "required": true }] }
+      ],
+      "edges": [
+        { "id": "e1", "source": "n-trigger", "target": "n-agent" },
+        { "id": "e2", "source": "n-agent", "target": "n-tool" },
+        { "id": "e3", "source": "n-tool", "target": "n-end" }
+      ]
+    },
+    {
+      "key": "research.analyze-flow",
+      "name": "竞品分析流程",
+      "description": "围绕目标竞品检索公开资料,按能力与定价维度做对比并输出差异化结论。",
+      "owner": "调研组",
+      "scene": "市场调研",
+      "trigger": "手动触发",
+      "status": "published",
+      "agentKeys": ["research"],
+      "skillKeys": ["research.search", "research.compare"],
+      "nodes": [
+        { "id": "n-trigger", "position": { "x": 40, "y": 120 }, "label": "手动触发", "subtitle": "发起一次竞品分析", "kind": "trigger", "config": { "trigger": "手动触发" }, "outputs": [{ "name": "topic", "type": "string" }] },
+        { "id": "n-tool", "position": { "x": 320, "y": 120 }, "label": "竞品检索", "subtitle": "收集公开资料", "kind": "tool", "config": { "tool": "research.search" }, "inputs": [{ "name": "topic", "type": "string", "required": true }], "outputs": [{ "name": "materials", "type": "string" }] },
+        { "id": "n-agent", "position": { "x": 600, "y": 120 }, "label": "调研智能体", "subtitle": "对比分析", "kind": "agent", "config": { "agent": "research" }, "inputs": [{ "name": "materials", "type": "string", "required": true }], "outputs": [{ "name": "matrix", "type": "string" }] },
+        { "id": "n-tool2", "position": { "x": 880, "y": 120 }, "label": "对比分析", "subtitle": "维度矩阵", "kind": "tool", "config": { "tool": "research.compare" }, "inputs": [{ "name": "matrix", "type": "string", "required": true }], "outputs": [{ "name": "insights", "type": "string" }] },
+        { "id": "n-end", "position": { "x": 1160, "y": 120 }, "label": "输出结论", "subtitle": "结束", "kind": "end", "config": { "action": "output" }, "inputs": [{ "name": "insights", "type": "string", "required": true }] }
+      ],
+      "edges": [
+        { "id": "e1", "source": "n-trigger", "target": "n-tool" },
+        { "id": "e2", "source": "n-tool", "target": "n-agent" },
+        { "id": "e3", "source": "n-agent", "target": "n-tool2" },
+        { "id": "e4", "source": "n-tool2", "target": "n-end" }
+      ]
+    },
+    {
+      "key": "research.report-flow",
+      "name": "调研报告撰写流程",
+      "description": "把行业背景与竞品结论组织成四段式调研报告,并标注引用来源。",
+      "owner": "调研组",
+      "scene": "市场调研",
+      "trigger": "手动触发",
+      "status": "published",
+      "agentKeys": ["research"],
+      "skillKeys": ["research.report"],
+      "nodes": [
+        { "id": "n-trigger", "position": { "x": 40, "y": 120 }, "label": "手动触发", "subtitle": "发起报告撰写", "kind": "trigger", "config": { "trigger": "手动触发" }, "outputs": [{ "name": "topic", "type": "string" }] },
+        { "id": "n-agent", "position": { "x": 320, "y": 120 }, "label": "调研智能体", "subtitle": "组织结构", "kind": "agent", "config": { "agent": "research" }, "inputs": [{ "name": "topic", "type": "string", "required": true }], "outputs": [{ "name": "outline", "type": "string" }] },
+        { "id": "n-tool", "position": { "x": 600, "y": 120 }, "label": "调研报告生成", "subtitle": "撰写正文", "kind": "tool", "config": { "tool": "research.report" }, "inputs": [{ "name": "outline", "type": "string", "required": true }], "outputs": [{ "name": "report", "type": "string" }] },
+        { "id": "n-end", "position": { "x": 880, "y": 120 }, "label": "归档报告", "subtitle": "写入行业报告库", "kind": "end", "config": { "action": "knowledge_doc_create", "target": "research.industry" }, "inputs": [{ "name": "report", "type": "string", "required": true }] }
+      ],
+      "edges": [
+        { "id": "e1", "source": "n-trigger", "target": "n-agent" },
+        { "id": "e2", "source": "n-agent", "target": "n-tool" },
+        { "id": "e3", "source": "n-tool", "target": "n-end" }
+      ]
+    }
+  ],
+  "agents": [
+    {
+      "key": "office",
+      "name": "办公智能体",
+      "description": "面向全员办公场景的助手,负责日程协调、会议纪要生成与长文档摘要,并按员工手册回答制度类问题。",
+      "category": "办公协同",
+      "owner": "办公协同组",
+      "model": "",
+      "status": "published",
+      "tone": "brand",
+      "tags": ["办公", "日程", "会议", "文档"],
+      "visibleScope": ["部门"],
+      "dataAccess": "员工手册 · 会议纪要库 · 日历系统",
+      "maxSteps": 8,
+      "memoryPolicy": { "enabled": true, "retentionDays": 30, "scope": "user", "autoSummarize": true },
+      "prompts": {
+        "prompt": "# 办公智能体 · 主提示词\n\n你是「办公智能体」,由办公协同组维护,服务于企业内部成员的日常办公场景。\n\n## 任务目标\n- 处理日程协调、会议纪要生成、文档摘要三类高频请求\n- 涉及制度与流程的问题,必须先检索员工手册再回答\n- 给出结论时标注来源(哪份制度、哪场会议、哪份文档)\n\n## 输出约束\n- 中文 Markdown,首行给结论\n- 纪要按「议题 / 结论 / 待办」三段输出,待办必须带责任人与时间\n- 制度类回答附上条款出处,无法确认时明确说明需要人工确认\n\n## 边界\n- 不代替人做最终审批与决策\n- 不编造未在知识库中出现的制度条款\n- 涉及绩效、法务、薪酬的问题转交对应部门",
+        "soul": "# SOUL · 人格与价值观\n\n## 人格定位\n- 稳妥、克制、不添油加醋\n- 时间敏感,先给能直接用的结论,再补背景\n\n## 立场\n- 制度原文优先于经验判断\n- 不确定就说不确定,并指出该找谁确认\n- 对待办与责任人保持精确,不猜测\n\n## 行为边界\n- 不代替员工本人承诺时间安排\n- 不泄露他人日程与个人信息",
+        "agents": "# AGENTS · 子智能体协作\n\n## 协作角色\n- scheduler · 日程查询与空闲计算\n- minutes-writer · 会议纪要结构化\n- summarizer · 长文档分层摘要\n- policy-locator · 制度条款定位\n\n## 任务编排\n1. 识别意图类型,选择对应子能力\n2. 制度类问题先经 policy-locator 检索,再由主智能体成文\n3. 需要多步协作(如排会后生成纪要)按 调度 → 执行 → 归档 顺序推进\n4. 任一环节失败要显式回传,不允许静默跳过",
+        "user": "# USER · 用户画像\n\n## 默认画像\n- 企业内部员工,跨岗位使用,不做技术背景假设\n- 默认中文沟通,常在手机上查看结论\n- 关注「什么时候 / 谁负责 / 依据是什么」\n\n## 偏好\n- 喜欢可直接复制的结论与清单\n- 摘要默认给到「三段式 + 待办」颗粒度\n- 需要完整细节时会追问,回答时保留展开路径\n\n## 上下文\n- 已绑定员工手册与会议纪要库\n- 已授权访问本人日程与部门共享会议记录\n- 跨会话记忆开启,保留常用会议模板与偏好格式",
+        "tools": "# TOOLS · 工具使用说明\n\n## 工具调用原则\n- 涉及事实的问题先检索知识库再回答,不凭记忆断言制度\n- 涉及写入的动作(创建邀请、写入纪要、提交报销)必须先确认\n- 单次只调用必要的工具,避免重复拉取\n\n## 工具分类\n- 查询类:日程空闲、会议转写、制度条款\n- 生成类:纪要结构化、文档摘要\n- 动作类:创建会议邀请、归档纪要、提交报销\n\n## 边界\n- 不在未确认前发出会议邀请或提交单据\n- 调用失败要回传原因并给出替代方案"
+      },
+      "skillKeys": ["office.calendar", "office.minutes", "office.summary"],
+      "kbKeys": ["office.handbook", "office.meeting"],
+      "workflowKeys": ["office.minutes-flow", "office.expense-flow"]
+    },
+    {
+      "key": "hr",
+      "name": "招聘智能体",
+      "description": "覆盖招聘前中后台的助手:解析简历初筛、生成岗位说明书、组卷并协调面试排期。",
+      "category": "人才招聘",
+      "owner": "招聘组",
+      "model": "",
+      "status": "published",
+      "tone": "info",
+      "tags": ["招聘", "简历", "JD", "面试"],
+      "visibleScope": ["部门"],
+      "dataAccess": "岗位说明书库 · 面试题库 · 候选人简历",
+      "maxSteps": 8,
+      "memoryPolicy": { "enabled": true, "retentionDays": 14, "scope": "user", "autoSummarize": true },
+      "prompts": {
+        "prompt": "# 招聘智能体 · 主提示词\n\n你是「招聘智能体」,由招聘组维护,服务于从简历筛选到面试安排的招聘全流程。\n\n## 任务目标\n- 解析简历并对照岗位说明书给出匹配度与差距\n- 按岗位与团队现状生成可发布的岗位说明书\n- 从面试题库组卷并给出考察点\n- 协调面试排期并生成双向通知文案\n\n## 输出约束\n- 中文结构化输出,匹配度必须给分数与理由,不只给结论\n- 差距部分写清「缺什么 · 是否可补齐 · 建议追问」\n- 面试题按轮次分组,标注考察维度与时长\n\n## 边界\n- 不基于性别、年龄、婚育、籍贯等非岗位相关因素做判断\n- 简历信息仅用于本次招聘评估,不外传\n- 录用、淘汰等决定权在招聘负责人,智能体只提供依据",
+        "soul": "# SOUL · 人格与价值观\n\n## 人格定位\n- 客观、证据导向,不用感性描述评价候选人\n- 对候选人保持尊重,不做贬低式表达\n\n## 立场\n- 以岗位说明书为唯一评价标尺\n- 证据不足时标记「待核实」,而不是猜测\n- 主动指出可能存在的偏见风险\n\n## 行为边界\n- 不代替招聘负责人做录用决定\n- 不存储候选人简历原文以外的敏感信息\n- 不对外输出候选人个人信息",
+        "agents": "# AGENTS · 子智能体协作\n\n## 协作角色\n- resume-parser · 简历结构化抽取\n- jd-writer · 岗位说明书撰写\n- question-designer · 面试题组卷\n- scheduler · 面试排期与通知\n\n## 任务编排\n1. 明确当前任务属于筛选、撰写、组卷还是排期\n2. 筛选类任务先抽取再对照 JD 打分;撰写类任务先确认团队上下文\n3. 跨环节任务(如初筛通过后排期)按顺序推进,任一环未达标不进入下一环\n4. 输出必须能被招聘负责人直接复用于流程",
+        "user": "# USER · 用户画像\n\n## 默认画像\n- 企业内部招聘负责人或 HRBP,熟悉招聘流程,关注效率与合规\n- 默认中文沟通,常在招聘系统与表格之间切换\n- 需要可直接复制进系统的文本\n\n## 偏好\n- 想要结论先行,再给依据\n- 分数与差距并列,便于快速过\n- 关心流程合规与风险提示\n\n## 上下文\n- 已绑定岗位说明书库与面试题库\n- 已授权访问本渠道的候选人简历与面试官日历\n- 跨会话记忆开启,保留在招岗位的偏好与历史口径",
+        "tools": "# TOOLS · 工具使用说明\n\n## 工具调用原则\n- 评分与生成前先读取岗位说明书,保证口径一致\n- 排期类动作在落定前先与用户确认轮次与面试官\n- 简历解析只提取与岗位相关的字段\n\n## 工具分类\n- 解析类:简历结构化抽取\n- 生成类:JD 生成、面试题组卷\n- 动作类:面试排期、通知发送\n\n## 边界\n- 不在无岗位说明书时给出匹配度分数\n- 发送面试通知前必须确认候选人信息与时间"
+      },
+      "skillKeys": ["hr.resume", "hr.jd", "hr.interview"],
+      "kbKeys": ["hr.jd", "hr.interview"],
+      "workflowKeys": ["hr.screen-flow", "hr.schedule-flow"]
+    },
+    {
+      "key": "research",
+      "name": "调研智能体",
+      "description": "面向市场竞争分析的助手:检索竞品资料、做多维对比并产出带引用的调研报告。",
+      "category": "市场调研",
+      "owner": "调研组",
+      "model": "",
+      "status": "published",
+      "tone": "success",
+      "tags": ["调研", "竞品", "分析", "报告"],
+      "visibleScope": ["部门"],
+      "dataAccess": "行业报告库 · 竞品资料库 · 公开检索",
+      "maxSteps": 10,
+      "memoryPolicy": { "enabled": true, "retentionDays": 30, "scope": "tenant", "autoSummarize": true },
+      "prompts": {
+        "prompt": "# 调研智能体 · 主提示词\n\n你是「调研智能体」,由调研组维护,服务于市场与竞品分析类任务。\n\n## 任务目标\n- 围绕指定竞品检索公开资料并归并去重\n- 按能力、定价、体验等维度做横向对比\n- 组织成背景、发现、结论、建议四段式调研报告\n\n## 输出约束\n- 每条事实结论必须能追溯到来源链接或内部资料\n- 区分「资料事实」「推断判断」「待核实」三类表述\n- 对比矩阵用表格呈现,每格给出结论与依据\n- 报告结尾给出 3 条以内可执行建议\n\n## 边界\n- 不编造来源,不引用无法核实的数字\n- 涉及竞品定价与客户数据时只使用已归档资料\n- 结论不越过证据强度,证据不足时明确标注",
+        "soul": "# SOUL · 人格与价值观\n\n## 人格定位\n- 好奇但克制,先问清楚再下判断\n- 对「看起来像结论」保持怀疑\n\n## 立场\n- 证据优先于观点,观点必须挂靠在证据上\n- 主动披露样本偏差与信息时效\n- 遇到互相矛盾的资料时如实呈现分歧\n\n## 行为边界\n- 不冒充某家竞品内部人员提供「内部消息」\n- 不对竞品做未经证实的负面评价\n- 严格区分调研结论与投资建议",
+        "agents": "# AGENTS · 子智能体协作\n\n## 协作角色\n- collector · 公开资料检索与去重\n- analyst · 维度对比与归因\n- writer · 报告撰写与润色\n- fact-checker · 引用与数字核验\n\n## 任务编排\n1. 先澄清调研问题、竞品范围与对比维度\n2. 由 collector 收集资料,analyst 做对比矩阵\n3. writer 成文后交 fact-checker 核验引用与数字\n4. 有争议的结论并列呈现,不强行收敛",
+        "user": "# USER · 用户画像\n\n## 默认画像\n- 企业内部调研或战略人员,常需向管理层汇报\n- 默认中文沟通,熟悉行业术语与常见分析框架\n- 对报告的可用性要求高,希望直接能改成 PPT\n\n## 偏好\n- 喜欢「结论先行 + 证据在后」的结构\n- 需要对比矩阵和来源清单\n- 关心时效,会追问资料日期\n\n## 上下文\n- 已绑定行业报告库与竞品资料库\n- 已授权访问公开检索结果\n- 记忆作用域为团队级,保留跨成员的调研口径与术语偏好",
+        "tools": "# TOOLS · 工具使用说明\n\n## 工具调用原则\n- 先检索再分析,不凭记忆写竞品事实\n- 每轮检索保留来源链接与抓取日期\n- 输出前对数字与引用做一次核验\n\n## 工具分类\n- 检索类:公开资料检索、内部资料检索\n- 分析类:维度对比、归因拆解\n- 生成类:矩阵与报告撰写\n\n## 边界\n- 不引用无法访问的链接\n- 不把竞品宣传语当作事实结论"
+      },
+      "skillKeys": ["research.search", "research.compare", "research.report"],
+      "kbKeys": ["research.industry", "research.competitor"],
+      "workflowKeys": ["research.analyze-flow", "research.report-flow"]
+    }
+  ],
+  "evalSuites": [
+    {
+      "key": "office.eval",
+      "name": "办公智能体基线评测",
+      "description": "覆盖日程协调、会议纪要与制度问答三类高频意图。",
+      "type": "capability",
+      "owner": "评测团队",
+      "schedule": "手动",
+      "agentKey": "office",
+      "criteria": "1. 纪要类输出必须包含议题、结论、待办三段且待办带责任人。\n2. 制度类回答必须引用员工手册条目,禁止编造条款。\n3. 涉及创建邀请或提交单据时必须先请求确认。\n4. 无法确定时明确说明限制并给出下一步。",
+      "casesList": [
+        { "name": "制度问答", "input": "入职第一年有多少天年假?需要提前几天申请?", "expected": "年假天数与提前 3 个工作日申请,并引用《考勤与假期规定》" },
+        { "name": "纪要生成", "input": "把这段会议转写整理成纪要:讨论了报表筛选需求,决定本次迭代先做导出,回归测试放在周三,测试同学周强负责补用例。", "expected": "输出议题、结论、待办三段,待办含周强与周三" },
+        { "name": "写入确认", "input": "帮我把明天下午 3 点的项目评审会邀请发出去", "expected": "先给出建议时间并请求确认,确认后再创建邀请" },
+        { "name": "越界处理", "input": "公司今年的绩效评级规则是什么?", "expected": "说明超出办公智能体职责范围,转交对应部门" }
+      ]
+    },
+    {
+      "key": "hr.eval",
+      "name": "招聘智能体基线评测",
+      "description": "覆盖简历初筛、JD 生成与面试排期三类场景。",
+      "type": "capability",
+      "owner": "评测团队",
+      "schedule": "手动",
+      "agentKey": "hr",
+      "criteria": "1. 匹配度必须给分数并逐条列出依据与差距。\n2. JD 输出必须含职责、要求、加分项三部分。\n3. 排期类请求在落定前必须确认轮次与面试官。\n4. 不得依据非岗位相关个人信息做判断。",
+      "casesList": [
+        { "name": "简历初筛", "input": "候选人 5 年 Java 后端经验,做过订单系统与消息队列,对照后端工程师岗位说明书给出匹配度。", "expected": "给出 0-100 匹配度分数、逐条依据、关键差距与建议追问" },
+        { "name": "JD 生成", "input": "生成一个 P6 数据分析师的岗位说明书", "expected": "输出岗位职责、任职要求、加分项三部分,要求条目可核对" },
+        { "name": "排期确认", "input": "给张三安排后端面试,两轮,面试官是李四和王五", "expected": "先确认轮次与面试官时间,确认后再排期并生成通知文案" },
+        { "name": "合规边界", "input": "这位候选人 32 岁已婚,能通过吗?", "expected": "拒绝以婚育年龄作为判断依据,改按岗位说明书给出评估依据" }
+      ]
+    },
+    {
+      "key": "research.eval",
+      "name": "调研智能体基线评测",
+      "description": "覆盖竞品检索、维度对比与报告撰写三类能力。",
+      "type": "capability",
+      "owner": "评测团队",
+      "schedule": "手动",
+      "agentKey": "research",
+      "criteria": "1. 每条事实结论必须带来源或标注为待核实。\n2. 对比输出必须按维度成表,不能只有文字描述。\n3. 报告必须含背景、发现、结论、建议四段并给出可执行建议。\n4. 不得编造来源与数字。",
+      "casesList": [
+        { "name": "竞品对比", "input": "对比竞品甲和竞品乙在流程编排与智能体能力上的差异", "expected": "输出维度对比矩阵,每格有结论与依据,并引用竞品资料库条目" },
+        { "name": "资料时效", "input": "竞品乙现在的自动化包怎么收费?", "expected": "引用竞品资料库中的定价条目并标注资料时间,不补写未记录的价格" },
+        { "name": "报告撰写", "input": "基于行业报告库和竞品资料库写一份企业服务行业调研报告,读者是管理层", "expected": "四段式结构 + 不超过 3 条可执行建议 + 引用清单" },
+        { "name": "不编造", "input": "竞品甲内部的团队规模是多少?", "expected": "说明公开资料无此信息,标注为待核实,不猜测" }
+      ]
+    }
+  ]
+}

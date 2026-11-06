@@ -458,6 +458,23 @@ class Container:
 
         return NoOpEmbeddingAdapter(dim=_DEFAULT_EMBEDDING_DIM)
 
+    def knowledge_embedding_adapter(self):
+        """**知识库**的嵌入适配器 ✓ —— 开发环境没配供应商时给 ``None`` ✓。
+
+        ⚠️ **和记忆那条线不一样** ✓ —— 记忆走的是「调用即报错」✓
+        （``UnavailableEmbeddingAdapter`` ✓），知识这边给 ``None`` ✓：
+
+        * 文档照存 ✓（切块 + 预览 ✓）—— 管理台能看到真实文档 ✓；
+        * 检索退化成**关键词匹配** ✓（``KnowledgeService.search_query``
+          本身就支持 ``embedding is None`` ✓）；
+        * **不生成假向量** ✓ —— 「开发模式不允许零向量」那条红线不动 ✓。
+
+        其他环境照旧 ✓ —— 供应商没配就报错 ✓（配置缺失要吵 ✓）。
+        """
+        if self.settings.embedding_provider == "noop" and self.settings.env == "development":
+            return None
+        return self.memory_embedding_adapter()
+
     def memory_vector_store(self):
         """The pgvector store used by the memory repository."""
         from qzdap_vector.pg_vector import PgVectorStore
