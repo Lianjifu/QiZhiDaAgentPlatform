@@ -71,7 +71,6 @@ class KeySource(StrEnum):
 KeyStrength = Literal["strong", "weak"]
 IdempotencyOutcome = Literal["new", "duplicate", "in_progress", "taken_over"]
 
-
 # ---------------------------------------------------------------------------
 # ① RawIngress
 # ---------------------------------------------------------------------------
@@ -331,10 +330,6 @@ class IdempotencyDecision:
     status: str | None = None
     turn_id: UUID | None = None
     expires_at: datetime | None = None
-
-    @property
-    def is_new(self) -> bool:
-        return self.outcome == "new"
 
     @property
     def should_run(self) -> bool:

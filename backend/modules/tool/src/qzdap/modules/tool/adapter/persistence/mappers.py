@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 from qzdap.modules.tool.adapter.persistence.models import ToolCallORM, ToolORM
 from qzdap.modules.tool.domain import (
     AuthConfig,
@@ -132,12 +130,3 @@ __all__ = [
     "tool_domain_to_orm",
     "tool_orm_to_domain",
 ]
-
-
-def _ensure_aware(dt: datetime | None) -> datetime | None:
-    if dt is None:
-        return None
-    # Postgres TIMESTAMPTZ returns aware datetimes already; this is defensive.
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt

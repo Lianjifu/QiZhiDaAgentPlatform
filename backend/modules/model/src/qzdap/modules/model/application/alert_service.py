@@ -144,10 +144,6 @@ class AlertService:
         )
         return AlertDecision("down", count, sample_msg, 0.0)
 
-    # 测试辅助
-    def reset_cooldowns(self) -> None:
-        self._cooldowns.clear()
-
 
 def _parse_occurred_at(value: str) -> float:
     """Parse ISO 8601 to epoch seconds. 失败抛 ValueError."""

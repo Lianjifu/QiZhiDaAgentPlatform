@@ -448,14 +448,13 @@ sequenceDiagram
 ├── backend/                       Python 3.12 + FastAPI + uv workspace (qzdap.*)
 │   ├── libs/                      11 个共享内核 (kernel / schema / persistence / auth / …)
 │   ├── modules/                   15 个能力域 (qzdap.modules.*)
-│   ├── runtimes/                  agent_runtime · embedding_runtime · sandbox_runtime
+│   ├── runtimes/                  agent_runtime · sandbox_runtime
 │   ├── composition/qzdap_app/     组合根 = 唯一部署产物
-│   ├── packs/office/              示例 pack (skills / knowledge / plans)
-│   ├── migrations/                Alembic (最新 0066)
+│   ├── migrations/                Alembic (最新 0067)
 │   └── scripts/                   种子 / 门禁扫描 / 备份恢复演练
 ├── frontend/                      pnpm workspace
 │   ├── web/                       工作台 SPA (用户侧 /copilot + 管理侧 /admin)
-│   └── packages/                  @qzdap/web-{api,ui,hooks,types,utils}
+│   └── packages/                  @qzdap/web-{api,ui,types,utils}
 ├── bin/qzdap-stack/               本机开发栈: Vite(:9152) + 网关(:9150) + qzdap-app(:9151) + Postgres(:9153) + Redis(:9154)
 ├── docs/                          方案集 · 审查方法论 · 品牌资产
 └── README.md

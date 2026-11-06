@@ -8,8 +8,7 @@
     "build": "pnpm --filter web build",
     "preview": "pnpm --filter web preview",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint",
-    "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
+    "lint": "pnpm -r lint"
   },
   "engines": {
     "node": ">=20"

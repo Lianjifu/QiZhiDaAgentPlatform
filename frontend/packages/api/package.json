@@ -7,8 +7,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./mock": "./src/mock.ts",
-    "./mock-adapter": "./src/mockAdapter.ts"
+    "./mock": "./src/mock.ts"
   },
   "scripts": {
     "test": "vitest run",

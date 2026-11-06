@@ -7,11 +7,6 @@ import { mockFlows } from '@/features/workflows/fixtures';
 
 const workflows: Flow[] = mockFlows;
 
-/** 供用户侧 catalog 投影读取同一份内存 store */
-export function listAdminWorkflows(): Flow[] {
-  return workflows.slice();
-}
-
 export function wrapMockHandlerWithAdminWorkflows<F extends (path: string, opts: any) => Promise<unknown>>(fallback: F): F {
   const wrapped = (async (path: string, opts: any) => {
     if (path === '/api/admin/workflows' && (!opts?.method || opts.method === 'GET')) {

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from qzdap_kernel.errors import RateLimitError
@@ -61,14 +61,6 @@ class RateLimitMiddleware:
             return f"tenant:{tid}"
         host, _ = scope.get("client", ("?", 0))
         return f"ip:{host}"
-
-
-async def rate_limit_dependency(
-    request: object,  # FastAPI Request
-    _next: Callable[[object], Awaitable[object]],
-) -> object:
-    """Marker dependency — actual rate limiting happens in middleware."""
-    return _next
 
 
 # Re-export the error so callers can raise it from UseCases if they want to

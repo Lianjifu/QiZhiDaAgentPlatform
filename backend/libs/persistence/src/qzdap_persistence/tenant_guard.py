@@ -102,10 +102,3 @@ def install_tenant_loader() -> None:
         )
 
     install_tenant_loader._installed = True  # type: ignore[attr-defined]
-
-
-def iterate_tree(obj: object) -> object:
-    """Placeholder for a real AST walker — kept here for future expansion."""
-    from sqlalchemy.sql.visitors import iterate
-
-    return iterate(obj)  # type: ignore[arg-type]

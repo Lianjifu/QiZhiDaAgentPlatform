@@ -2,36 +2,10 @@
  * 管理侧「智能体工作台」fixture — 6 个种子智能体 + 配套的 prompts/knowledgeRefs/memoryPolicy/flowRefs 派生助手。
  */
 import type {
-  AgentEntry, PromptDocs, CustomPromptDoc, KnowledgeRef, FlowRef, MemoryPolicy, FlowTrigger, SkillRef,
+  AgentEntry, CustomPromptDoc, KnowledgeRef, FlowRef, MemoryPolicy, FlowTrigger, SkillRef,
 } from './schema';
 
-export const KNOWN_TONES = ['brand', 'info', 'success', 'warn', 'danger', 'purple'] as const;
-
-const PROMPT_TEMPLATES: Record<string, (name: string, category: string, owner: string) => PromptDocs> = {
-  客服: (name, category, owner) => ({
-    prompt: `# ${name} · 主提示词\n\n你是「${name}」,由 ${owner} 维护,核心职责是服务「${category}」场景下的真实业务问题。\n\n## 任务目标\n- 接到用户请求后,先识别意图与所需上下文\n- 优先调用已授权的 Skill / Tool / MCP 获取事实\n- 输出结构化结论,给出可追溯的依据\n\n## 输出约束\n- 使用 Markdown,首行说明结论\n- 关键判断附上数据/条款来源\n- 不确定时说明限制与下一步建议\n\n## 边界\n- 仅回答与「${category}」相关的问题\n- 不代替人工决策的关键审批\n- 涉及个人敏感信息时脱敏后再输出`,
-    soul: `# SOUL · 人格与价值观\n\n## 人格定位\n- 语气专业、稳定,不夸张也不敷衍\n- 面对冲突先承认事实,再给出建议\n- 默认站在用户业务目标一边\n\n## 立场\n- 真实性优于流畅性\n- 不确定时坦诚,不编造数据\n- 拒绝在不熟悉的领域硬答\n\n## 行为边界\n- 不冒充身份(不假装是真人)\n- 不提供违法、违规、医疗/法律终局判断\n- 涉及金额、人数、合规条款时主动提示复核`,
-    agents: `# AGENTS · 子智能体协作\n\n## 协作角色\n- researcher · 资料检索与事实核对\n- writer · 长文档撰写与润色\n- reviewer · 风险与合规复核\n\n## 任务编排\n1. 接收请求,定位问题类型\n2. 视情况分发给 researcher / writer\n3. 复杂产出交 reviewer 复核\n4. 汇总后回写主智能体输出\n\n## 回传规范\n- 子智能体只输出事实与候选结论\n- 不在子智能体层面给出最终判断\n- 异常必须显式标注,不允许静默吞错`,
-    user: `# USER · 用户画像\n\n## 默认画像\n- 企业内部员工,可能跨多个角色\n- 默认中文沟通,熟悉日常办公协作\n- 时间敏感,希望快速得到结论\n\n## 偏好\n- 喜欢结构化要点 + 简短解释\n- 关键数字与日期会再次核对\n- 倾向给出可执行的下一步\n\n## 上下文\n- 已绑定企业身份与组织架构\n- 已授予「${category}」范围内的数据访问\n- 跨会话记忆开启,会保留偏好与历史`,
-    tools: `# TOOLS · 工具使用说明\n\n## 工具调用原则\n- 只在确实需要事实/动作时调用\n- 单次调用最小化,避免无意义轮询\n- 调用失败需要重试或显式告知\n\n## 工具分类\n- 查询类:订单 / 客户 / 知识 / 指标\n- 动作类:发送邮件 / 创建工单 / 触发工作流\n- 审计类:操作前需复核,失败要回滚\n\n## 边界\n- 超出授权范围时主动询问\n- 不在无授权情况下执行破坏性操作\n- 关键操作前请求人工确认`,
-  }),
-};
-
-export function buildPrompts(name: string, category: string, owner: string): PromptDocs {
-  const tpl = category.split(/[一-龥]/)[0] || '通用';
-  const persona = tpl === '客' ? '客服'
-    : tpl === '销' ? '销售'
-    : tpl === '数' ? '数据'
-    : tpl === '财' ? '财务'
-    : tpl === '工作流' ? '工作流'
-    : tpl === 'H' ? 'HR'
-    : tpl === 'I' ? 'IT'
-    : tpl === '法' ? '法务'
-    : tpl === '市' ? '市场'
-    : '通用';
-  const template = PROMPT_TEMPLATES[persona] ?? PROMPT_TEMPLATES['客服'];
-  return template(name, category, owner);
-}
+import { buildPrompts } from './components/constants';
 
 const TOOL_TYPE_BY_NAME: Record<string, 'Skill' | 'Tool' | 'MCP'> = {
   '订单查询': 'Tool', '退换货流程': 'Tool', '知识检索': 'Tool', '情绪识别': 'Tool',
@@ -273,12 +247,6 @@ export const SAMPLE_IMPORT_ZIP = [
   { source: { name: '会议纪要助手', description: '实时转写 + 待办抽取', category: 'IT', owner: '周强' }, status: 'ok' as const },
   { source: { name: '客户回访', description: '', category: '客服一组', owner: '' }, status: 'missing' as const, message: '缺少描述与负责人' },
 ];
-
-export function formatCalls(value: number): string {
-  if (value >= 10000) return `${(value / 10000).toFixed(1)}万`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
-  return value.toString();
-}
 
 export function getLifecycleMetrics(list: AgentEntry[]) {
   return {

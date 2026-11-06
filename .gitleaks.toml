@@ -7,7 +7,6 @@ useDefault = true
 paths = [
   '''\.env\.example$''',
   '''backend/tests/.*\.json$''',
-  '''backend/tests/fixtures/.*$''',
   '''docs?/.*\.md$''',
 ]
 description = "Allow fixture data and example env values"

@@ -48,10 +48,6 @@ class Termination:
     reason: str = ""
     error_code: str | None = None
 
-    @property
-    def should_continue(self) -> bool:
-        return self.action == "continue"
-
 
 class Evaluator:
     """**终止条件的单一判定点** ✓（§3.4 ✓）。"""

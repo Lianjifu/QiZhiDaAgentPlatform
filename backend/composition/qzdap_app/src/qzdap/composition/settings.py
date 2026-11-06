@@ -25,12 +25,6 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_json: bool = True
 
-    # http
-    http_host: str = "0.0.0.0"
-    http_port: int = 9151
-    http_workers: int = 1
-    http_request_body_max_bytes: int = 10 * 1024 * 1024
-
     # database
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:9153/qzdap_dev"
     database_pool_size: int = 20
@@ -58,13 +52,13 @@ class Settings(BaseSettings):
     redis_max_connections: int = 50
 
     # auth
-    # ⚠️ **本地默认值** ✓ —— 生产必须用环境变量覆盖 ✓（启动时校验 ✓）。
+    # ⚠️ **本地默认值** ✓ —— 换成真值前相关能力是降级的 ✓
+    # （见 ``/readyz`` 的 ``runtime`` 健康报告 ✓）。
     jwt_secret: str = "dev-secret-not-for-production-use-only"  # noqa: S105
     jwt_algorithm: str = "HS256"
     jwt_issuer: str = "qzdap-dev"
     jwt_audience: str = "qzdap-api"
     jwt_access_ttl_seconds: int = 3600
-    api_key_hash_rounds: int = 12
 
     # ── multi-tenancy / 种子数据 ─────────────────────────────────────────
     # ⚠️ **只剩开发环境这一套** ✓ —— 演示环境已退役 ✓（不再有 demo 租户 /
@@ -102,7 +96,6 @@ class Settings(BaseSettings):
 
     # rate limit
     rate_limit_per_tenant_per_min: int = 1000
-    rate_limit_per_api_key_per_min: int = 1000
     rate_limit_window_seconds: int = 60
 
     # tool runtime
@@ -112,46 +105,12 @@ class Settings(BaseSettings):
     sandbox_runtime_url: str = "http://127.0.0.1:9158"
     sandbox_runtime_secret: str = "dev-sandbox-runtime-secret-change-me"  # noqa: S105
     sandbox_default_image: str = "qzdap/sandbox-python:latest"
-    skill_artifact_root: str = "/tmp/qzdap-skill-artifacts"  # noqa: S108 —— 本地产物目录 ✓
 
     # Agent 内置文件工具 (bash / read_file / write_file / edit_file / ls /
     # glob / grep) 看到的工作区根目录。每个 workspace 一个子目录:
     # `<workspace_root>/<workspace_id>/`。
     # dev 环境通常设到 /tmp/qzdap-workspaces 方便随时 reset。
     workspace_root: str = "/var/qzdap/workspaces"
-    skill_invocation_default_timeout_seconds: int = 30
-    skill_artifact_tail_max_bytes: int = 4096
-
-    # skill signing (A6) — ``disabled`` = NoOpSkillVetter (dev/test
-    # opt-out, NEVER in prod); ``local`` = LocalTrustStoreSkillVetter
-    # with a fail-loud boot if the trust dir is missing/empty;
-    # ``vault`` = VaultBackedSkillVetter (Tier B, not implemented here).
-    skill_signing_mode: Literal["disabled", "local", "vault"] = "disabled"
-    skill_trust_dir: str = "./.qzdap/skill-trust"
-
-    # Tier B — knowledge / plan pack signing (mirrors skill signing).
-    # ``disabled`` = NoOp*Vetter; ``local`` = LocalTrustStore*Vetter.
-    # ``vault`` is intentionally not wired here — symmetric to skill
-    # ``vault`` branch but tracked as a separate ticket.
-    knowledge_signing_mode: Literal["disabled", "local"] = "disabled"
-    knowledge_trust_dir: str = "./.qzdap/knowledge-trust"
-    plan_signing_mode: Literal["disabled", "local"] = "disabled"
-    plan_trust_dir: str = "./.qzdap/plan-trust"
-
-    # Tier B — vault-backed SkillVetter (mode="vault" wiring).
-    # ``vault_skill_trust_ref`` is the KV v2 ref the vetter polls;
-    # payload is ``{key_id: <PEM>}``.  ``refresh_seconds`` is the
-    # in-process TTL between Vault re-reads (rotate-after-rotate lag).
-    vault_skill_trust_ref: str = "vault:secret/data/qzdap/skill-trust/keys"
-    vault_skill_trust_refresh_seconds: float = 300.0
-    vault_skill_trust_min_keys: int = 1
-
-    # Tier B — office seed walkers for knowledge + plan packs.  Same
-    # shape as ``platform_seed_office_skill_packs`` (A6).
-    platform_seed_office_knowledge_packs: bool = True
-    platform_seed_office_plan_packs: bool = True
-    platform_office_knowledge_packs_root: str = "packs/office/knowledge"
-    platform_office_plan_packs_root: str = "packs/office/plans"
 
     # Vault-backed KV resolver (Tier B, mode="vault").  Mirrors the
     # ``QZDAP_VAULT_URL`` / ``QZDAP_VAULT_TOKEN`` pattern used elsewhere;
@@ -189,14 +148,9 @@ class Settings(BaseSettings):
     vault_file_root: str = "/etc/qzdap/vault"
     embedding_provider: Literal["openai", "http", "noop"] = "noop"
 
-    # P7 knowledge
-    knowledge_storage_root: str = "/tmp/qzdap-knowledge-assets"  # noqa: S108
     knowledge_default_chunk_size: int = 800
     knowledge_default_chunk_overlap: int = 80
 
-    # P7 orchestration
-    orchestration_max_total_steps: int = 64
-    orchestration_default_step_timeout_seconds: int = 60
     embedding_runtime_url: str = "http://127.0.0.1:8102"
     embedding_runtime_api_key: str = ""
     openai_api_key: str = ""
@@ -220,15 +174,7 @@ class Settings(BaseSettings):
     channel_send_unit_cost_usd: float = 0.0005
     default_currency: str = "USD"
 
-    # P9 platform — default catalog + seed
-    platform_default_plan_code: str = "free"
     platform_seed_default_plans: bool = True
-
-    # A6 — office skill pack seeder (walks platform_office_skill_packs_root
-    # at lifespan boot; requires skill_signing_mode=local unless
-    # platform_seed_office_skill_packs=false).
-    platform_seed_office_skill_packs: bool = True
-    platform_office_skill_packs_root: str = "packs/office/skills"
 
     # A4 self-evolution — kind-specific ApplyGuard draft surface
     # (one JSONL per (tenant, kind); atomic append + fsync).
@@ -237,10 +183,6 @@ class Settings(BaseSettings):
 
     # P6 model
     model_master_key: str = ""
-    model_master_key_version: int = 1
-    model_quota_default_window: Literal["minute", "hour", "day"] = "minute"
-    model_quota_default_max_requests: int = 1000
-    model_quota_default_max_tokens: int = 2_000_000
     model_invocation_timeout_seconds: float = 30.0
     # ⚠️ **LLM 上游重试** ✓ —— 只对瞬时错误 ✓（限流 / 5xx / 连接错 ✓）；
     # ⚠️ **流式吐过字之后不重试** ✓（重放会重复吐字 ✗✗）。
@@ -257,9 +199,6 @@ class Settings(BaseSettings):
     #: 全部执行 ✓ → 成本 ✓ / 副作用 ✓ 都放大 N 倍 ✗✗。
     agent_max_tool_calls: int = 24
 
-    # P6 channel
-    channel_webhook_signature_tolerance_seconds: int = 300
-    channel_default_inbound_max_body_bytes: int = 1 * 1024 * 1024
     # DingTalk Stream v2 encryption — the app secret is the AES key
     # material for inbound webhook payloads. Leave empty in dev to
     # preserve the legacy placeholder behaviour.

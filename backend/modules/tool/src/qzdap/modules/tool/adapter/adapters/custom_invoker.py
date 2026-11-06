@@ -20,7 +20,7 @@ import re as _re_fs
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 from uuid import UUID
 
 import httpx
@@ -34,15 +34,6 @@ from qzdap.modules.tool.adapter.adapters.workspace_paths import (
 from qzdap.modules.tool.domain.errors import ToolNotFound
 
 _log = logging.getLogger(__name__)
-
-
-class _BuiltinContext(Protocol):
-    """Kwargs forwarded to built-in callables alongside `arguments`."""
-
-    tenant_id: UUID
-    workspace_id: UUID | None
-    call_id: UUID
-    actor_id: UUID
 
 
 class CustomInvokerRegistry:
@@ -141,7 +132,6 @@ async def built_in_invoke_clock(arguments: dict[str, Any], **_: Any) -> dict[str
 #   - allowlisted content types: text/html, application/json, text/plain,
 #     application/xml, application/xhtml+xml
 #   - user agent: identifies as QZDAP-AI
-
 
 _ALLOWED_CONTENT_TYPES = (
     "text/html",
@@ -412,7 +402,6 @@ __all__ = [
     "built_in_invoke_web_search",
     "built_in_invoke_write_file",
 ]
-
 
 # ── File-system / shell built-ins ────────────────────────────────────
 #

@@ -53,9 +53,7 @@ qzdap-messaging = { workspace = true }
 qzdap-llm = { workspace = true }
 qzdap-vector = { workspace = true }
 qzdap-vault = { workspace = true }
-qzdap-pack-signing = { workspace = true }
 qzdap-http = { workspace = true }
-qzdap-embedding-runtime = { workspace = true }
 qzdap-sandbox-runtime = { workspace = true }
 qzdap-identity = { workspace = true }
 qzdap-agent-runtime = { workspace = true }
@@ -93,7 +91,7 @@ plugins = ["pydantic.mypy"]
 # Each mypy_path entry MUST be the deepest directory that contains an
 # __init__.py; otherwise mypy sees the same file as two modules
 # (e.g. `identity.domain` AND `qzdap.modules.identity.domain`).
-mypy_path = "libs/kernel/src:libs/auth/src:libs/observability/src:libs/persistence/src:libs/messaging/src:libs/http/src:libs/schema/src:libs/llm/src:libs/sandbox/src:libs/vector/src:libs/vault/src:libs/pack_signing/src:modules/identity/src:modules/agent_runtime/src:modules/tool/src:modules/governance/src:modules/channel/src:modules/knowledge/src:modules/orchestration/src:modules/agent_factory/src:modules/evaluation/src:modules/platform/src:modules/self_evolution/src:composition/qzdap_app/src"
+mypy_path = "libs/kernel/src:libs/auth/src:libs/observability/src:libs/persistence/src:libs/messaging/src:libs/http/src:libs/schema/src:libs/llm/src:libs/vector/src:libs/vault/src:modules/identity/src:modules/agent_runtime/src:modules/tool/src:modules/governance/src:modules/channel/src:modules/knowledge/src:modules/orchestration/src:modules/agent_factory/src:modules/evaluation/src:modules/platform/src:modules/self_evolution/src:composition/qzdap_app/src"
 
 [[tool.mypy.overrides]]
 # Tests + generated migrations are exempt from strict checks.
@@ -154,7 +152,6 @@ pythonpath = [
     "libs/llm/src",
     "libs/vector/src",
     "libs/vault/src",
-    "libs/pack_signing/src",
     "tests",
     "modules/identity/src",
     "modules/agent_runtime/src",
@@ -176,7 +173,6 @@ pythonpath = [
     "modules/platform/src",
     "modules/platform/tests/unit",
     "modules/self_evolution/src",
-    "runtimes/embedding_runtime/src",
     "runtimes/sandbox_runtime/src",
     "composition/qzdap_app/src",
 ]

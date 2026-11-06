@@ -19,8 +19,8 @@ FORBIDDEN = ("fastapi", "starlette", "sqlalchemy", "asyncpg", "psycopg")
 
 #: 受检目录（相对 backend/）。
 #:
-#: ⚠️ ``runtimes/`` 下**不止**契约层：``embedding_runtime`` / ``sandbox_runtime``
-#: 是**独立的 FastAPI 服务**（自带 app / routes），引框架是它们的本职 ✓。
+#: ⚠️ ``runtimes/`` 下**不止**契约层：``sandbox_runtime`` 是**独立的 FastAPI
+#: 服务**（自带 app / routes），引框架是它的本职 ✓。
 #: 契约层是 ``runtimes/agent_runtime/src``（Gateway 契约 + 会话/运行时层 ✓）。
 SCAN_DIRS = (
     "runtimes/agent_runtime/src",

@@ -122,21 +122,6 @@ class AuditRecorder:
                 exc,
             )
 
-    async def record_actor(
-        self,
-        *,
-        tenant_id: TenantId,
-        actor_id: UserId | None,
-        event_type: str,
-        payload: dict[str, Any],
-    ) -> None:
-        await self._audit.append(
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            event_type=event_type,
-            payload=_scrub(payload),
-        )
-
 
 def _scrub(payload: dict[str, Any]) -> dict[str, Any]:
     """Strip well-known secret fields before persisting.

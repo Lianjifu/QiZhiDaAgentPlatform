@@ -3,7 +3,7 @@
  */
 import { AlertTriangle, Bot, CheckCircle2, CheckSquare, Clock, Download, Edit3, Sparkles, Square, Star, Timer, Trash2, TrendingUp } from 'lucide-react';
 import type { AgentEntry } from '../schema';
-import { formatCalls } from '../fixtures';
+import { formatCalls } from './constants';
 import { statusBadge, toneClass } from './constants';
 
 export interface AgentCardProps {

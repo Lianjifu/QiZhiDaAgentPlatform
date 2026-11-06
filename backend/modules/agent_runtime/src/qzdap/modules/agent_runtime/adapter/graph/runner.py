@@ -775,11 +775,6 @@ class SessionGraphRunner:
         yield DoneChunk(turn_id=turn_id, seq=seq, final_message=final)
         _ = rolling_summary
 
-    def export_loop_state(
-        self, pending: dict[str, Any] | None, messages: list[dict[str, Any]], step: int
-    ) -> dict[str, Any]:
-        return {"pending_approval": pending, "messages": messages, "step": step}
-
     async def _assemble_context(
         self,
         *,

@@ -9,7 +9,7 @@ import {
   ShieldCheck, Sparkles, Tag, Workflow, X,
 } from 'lucide-react';
 import type { AgentEntry, KnowledgeRef, MemoryPolicy, FlowRef, PromptDocs, PromptKey, EvalCase, CustomPromptDoc, SkillRef } from '../schema';
-import { KNOWN_TONES, formatCalls, buildPrompts } from '../fixtures';
+import { KNOWN_TONES, formatCalls, buildPrompts } from './constants';
 import { useAgentEvalHistory } from '../useAgents';
 import { useApiQuery } from '@/services/query';
 import { useServerAction } from '@/services/useServerAction';

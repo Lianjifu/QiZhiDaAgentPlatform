@@ -55,9 +55,6 @@ def _settings(**overrides: object) -> Settings:
         "dev_admin_password": "dev-admin-password",
         "model_master_key": "dev-model-master-key",
         # backend selections (fully configured)
-        "skill_signing_mode": "local",
-        "knowledge_signing_mode": "local",
-        "plan_signing_mode": "local",
         "embedding_provider": "openai",
         "vault_mode": "csi",
         "event_bus": "redis-stream",
@@ -200,9 +197,6 @@ def test_empty_sandbox_runtime_url_is_reported_as_issue() -> None:
 @pytest.mark.parametrize(
     ("field", "value", "expected"),
     [
-        ("skill_signing_mode", "disabled", "QZDAP_SKILL_SIGNING_MODE"),
-        ("knowledge_signing_mode", "disabled", "QZDAP_KNOWLEDGE_SIGNING_MODE"),
-        ("plan_signing_mode", "disabled", "QZDAP_PLAN_SIGNING_MODE"),
         ("embedding_provider", "noop", "QZDAP_EMBEDDING_PROVIDER"),
         ("vault_mode", "env", "QZDAP_VAULT_MODE"),
         ("vault_mode", "noop", "QZDAP_VAULT_MODE"),
@@ -217,13 +211,11 @@ def test_degraded_backend_is_reported(field: str, value: str, expected: str) -> 
 def test_multiple_degradations_are_reported_together() -> None:
     container = Container(
         _settings(
-            skill_signing_mode="disabled",
             embedding_provider="noop",
             event_bus="inprocess",
         )
     )
     degraded = container.runtime_health["degraded"]
-    assert any("QZDAP_SKILL_SIGNING_MODE" in item for item in degraded)
     assert any("QZDAP_EMBEDDING_PROVIDER" in item for item in degraded)
     assert any("QZDAP_EVENT_BUS" in item for item in degraded)
 

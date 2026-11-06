@@ -1,8 +1,7 @@
 """HTTP embedding adapter.
 
-Calls the ``embedding_runtime`` FastAPI service at ``POST /embed``.
-Production deployments use this; the openai adapter is for the
-embedding_runtime process itself when it talks to OpenAI directly.
+Calls any HTTP embedding service at ``POST /embed``（ollama / 自建服务 ✓ ——
+``QZDAP_EMBEDDING_RUNTIME_URL`` 指哪就调哪 ✓）。
 
 The adapter is fully injected — ``base_url`` / ``api_key`` come from
 the composition container which reads them through Settings

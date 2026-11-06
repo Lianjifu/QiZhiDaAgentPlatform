@@ -1,8 +1,7 @@
 /**
  * 管理侧「渠道配置」hooks — 飞书 / 企业微信 / 钉钉 / Web 对话渠道。
  * 以及 create/update/batch operations。
- * 端点 /api/admin/notifications/* 由 features/notifications/mock-handler.ts 接管
- * (全局 mock.ts ladder 未覆盖)。
+ * 端点 /api/admin/notifications/* 走后端 API（运行时不再有 mock 接管 ✓）。
  */
 import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';

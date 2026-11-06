@@ -138,25 +138,3 @@ class UserWorkspaceORM(Base):
         Index("uq_user_workspaces_user_ws", "user_id", "workspace_id", unique=True),
         make_composite_index("workspace_id"),
     )
-
-
-class UserSessionORM(Base):
-    """Recorded login session. For audit; JWT itself is stateless."""
-
-    __tablename__ = "user_sessions"
-
-    id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid4)
-    tenant_id: Mapped[UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False, index=True)
-    user_id: Mapped[UUID] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    jti: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    issued_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
-
-    __table_args__ = (make_composite_index("user_id"),)

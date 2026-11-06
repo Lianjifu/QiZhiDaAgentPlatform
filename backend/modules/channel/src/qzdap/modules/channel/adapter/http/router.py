@@ -247,17 +247,6 @@ async def send_reply(
     return delivery_to_response(delivery)
 
 
-def _tenant_from_channel(_request: Request, _channel_id: UUID) -> TenantId:
-    """Reserved — webhook tenant resolution now happens via
-    ``channel_repo.get_by_id`` (no tenant filter) before signature
-    verify. This helper stays for backward compat with any future
-    multi-tenant dispatcher.
-    """
-    raise RuntimeError(
-        "tenant-from-channel resolution deprecated; use ChannelService.handle_webhook"
-    )
-
-
 __all__ = [
     "get_channel",
     "list_channels",

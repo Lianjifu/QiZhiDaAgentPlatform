@@ -2,10 +2,13 @@
  * AdminToolAudit hooks — 5 个列表查询(entries/risks/rules/scopes/stats)。
  * 收藏与风险处置由后端处理，选中项属于页面 UI 状态。
  */
-import { useApiQuery, useApiMutation } from '@/services/query';
+import {
+  useApiQuery,
+  useApiMutation,
+} from '@/services/query';
 import { qk } from '@/api/shared/query-keys';
 import type {
-  AuditEntry, AuditStats, AuditRule, CreateAuditRuleInput, PermissionScope, RiskEvent,
+  AuditEntry, AuditRule, CreateAuditRuleInput, PermissionScope, RiskEvent,
 } from './schema';
 
 export function useAuditEntries() {
@@ -38,23 +41,4 @@ export function usePermissionScopes() {
   return useApiQuery<PermissionScope[]>([...qk.admin.audit.scopes], '/api/admin/audit/scopes', undefined, {
     staleTime: 60_000,
   });
-}
-
-export function useAuditStats(entries: AuditEntry[]): AuditStats {
-  const total = entries.length;
-  const denied = entries.filter((e) => e.outcome === 'denied').length;
-  const critical = entries.filter((e) => e.severity === 'critical').length;
-  const sensitive = entries.filter((e) => e.hasSensitive).length;
-  const allowed = entries.filter((e) => e.outcome === 'allowed').length;
-  const blocked = entries.filter((e) => e.outcome === 'denied' || e.outcome === 'timeout').length;
-  const pending = entries.filter((e) => e.outcome === 'pending').length;
-  const timeout = entries.filter((e) => e.outcome === 'timeout').length;
-  const byCategory = {
-    tool: entries.filter((e) => e.category === 'tool').length,
-    data: entries.filter((e) => e.category === 'data').length,
-    auth: entries.filter((e) => e.category === 'auth').length,
-    mcp: entries.filter((e) => e.category === 'mcp').length,
-  };
-  const denyRate = Math.round((denied / Math.max(total, 1)) * 1000) / 10;
-  return { total, denied, critical, sensitive, allowed, blocked, pending, timeout, denyRate, byCategory };
 }

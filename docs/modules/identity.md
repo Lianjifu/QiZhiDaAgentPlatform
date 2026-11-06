@@ -52,7 +52,6 @@ backend/modules/identity/src/qzdap/modules/identity/
 | `users` | 用户 | id / tenant_id / email / password_hash / metadata(JSONB) / status |
 | `user_workspaces` | 用户 ↔ 工作区成员关系 | user_id / workspace_id / role |
 | `api_keys` | API 密钥（**只存 hash**） | user_id / key_hash / revoked_at |
-| `user_sessions` | 登录会话 / 令牌状态 | user_id / expires_at |
 | `workspace_invitations` | 成员邀请 | workspace_id / token / status |
 | `identity_control_audit` | 控制面操作审计 | actor_id / action / payload |
 

@@ -109,16 +109,6 @@ export function useMemoryStats(l1: L1Session[], l2: L2Fact[], l3: L3Entry[], eve
 }
 
 const TREND_FALLBACK: MemoryTrend = { l1Active: [0, 0, 0, 0, 0, 0, 0, 0], l2Hits: [0, 0, 0, 0, 0, 0, 0, 0] };
-
-export function useMemoryTrend(range: '7d' | '30d' | '90d') {
-  return useApiQuery<MemoryTrend>(
-    qk.admin.memory.trend(range),
-    `/api/admin/memory/trend?range=${range}`,
-    undefined,
-    { staleTime: 60_000 },
-  ) ?? { data: TREND_FALLBACK, isLoading: false };
-}
-
 /** Writes deliberately target backend endpoints; there is no client-side fallback. */
 export function useFlushMemorySession() {
   return useApiMutation<unknown, { id: string }>((vars) => `/api/admin/memory/l1/${encodeURIComponent(vars.id)}/flush`, { invalidateKeys: [qk.admin.memory.root] }, 'POST');

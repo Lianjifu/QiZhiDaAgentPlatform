@@ -14,7 +14,7 @@ from enum import StrEnum
 from typing import Self
 from uuid import UUID
 
-from qzdap.modules.identity.domain.events import APIKeyIssued, APIKeyRevoked
+from qzdap.modules.identity.domain.events import APIKeyRevoked
 
 
 class APIKeyStatus(StrEnum):
@@ -66,14 +66,6 @@ class APIKey:
             expires_at=expires,
         )
         return key, raw_secret
-
-    def raise_issued_event(self) -> APIKeyIssued:
-        return APIKeyIssued(
-            api_key_id=self.id,
-            tenant_id=self.tenant_id,
-            workspace_id=self.workspace_id,
-            owner_user_id=self.owner_user_id,
-        )
 
     def revoke(self) -> Self:
         return type(self)(

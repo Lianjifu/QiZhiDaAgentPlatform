@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from qzdap.modules.evaluation.domain.entities import EvalCase, EvalScoreRecord
-from qzdap_kernel.ids import EvalCaseId, EvalRunId
+from qzdap.modules.evaluation.domain.entities import EvalCase
+from qzdap_kernel.ids import EvalCaseId
 
 
 @dataclass(slots=True, frozen=True)
@@ -28,20 +28,6 @@ class CaseScore:
     latency_ms: int
     passed: bool
     error: str | None
-
-    def to_record(self, *, run_id: EvalRunId, case: EvalCase, output: str) -> EvalScoreRecord:
-        return EvalScoreRecord(
-            run_id=run_id,
-            case_id=case.id,
-            input=case.input,
-            output=output,
-            matched_keywords=self.matched,
-            missing_keywords=self.missing,
-            keyword_hit_ratio=self.hit_ratio,
-            latency_ms=self.latency_ms,
-            passed=self.passed,
-            error_message=self.error,
-        )
 
 
 def score_case(
@@ -93,6 +79,5 @@ __all__ = [
     "CaseScore",
     "score_case",
 ]
-
 
 _ = EvalCaseId  # type-only re-export to keep id imports tidy in callers

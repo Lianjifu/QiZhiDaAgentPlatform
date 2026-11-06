@@ -13,7 +13,7 @@ from qzdap_persistence.tenant_guard import (
     current_tenant_id,
     tenant_id_var,
 )
-from qzdap_persistence.uow import UnitOfWork, unit_of_work
+from qzdap_persistence.uow import UnitOfWork
 
 __all__ = [
     "Base",
@@ -27,5 +27,4 @@ __all__ = [
     "current_tenant_id",
     "register_pgvector",
     "tenant_id_var",
-    "unit_of_work",
 ]

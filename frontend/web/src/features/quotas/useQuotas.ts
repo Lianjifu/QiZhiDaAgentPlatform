@@ -1,6 +1,6 @@
 /**
  * 管理侧「额度管理」hooks — 4 类实体 list + create / update / toggle。
- * 端点 /api/admin/quotas/* 由 features/quotas/mock-handler.ts 接管。
+ * 端点 /api/admin/quotas/* 走后端 API（运行时不再有 mock 接管 ✓）。
  */
 import { useApiQuery, useApiMutation } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';

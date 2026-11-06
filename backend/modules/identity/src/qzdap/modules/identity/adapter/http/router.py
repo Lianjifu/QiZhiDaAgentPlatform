@@ -19,7 +19,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, Query
 
 from qzdap.modules.identity.adapter.http.auth.router import auth_router
 from qzdap.modules.identity.adapter.http.deps import get_identity_service
@@ -41,16 +41,6 @@ from qzdap.modules.identity.adapter.http.mappers import (
 )
 from qzdap.modules.identity.application.services import IdentityService
 from qzdap_kernel.error_codes import ErrorCode
-
-
-def get_service(request: Request) -> IdentityService:
-    """Sync facade — returns the per-request IdentityService. The actual
-    session-bound instance is created by `get_identity_service` and cached on
-    `request.state.identity_service` via the FastAPI dependency below."""
-    svc = getattr(request.state, "identity_service", None)
-    if svc is None:
-        raise RuntimeError("IdentityService not bound on request.state")
-    return svc
 
 
 def build_router() -> APIRouter:

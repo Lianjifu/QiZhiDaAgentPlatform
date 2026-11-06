@@ -37,7 +37,7 @@ export function mapAgentCategory(raw: string): AgentCategory {
   return '企业通用';
 }
 
-export function projectAgent(entry: AgentEntry): Agent {
+function projectAgent(entry: AgentEntry): Agent {
   const category = mapAgentCategory(entry.category);
   const exampleHint = entry.prompts?.user?.split('\n').find((line) => line.trim().startsWith('-'))?.replace(/^-\s*/, '')
     ?? `请用「${entry.name}」帮我完成一项与${category}相关的工作。`;
@@ -61,7 +61,7 @@ export function projectOpenAgents(entries: AgentEntry[]): Agent[] {
     .map(projectAgent);
 }
 
-export function projectSkill(skill: AdminSkill): Capability {
+function projectSkill(skill: AdminSkill): Capability {
   const inputDesc = skill.inputSchema.map((field) => field.description || field.name).filter(Boolean).join('；');
   const outputDesc = skill.outputSchema.map((field) => field.description || field.name).filter(Boolean).join('；');
   return {
@@ -94,7 +94,7 @@ function cadenceFromTrigger(trigger: string): string {
   return '手动启动';
 }
 
-export function projectWorkflow(flow: AdminFlow): UserFlow {
+function projectWorkflow(flow: AdminFlow): UserFlow {
   const steps = (flow.initialNodes as Node<FlowNodeData>[])
     .map((node) => node.data?.label)
     .filter((label): label is string => Boolean(label));

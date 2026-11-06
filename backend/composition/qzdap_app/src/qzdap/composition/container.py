@@ -52,9 +52,9 @@ class Container:
         但仓库现在**只有一个开发环境** ✓ → 那道闸门永远不触发 ✓，留着只是
         误导 ✓。这里保留同样的检查项 ✓，改成**报告** ✓：
 
-        - ``degraded`` —— 用了降级后端 ✓（签名单关 / embedding noop /
-          vault 直读环境变量 / 事件总线在进程内 ✓）—— 开发环境是**有意**
-          这样配的 ✓，报告出来是为了「别以为这些能力真的生效了」✓。
+        - ``degraded`` —— 用了降级后端 ✓（embedding noop / vault 直读
+          环境变量 / 事件总线在进程内 ✓）—— 开发环境是**有意**这样配的 ✓，
+          报告出来是为了「别以为这些能力真的生效了」✓。
         - ``issues`` —— 缺必需项 ✓（主密钥为空 ✓ / 沙箱地址为空 ✓）。
         """
         degraded: list[str] = []
@@ -66,13 +66,6 @@ class Container:
             issues.append("QZDAP_SANDBOX_RUNTIME_URL is empty")
 
         backend_checks: tuple[tuple[str, str, frozenset[str]], ...] = (
-            ("QZDAP_SKILL_SIGNING_MODE", settings.skill_signing_mode, frozenset({"disabled"})),
-            (
-                "QZDAP_KNOWLEDGE_SIGNING_MODE",
-                settings.knowledge_signing_mode,
-                frozenset({"disabled"}),
-            ),
-            ("QZDAP_PLAN_SIGNING_MODE", settings.plan_signing_mode, frozenset({"disabled"})),
             ("QZDAP_EMBEDDING_PROVIDER", settings.embedding_provider, frozenset({"noop"})),
             ("QZDAP_VAULT_MODE", settings.vault_mode, frozenset({"env", "noop"})),
             ("QZDAP_EVENT_BUS", settings.event_bus, frozenset({"inprocess"})),

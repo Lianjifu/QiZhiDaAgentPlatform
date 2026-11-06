@@ -60,25 +60,6 @@ class PgVectorStore(VectorStore):
         self._table = table
         self._dim = dim
 
-    async def ensure_schema(self) -> None:
-        async with self._engine.begin() as conn:
-            await conn.execute(
-                text(
-                    f"""
-                    CREATE EXTENSION IF NOT EXISTS vector;
-                    CREATE TABLE IF NOT EXISTS {self._table} (
-                        id UUID PRIMARY KEY,
-                        tenant_id UUID NOT NULL,
-                        workspace_id UUID,
-                        embedding vector({self._dim}) NOT NULL,
-                        payload JSONB NOT NULL DEFAULT '{{}}'::jsonb
-                    );
-                    CREATE INDEX IF NOT EXISTS ix_{self._table}_tenant_id
-                        ON {self._table} (tenant_id);
-                    """
-                )
-            )
-
     async def upsert(self, items: list[VectorItem]) -> None:
         if not items:
             return

@@ -400,13 +400,6 @@ class AgentDecisionPort(Protocol):
         ...
 
 
-class PolicyPort(Protocol):
-    """Approval + governance gate. P5; declared here so the use case can
-    surface `ApprovalRequiredError` for gated actions."""
-
-    async def evaluate_action(self, *, tenant_id: UUID, action: str, context: dict) -> bool: ...
-
-
 class AgentBindingReader(Protocol):
     """Agent 方案 §5.3.1 —— **取一个 agent 配置里声明的绑定集** ✓。
 

@@ -35,11 +35,6 @@ class RetentionPolicyView:
     storage_mb: int = 0
     eviction: str = "lru"
 
-    @property
-    def has_limits(self) -> bool:
-        """这条策略**有没有真正的约束** ✓（全是 0 = 没约束 ✓）。"""
-        return bool(self.ttl_minutes or self.max_items or self.storage_mb)
-
 
 class MemoryRefKind(StrEnum):
     """**被显式引用**的记忆条目的种类 ✓（§7.1 的 ``knowledge_refs`` ✓）。
@@ -121,14 +116,6 @@ class MemoryPolicy:
         """
         ids = [ref.ref_id for ref in self.knowledge_refs]
         return tuple(dict.fromkeys(ids))
-
-    @property
-    def pinned_layer(self) -> str:
-        """**被 pin 的条目在哪一层** ✓。
-
-        ⚠️ **只有 L2 了** ✓ —— L3 退役 ✓（决策 #1 ✓ —— M-47 ✓）。
-        """
-        return "l2"
 
 
 @dataclass(frozen=True, slots=True)

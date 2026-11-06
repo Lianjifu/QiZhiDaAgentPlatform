@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from qzdap.modules.governance.adapter.http.dto import (
     ApprovalResponse,
     PolicyResponse,
@@ -48,8 +46,3 @@ def approval_to_response(approval: Approval) -> ApprovalResponse:
 
 
 __all__ = ["approval_to_response", "policy_to_response"]
-
-
-# forward reference helper for callers that need a dict body
-def response_as_dict(model: Any) -> dict[str, Any]:
-    return model.model_dump(mode="json")

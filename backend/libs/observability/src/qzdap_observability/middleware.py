@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 
 from qzdap_kernel.contextvars import (
     bind_trace_id_token,
@@ -64,11 +64,3 @@ class ObservabilityMiddleware:
                 )
             finally:
                 reset_trace_id(token)
-
-
-# Async callable alias for FastAPI add_middleware
-async def as_middleware_dispatch(
-    request: object,
-    call_next: Callable[[object], Awaitable[object]],
-) -> object:
-    return await call_next(request)

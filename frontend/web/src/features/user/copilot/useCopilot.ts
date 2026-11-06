@@ -1,7 +1,7 @@
 /**
  * Copilot 会话 hooks。
  */
-import { useApiQuery, useApiMutation } from '@/services/query';
+import { useApiQuery } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';
 import { withDefaults } from '@/api/shared/pagination';
 import type { CopilotSession, SessionsListParams } from './schema';
@@ -27,12 +27,5 @@ export function useSessions(params: SessionsListParams = {}) {
     PATH,
     { query },
     { staleTime: 15_000, placeholderData: (prev) => prev },
-  );
-}
-
-export function useCreateSession() {
-  return useApiMutation<SessionDetail, { agentId: string; title?: string }>(
-    PATH,
-    { invalidateKeys: [qk.user.copilot.sessions] },
   );
 }

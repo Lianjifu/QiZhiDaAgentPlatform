@@ -22,12 +22,3 @@ export function useOverviewTrend(range: string) {
     { staleTime: 60_000, placeholderData: (prev) => prev },
   );
 }
-
-export function useOverviewAlerts() {
-  return useApiQuery<OverviewSummary['alerts']>(
-    [...qk.admin.overview.alerts],
-    '/api/admin/overview/alerts',
-    {},
-    { staleTime: 30_000, placeholderData: (prev) => prev },
-  );
-}

@@ -32,11 +32,6 @@ class WebOutboundAdapter(OutboundAdapter):
         self._webhook_url = webhook_url
         self._timeout = request_timeout_seconds
 
-    def set_webhook_url(self, url: str) -> None:
-        """Hot-swap the webhook URL — used by the container after the
-        channel row is registered."""
-        self._webhook_url = url
-
     async def send_reply(
         self,
         *,

@@ -1391,18 +1391,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if container.settings.platform_seed_default_plans:
         await _seed_default_plans(container)
 
-    # Catalog skills are created via /api/admin/skills; signed office
-    # skill packs are no longer seeded into sandbox runtimes.
-    if container.settings.platform_seed_office_skill_packs:
-        _log.info("office skill pack seed skipped (skill catalog replaces packs)")
-
-    # Catalog knowledge is created via /api/admin/knowledge; signed office
-    # knowledge packs are no longer seeded into RAG packages.
-    if container.settings.platform_seed_office_knowledge_packs:
-        _log.info("office knowledge pack seed skipped (knowledge catalog replaces packs)")
-    if container.settings.platform_seed_office_plan_packs:
-        _log.info("office plan pack seed skipped (workflow catalog replaces packs)")
-
     # ── P8 agent_factory (depends on evaluation; this is the P8-6 closed
     # loop — agent_factory reads the latest passed eval run via
     # EvaluationServiceAdapter).

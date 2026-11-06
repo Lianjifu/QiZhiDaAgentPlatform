@@ -334,33 +334,4 @@ def _keyword_score(needle: str, hay: str) -> float:
     return 0.15 + 0.85 * (hits / len(parts)) if hits else 0.05
 
 
-def _hit(
-    item_id: UUID,
-    content: str,
-    layer: str,
-    score: float,
-    *,
-    used_count: int = 0,
-    version: str = "",
-) -> RecallHit:
-    """一条召回命中 ✓ —— **统一用 ``RecallHit``** ✓（Memory Stage 0 · M-04 ✓）。
-
-    ⚠️ **生产不再返回 dict** ✓ —— 返回形状统一 ✓（契约在
-    ``qzdap_agent_runtime.ports`` ✓）；调用方要 dict 就自己转 ✓
-    （agent_runtime 的适配器负责转 ✓）。
-    """
-    return RecallHit(
-        layer=layer,  # type: ignore[arg-type]
-        content=content,
-        score=score,
-        source_id=str(item_id),
-        citation=None,
-        metadata={},
-        scope="user",
-        used_count=used_count,
-        ref_id=str(item_id),
-        version=version,
-    )
-
-
 __all__ = ["MemoryRuntimeService"]

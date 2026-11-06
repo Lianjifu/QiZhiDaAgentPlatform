@@ -14,7 +14,6 @@ export default defineConfig({
       { find: '@qzdap/web-ui', replacement: PKG('ui/src/index.tsx') },
       { find: '@qzdap/web-api', replacement: PKG('api/src/index.ts') },
       { find: '@qzdap/web-types', replacement: PKG('types/src/index.ts') },
-      { find: '@qzdap/web-hooks', replacement: PKG('hooks/src/index.ts') },
       { find: '@qzdap/web-utils', replacement: PKG('utils/src/index.ts') },
     ],
   },

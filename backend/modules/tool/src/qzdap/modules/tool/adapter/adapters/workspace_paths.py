@@ -18,7 +18,6 @@ Safety contract:
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
@@ -99,15 +98,9 @@ __all__ = [
     "resolve_workspace_dir",
 ]
 
-
 # ── Env override (dev convenience) ──────────────────────────────────
 #
 # Set QZDAP_WORKSPACE_ROOT=/tmp/qzdap-workspaces in dev to avoid sudo at first
 # tool invocation. Lifespan reads this once at boot; per-test code can
 # monkey-patch `settings.workspace_root` directly.
 _DEFAULT_ENV = "QZDAP_WORKSPACE_ROOT"
-
-
-def env_workspace_root(default: str | None = None) -> str:
-    """Read QZDAP_WORKSPACE_ROOT from env, with fallback to `default`."""
-    return os.environ.get(_DEFAULT_ENV) or default or "/var/qzdap/workspaces"

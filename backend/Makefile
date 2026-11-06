@@ -1,7 +1,7 @@
 # 企智搭 · 智能体平台 — Makefile
 # All commands assume cwd = backend/.
 
-.PHONY: help install sync lock lint format import-lint type-check test test-unit test-contract smoke bench bench-turn-latency bench-obs-ingest db-upgrade db-downgrade db-stamp run-app run-app-debug clean verify
+.PHONY: help install sync lock lint format import-lint type-check test test-unit test-contract smoke bench bench-turn-latency bench-obs-ingest db-upgrade db-downgrade db-stamp db-drill run-app run-app-debug clean verify
 
 UV        ?= uv
 PYTHON   ?= python3.12
@@ -75,9 +75,6 @@ bench-obs-ingest:
 # ---------- Burn-in runner ----------
 # Runs G5 (gitleaks) + G6 (promtool) + G7 (grafana JSON) locally.
 # Set QZDAP_STABLE_URL + QZDAP_CANARY_URL to also run G2 / G3 / G8.
-burn-in:
-	$(UV) run python ../deploy/burn_in.py
-
 db-upgrade:
 	@if [ -f .env ]; then set -a; . ./.env; set +a; fi
 	$(UV) run alembic -c migrations/alembic.ini upgrade head

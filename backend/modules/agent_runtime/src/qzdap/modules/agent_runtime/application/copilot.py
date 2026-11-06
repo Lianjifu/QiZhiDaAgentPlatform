@@ -412,10 +412,6 @@ class CopilotSessionService:
             raise SessionNotFound(f"session {session_id} not found")
         return session
 
-    async def _next_seq(self, session_id: UUID) -> int:
-        rows = await self._messages.list_for_session(session_id)
-        return (rows[-1]["seq"] + 1) if rows else 0
-
 
 def _auto_title(user_input: str) -> str:
     """Derive a session title from the first user message."""

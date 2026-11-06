@@ -17,7 +17,6 @@ members = [
     "qzdap-app",
     "qzdap-auth",
     "qzdap-channel",
-    "qzdap-embedding-runtime",
     "qzdap-evaluation",
     "qzdap-governance",
     "qzdap-http",
@@ -31,7 +30,6 @@ members = [
     "qzdap-observability",
     "qzdap-observability-module",
     "qzdap-orchestration",
-    "qzdap-pack-signing",
     "qzdap-persistence",
     "qzdap-platform",
     "qzdap-sandbox-runtime",
@@ -2728,27 +2726,6 @@ requires-dist = [
 ]
 
 [[package]]
-name = "qzdap-embedding-runtime"
-version = "0.1.0"
-source = { editable = "runtimes/embedding_runtime" }
-dependencies = [
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "qzdap-kernel" },
-    { name = "qzdap-vault" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "pydantic", specifier = ">=2.9" },
-    { name = "qzdap-kernel", editable = "libs/kernel" },
-    { name = "qzdap-vault", editable = "libs/vault" },
-]
-
-[[package]]
 name = "qzdap-evaluation"
 version = "0.1.0"
 source = { editable = "modules/evaluation" }
@@ -3060,17 +3037,6 @@ requires-dist = [
     { name = "qzdap-persistence", editable = "libs/persistence" },
     { name = "qzdap-schema", editable = "libs/schema" },
 ]
-
-[[package]]
-name = "qzdap-pack-signing"
-version = "0.1.0"
-source = { editable = "libs/pack_signing" }
-dependencies = [
-    { name = "cryptography" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "cryptography", specifier = ">=42.0.0" }]
 
 [[package]]
 name = "qzdap-persistence"

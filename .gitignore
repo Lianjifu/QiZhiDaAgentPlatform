@@ -62,13 +62,8 @@ tests/.artifacts/
 .env
 .env.local
 .env.*.local
-# Production env rendered from deploy/env.prod.example (per
-# doc/burn-in-preflight.md §A.2 — every secret must use *_REF; raw
-# values must never be committed).
+# 生产/预发环境文件（预发与生产环境已退役 ✓ —— 只剩开发环境 ✓）
 .env.prod
-# Staging sandbox env rendered from deploy/env.staging.example — local
-# docker run only; raw secrets allowed (single-host sandbox).
-deploy/env.staging
 
 # Postgres data (volume mount)
 data/

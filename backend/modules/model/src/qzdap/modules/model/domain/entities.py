@@ -239,9 +239,6 @@ class Model:
         data["updated_at"] = _utcnow()
         return replace(self, **data)
 
-    def with_starred(self, starred: bool) -> Self:
-        return replace(self, starred=starred, updated_at=_utcnow())
-
     def with_status(self, status: ModelStatus) -> Self:
         return replace(self, status=status, updated_at=_utcnow())
 

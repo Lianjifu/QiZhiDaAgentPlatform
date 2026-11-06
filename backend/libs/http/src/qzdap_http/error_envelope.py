@@ -7,7 +7,6 @@ status; everything else becomes 500.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Awaitable, Callable
 
 from qzdap_kernel.contextvars import current_trace_id
@@ -43,7 +42,3 @@ def _json_response(payload: dict, status: int) -> object:
     from starlette.responses import JSONResponse
 
     return JSONResponse(content=payload, status_code=status)
-
-
-def _json_dumps(payload: dict) -> str:
-    return json.dumps(payload, default=str)

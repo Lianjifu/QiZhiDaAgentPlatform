@@ -96,11 +96,6 @@ async function adminSkillsMockHandler(
   return undefined;
 }
 
-/** 供用户侧 catalog 投影读取同一份内存 store */
-export function listAdminSkills(): Skill[] {
-  return skills.map((skill) => ({ ...skill }));
-}
-
 export function wrapMockHandlerWithAdminSkills(
   fallback: (path: string, opts: any) => Promise<unknown> | unknown,
 ) {
