@@ -87,24 +87,22 @@ export function buildTurns(messages: ChatMessageView[]): TurnView[] {
  * 一轮的事实 —— **后端的那份优先** ✓（它是权威 ✓），流式累积的补空 ✓。
  */
 export function resolveTurnFacts(
-  turn: TurnView,
-  apiTurns: Map<string, ApiTurn>,
+  answer: ChatMessageView | undefined,
+  apiTurn?: ApiTurn,
 ): TurnFacts {
-  const api = turn.turnId ? apiTurns.get(turn.turnId) : undefined;
-  const answer = turn.answer;
-  const extras = answer?.extras ?? api?.extras;
-  const degraded = Array.from(new Set([...(api?.degraded ?? []), ...(answer?.degraded ?? [])]));
+  const extras = answer?.extras ?? apiTurn?.extras;
+  const degraded = Array.from(new Set([...(apiTurn?.degraded ?? []), ...(answer?.degraded ?? [])]));
   return {
-    durationMs: api?.durationMs ?? answer?.durationMs,
-    inputTokens: api?.inputTokens ?? answer?.usage?.inputTokens,
-    outputTokens: api?.outputTokens ?? answer?.usage?.outputTokens,
-    costUsd: api?.costUsd ?? answer?.usage?.costUsd,
+    durationMs: apiTurn?.durationMs ?? answer?.durationMs,
+    inputTokens: apiTurn?.inputTokens ?? answer?.usage?.inputTokens,
+    outputTokens: apiTurn?.outputTokens ?? answer?.usage?.outputTokens,
+    costUsd: apiTurn?.costUsd ?? answer?.usage?.costUsd,
     toolCount: extras?.toolCalls?.length ?? 0,
     knowledgeCount: extras?.knowledgeHits?.hits.length ?? 0,
-    modelVersion: api?.modelVersion || undefined,
+    modelVersion: apiTurn?.modelVersion || undefined,
     degraded,
-    status: api?.status,
-    errorCode: api?.errorCode ?? null,
+    status: apiTurn?.status,
+    errorCode: apiTurn?.errorCode ?? null,
     extras,
   };
 }

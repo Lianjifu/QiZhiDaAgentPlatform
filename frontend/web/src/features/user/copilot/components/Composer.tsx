@@ -4,7 +4,7 @@
  * ⚠️ **附件一律真上传** ✓ —— 没有会话时**明确拒绝** ✓（不假装成功 ✓）。
  */
 import { ArrowUp, Paperclip, Square } from 'lucide-react';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 
 const COMPOSER_OPTIONS = {
   slash: [
@@ -28,7 +28,11 @@ export type ComposerProps = {
   onAttach: (file: File) => void;
 };
 
-export function Composer({
+/**
+ * ⚠️ **记忆化** ✓ —— 流式时每个 chunk 都重渲染整页 ✓ —— 输入框不该跟着动 ✓
+ * （它一个字都没变 ✓ —— 而且受控 textarea 重渲染多了会**丢光标** ✗✗）。
+ */
+export const Composer = memo(function Composer({
   input,
   onInputChange,
   onSubmit,
@@ -157,4 +161,4 @@ export function Composer({
       </p>
     </form>
   );
-}
+});

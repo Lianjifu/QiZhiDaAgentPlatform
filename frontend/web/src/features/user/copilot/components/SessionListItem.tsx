@@ -4,6 +4,7 @@
  * ⚠️ **状态点是真的** ✓ —— 「等你确认」来自轮次表 ✓（后端算的 ✓）；
  * 「上次失败」也来自轮次表 ✓ —— 不是猜的 ✓。
  */
+import { memo } from 'react';
 import { Trash2 } from 'lucide-react';
 import type { CopilotSession } from '../schema';
 import { formatRelativeTime } from './relativeTime';
@@ -11,8 +12,8 @@ import { formatRelativeTime } from './relativeTime';
 export type SessionListItemProps = {
   session: CopilotSession;
   active: boolean;
-  onSelect: () => void;
-  onDelete: () => void;
+  onSelect: (session: CopilotSession) => void;
+  onDelete: (session: CopilotSession) => void;
 };
 
 function statusOf(session: CopilotSession): 'waiting' | 'failed' | 'idle' {
@@ -39,18 +40,23 @@ function plainPreview(text: string): string {
     .trim();
 }
 
-export function SessionListItem({ session, active, onSelect, onDelete }: SessionListItemProps) {
+export const SessionListItem = memo(function SessionListItem({
+  session,
+  active,
+  onSelect,
+  onDelete,
+}: SessionListItemProps) {
   const status = statusOf(session);
   const relative = formatRelativeTime(session.updatedAt);
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={onSelect}
+      onClick={() => onSelect(session)}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          onSelect();
+          onSelect(session);
         }
       }}
       className={`group relative flex w-full cursor-pointer flex-col gap-1 rounded-md px-2.5 py-2 text-left transition ${
@@ -75,7 +81,7 @@ export function SessionListItem({ session, active, onSelect, onDelete }: Session
           type="button"
           onClick={(event) => {
             event.stopPropagation();
-            onDelete();
+            onDelete(session);
           }}
           className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded text-[var(--text-muted)] opacity-0 transition hover:bg-[var(--danger-bg)] hover:text-[var(--danger)] group-hover:opacity-100"
           aria-label={`删除 ${session.title}`}
@@ -86,4 +92,4 @@ export function SessionListItem({ session, active, onSelect, onDelete }: Session
       ) : null}
     </div>
   );
-}
+});

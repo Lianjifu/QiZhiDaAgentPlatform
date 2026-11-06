@@ -5,7 +5,7 @@
  * ⚠️ **失败放这一轮里** ✓（不是飘在页面顶部的一行黄字 ✓ —— 那样不知道是
  * 哪一轮坏的 ✗✗）。
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { MarkdownView } from '@/features/agents/components/MarkdownView';
 import { AttachmentChip } from '../blocks/AttachmentChip';
@@ -14,7 +14,8 @@ import { MessageExtrasView } from '../blocks/MessageExtrasView';
 import { PlanProposalCard } from '../blocks/PlanProposalCard';
 import { FailureCard } from './FailureCard';
 import { TurnMetaLine } from './TurnMetaLine';
-import { degradedLabel, type TurnFacts, type TurnView } from './turns';
+import { degradedLabel, resolveTurnFacts, type ChatMessageView } from './turns';
+import type { ApiTurn } from '../schema';
 
 const TYPING_PHRASES = ['我在想呢…', '打字中…', '马上就好~', '让我看看…', '嗯,再琢磨一下', '等我一下'];
 
@@ -58,30 +59,42 @@ export function CopilotTypingIndicator() {
 }
 
 export type TurnBlockProps = {
-  turn: TurnView;
-  facts: TurnFacts;
+  turnKey: string;
+  question?: ChatMessageView;
+  answer?: ChatMessageView;
+  /** 回答那条消息在消息数组里的下标 ✓ —— 重试要靠它复用原来的位置 ✓。 */
+  answerIndex?: number;
+  /** 后端那一轮的事实 ✓（重开会话时才有 ✓）。 */
+  apiTurn?: ApiTurn;
   sessionId?: string;
   streaming?: boolean;
   feedback?: 5 | 1;
-  onFeedback?: (rating: 5 | 1) => void;
-  onRetry?: () => void;
+  onFeedback?: (turnKey: string, turnId: string | undefined, rating: 5 | 1) => void;
+  onRetry?: (question: string, answerIndex: number) => void;
   retrying?: boolean;
-  extra?: ReactNode;
 };
 
-export function TurnBlock({
-  turn,
-  facts,
+/**
+ * ⚠️ **记忆化** ✓ —— 流式时每个 chunk 都会重渲染整页 ✓ —— 历史那些轮次不该
+ * 跟着重渲染 ✓（它们的内容一个字都没变 ✓）。
+ *
+ * ⚠️ **props 必须是稳定的引用** ✓ —— 消息对象在数组复制时**保持身份** ✓
+ * （只有被改的那条换新对象 ✓）→ 浅比较就能挡住 ✓。
+ */
+export const TurnBlock = memo(function TurnBlock({
+  turnKey,
+  question,
+  answer,
+  answerIndex,
+  apiTurn,
   sessionId,
   streaming,
   feedback,
   onFeedback,
   onRetry,
   retrying,
-  extra,
 }: TurnBlockProps) {
-  const question = turn.question;
-  const answer = turn.answer;
+  const facts = resolveTurnFacts(answer, apiTurn);
   const error = answer?.error;
 
   return (
@@ -100,7 +113,11 @@ export function TurnBlock({
             title={error.title ?? '这一轮没跑完'}
             message={error.message}
             code={error.code}
-            onRetry={onRetry}
+            onRetry={
+              onRetry && question && answerIndex != null
+                ? () => onRetry(question.content, answerIndex)
+                : undefined
+            }
             retrying={retrying}
           />
         ) : (
@@ -140,15 +157,13 @@ export function TurnBlock({
           </p>
         ) : null}
 
-        {extra}
-
         <div className="flex flex-wrap items-center gap-3">
           <TurnMetaLine facts={facts} />
           {sessionId && onFeedback && !streaming && !error ? (
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => onFeedback(5)}
+                onClick={() => onFeedback(turnKey, apiTurn?.turnId ?? answer?.turnId, 5)}
                 disabled={Boolean(feedback)}
                 className="rounded-md px-1.5 py-0.5 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] disabled:opacity-60"
                 aria-label="这条回答有帮助"
@@ -158,7 +173,7 @@ export function TurnBlock({
               </button>
               <button
                 type="button"
-                onClick={() => onFeedback(1)}
+                onClick={() => onFeedback(turnKey, apiTurn?.turnId ?? answer?.turnId, 1)}
                 disabled={Boolean(feedback)}
                 className="rounded-md px-1.5 py-0.5 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] disabled:opacity-60"
                 aria-label="这条回答没帮助"
@@ -172,4 +187,4 @@ export function TurnBlock({
       </article>
     </section>
   );
-}
+});

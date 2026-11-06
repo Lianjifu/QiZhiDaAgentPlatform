@@ -476,6 +476,29 @@ def _iso(value: Any) -> str:
     return str(isoformat()) if callable(isoformat) else str(value)
 
 
+def _agent_brief(agent: CatalogAgent | dict[str, Any] | None) -> dict[str, Any] | None:
+    """**用户侧只要一小份智能体信息** ✓。
+
+    ⚠️ **别把管理台那整份 dict 端出去** ✓ —— 里面有 prompts / versions /
+    trend / 评测结果 ✓（9KB ✓）—— 用户侧一个都用不上 ✓（白白多传一遍 ✓）。
+    """
+    if agent is None:
+        return None
+    if isinstance(agent, CatalogAgent):
+        return {
+            "id": str(agent.id),
+            "name": agent.name,
+            "model": agent.model,
+            "description": agent.description,
+        }
+    return {
+        "id": str(agent.get("id") or ""),
+        "name": str(agent.get("name") or ""),
+        "model": str(agent.get("model") or ""),
+        "description": str(agent.get("description") or ""),
+    }
+
+
 def _turn_card(turn: dict[str, Any]) -> dict[str, Any]:
     """**一轮的事实** → 前端那行「本轮小结」✓。
 
@@ -521,7 +544,8 @@ def _session_detail(
     card = _session_card(session, waiting_approval=waiting_approval)
     card["messages"] = messages
     card["pendingApproval"] = pending
-    card["agent"] = agent.to_catalog_dict() if agent is not None else agent_dict
+    # ⚠️ **只给一小份** ✓ —— 别把管理台那整份智能体 dict 端给用户侧 ✓。
+    card["agent"] = _agent_brief(agent if agent is not None else agent_dict)
     card["status"] = session.status.value
     # ⚠️ **每一轮的事实** ✓ —— 重开会话时那些数字还在 ✓（不然白记了 ✗✗）。
     card["turns"] = [_turn_card(turn) for turn in (turns or [])]

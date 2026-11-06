@@ -2,7 +2,7 @@ import { getApiClient } from '@qzdap/web-api';
 import { Plus, Search, Sparkles } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { flushSync } from 'react-dom';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ApiTurn, CopilotSession } from './schema';
 import {
   InteractiveProvider,
@@ -26,13 +26,9 @@ import type { AttachmentReady } from './blocks/AttachmentChip';
 import { normalizeError } from '@/api/shared/http-error';
 import { Composer } from './components/Composer';
 import { ConversationHeader } from './components/ConversationHeader';
-import { SessionListItem } from './components/SessionListItem';
+import { SessionList } from './components/SessionList';
 import { TurnBlock } from './components/TurnBlock';
-import {
-  buildTurns,
-  resolveTurnFacts,
-  type ChatMessageView,
-} from './components/turns';
+import { buildTurns, type ChatMessageView } from './components/turns';
 
 type CopilotEntryState = {
   knowledgeTitle?: string;
@@ -195,22 +191,28 @@ function CopilotInner() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const sendFeedback = async (turnKey: string, turnId: string | undefined, rating: 5 | 1) => {
-    if (!sessionId || feedbackGiven[turnKey]) return;
-    setFeedbackGiven((current) => ({ ...current, [turnKey]: rating }));
-    try {
-      await submitCopilotFeedback(sessionId, rating, turnId ? { turnId } : undefined);
-    } catch {
-      // 反馈写失败不该打扰用户 —— 标记先撤掉.
-      setFeedbackGiven((current) => {
-        const next = { ...current };
+  // ⚠️ **「反馈过了没有」放 ref** ✓ —— 放 state 里的话，回调就得依赖它 ✓
+  // → 每次渲染都换身份 ✓ → 记忆化的轮次块就白记了 ✗✗。
+  const feedbackGivenRef = useRef<Record<string, 5 | 1>>({});
+  const sendFeedback = useCallback(
+    async (turnKey: string, turnId: string | undefined, rating: 5 | 1) => {
+      if (!sessionId || feedbackGivenRef.current[turnKey]) return;
+      feedbackGivenRef.current = { ...feedbackGivenRef.current, [turnKey]: rating };
+      setFeedbackGiven(feedbackGivenRef.current);
+      try {
+        await submitCopilotFeedback(sessionId, rating, turnId ? { turnId } : undefined);
+      } catch {
+        // 反馈写失败不该打扰用户 —— 标记先撤掉.
+        const next = { ...feedbackGivenRef.current };
         delete next[turnKey];
-        return next;
-      });
-    }
-  };
+        feedbackGivenRef.current = next;
+        setFeedbackGiven(next);
+      }
+    },
+    [sessionId],
+  );
 
-  const stopSending = async () => {
+  const stopSending = useCallback(async () => {
     // 先断掉前端的流, 再让后端停 —— 用户立刻看到停止, 后端随后收尾.
     abortRef.current?.abort();
     const sid = sessionId;
@@ -220,7 +222,7 @@ function CopilotInner() {
     } catch {
       // 后端收尾失败不影响前端 —— 流已经断了.
     }
-  };
+  }, [sessionId]);
 
   const sendMessage = async (
     value = input,
@@ -611,12 +613,24 @@ function CopilotInner() {
     }
   };
 
+  // ⚠️ **稳定引用** ✓ —— 流式时每个 chunk 都重渲染整页 ✓ —— 回调换了身份
+  // 的话，记忆化的子组件就白记了 ✗✗（每轮都重新渲染一遍历史 ✗✗）。
+  // 「最新函数」放 ref 里 ✓ —— 事件回调拿到的永远是**当下**那版 ✓。
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
+  const startTurn = useCallback(
+    (value?: string, options?: { retry?: { question: string; assistantIndex: number } }) => {
+      void sendMessageRef.current(value, options);
+    },
+    [],
+  );
+
   // 自动滚到底
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages]);
 
-  const handleDeleteSession = async (id: string | undefined) => {
+  const handleDeleteSession = useCallback(async (id: string | undefined) => {
     if (!id) return;
     if (!window.confirm('确认删除这条对话？删除后无法恢复。')) return;
     try {
@@ -631,7 +645,39 @@ function CopilotInner() {
     } catch (error) {
       setNotices((current) => pushNotice(current, `删除失败：${String(error)}`));
     }
-  };
+  }, [sessionId]);
+
+  const handleSelectSession = useCallback((item: CopilotSession) => {
+    setSessionListOpen(false);
+    if (!item.id) return;
+    // 先清当前消息栈, 避免切换 session 时新旧消息混在一起闪
+    setMessages([]);
+    setTurns([]);
+    setPendingApproval(null);
+    setSessionId(item.id);
+    setSessionInfo({
+      agentName: item.agentName || undefined,
+      model: item.model || undefined,
+      turnCount: item.turnCount ?? 0,
+      waitingApproval: item.waitStatus === 'waiting_approval',
+    });
+  }, []);
+
+  const handleStop = useCallback(() => {
+    void stopSending();
+  }, [stopSending]);
+
+  const handleRetry = useCallback((question: string, assistantIndex: number) => {
+    void sendMessageRef.current(undefined, { retry: { question, assistantIndex } });
+  }, []);
+
+  const handleFeedback = useCallback(
+    (turnKey: string, turnId: string | undefined, rating: 5 | 1) => {
+      void sendFeedback(turnKey, turnId, rating);
+    },
+    [sendFeedback],
+  );
+
   const resolveApproval = async (approved: boolean) => {
     if (!sessionId || !pendingApproval) return;
     setIsSending(true);
@@ -647,7 +693,7 @@ function CopilotInner() {
       setIsSending(false);
     }
   };
-  const handleAttachment = async (file: File) => {
+  const handleAttachment = useCallback(async (file: File) => {
     // 演示环境同样真上传 —— 演示后端有真的附件端点. 以前演示模式下只把
     // 文件名写进输入框, 附件根本不存在.
     if (!sessionId) { setNotices((current) => pushNotice(current, '请先打开会话，再上传附件。')); return; }
@@ -658,7 +704,14 @@ function CopilotInner() {
       if (!result?.id) throw new Error('后端未返回附件 ID');
       setInput((current) => `${current}\n[附件: ${file.name}, ID: ${result.id}]`);
     } catch (error) { setNotices((current) => pushNotice(current, `上传失败：${String(error)}`)); }
-  };
+  }, [sessionId]);
+
+  const handleAttach = useCallback(
+    (file: File) => {
+      void handleAttachment(file);
+    },
+    [handleAttachment],
+  );
 
   // ── 视图数据 ──────────────────────────────────────────────────────
   const apiTurns = useMemo(() => new Map(turns.map((turn) => [turn.turnId, turn])), [turns]);
@@ -712,37 +765,13 @@ function CopilotInner() {
             />
           </div>
         </div>
-        <div className="flex-1 overflow-auto px-2">
-          <p className="px-2 py-2 text-[11px] font-semibold text-[var(--text-muted)]">最近对话</p>
-          {sessions.length === 0 ? (
-            <p className="px-2 py-3 text-[11px] leading-5 text-[var(--text-muted)]">
-              {search ? '没有匹配的对话。' : '还没有对话 —— 问一句就开始。'}
-            </p>
-          ) : null}
-          {sessions.map((item) => (
-            <SessionListItem
-              key={item.id ?? item.title}
-              session={item}
-              active={sessionId === item.id}
-              onSelect={() => {
-                setSessionListOpen(false);
-                if (!item.id) return;
-                // 先清当前消息栈, 避免切换 session 时新旧消息混在一起闪
-                setMessages([]);
-                setTurns([]);
-                setPendingApproval(null);
-                setSessionId(item.id);
-                setSessionInfo({
-                  agentName: item.agentName || undefined,
-                  model: item.model || undefined,
-                  turnCount: item.turnCount ?? 0,
-                  waitingApproval: item.waitStatus === 'waiting_approval',
-                });
-              }}
-              onDelete={() => void handleDeleteSession(item.id)}
-            />
-          ))}
-        </div>
+        <SessionList
+          sessions={sessions}
+          activeId={sessionId}
+          search={search}
+          onSelect={handleSelectSession}
+          onDelete={(item) => void handleDeleteSession(item.id)}
+        />
       </aside>
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -818,10 +847,10 @@ function CopilotInner() {
                 <Composer
                   input={input}
                   onInputChange={setInput}
-                  onSubmit={() => void sendMessage()}
-                  onStop={() => void stopSending()}
+                  onSubmit={startTurn}
+                  onStop={handleStop}
                   isSending={isSending}
-                  onAttach={(file) => void handleAttachment(file)}
+                  onAttach={handleAttach}
                 />
               </div>
             </div>
@@ -869,31 +898,21 @@ function CopilotInner() {
                   </div>
                 ) : null}
                 <div className="space-y-9 pb-8">
-                  {turnViews.map((turn) => {
-                    const facts = resolveTurnFacts(turn, apiTurns);
-                    const isLast = turn === turnViews[turnViews.length - 1];
-                    return (
-                      <TurnBlock
-                        key={turn.key}
-                        turn={turn}
-                        facts={facts}
-                        sessionId={sessionId}
-                        streaming={isSending && isLast}
-                        feedback={feedbackGiven[turn.key]}
-                        onFeedback={(rating) => void sendFeedback(turn.key, turn.turnId, rating)}
-                        onRetry={
-                          turn.question && turn.answerIndex != null
-                            ? () => void sendMessage(undefined, {
-                              retry: {
-                                question: turn.question?.content ?? '',
-                                assistantIndex: turn.answerIndex ?? -1,
-                              },
-                            })
-                            : undefined
-                        }
-                      />
-                    );
-                  })}
+                  {turnViews.map((turn, index) => (
+                    <TurnBlock
+                      key={turn.key}
+                      turnKey={turn.key}
+                      question={turn.question}
+                      answer={turn.answer}
+                      answerIndex={turn.answerIndex}
+                      apiTurn={turn.turnId ? apiTurns.get(turn.turnId) : undefined}
+                      sessionId={sessionId}
+                      streaming={isSending && index === turnViews.length - 1}
+                      feedback={feedbackGiven[turn.key]}
+                      onFeedback={handleFeedback}
+                      onRetry={handleRetry}
+                    />
+                  ))}
                 </div>
                 <div ref={messagesEndRef} />
               </div>
@@ -903,10 +922,10 @@ function CopilotInner() {
                 <Composer
                   input={input}
                   onInputChange={setInput}
-                  onSubmit={() => void sendMessage()}
-                  onStop={() => void stopSending()}
+                  onSubmit={startTurn}
+                  onStop={handleStop}
                   isSending={isSending}
-                  onAttach={(file) => void handleAttachment(file)}
+                  onAttach={handleAttach}
                 />
               </div>
             </div>

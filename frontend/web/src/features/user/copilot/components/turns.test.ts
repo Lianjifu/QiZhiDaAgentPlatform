@@ -51,7 +51,7 @@ describe('对话轮次', () => {
       { role: 'user', content: '问题', turnId: 'turn-1' },
       { role: 'assistant', content: '回答', turnId: 'turn-1', usage: { inputTokens: 1, outputTokens: 2 } },
     ])[0];
-    const facts = resolveTurnFacts(turn, new Map([['turn-1', apiTurn()]]));
+    const facts = resolveTurnFacts(turn.answer, apiTurn());
     expect(facts.durationMs).toBe(3174);
     expect(facts.inputTokens).toBe(2228);
     expect(facts.outputTokens).toBe(122);
@@ -64,7 +64,7 @@ describe('对话轮次', () => {
       { role: 'user', content: '问题' },
       { role: 'assistant', content: '回答', usage: { inputTokens: 7, outputTokens: 9 } },
     ])[0];
-    const facts = resolveTurnFacts(turn, new Map());
+    const facts = resolveTurnFacts(turn.answer);
     expect(facts.inputTokens).toBe(7);
     expect(facts.outputTokens).toBe(9);
   });
@@ -75,24 +75,19 @@ describe('对话轮次', () => {
       { role: 'assistant', content: '回答', turnId: 'turn-1' },
     ])[0];
     const facts = resolveTurnFacts(
-      turn,
-      new Map([
-        [
-          'turn-1',
-          apiTurn({
-            extras: {
-              toolCalls: [
-                { id: 'c1', tool_name: 'shell', status: 'succeeded' },
-                { id: 'c2', tool_name: 'search', status: 'succeeded' },
-              ],
-              knowledgeHits: {
-                query: '考勤',
-                hits: [{ id: 'k1', title: '考勤与假期规定', snippet: '', score: 0.9 }],
-              },
-            },
-          }),
-        ],
-      ]),
+      turn.answer,
+      apiTurn({
+        extras: {
+          toolCalls: [
+            { id: 'c1', tool_name: 'shell', status: 'succeeded' },
+            { id: 'c2', tool_name: 'search', status: 'succeeded' },
+          ],
+          knowledgeHits: {
+            query: '考勤',
+            hits: [{ id: 'k1', title: '考勤与假期规定', snippet: '', score: 0.9 }],
+          },
+        },
+      }),
     );
     expect(facts.toolCount).toBe(2);
     expect(facts.knowledgeCount).toBe(1);
