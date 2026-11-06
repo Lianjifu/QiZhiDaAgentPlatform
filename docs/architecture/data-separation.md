@@ -487,12 +487,17 @@ $ docker exec qzdap-postgres psql -U postgres -d qzdap_dev -tAc "select count(*)
 |---|---|
 | `/copilot` | 会话列表有演示会话；点开「上周各渠道毛利对比」能看到完整的多轮问答 |
 | `/admin/agents`（管理员） | 「5 个智能体 · 5 已发布」，逐条列出 |
-| `/agents`（普通用户） | 「开放 5 · 已选用 0」，点「浏览并选用」抽屉里 5 个智能体，每个都有「选用」和「开始对话」 |
-| `/skills` | 「可浏览 3」 |
-| `/knowledge` | 「可浏览 3」（3 篇文档） |
-| `/automations` | 工作流目录里 3 个（2 个已发布 / 1 个草稿） |
+| `/library?tab=agents`（普通用户） | 「开放 5 · 已选用 0」，点「浏览并选用」抽屉里 5 个智能体，每个都有「选用」和「开始对话」 |
+| `/library?tab=skills` | 「开放 3」 |
+| `/library?tab=knowledge` | 「开放 6」（6 篇文档） |
+| `/library?tab=automations` | 「开放 2」（已发布的工作流；草稿不进用户目录） |
 | `/admin/memory` | 「3 条短期会话 · 5 条长期记忆 · 3 条团队知识」；新建 / flush / 确认 / 晋升全部可点 |
 | `/copilot` | 「与企智搭平台向导对话」，开场白就是种进去的那句「企智搭能接哪些类型的知识库？」 |
+
+> 用户侧原来四个目录页（智能体 / 知识 / 技能 / 工作流）已经合并成一个
+> `/library` 页（四个页签，`?tab=agents|knowledge|skills|automations`）；
+> 旧路径 `/agents`、`/knowledge`、`/skills`、`/automations` 保留为重定向 ✓。
+> 「协作」页整页删掉 ✓ —— 侧栏只剩 首页 / 对话 / 资源库 / 任务 ✓。
 
 ### 9.6 对话还差最后一步：LLM 供应商
 
