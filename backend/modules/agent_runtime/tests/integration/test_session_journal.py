@@ -496,3 +496,97 @@ async def test_a_queued_turn_can_be_cancelled(journal_ctx) -> None:  # type: ign
 
     await journal.finish_turn(turn_id=turn_id, status="cancelled")
     assert await journal.get_turn_status(turn_id, tenant_id=tenant) == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_turn_summaries_carry_the_facts_of_every_turn(journal_ctx) -> None:  # type: ignore[no-untyped-def]
+    """**每一轮的事实读得回来** ✓ —— 耗时 / token / 成本 / 工具 / 知识命中 ✓。
+
+    ⚠️ **message 事件不参与** ✓ —— 那是流式增量 ✓（一轮能几百行 ✓）。
+    """
+    journal, factory = journal_ctx
+    tenant = uuid4()
+    session_id = await _session(factory, tenant_id=tenant)
+    turn_id = await _start(journal, session_id=session_id, tenant_id=tenant, key="k1")
+
+    await journal.append_event(
+        turn_id=turn_id, seq=1, event_type="message", payload={"content": "流式增量"}
+    )
+    await journal.append_event(
+        turn_id=turn_id,
+        seq=2,
+        event_type="knowledge_search",
+        payload={
+            "flags": ["recall_degraded"],
+            "query": "考勤",
+            "hits": [{"id": "k1", "title": "考勤规定", "snippet": "…", "score": 0.9}],
+            "degraded": True,
+        },
+    )
+    await journal.append_event(
+        turn_id=turn_id,
+        seq=3,
+        event_type="tool_call",
+        payload={"tool_call_id": "c1", "tool_name": "shell", "arguments": {"cmd": "ls"}},
+    )
+    await journal.append_event(
+        turn_id=turn_id,
+        seq=4,
+        event_type="tool_result",
+        payload={"tool_call_id": "c1", "output": "ok", "is_error": False, "latency_ms": 12},
+    )
+    await journal.append_event(
+        turn_id=turn_id,
+        seq=5,
+        event_type="usage",
+        payload={"input_tokens": 2228, "output_tokens": 122, "cost_usd": 0.0001},
+    )
+    await journal.finish_turn(turn_id=turn_id, status="succeeded", cost_usd=0.0001)
+
+    summaries = await journal.list_turn_summaries(session_id=session_id, tenant_id=tenant)
+    assert len(summaries) == 1
+    turn = summaries[0]
+    assert turn["turn_id"] == str(turn_id)
+    assert turn["status"] == "succeeded"
+    assert turn["duration_ms"] is not None and turn["duration_ms"] >= 0
+    assert turn["input_tokens"] == 2228
+    assert turn["output_tokens"] == 122
+    assert turn["cost_usd"] == pytest.approx(0.0001)
+    assert turn["degraded"] == ["recall_degraded"]
+    assert turn["tool_calls"][0]["tool_name"] == "shell"
+    assert turn["tool_calls"][0]["status"] == "succeeded"
+    assert turn["tool_calls"][0]["output"] == "ok"
+    assert turn["knowledge_hits"]["hits"][0]["title"] == "考勤规定"
+
+
+@pytest.mark.asyncio
+async def test_turn_summaries_are_tenant_scoped(journal_ctx) -> None:  # type: ignore[no-untyped-def]
+    """⚠️ 跨租户**读不到**别人的轮次事实 ✓（事件表没有 ``tenant_id`` ✓）。"""
+    journal, factory = journal_ctx
+    tenant = uuid4()
+    other = uuid4()
+    session_id = await _session(factory, tenant_id=tenant)
+    turn_id = await _start(journal, session_id=session_id, tenant_id=tenant, key="k1")
+    await journal.append_event(
+        turn_id=turn_id, seq=1, event_type="usage", payload={"input_tokens": 1}
+    )
+
+    assert await journal.list_turn_summaries(session_id=session_id, tenant_id=other) == []
+    assert await journal.list_session_activity(session_ids=[session_id], tenant_id=other) == {}
+
+
+@pytest.mark.asyncio
+async def test_session_activity_reports_turn_count_and_last_turn(journal_ctx) -> None:  # type: ignore[no-untyped-def]
+    """会话卡片上的**最近活动 / 轮次数**是真的 ✓."""
+    journal, factory = journal_ctx
+    tenant = uuid4()
+    session_id = await _session(factory, tenant_id=tenant)
+    first = await _start(journal, session_id=session_id, tenant_id=tenant, key="k1")
+    await journal.finish_turn(turn_id=first, status="succeeded")
+    second = await _start(journal, session_id=session_id, tenant_id=tenant, key="k2")
+    await journal.finish_turn(turn_id=second, status="failed", error_code="TURN_FAILED")
+
+    activity = await journal.list_session_activity(session_ids=[session_id], tenant_id=tenant)
+    assert activity[session_id]["turn_count"] == 2
+    assert activity[session_id]["last_status"] == "failed"
+    assert activity[session_id]["last_activity_at"] is not None

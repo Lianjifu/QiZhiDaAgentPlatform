@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from qzdap.modules.agent_runtime.adapter.persistence.session_journal import (
+    assemble_turn_summaries,
+)
 from qzdap.modules.agent_runtime.application.ports import (
     EventPublisher,
     LLMPort,
@@ -359,6 +362,61 @@ class InMemorySessionJournal(SessionJournal):
         if row is None or row["tenant_id"] != tenant_id:
             return None
         return str(row["status"])
+
+    async def list_turn_summaries(
+        self, *, session_id: UUID, tenant_id: UUID
+    ) -> list[dict[str, Any]]:
+        """与 ``PostgresSessionJournal`` 同口径 ✓ —— 复用同一个拼装函数 ✓
+        （口径只有一份 ✓ —— 替身自己抄一遍就会漂 ✗✗）。"""
+        rows: list[tuple[Any, ...]] = []
+        for turn_id, row in self.turns.items():
+            if row.get("session_id") != session_id or row.get("tenant_id") != tenant_id:
+                continue
+            # ⚠️ **message 事件不参与摘要** ✓（与真库一致 ✓ —— 流式增量用不上 ✓）。
+            events = sorted(
+                (e for e in (self.events.get(turn_id) or []) if e.event_type != "message"),
+                key=lambda e: e.seq,
+            )
+            head = (
+                turn_id,
+                row.get("status"),
+                row.get("started_at"),
+                row.get("finished_at"),
+                row.get("error_code"),
+                row.get("model_version"),
+                row.get("agent_version"),
+                row.get("user_input"),
+            )
+            if not events:
+                rows.append((*head, None, 0, {}))
+                continue
+            for event in events:
+                rows.append((*head, event.event_type, event.seq, event.payload))
+        return assemble_turn_summaries(rows)
+
+    async def list_session_activity(
+        self, *, session_ids: Sequence[UUID], tenant_id: UUID
+    ) -> dict[UUID, dict[str, Any]]:
+        wanted = set(session_ids)
+        out: dict[UUID, dict[str, Any]] = {}
+        for row in self.turns.values():
+            sid = row.get("session_id")
+            if row.get("tenant_id") != tenant_id or sid not in wanted:
+                continue
+            entry = out.setdefault(
+                sid,
+                {"turn_count": 0, "last_status": "", "last_activity_at": None, "_latest": None},
+            )
+            entry["turn_count"] += 1
+            started = row.get("started_at")
+            latest = entry.get("_latest")
+            if latest is None or (started is not None and started > latest):
+                entry["_latest"] = started
+                entry["last_status"] = str(row.get("status"))
+                entry["last_activity_at"] = row.get("finished_at") or started
+        for entry in out.values():
+            entry.pop("_latest", None)
+        return out
 
 
 def make_dependencies(

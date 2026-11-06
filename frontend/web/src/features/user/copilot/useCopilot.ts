@@ -4,12 +4,16 @@
 import { useApiQuery } from '@/services/query';
 import { qk } from '@/api/shared/query-keys';
 import { withDefaults } from '@/api/shared/pagination';
-import type { CopilotSession, SessionsListParams } from './schema';
+import type { ApiTurn, CopilotSession, SessionsListParams } from './schema';
 
 const PATH = '/api/sessions';
 
 export interface SessionDetail extends CopilotSession {
-  messages?: Array<{ role: string; content: string; toolName?: string }>;
+  messages?: Array<{ role: string; content: string; toolName?: string; turnId?: string }>;
+  /** 每一轮的事实 ✓（耗时 / token / 成本 / 工具 / 知识命中 ✓）。 */
+  turns?: ApiTurn[];
+  /** 这个会话用的智能体 ✓（名字 / 模型 ✓）。 */
+  agent?: { id?: string; name?: string; model?: string } | null;
   pendingApproval?: {
     approval_id?: string;
     approvalId?: string;

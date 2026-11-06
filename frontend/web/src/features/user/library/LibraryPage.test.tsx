@@ -177,12 +177,14 @@ describe('资源库 · 智能体页签', () => {
     const drawer = screen.getByRole('dialog', { name: '浏览并选用' });
     fireEvent.click(within(drawer).getByRole('button', { name: '与客户沟通助手开始对话' }));
     expect(screen.getByRole('heading', { name: '与客户沟通助手对话' })).toBeTruthy();
-    expect(screen.getByText('已选择智能体 · 在线会话')).toBeTruthy();
+    // ⚠️ **头部显示的是真的智能体名** ✓（不是编的 ✓）。
+    expect(screen.getByText('客户沟通助手')).toBeTruthy();
     expect(screen.getByRole('button', { name: customerAgent.example })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: customerAgent.example }));
     expect(await screen.findByText(customerAgent.example)).toBeTruthy();
-    expect(screen.getByText(/当前智能体/)).toBeTruthy();
+    // ⚠️ **「当前智能体」收进头部了** ✓ —— 名字还在 ✓（不再浮在消息流中间 ✓）。
+    expect(screen.getByText('客户沟通助手')).toBeTruthy();
     expect(screen.getByRole('link', { name: '更换智能体' }).getAttribute('href')).toBe(
       '/library?tab=agents',
     );

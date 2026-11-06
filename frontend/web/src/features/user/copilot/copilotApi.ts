@@ -2,15 +2,10 @@ import { getApiClient } from '@qzdap/web-api';
 import type { CopilotSession } from './schema';
 import type { SessionDetail } from './useCopilot';
 
-export type ChatMessage = {
-  role: 'user' | 'assistant';
-  content: string;
-  tools?: string[];
-  compacted?: boolean;
-};
-
-export async function listCopilotSessions(): Promise<CopilotSession[]> {
-  const rows = await getApiClient().get<CopilotSession[] | null>('/api/sessions');
+export async function listCopilotSessions(params: { search?: string } = {}): Promise<CopilotSession[]> {
+  const rows = await getApiClient().get<CopilotSession[] | null>('/api/sessions', {
+    query: { search: params.search?.trim() || undefined },
+  });
   if (rows == null) return [];
   if (!Array.isArray(rows)) throw new Error('后端会话列表格式错误');
   return rows;

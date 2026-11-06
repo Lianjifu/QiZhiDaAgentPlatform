@@ -9,7 +9,7 @@ runner.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -225,6 +225,28 @@ class SessionJournal(ABC):
     @abstractmethod
     async def list_waiting_approval_sessions(self, *, tenant_id: UUID) -> set[UUID]:
         """哪些会话**正在等审批** ✓（一次查询 —— 别按会话逐个查 ✗）。"""
+        ...
+
+    @abstractmethod
+    async def list_turn_summaries(
+        self, *, session_id: UUID, tenant_id: UUID
+    ) -> list[dict[str, Any]]:
+        """这个会话**每一轮的事实摘要** ✓ —— 状态 / 耗时 / token / 成本 /
+        工具 / 知识命中 / 降级标记 ✓。
+
+        ⚠️ **对话页的「本轮小结」靠它** ✓ —— 否则重开一个会话，那些数字就
+        全没了 ✗✗（事件流里明明记着 ✓）。
+        """
+        ...
+
+    @abstractmethod
+    async def list_session_activity(
+        self, *, session_ids: Sequence[UUID], tenant_id: UUID
+    ) -> dict[UUID, dict[str, Any]]:
+        """一批会话的**最近活动** ✓ —— 轮次数 / 最近一轮的状态 / 落点 ✓。
+
+        ⚠️ **一次查询** ✓（别按会话逐个查 ✗✗）。
+        """
         ...
 
 

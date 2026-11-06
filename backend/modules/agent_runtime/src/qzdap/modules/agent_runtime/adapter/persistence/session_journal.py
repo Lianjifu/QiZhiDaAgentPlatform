@@ -23,11 +23,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import and_, func, select, text, update
 from sqlalchemy.exc import IntegrityError
 
 from qzdap.modules.agent_runtime.adapter.persistence.idempotency_store import (
@@ -298,6 +300,90 @@ class PostgresSessionJournal:
             )
             return result.scalar_one_or_none()
 
+    # ── 轮次事实（读） ────────────────────────────────────────────────
+
+    async def list_turn_summaries(
+        self, *, session_id: UUID, tenant_id: UUID
+    ) -> list[dict[str, Any]]:
+        """这个会话**每一轮的事实摘要** ✓ —— 状态 / 耗时 / token / 成本 /
+        工具 / 知识命中 / 降级标记 ✓。
+
+        ⚠️ **只读非 message 事件** ✓ —— message 事件是**流式增量** ✓（一轮能
+        几百行 ✓ —— 摘要用不上 ✓）→ JOIN 条件写在 ON 上 ✓（放 WHERE 会把
+        「没有其它事件」的轮次整行丢掉 ✗✗）。
+        """
+        async with self._sf.session() as session:
+            result = await session.execute(
+                select(
+                    SessionTurnORM.id,
+                    SessionTurnORM.status,
+                    SessionTurnORM.started_at,
+                    SessionTurnORM.finished_at,
+                    SessionTurnORM.error_code,
+                    SessionTurnORM.model_version,
+                    SessionTurnORM.agent_version,
+                    SessionTurnORM.user_input,
+                    SessionEventORM.event_type,
+                    SessionEventORM.seq,
+                    SessionEventORM.payload,
+                )
+                .outerjoin(
+                    SessionEventORM,
+                    and_(
+                        SessionEventORM.turn_id == SessionTurnORM.id,
+                        SessionEventORM.event_type != "message",
+                    ),
+                )
+                .where(
+                    SessionTurnORM.session_id == session_id,
+                    SessionTurnORM.tenant_id == tenant_id,
+                )
+                .order_by(
+                    SessionTurnORM.started_at.asc(),
+                    SessionEventORM.seq.asc(),
+                )
+            )
+            rows = result.all()
+        return assemble_turn_summaries(rows)
+
+    async def list_session_activity(
+        self, *, session_ids: Sequence[UUID], tenant_id: UUID
+    ) -> dict[UUID, dict[str, Any]]:
+        """一批会话的**最近活动** ✓ —— 轮次数 / 最近一轮的状态 / 落点 ✓。
+
+        ⚠️ **一次查询** ✓（别按会话逐个查 ✗✗ —— 会话列表一屏就是几十条 ✓）。
+        ⚠️ **最近活动取「最后一轮」的落点** ✓（不是 ``agent_sessions.updated_at``
+        ✓ —— 那一列是**事务开始时刻** ✓（Postgres 的 ``now()`` ✓）—— 跟真实
+        对话时间对不上 ✗✗）。
+        """
+        if not session_ids:
+            return {}
+        async with self._sf.session() as session:
+            result = await session.execute(
+                select(
+                    SessionTurnORM.session_id,
+                    SessionTurnORM.status,
+                    SessionTurnORM.started_at,
+                    SessionTurnORM.finished_at,
+                    func.count().over(partition_by=SessionTurnORM.session_id).label("turn_count"),
+                )
+                .where(
+                    SessionTurnORM.tenant_id == tenant_id,
+                    SessionTurnORM.session_id.in_(list(session_ids)),
+                )
+                .distinct(SessionTurnORM.session_id)
+                .order_by(SessionTurnORM.session_id, SessionTurnORM.started_at.desc())
+            )
+            rows = result.all()
+        out: dict[UUID, dict[str, Any]] = {}
+        for session_id, status, started_at, finished_at, turn_count in rows:
+            out[session_id] = {
+                "turn_count": int(turn_count or 0),
+                "last_status": str(status),
+                "last_activity_at": finished_at or started_at,
+            }
+        return out
+
     # ── 事件 ───────────────────────────────────────────────────────────
 
     async def append_event(
@@ -386,4 +472,120 @@ class PostgresSessionJournal:
             ]
 
 
-__all__ = ["FINISHED_STATUSES", "PostgresSessionJournal"]
+def _merge_turn_event(turn: dict[str, Any], event_type: str, payload: dict[str, Any]) -> None:
+    """把一条事件并进**这一轮的摘要** ✓。
+
+    ⚠️ **口径跟前端流式那条一致** ✓ —— ``usage`` 取**最后一次** ✓（runner
+    也是取最后一次 ✓ —— 落进 ``session_turns.cost_usd`` 的就是它 ✓），
+    ``knowledge_search`` 取**最后一次** ✓（前端流式也是覆盖 ✓）。
+    """
+    for flag in payload.get("flags") or []:
+        name = str(flag)
+        if name and name not in turn["degraded"]:
+            turn["degraded"].append(name)
+    if event_type == "usage":
+        turn["input_tokens"] = int(payload.get("input_tokens") or 0)
+        turn["output_tokens"] = int(payload.get("output_tokens") or 0)
+        turn["cost_usd"] = float(payload.get("cost_usd") or 0.0)
+    elif event_type == "tool_call":
+        arguments = payload.get("arguments")
+        turn["tool_calls"].append(
+            {
+                "id": str(payload.get("tool_call_id") or ""),
+                "tool_name": str(payload.get("tool_name") or "tool"),
+                "status": "running",
+                "arguments": arguments if isinstance(arguments, dict) else {},
+            }
+        )
+    elif event_type == "tool_result":
+        call_id = str(payload.get("tool_call_id") or "")
+        for call in turn["tool_calls"]:
+            if call["id"] != call_id:
+                continue
+            output = payload.get("output")
+            call["status"] = "failed" if payload.get("is_error") else "succeeded"
+            call["output"] = (
+                output
+                if isinstance(output, str)
+                else json.dumps(output, ensure_ascii=False, default=str)
+            )
+            call["latency_ms"] = int(payload.get("latency_ms") or 0)
+            break
+    elif event_type == "skill_invocation":
+        turn["skill_invocations"].append(
+            {
+                "id": str(payload.get("invocation_id") or ""),
+                "skill_name": str(payload.get("skill_name") or ""),
+                "status": str(payload.get("status") or "started"),
+            }
+        )
+    elif event_type == "knowledge_search":
+        raw_hits = payload.get("hits")
+        turn["knowledge_hits"] = {
+            "query": str(payload.get("query") or ""),
+            "hits": [
+                {
+                    "id": str(hit.get("id") or ""),
+                    "title": str(hit.get("title") or "未命名片段"),
+                    "snippet": str(hit.get("snippet") or ""),
+                    "score": float(hit.get("score") or 0.0),
+                }
+                for hit in (raw_hits if isinstance(raw_hits, list) else [])
+            ],
+            "degraded": bool(payload.get("degraded")),
+        }
+    elif event_type == "workflow_invocation":
+        turn["workflow_runs"].append(
+            {
+                "id": str(payload.get("invocation_id") or ""),
+                "workflow_name": str(payload.get("workflow_name") or ""),
+                "status": str(payload.get("status") or "started"),
+            }
+        )
+
+
+def assemble_turn_summaries(rows: Any) -> list[dict[str, Any]]:
+    """把 JOIN 出来的行**拼成每一轮的摘要** ✓。
+
+    ⚠️ **轮次按 ``started_at`` 排** ✓ —— 会话里的真实先后 ✓。
+    """
+    turns: dict[UUID, dict[str, Any]] = {}
+    order: list[UUID] = []
+    for row in rows:
+        turn_id = row[0]
+        turn = turns.get(turn_id)
+        if turn is None:
+            started_at = row[2]
+            finished_at = row[3]
+            duration_ms: int | None = None
+            if started_at is not None and finished_at is not None:
+                duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+            turn = {
+                "turn_id": str(turn_id),
+                "status": str(row[1]),
+                "started_at": started_at,
+                "finished_at": finished_at,
+                "duration_ms": duration_ms,
+                "error_code": row[4],
+                "model_version": str(row[5] or ""),
+                "agent_version": str(row[6] or ""),
+                "user_input": str(row[7] or ""),
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cost_usd": 0.0,
+                "degraded": [],
+                "tool_calls": [],
+                "skill_invocations": [],
+                "knowledge_hits": None,
+                "workflow_runs": [],
+            }
+            turns[turn_id] = turn
+            order.append(turn_id)
+        event_type = row[8]
+        if event_type is None:
+            continue
+        _merge_turn_event(turn, str(event_type), dict(row[10] or {}))
+    return [turns[turn_id] for turn_id in order]
+
+
+__all__ = ["FINISHED_STATUSES", "PostgresSessionJournal", "assemble_turn_summaries"]

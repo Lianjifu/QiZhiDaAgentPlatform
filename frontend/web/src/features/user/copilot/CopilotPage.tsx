@@ -1,26 +1,14 @@
 import { getApiClient } from '@qzdap/web-api';
-import {
-  ArrowUp,
-  Bot,
-  Menu,
-  Paperclip,
-  Plus,
-  Search,
-  Settings2,
-  Sparkles,
-  Square,
-  Trash2,
-} from 'lucide-react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Plus, Search, Sparkles } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import { flushSync } from 'react-dom';
-import { useEffect, useRef, useState } from 'react';
-import type { CopilotSession } from './schema';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ApiTurn, CopilotSession } from './schema';
 import {
   InteractiveProvider,
   useInteractive,
 } from './interactiveStore';
 import { InteractionHost } from './InteractionHost';
-import { MarkdownView } from '@/features/agents/components/MarkdownView';
 import {
   cancelCopilotTurn,
   createCopilotSession,
@@ -30,40 +18,38 @@ import {
   loadCopilotSession,
   streamCopilotTurn,
   submitCopilotFeedback,
-  type ChatMessage,
 } from './copilotApi';
-import {
-  AttachmentChip,
-  type AttachmentReady,
-} from './blocks/AttachmentChip';
-import {
-  ArtifactCard,
-  type ArtifactReady,
-} from './blocks/ArtifactCard';
-import {
-  MessageExtrasView,
-  type MessageExtras,
-  type ToolCallState,
-} from './blocks/MessageExtrasView';
-import {
-  PlanProposalCard,
-  type PlanProposal,
-} from './blocks/PlanProposalCard';
+import type { ToolCallState } from './blocks/MessageExtrasView';
+import type { PlanProposal } from './blocks/PlanProposalCard';
+import type { ArtifactReady } from './blocks/ArtifactCard';
+import type { AttachmentReady } from './blocks/AttachmentChip';
 import { normalizeError } from '@/api/shared/http-error';
+import { Composer } from './components/Composer';
+import { ConversationHeader } from './components/ConversationHeader';
+import { SessionListItem } from './components/SessionListItem';
+import { TurnBlock } from './components/TurnBlock';
+import {
+  buildTurns,
+  resolveTurnFacts,
+  type ChatMessageView,
+} from './components/turns';
 
-type Message = ChatMessage & {
-  extras?: MessageExtras;
-  plan?: PlanProposal;
-  artifacts?: ArtifactReady[];
-  attachments?: AttachmentReady[];
-  usage?: { inputTokens: number; outputTokens: number; costUsd?: number };
+type CopilotEntryState = {
+  knowledgeTitle?: string;
+  agentId?: string;
+  agentName?: string;
+  agentExample?: string;
+  skillName?: string;
+  sessionId?: string;
 };
-type CopilotEntryState = { knowledgeTitle?: string; agentId?: string; agentName?: string; agentExample?: string; skillName?: string; sessionId?: string };
 
-/**
- * getStarters — 按时间 + 周末动态产出问候语, 拟人/亲切型.
- * 4 条循环, 同一会话多次进 empty 态会有不同开场.
- */
+type SessionInfo = {
+  agentName?: string;
+  model?: string;
+  turnCount?: number;
+  waitingApproval?: boolean;
+};
+
 function newRequestId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -71,6 +57,10 @@ function newRequestId(): string {
   return `req-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/**
+ * getStarters — 按时间 + 周末动态产出问候语, 拟人/亲切型.
+ * 4 条循环, 同一会话多次进 empty 态会有不同开场.
+ */
 function getStarters(now: Date = new Date()): string[] {
   const h = now.getHours();
   const dow = now.getDay();
@@ -98,63 +88,9 @@ function getStarters(now: Date = new Date()): string[] {
 }
 
 /**
- * CopilotTypingIndicator: 流式生成中占位.
- * 三个点交错闪 + 文字 1.2s 周期轮换, 模拟"在写"的活跃感.
- * deepseek first-token 1.5-7s, 没有这个用户会以为卡死.
- */
-const TYPING_PHRASES = ['我在想呢…', '打字中…', '马上就好~', '让我看看…', '嗯,再琢磨一下', '等我一下'];
-const CopilotTypingIndicator = () => {
-  const [idx, setIdx] = useState(0);
-  useEffect(() => {
-    const t = window.setInterval(() => setIdx((i) => (i + 1) % TYPING_PHRASES.length), 1200);
-    return () => window.clearInterval(t);
-  }, []);
-  return (
-    <div
-      data-testid="copilot-generating"
-      className="flex items-center gap-2 text-[var(--text-muted)]"
-      role="status"
-      aria-live="polite"
-    >
-      <span className="inline-flex items-end gap-0.5" aria-hidden="true">
-        <span
-          className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--brand)]"
-          style={{ animationDelay: '0ms', animationDuration: '900ms' }}
-        />
-        <span
-          className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--brand)]"
-          style={{ animationDelay: '150ms', animationDuration: '900ms' }}
-        />
-        <span
-          className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--brand)]"
-          style={{ animationDelay: '300ms', animationDuration: '900ms' }}
-        />
-      </span>
-      <span
-        key={idx}
-        className="text-sm tabular-nums animate-[fadein_300ms_ease-out]"
-      >
-        {TYPING_PHRASES[idx]}
-        <span className="ml-0.5 inline-block w-3 animate-pulse">▍</span>
-      </span>
-    </div>
-  );
-};
-
-/**
  * pushNotice: 加一条提示, 同样的内容在最近 N 条里已存在则跳过 (避免
  * onEvent('error') 和 streamCopilotTurn.throw 两次 add 到 notices).
  */
-/**
- * ⚠️ **降级标记 → 人话** ✓（后端信封上的 `flags` ✓）。
- * ⚠️ **名字对不上就原样显示** ✓（不吞 ✓ —— 未知标记也让人看见 ✓）。
- */
-const DEGRADED_FLAG_TEXT: Record<string, string> = {
-  recall_degraded: '知识召回降级',
-  compaction_degraded: '上下文压缩降级',
-  interactive_degraded: '交互降级',
-};
-
 const DEDUPE_WINDOW = 6;
 const pushNotice = (current: string[], next: string): string[] => {
   const trimmed = next.trim();
@@ -163,18 +99,6 @@ const pushNotice = (current: string[], next: string): string[] => {
   if (recent.includes(trimmed)) return current;
   return [...current, trimmed];
 };
-const composerOptions = {
-  slash: [
-    { label: '/整理', value: '/整理 ' },
-    { label: '/总结', value: '/总结 ' },
-    { label: '/生成', value: '/生成 ' },
-  ],
-  mention: [
-    { label: '@智能体', value: '@智能体 ' },
-    { label: '@团队成员', value: '@团队成员 ' },
-    { label: '@知识库', value: '@知识库 ' },
-  ],
-} as const;
 
 export default function Copilot() {
   return (
@@ -190,21 +114,30 @@ function CopilotInner() {
   const dismissQuestion = interactive.dismissQuestion;
   const dismissPlan = interactive.dismissPlan;
   const location = useLocation();
-  const navigate = useNavigate();
   const entry = location.state as CopilotEntryState | null;
   const agentName = entry?.agentName;
   const knowledgeTitle = entry?.knowledgeTitle;
   const skillName = entry?.skillName;
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatMessageView[]>([]);
+  const [turns, setTurns] = useState<ApiTurn[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [sessions, setSessions] = useState<CopilotSession[]>([]);
+  const [search, setSearch] = useState('');
   const [sessionId, setSessionId] = useState<string | undefined>(entry?.sessionId);
+  const [sessionInfo, setSessionInfo] = useState<SessionInfo>({});
   const [pendingApproval, setPendingApproval] = useState<{ id: string; toolName: string; reason: string } | null>(null);
   const [notices, setNotices] = useState<string[]>([]);
   useEffect(() => {
-    void listCopilotSessions().then(setSessions).catch((error) => setNotices((current) => pushNotice(current, `查询失败：${String(error)}`)));
-  }, []);
+    // ⚠️ **搜索是真的** ✓ —— 后端 ``GET /api/sessions?search=`` ✓（以前这个
+    // 输入框只是个摆设 ✗✗ —— 输了什么都不会变 ✗✗）。
+    const timer = window.setTimeout(() => {
+      void listCopilotSessions({ search })
+        .then(setSessions)
+        .catch((error) => setNotices((current) => pushNotice(current, `查询失败：${String(error)}`)));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
   // 已经跟服务端同步过的会话 —— 每个会话只同步一次.
   // 之前这个 effect 依赖 isSending: 一轮结束后 isSending 变 false 会再跑一次,
   // 用服务端的消息整个替换本地状态, 于是刚渲染出来的工具卡片 / 产物 / 用量
@@ -219,11 +152,17 @@ function CopilotInner() {
     if (syncedSessionRef.current === sessionId) return;
     syncedSessionRef.current = sessionId;
     void loadCopilotSession(sessionId).then((detail) => {
-      if (!detail) { setMessages([]); setPendingApproval(null); return; }
+      if (!detail) { setMessages([]); setTurns([]); setPendingApproval(null); return; }
       const loaded = (detail.messages || [])
         .filter((item) => item.role === 'user' || item.role === 'assistant')
-        .map((item) => ({ role: item.role as 'user' | 'assistant', content: item.content }));
+        .map((item) => ({
+          role: item.role as 'user' | 'assistant',
+          content: item.content,
+          // ⚠️ **轮次 id 带上** ✓ —— 审批恢复会开新一轮 ✓ —— 靠它分轮次 ✓。
+          turnId: item.turnId,
+        }));
       setMessages(loaded);
+      setTurns(detail.turns ?? []);
       setPendingApproval(null);
       const pending = detail.pendingApproval;
       if (pending) {
@@ -233,9 +172,14 @@ function CopilotInner() {
           reason: String(pending.reason || '需要确认后才会执行'),
         });
       }
-    }).catch((error) => { setMessages([]); setNotices((current) => pushNotice(current, `详情加载失败：${String(error)}`)); });
+      setSessionInfo({
+        agentName: detail.agentName || (detail.agent?.name as string | undefined) || undefined,
+        model: detail.model || undefined,
+        turnCount: (detail.turns ?? []).length,
+        waitingApproval: Boolean(pending),
+      });
+    }).catch((error) => { setMessages([]); setTurns([]); setNotices((current) => pushNotice(current, `详情加载失败：${String(error)}`)); });
   }, [sessionId, isSending]);
-  const [composerMenu, setComposerMenu] = useState<'slash' | 'mention' | null>(null);
   useEffect(() => {
     if (!knowledgeTitle) return;
     setInput((current) => current || `请基于《${knowledgeTitle}》帮我整理一份可执行的摘要。`);
@@ -247,20 +191,20 @@ function CopilotInner() {
       : `请使用「${skillName}」帮我完成这项工作。`));
   }, [skillName, agentName, knowledgeTitle]);
   const [sessionListOpen, setSessionListOpen] = useState(false);
-  const [feedbackGiven, setFeedbackGiven] = useState<Record<number, 5 | 1>>({});
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<string, 5 | 1>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const sendFeedback = async (index: number, rating: 5 | 1) => {
-    if (!sessionId || feedbackGiven[index]) return;
-    setFeedbackGiven((current) => ({ ...current, [index]: rating }));
+  const sendFeedback = async (turnKey: string, turnId: string | undefined, rating: 5 | 1) => {
+    if (!sessionId || feedbackGiven[turnKey]) return;
+    setFeedbackGiven((current) => ({ ...current, [turnKey]: rating }));
     try {
-      await submitCopilotFeedback(sessionId, rating);
+      await submitCopilotFeedback(sessionId, rating, turnId ? { turnId } : undefined);
     } catch {
       // 反馈写失败不该打扰用户 —— 标记先撤掉.
       setFeedbackGiven((current) => {
         const next = { ...current };
-        delete next[index];
+        delete next[turnKey];
         return next;
       });
     }
@@ -278,17 +222,37 @@ function CopilotInner() {
     }
   };
 
-  const sendMessage = async (value = input) => {
-    const content = value.trim();
+  const sendMessage = async (
+    value = input,
+    options?: { retry?: { question: string; assistantIndex: number } },
+  ) => {
+    const content = (options?.retry?.question ?? value).trim();
     if (!content || isSending) return;
     setIsSending(true);
-    setMessages((current) => [...current, { role: 'user', content }]);
-    setInput('');
-    setComposerMenu(null);
+    const isRetry = Boolean(options?.retry);
+    if (!isRetry) {
+      setMessages((current) => [...current, { role: 'user', content }]);
+      setInput('');
+    }
     const controller = new AbortController();
     abortRef.current = controller;
+    // ⚠️ **这一轮跑了多久** ✓ —— 流式这边是**客户端量的** ✓（后端那份
+    // （重开会话时读的）才是权威 ✓）。
+    const turnStartedAt = Date.now();
     // 幂等 id —— 双击 / 网络重试不会跑出两轮对话.
     const clientRequestId = newRequestId();
+    // ⚠️ **回答落在哪一条** ✓ —— 流式累积 / 失败 / 重试都改这一条 ✓。
+    let assistantIndex = options?.retry?.assistantIndex ?? -1;
+    const patchAssistant = (patch: (message: ChatMessageView) => ChatMessageView) => {
+      setMessages((current) => {
+        const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
+        const next = current.slice();
+        const existing = next[idx];
+        if (!existing || existing.role !== 'assistant') return current;
+        next[idx] = patch(existing);
+        return next;
+      });
+    };
     try {
       let sid = sessionId;
       let effectiveAgentId = entry?.agentId;
@@ -313,20 +277,35 @@ function CopilotInner() {
           setSessionId(sid);
           // 本地新建的会话不需要再从服务端拉一遍 —— 拉了会把刚加的消息冲掉.
           syncedSessionRef.current = sid;
+          setSessionInfo({
+            agentName: created?.agentName || agentName,
+            model: created?.model,
+            turnCount: 0,
+          });
         }
       }
       if (!sid) {
         // 没有 agent 上下文: 回滚刚 push 的 user 消息, 给一个跳转提示, 不污染消息栈.
-        setMessages((current) => current.slice(0, -1));
+        if (!isRetry) setMessages((current) => current.slice(0, -1));
         setNotices((current) => pushNotice(current, '需要先选一个智能体才能开始对话 → 去智能体库选一个'));
         return;
       }
       // 流式输出 + 事件累积
-      let assistantIndex = -1;
-      setMessages((current) => {
-        assistantIndex = current.length;
-        return [...current, { role: 'assistant', content: '', tools: [] }];
-      });
+      if (assistantIndex < 0) {
+        setMessages((current) => {
+          assistantIndex = current.length;
+          return [...current, { role: 'assistant', content: '' }];
+        });
+      } else {
+        // 重试 —— 复用原来那条空位 ✓（不重复摆一遍问题 ✓）。
+        setMessages((current) => {
+          const next = current.slice();
+          const existing = next[assistantIndex];
+          if (!existing || existing.role !== 'assistant') return current;
+          next[assistantIndex] = { role: 'assistant', content: '' };
+          return next;
+        });
+      }
       const toolCalls: ToolCallState[] = [];
       const toolIndexById = new Map<string, number>();
       let plan: PlanProposal | undefined;
@@ -340,9 +319,14 @@ function CopilotInner() {
       await streamCopilotTurn(sid, content, (event, data) => {
         // ⚠️ **每一块都盖章** ✓（信封上的 `flags` ✓ —— 读哪块都一样 ✓）。
         if (Array.isArray(data.flags)) {
+          let changed = false;
           for (const flag of data.flags as string[]) {
-            if (flag) degradedFlags.add(flag);
+            if (flag && !degradedFlags.has(flag)) {
+              degradedFlags.add(flag);
+              changed = true;
+            }
           }
+          if (changed) patchAssistant((message) => ({ ...message, degraded: [...degradedFlags] }));
         }
         if (event === 'queued') {
           // ⚠️ **排队中** ✓（Router Stage 3 ✓）—— 不显示的话用户只看到转圈
@@ -358,14 +342,7 @@ function CopilotInner() {
             // setMessages 批处理成一次渲染 (用户会看到"一下子全出来").
             // 流式 chat 的关键路径 — 切勿合并到 startTransition.
             flushSync(() => {
-              setMessages((current) => {
-                const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
-                const next = current.slice();
-                const existing = next[idx];
-                if (!existing || existing.role !== 'assistant') return current;
-                next[idx] = { ...existing, content: existing.content + chunk };
-                return next;
-              });
+              patchAssistant((message) => ({ ...message, content: message.content + chunk }));
             });
           }
         }
@@ -379,13 +356,6 @@ function CopilotInner() {
           };
           toolIndexById.set(tcId, toolCalls.length);
           toolCalls.push(tc);
-          setMessages((current) => {
-            const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
-            const next = current.slice();
-            const existing = next[idx];
-            if (!existing || existing.role !== 'assistant') return current;
-            return next;
-          });
         }
         if (event === 'tool_result') {
           const tcId = String(data.tool_call_id || '');
@@ -456,11 +426,11 @@ function CopilotInner() {
           };
         }
         if (event === 'artifact_ready') {
-          const a: ArtifactReady = {
+          const a = {
             artifact_id: String(data.artifact_id || ''),
             // 后端 ArtifactReadyChunk 通过 Field(alias="kind") 输出 kind_ (避免与 envelope kind 冲突),
             // 优先读 data.kind_, 兜底读 data.kind (兼容老数据)
-            kind: (data.kind_ as ArtifactReady['kind']) || (data.kind as ArtifactReady['kind']) || 'markdown',
+            kind: (data.kind_ as 'markdown' | 'code' | 'html' | 'json' | 'image' | 'text') || (data.kind as 'markdown') || 'markdown',
             name: String(data.name || 'artifact.md'),
             mime: String(data.mime || 'text/markdown'),
             size_bytes: Number(data.size_bytes || 0),
@@ -492,14 +462,7 @@ function CopilotInner() {
             outputTokens: Number(data.output_tokens || 0),
             costUsd: Number(data.cost_usd || 0),
           };
-          setMessages((current) => {
-            const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
-            const next = current.slice();
-            const existing = next[idx];
-            if (!existing || existing.role !== 'assistant') return current;
-            next[idx] = { ...existing, usage };
-            return next;
-          });
+          patchAssistant((message) => ({ ...message, usage }));
         }
         if (event === 'skill_invocation') {
           // 技能执行状态 — 合并进对应的工具调用条目.
@@ -515,22 +478,10 @@ function CopilotInner() {
         if (event === 'context_compacted') setNotices((n) => pushNotice(n, '上下文已压缩'));
         if (event === 'memory_write') setNotices((n) => pushNotice(n, '已写入记忆'));
         if (event === 'done') {
-          // ⚠️ **这一轮降级过就说清楚** ✓（一条提示 ✓ —— 说清楚缺了什么 ✓）。
-          if (degradedFlags.size > 0) {
-            const parts = [...degradedFlags].map((flag) => DEGRADED_FLAG_TEXT[flag] ?? flag);
-            setNotices((n) => pushNotice(n, `本轮降级：${parts.join('、')} —— 回答可能不完整`));
-          }
           const final = String(data.final_message || '');
           if (final) {
             flushSync(() => {
-              setMessages((current) => {
-                const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
-                const next = current.slice();
-                const existing = next[idx];
-                if (!existing || existing.role !== 'assistant') return current;
-                next[idx] = { ...existing, content: final };
-                return next;
-              });
+              patchAssistant((message) => ({ ...message, content: final }));
             });
           }
         }
@@ -594,37 +545,38 @@ function CopilotInner() {
         }
       }, controller.signal, clientRequestId);
       // 把累积的 extras / plan / artifacts / attachments 写回这条 assistant 消息
-      setMessages((current) => {
-        const idx = assistantIndex < 0 ? current.length - 1 : assistantIndex;
-        const next = current.slice();
-        const existing = next[idx];
-        if (!existing || existing.role !== 'assistant') return current;
-        const extras: MessageExtras = {
+      patchAssistant((message) => {
+        const extras = {
           toolCalls: toolCalls.length ? toolCalls.slice() : undefined,
           workflowRuns: workflowRuns.length ? workflowRuns.slice() : undefined,
           knowledgeHits: knowledgeHits.hits.length ? knowledgeHits : undefined,
         };
-        next[idx] = {
-          ...existing,
+        return {
+          ...message,
           tools: toolCalls.map((t) => t.tool_name),
           extras,
           plan,
           artifacts: artifacts.length ? artifacts : undefined,
           attachments: attachments.length ? attachments : undefined,
+          degraded: degradedFlags.size ? [...degradedFlags] : message.degraded,
+          durationMs: Date.now() - turnStartedAt,
         };
-        return next;
       });
-      void listCopilotSessions().then(setSessions).catch((error) => setNotices((current) => pushNotice(current, `查询失败：${String(error)}`)));
+      // ⚠️ **轮次 +1** ✓ —— 头部的「N 轮」要跟着长 ✓。
+      setSessionInfo((current) => ({ ...current, turnCount: (current.turnCount ?? 0) + 1 }));
+      void listCopilotSessions({ search }).then(setSessions).catch((error) => setNotices((current) => pushNotice(current, `查询失败：${String(error)}`)));
     } catch (error) {
       if (controller.signal.aborted) {
-        // 用户主动停止 —— 不是错误.
-        setNotices((current) => pushNotice(current, '已停止生成'));
+        // 用户主动停止 —— 不是错误 ✓（但要看得见 ✓）。
+        patchAssistant((message) => ({
+          ...message,
+          durationMs: Date.now() - turnStartedAt,
+          error: { title: '已停止生成', message: '这一轮在生成途中停下了。', kind: 'generic' },
+        }));
       } else {
         const norm = normalizeError(error);
         const raw = norm.message;
-        // 把 503 / PROVIDER_UNAVAILABLE 翻译成"未配置 LLM 供应商"提示,
-        // 引导用户去 /admin/models/new. 历史文案里 "QZDAP_LLM_PROVIDER /
-        // QZDAP_LLM_API_KEY" 的 .env 提示已下线, 统一走管理侧.
+        // 把 503 / PROVIDER_UNAVAILABLE 翻译成"未配置 LLM 供应商"提示.
         //
         // 判据用**结构化的 status/code**, 不要去正则匹配错误文案 ——
         // 流式请求失败的消息是 "流式请求失败（HTTP 503）", 括号是全角的,
@@ -633,13 +585,25 @@ function CopilotInner() {
           // 同一个请求已经跑过了 —— 静默忽略, 不要当成错误.
           return;
         }
-        const friendly =
+        const isProvider =
           norm.code === 'PROVIDER_UNAVAILABLE' ||
           norm.status === 503 ||
-          /PROVIDER_UNAVAILABLE/.test(raw)
-            ? '当前后端未配置 LLM 供应商, 无法对话. 请到 管理 → 模型管理 → 新建供应商 配置 API key 后再试.'
-            : raw;
-        setNotices((current) => pushNotice(current, `请求失败：${friendly}`));
+          /PROVIDER_UNAVAILABLE/.test(raw);
+        // ⚠️ **用户侧去不了管理台** ✓（member 只能走非 /admin 路径 ✓）——
+        // 所以这里**不给死链接** ✓（点了只会弹回首页 ✗✗）—— 写清楚找谁 ✓。
+        const friendly = isProvider
+          ? '当前环境未配置 LLM 供应商, 无法生成回答. 请联系管理员在「模型管理 → 新建供应商」配置 API key 后重试.'
+          : raw;
+        patchAssistant((message) => ({
+          ...message,
+          durationMs: Date.now() - turnStartedAt,
+          error: {
+            title: '这一轮没跑完',
+            message: friendly,
+            code: norm.code,
+            kind: isProvider ? 'provider' : 'generic',
+          },
+        }));
       }
     } finally {
       abortRef.current = null;
@@ -661,6 +625,8 @@ function CopilotInner() {
       if (sessionId === id) {
         setSessionId(undefined);
         setMessages([]);
+        setTurns([]);
+        setSessionInfo({});
       }
     } catch (error) {
       setNotices((current) => pushNotice(current, `删除失败：${String(error)}`));
@@ -693,118 +659,17 @@ function CopilotInner() {
       setInput((current) => `${current}\n[附件: ${file.name}, ID: ${result.id}]`);
     } catch (error) { setNotices((current) => pushNotice(current, `上传失败：${String(error)}`)); }
   };
-  const selectComposerOption = (value: string) => {
-    setInput((current) => `${current.slice(0, -1)}${value}`);
-    setComposerMenu(null);
-  };
 
-  // ------------------------------------------------------------------
-  // Composer 子组件, 让 empty / non-empty 状态都能复用
-  // ------------------------------------------------------------------
-  const Composer = (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void sendMessage();
-      }}
-      className="w-full"
-    >
-      {composerMenu ? (
-        <div role="status" aria-live="polite" className="mb-2 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-2 shadow-[var(--shadow-xs)]">
-          <div className="flex items-center justify-between px-2 pb-2 text-[10px] text-[var(--text-muted)]">
-            <span className="font-semibold text-[var(--text-secondary)]">
-              {composerMenu === 'slash' ? '快捷命令' : '提及对象'}
-            </span>
-            <span>已识别 {composerMenu === 'slash' ? '/' : '@'}</span>
-          </div>
-          <div role="listbox" aria-label={composerMenu === 'slash' ? '快捷命令列表' : '提及对象列表'} className="flex gap-1 overflow-x-auto">
-            {composerOptions[composerMenu].map((option) => (
-              <button
-                key={option.label}
-                type="button"
-                role="option"
-                aria-selected="false"
-                onClick={() => selectComposerOption(option.value)}
-                className="shrink-0 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:border-[var(--brand)] hover:bg-[var(--brand-light)] hover:text-[var(--brand)]"
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      <div className="flex items-end gap-2 rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] p-2 shadow-[var(--shadow-xs)] focus-within:border-[var(--brand)]">
-        <button
-          type="button"
-          className="rounded-lg p-2 text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
-          aria-label="添加附件"
-          onClick={() => document.getElementById('copilot-file-input')?.click()}
-        >
-          <Paperclip className="h-4 w-4" />
-          <input
-            type="file"
-            className="hidden"
-            id="copilot-file-input"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) {
-                void handleAttachment(file);
-                setComposerMenu(null);
-                event.currentTarget.value = '';
-              }
-            }}
-          />
-        </button>
-        <textarea
-          value={input}
-          onChange={(event) => {
-            const value = event.target.value;
-            setInput(value);
-            if (value.endsWith('/') || value.endsWith('@')) setComposerMenu(value.endsWith('/') ? 'slash' : 'mention');
-            else setComposerMenu(null);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && composerMenu) {
-              event.preventDefault();
-              setComposerMenu(null);
-              return;
-            }
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault();
-              void sendMessage();
-            }
-          }}
-          rows={1}
-          placeholder="描述你想完成的工作..."
-          className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-[var(--text-muted)]"
-        />
-        {isSending ? (
-          <button
-            type="button"
-            onClick={() => void stopSending()}
-            className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--border)] bg-[var(--surface-1)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]"
-            aria-label="停止生成"
-            title="停止生成"
-          >
-            <Square className="h-3.5 w-3.5 fill-current" />
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!input.trim()}
-            className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--brand)] text-white disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="发送消息"
-          >
-            <ArrowUp className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-      <p className="mt-2 text-center text-[10px] text-[var(--text-muted)]">
-        智能体可能会出错，请检查重要结果和来源。
-      </p>
-    </form>
-  );
-
+  // ── 视图数据 ──────────────────────────────────────────────────────
+  const apiTurns = useMemo(() => new Map(turns.map((turn) => [turn.turnId, turn])), [turns]);
+  const turnViews = useMemo(() => buildTurns(messages), [messages]);
+  const displayAgentName = sessionInfo.agentName || agentName;
+  const headerStatus = isSending
+    ? 'running'
+    : pendingApproval || sessionInfo.waitingApproval
+      ? 'waiting_approval'
+      : 'idle';
+  const headerTurnCount = sessionInfo.turnCount ?? turns.length;
   const isEmpty = messages.length === 0;
 
   return (
@@ -821,6 +686,8 @@ function CopilotInner() {
               // 新建 (清空当前会话 + 消息栈, 不导航)
               setSessionId(undefined);
               setMessages([]);
+              setTurns([]);
+              setSessionInfo({});
               setPendingApproval(null);
               setNotices([]);
               setInput('');
@@ -837,78 +704,56 @@ function CopilotInner() {
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
             <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
               placeholder="搜索对话"
+              aria-label="搜索对话"
               className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] pl-8 pr-2 text-xs outline-none focus:border-[var(--brand)]"
             />
           </div>
         </div>
         <div className="flex-1 overflow-auto px-2">
           <p className="px-2 py-2 text-[11px] font-semibold text-[var(--text-muted)]">最近对话</p>
+          {sessions.length === 0 ? (
+            <p className="px-2 py-3 text-[11px] leading-5 text-[var(--text-muted)]">
+              {search ? '没有匹配的对话。' : '还没有对话 —— 问一句就开始。'}
+            </p>
+          ) : null}
           {sessions.map((item) => (
-            <div
+            <SessionListItem
               key={item.id ?? item.title}
-              className={`group relative flex w-full cursor-pointer flex-col gap-1 rounded-md px-2.5 py-2.5 text-left ${sessionId === item.id ? 'bg-[var(--brand-light)] text-[var(--brand)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
-              onClick={() => {
+              session={item}
+              active={sessionId === item.id}
+              onSelect={() => {
                 setSessionListOpen(false);
-                if (item.id) {
-                  // 先清当前消息栈, 避免切换 session 时新旧消息混在一起闪
-                  setMessages([]);
-                  setPendingApproval(null);
-                  setSessionId(item.id);
-                }
+                if (!item.id) return;
+                // 先清当前消息栈, 避免切换 session 时新旧消息混在一起闪
+                setMessages([]);
+                setTurns([]);
+                setPendingApproval(null);
+                setSessionId(item.id);
+                setSessionInfo({
+                  agentName: item.agentName || undefined,
+                  model: item.model || undefined,
+                  turnCount: item.turnCount ?? 0,
+                  waitingApproval: item.waitStatus === 'waiting_approval',
+                });
               }}
-            >
-              <span className="truncate text-xs font-semibold">{item.title}</span>
-              <span className="flex items-center justify-between gap-2 text-[10px] text-[var(--text-muted)]">
-                <span className="truncate">{item.preview || '会话'}</span>
-                <span className="shrink-0 tabular-nums">{item.updatedAt}</span>
-              </span>
-              {item.id ? (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void handleDeleteSession(item.id);
-                  }}
-                  className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded text-[var(--text-muted)] opacity-0 transition hover:bg-[var(--danger-bg)] hover:text-[var(--danger)] group-hover:opacity-100"
-                  aria-label={`删除 ${item.title}`}
-                  title={`删除 ${item.title}`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-            </div>
+              onDelete={() => void handleDeleteSession(item.id)}
+            />
           ))}
-        </div>
-        <div className="border-t border-[var(--border)] p-3">
-          <button type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-xs text-[var(--text-muted)] hover:bg-[var(--bg-hover)]">
-            <Settings2 className="h-4 w-4" />
-            对话设置
-          </button>
         </div>
       </aside>
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex h-14 items-center justify-between border-b border-[var(--border)] bg-[var(--surface-1)] px-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              className="rounded-md p-2 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] lg:hidden"
-              aria-label="打开对话列表"
-              onClick={() => setSessionListOpen(true)}
-            >
-              <Menu className="h-4 w-4" />
-            </button>
-            <div>
-              <h1 className="text-sm font-semibold">
-                {agentName ? `与${agentName}对话` : '工作重点梳理'}
-              </h1>
-              <p className="text-[11px] text-[var(--text-muted)]">
-                {agentName ? '已选择智能体 · 在线会话' : '智能体协作 · 多轮对话'}
-              </p>
-            </div>
-          </div>
-        </div>
+        <ConversationHeader
+          agentName={displayAgentName}
+          skillName={skillName}
+          model={sessionInfo.model}
+          status={headerStatus}
+          turnCount={headerTurnCount}
+          onOpenSessions={() => setSessionListOpen(true)}
+        />
 
         {isEmpty ? (
           // 空态: welcome + composer 一起垂直居中
@@ -933,14 +778,14 @@ function CopilotInner() {
                   <Sparkles className="h-7 w-7" />
                 </span>
                 <h2 className="mt-5 text-2xl font-semibold tracking-tight text-[var(--text)]">
-                  {agentName ? `开始与${agentName}协作` : '开始一项工作'}
+                  {displayAgentName ? `开始与${displayAgentName}协作` : '开始一项工作'}
                 </h2>
                 <p className="mt-2 max-w-md text-sm leading-6 text-[var(--text-muted)]">
-                  {agentName
-                    ? '用一句话说明目标与约束, 即可开始对话. 支持表格、计划、画布、命令运行与文档下载.'
-                    : '说明目标、范围与期望产出, 从常用开场快速开始. 智能体可调用工具/知识/工作流, 并把产物放到右侧工作区.'}
+                  {displayAgentName
+                    ? '用一句话说明目标与约束, 即可开始对话. 智能体会调用工具、知识与工作流, 答案与产物直接留在这一页.'
+                    : '说明目标、范围与期望产出, 从常用开场快速开始. 智能体会调用工具、知识与工作流, 答案与产物直接留在这一页.'}
                 </p>
-                {!agentName ? (
+                {!displayAgentName ? (
                   <Link
                     to="/library?tab=agents"
                     className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-[var(--brand)] bg-[var(--brand-light)] px-3 py-1.5 text-xs font-semibold text-[var(--brand)] transition hover:bg-[var(--brand)] hover:text-white"
@@ -952,7 +797,7 @@ function CopilotInner() {
               <div className="grid w-full max-w-3xl gap-2 sm:grid-cols-3">
                 {(() => {
                   const pool = getStarters();
-                  return (agentName && entry?.agentExample
+                  return (displayAgentName && entry?.agentExample
                     ? [entry.agentExample, ...pool.slice(1)]
                     : pool
                   ).map((starter) => (
@@ -969,24 +814,35 @@ function CopilotInner() {
                   ));
                 })()}
               </div>
-              <div className="w-full max-w-3xl">{Composer}</div>
+              <div className="w-full max-w-3xl">
+                <Composer
+                  input={input}
+                  onInputChange={setInput}
+                  onSubmit={() => void sendMessage()}
+                  onStop={() => void stopSending()}
+                  isSending={isSending}
+                  onAttach={(file) => void handleAttachment(file)}
+                />
+              </div>
             </div>
           </div>
         ) : (
           // 有消息: 上滚动 + 下贴底 composer
           <>
             <div className="flex-1 overflow-y-auto">
-              <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-5 py-8 sm:px-10">
-                {agentName ? (
-                  <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] px-4 py-3 text-xs">
-                    <span className="inline-flex items-center gap-2 font-semibold text-[var(--brand)]">
-                      <Bot className="h-4 w-4" />
-                      当前智能体:{agentName}
-                      {skillName ? ` · 能力:${skillName}` : ''}
-                    </span>
-                    <Link to="/library?tab=agents" className="font-medium text-[var(--text-secondary)] hover:text-[var(--brand)]">
-                      更换智能体
-                    </Link>
+              <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-5 py-6 sm:px-10">
+                {notices.length ? (
+                  // ⚠️ **瞬时提示** ✓ —— 排队 / 压缩 / 派发这类 ✓ —— 不是错误 ✓
+                  // （错误在**那一轮里** ✓ —— 失败卡片 ✓）。
+                  <div className="mb-4 flex flex-wrap gap-1.5">
+                    {notices.slice(-3).map((notice, index) => (
+                      <span
+                        key={`${notice}-${index}`}
+                        className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] text-amber-900"
+                      >
+                        {notice}
+                      </span>
+                    ))}
                   </div>
                 ) : null}
                 {pendingApproval ? (
@@ -1012,103 +868,47 @@ function CopilotInner() {
                     </span>
                   </div>
                 ) : null}
-                {notices.length ? (
-                  <button
-                    type="button"
-                    onClick={() => navigate('/library?tab=agents')}
-                    className="mb-3 inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-900 transition hover:border-amber-500 hover:bg-amber-100"
-                    title="去智能体库选一个智能体"
-                  >
-                    <span aria-hidden="true">⚠</span>
-                    <span>{notices[notices.length - 1]}</span>
-                    <span className="ml-1 underline decoration-dotted underline-offset-2">去智能体库</span>
-                  </button>
-                ) : null}
-                {!agentName && skillName ? (
-                  <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] px-4 py-3 text-xs">
-                    <span className="inline-flex items-center gap-2 font-semibold text-[var(--brand)]">
-                      <Sparkles className="h-4 w-4" />
-                      当前能力:{skillName}
-                    </span>
-                    <Link to="/library?tab=skills" className="font-medium text-[var(--text-secondary)] hover:text-[var(--brand)]">
-                      更换能力
-                    </Link>
-                  </div>
-                ) : null}
                 <div className="space-y-9 pb-8">
-                  {messages.map((message, index) =>
-                    message.role === 'user' ? (
-                      <div key={`${message.role}-${index}`} className="flex justify-end">
-                        <div className="max-w-[86%] rounded-2xl bg-[var(--text)] px-5 py-3 text-sm leading-6 text-[var(--surface-1)] whitespace-pre-wrap shadow-sm">
-                          {message.content}
-                        </div>
-                      </div>
-                    ) : (
-                      <article key={`${message.role}-${index}`} className="space-y-3 text-[15px] leading-7 text-[var(--text-secondary)]">
-                        {message.plan && sessionId ? (
-                          <PlanProposalCard proposal={message.plan} sessionId={sessionId} />
-                        ) : null}
-                        {message.content ? (
-                          <MarkdownView source={message.content} />
-                        ) : isSending && index === messages.length - 1 ? (
-                          // 首字到达前的占位 — deepseek first-token latency 1.5-7s,
-                          // 没有这个提示用户会以为卡死. 看到 ▍ 闪 + 文字轮换就知道在跑.
-                          <CopilotTypingIndicator />
-                        ) : null}
-                        {message.artifacts && message.artifacts.length > 0 ? (
-                          <div className="space-y-2">
-                            {message.artifacts.map((a) => (
-                              <ArtifactCard key={a.artifact_id} artifact={a} />
-                            ))}
-                          </div>
-                        ) : null}
-                        {message.attachments && message.attachments.length > 0 ? (
-                          <div className="flex flex-wrap gap-1.5">
-                            {message.attachments.map((a) => (
-                              <AttachmentChip key={a.attachment_id} attachment={a} />
-                            ))}
-                          </div>
-                        ) : null}
-                        {message.extras ? <MessageExtrasView extras={message.extras} /> : null}
-                        {sessionId && !isSending ? (
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => void sendFeedback(index, 5)}
-                              disabled={Boolean(feedbackGiven[index])}
-                              className="rounded-md px-1.5 py-0.5 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] disabled:opacity-60"
-                              aria-label="这条回答有帮助"
-                              title="有帮助"
-                            >
-                              👍{feedbackGiven[index] === 5 ? ' 已反馈' : ''}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void sendFeedback(index, 1)}
-                              disabled={Boolean(feedbackGiven[index])}
-                              className="rounded-md px-1.5 py-0.5 text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] disabled:opacity-60"
-                              aria-label="这条回答没帮助"
-                              title="没帮助"
-                            >
-                              👎{feedbackGiven[index] === 1 ? ' 已反馈' : ''}
-                            </button>
-                          </div>
-                        ) : null}
-                        {message.usage && message.usage.inputTokens + message.usage.outputTokens > 0 ? (
-                          <p className="text-[11px] text-[var(--text-muted)]">
-                            本轮 token:输入 {message.usage.inputTokens.toLocaleString()} · 输出 {message.usage.outputTokens.toLocaleString()}
-                            {message.usage.costUsd ? ` · 成本 ${message.usage.costUsd.toFixed(4)}` : ''}
-                          </p>
-                        ) : null}
-                      </article>
-                    )
-                  )}
+                  {turnViews.map((turn) => {
+                    const facts = resolveTurnFacts(turn, apiTurns);
+                    const isLast = turn === turnViews[turnViews.length - 1];
+                    return (
+                      <TurnBlock
+                        key={turn.key}
+                        turn={turn}
+                        facts={facts}
+                        sessionId={sessionId}
+                        streaming={isSending && isLast}
+                        feedback={feedbackGiven[turn.key]}
+                        onFeedback={(rating) => void sendFeedback(turn.key, turn.turnId, rating)}
+                        onRetry={
+                          turn.question && turn.answerIndex != null
+                            ? () => void sendMessage(undefined, {
+                              retry: {
+                                question: turn.question?.content ?? '',
+                                assistantIndex: turn.answerIndex ?? -1,
+                              },
+                            })
+                            : undefined
+                        }
+                      />
+                    );
+                  })}
                 </div>
                 <div ref={messagesEndRef} />
               </div>
             </div>
             <div className="border-t border-[var(--border)] bg-[var(--surface-1)] p-4 sm:p-5">
-              <div className="mx-auto max-w-4xl">{Composer}</div>
+              <div className="mx-auto max-w-4xl">
+                <Composer
+                  input={input}
+                  onInputChange={setInput}
+                  onSubmit={() => void sendMessage()}
+                  onStop={() => void stopSending()}
+                  isSending={isSending}
+                  onAttach={(file) => void handleAttachment(file)}
+                />
+              </div>
             </div>
           </>
         )}

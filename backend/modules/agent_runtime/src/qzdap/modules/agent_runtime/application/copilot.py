@@ -90,6 +90,10 @@ class CopilotSessionService:
         query = search.strip().lower()
         # 一次查完「哪些会话在等审批」✓（逐个查 = N 次查询 ✗）
         waiting = await self._journal.list_waiting_approval_sessions(tenant_id=tenant_id)
+        # ⚠️ **最近活动一次查完** ✓ —— 逐个查 = 80 次查询 ✗✗
+        activity = await self._journal.list_session_activity(
+            session_ids=[session.id for session in rows], tenant_id=tenant_id
+        )
         out: list[dict[str, Any]] = []
         for session in rows:
             if session.status is SessionStatus.CLOSED:
@@ -99,7 +103,16 @@ class CopilotSessionService:
             hay = f"{title} {preview}".lower()
             if query and query not in hay:
                 continue
-            out.append(_session_card(session, waiting_approval=session.id in waiting))
+            out.append(
+                _session_card(
+                    session,
+                    waiting_approval=session.id in waiting,
+                    activity=activity.get(session.id),
+                )
+            )
+        # ⚠️ **按「最近活动」排** ✓ —— 不是按创建时间 ✓（老会话今天又聊过 ✓
+        # 就该排在最前 ✓ —— 按创建时间排会把刚聊过的会话埋在下面 ✗✗）。
+        out.sort(key=lambda card: str(card["updatedAt"]), reverse=True)
         return out
 
     async def create_session(
@@ -146,6 +159,10 @@ class CopilotSessionService:
         # ⚠️ **待审批从轮次行读** ✓（权威 ✓ —— 台账 X3 ✓ —— 旧的续传状态列
         # 不再是第二份真相 ✓）。
         pending = (waiting or (None, None))[1]
+        # ⚠️ **每一轮的事实摘要** ✓ —— 耗时 / token / 成本 / 工具 / 知识命中 ✓
+        # （都躺在 ``session_turns`` + ``session_events`` 里 ✓ —— 没有它，
+        # 重开一个会话这些数字就全没了 ✗✗）。
+        turns = await self._journal.list_turn_summaries(session_id=session_id, tenant_id=tenant_id)
         return _session_detail(
             session,
             messages=messages,
@@ -153,6 +170,7 @@ class CopilotSessionService:
             agent=None,
             agent_dict=agent,
             waiting_approval=waiting is not None,
+            turns=turns,
         )
 
     async def close_session(self, *, tenant_id: UUID, session_id: UUID) -> None:
@@ -421,16 +439,72 @@ def _auto_title(user_input: str) -> str:
     return text[:24] + "…"
 
 
-def _session_card(session: Session, *, waiting_approval: bool = False) -> dict[str, Any]:
+def _session_card(
+    session: Session,
+    *,
+    waiting_approval: bool = False,
+    activity: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    meta = dict(session.metadata or {})
+    stats = activity or {}
     return {
         "id": str(session.id),
-        "title": str(session.metadata.get("title") or "新对话"),
-        "preview": str(session.metadata.get("preview") or ""),
-        "updatedAt": session.created_at.isoformat(),
+        "title": str(meta.get("title") or "新对话"),
+        "preview": str(meta.get("preview") or ""),
+        # ⚠️ **智能体名与模型取自会话元数据** ✓ —— 建会话时就写进去了 ✓
+        # （不用 join agents ✓ —— 跨模块查询挂了整条列表就完蛋 ✗✗）。
+        "agentName": str(meta.get("agentName") or ""),
+        "model": str(meta.get("model") or ""),
+        "createdAt": session.created_at.isoformat(),
+        # ⚠️ **最近活动** ✓ —— 不是创建时间 ✓（老会话今天又聊过 ✓ 就该显示
+        # 「今天」✓ —— 之前这一列写的是 ``created_at`` ✗✗ 名不副实）。
+        "updatedAt": _iso(stats.get("last_activity_at")) or session.created_at.isoformat(),
+        "turnCount": int(stats.get("turn_count") or 0),
+        "lastStatus": str(stats.get("last_status") or ""),
         "agentId": str(session.agent_id),
         # ⚠️ **由轮次表推导**（``wait_status`` 那一列已退役，台账 X6 ✅）——
         # 「正在等审批」的唯一权威是 ``session_turns.status='waiting'`` ✓。
         "waitStatus": "waiting_approval" if waiting_approval else "idle",
+    }
+
+
+def _iso(value: Any) -> str:
+    """时间 → ISO 字符串 ✓（没有就空串 ✓）。"""
+    if value is None:
+        return ""
+    isoformat = getattr(value, "isoformat", None)
+    return str(isoformat()) if callable(isoformat) else str(value)
+
+
+def _turn_card(turn: dict[str, Any]) -> dict[str, Any]:
+    """**一轮的事实** → 前端那行「本轮小结」✓。
+
+    ⚠️ **extras 沿用流式那边的字段名** ✓（``tool_name`` / ``latency_ms``
+    ✓）—— 前端同一套组件直接用 ✓（不用在前端再做一次改名 ✓）。
+    """
+    extras: dict[str, Any] = {}
+    if turn.get("tool_calls"):
+        extras["toolCalls"] = turn["tool_calls"]
+    if turn.get("skill_invocations"):
+        extras["skillInvocations"] = turn["skill_invocations"]
+    if turn.get("knowledge_hits"):
+        extras["knowledgeHits"] = turn["knowledge_hits"]
+    if turn.get("workflow_runs"):
+        extras["workflowRuns"] = turn["workflow_runs"]
+    return {
+        "turnId": str(turn.get("turn_id") or ""),
+        "status": str(turn.get("status") or ""),
+        "startedAt": _iso(turn.get("started_at")),
+        "finishedAt": _iso(turn.get("finished_at")),
+        "durationMs": turn.get("duration_ms"),
+        "modelVersion": str(turn.get("model_version") or ""),
+        "agentVersion": str(turn.get("agent_version") or ""),
+        "errorCode": turn.get("error_code"),
+        "inputTokens": int(turn.get("input_tokens") or 0),
+        "outputTokens": int(turn.get("output_tokens") or 0),
+        "costUsd": float(turn.get("cost_usd") or 0.0),
+        "degraded": list(turn.get("degraded") or []),
+        "extras": extras,
     }
 
 
@@ -442,12 +516,15 @@ def _session_detail(
     agent: CatalogAgent | None,
     agent_dict: dict[str, Any] | None = None,
     waiting_approval: bool = False,
+    turns: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     card = _session_card(session, waiting_approval=waiting_approval)
     card["messages"] = messages
     card["pendingApproval"] = pending
     card["agent"] = agent.to_catalog_dict() if agent is not None else agent_dict
     card["status"] = session.status.value
+    # ⚠️ **每一轮的事实** ✓ —— 重开会话时那些数字还在 ✓（不然白记了 ✗✗）。
+    card["turns"] = [_turn_card(turn) for turn in (turns or [])]
     return card
 
 
