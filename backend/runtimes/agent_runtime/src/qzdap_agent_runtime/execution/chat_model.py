@@ -26,7 +26,7 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 from pydantic import ConfigDict
 
 from qzdap_kernel.ids import ModelId
-from qzdap_llm.client import ChatMessage, ChatRequest
+from qzdap_llm.client import ChatMessage, ChatRequest, Role
 
 from ..ports import ActorContext, LLMPort
 
@@ -180,15 +180,34 @@ class QZDAPChatModel(BaseChatModel):
         raise NotImplementedError("QZDAPChatModel 只支持异步调用（平台的 LLM 客户端是异步的）")
 
 
+#: **LangChain 的消息类型 → 平台的 ``Role``** ✓。
+#:
+#: ⚠️ **为什么必须映射** ✓ —— LangChain 叫 ``human`` / ``ai`` ✓，
+#: 而上游（OpenAI 兼容 / DeepSeek ✓）只认 ``user`` / ``assistant`` ✓
+#: → 直接透传就是 **422** ✓（``unknown variant `human` `` ✓）。
+#: **真供应商接进来时每轮必挂** ✓ —— 这条映射就是那个「挂」。
+_ROLE_MAP: Mapping[str, Role] = {
+    "human": "user",
+    "HumanMessageChunk": "user",
+    "ai": "assistant",
+    "AIMessageChunk": "assistant",
+    "system": "system",
+    "tool": "tool",
+    "function": "tool",
+    "chat": "user",
+}
+
+
 def _to_chat_message(message: BaseMessage) -> ChatMessage:
     """LangChain 消息 → 平台的 ``ChatMessage`` ✓（**只取能翻译的字段** ✓）。"""
-    role = getattr(message, "type", None) or "user"
+    raw_role = str(getattr(message, "type", None) or "user")
+    role: Role = _ROLE_MAP.get(raw_role, "user")
     content = getattr(message, "content", "") or ""
     if not isinstance(content, str):
         # 多模态内容块 —— 本平台只吃字符串 ✓（取文本部分 ✓）。
         parts = [str(part.get("text") or "") for part in content if isinstance(part, dict)]
         content = "".join(parts)
-    return ChatMessage(role=role, content=content)  # type: ignore[arg-type]
+    return ChatMessage(role=role, content=content)
 
 
 def _to_tool_call_chunk(raw: dict[str, Any]) -> ToolCallChunk:

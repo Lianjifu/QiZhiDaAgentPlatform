@@ -193,6 +193,38 @@ class TestQZDAPChatModel:
         assert len(chunks) >= 1
         assert all(isinstance(chunk.content, str) for chunk in chunks)
 
+    @pytest.mark.asyncio
+    async def test_it_sends_the_roles_the_provider_accepts(self) -> None:
+        """**发出去的角色必须是上游认的那套** ✓。
+
+        ⚠️ **LangChain 叫 ``human`` / ``ai``** ✓ —— 直接透传的话
+        OpenAI 兼容 / DeepSeek 会 **422** ✓（``unknown variant `human` `` ✓）
+        → **真供应商接进来时每轮必挂** ✓。
+        """
+        captured: list[ChatRequest] = []
+
+        class _CaptureLLM:
+            async def stream(
+                self,
+                request: ChatRequest,
+                *,
+                model_id: ModelId | None = None,
+                route_id: ModelId | None = None,
+                route_strategy: str | None = None,
+                fallback_model_ids: list[ModelId] | None = None,
+                actor: ActorContext | None = None,
+            ) -> AsyncIterator[LLMChunk]:
+                _ = (model_id, route_id, route_strategy, fallback_model_ids, actor)
+                captured.append(request)
+                yield LLMChunk(model=request.model, delta="ok")
+
+        model = QZDAPChatModel(llm=_CaptureLLM(), model_name="demo")
+        await model.ainvoke([HumanMessage(content="你好")])
+        assert captured, "没有发出请求"
+        roles = {message.role for message in captured[0].messages}
+        assert roles <= {"system", "user", "assistant", "tool"}, roles
+        assert "user" in roles, roles
+
     def test_the_sync_path_says_no_loudly(self) -> None:
         """同步流式**明确报错** ✓（平台只有异步客户端 ✓）。
 

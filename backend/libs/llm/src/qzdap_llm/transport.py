@@ -114,6 +114,14 @@ class HTTPProviderClient(LLMClient):
                     )
                     await self._wait_before_retry(attempt, response.headers)
                     continue
+                # ⚠️ **上游拒绝的原文** ✓ —— 光有状态码不够 ✓
+                # （422 这种「body 里写着哪个字段不对」的错 ✓ —— 没它就
+                # 只能看到「上游挂了」✓ → 排查无从下手 ✓）。
+                _log.warning(
+                    "llm upstream rejected request (status=%d): %s",
+                    response.status_code,
+                    response.text[:400],
+                )
                 raise ProviderTransportError(status_code=response.status_code) from None
             return decode_object(response.text)
         raise ProviderTransportError()  # pragma: no cover — 循环必然返回或抛出
@@ -134,6 +142,13 @@ class HTTPProviderClient(LLMClient):
                     timeout=self._timeout,
                 ) as response:
                     if response.status_code >= 400:
+                        # ⚠️ **上游拒绝的原文** ✓ —— 见上面那条注释 ✓。
+                        await response.aread()
+                        _log.warning(
+                            "llm upstream rejected request (status=%d): %s",
+                            response.status_code,
+                            response.text[:400],
+                        )
                         retry_status = response.status_code
                         retry_headers = response.headers
                     else:
