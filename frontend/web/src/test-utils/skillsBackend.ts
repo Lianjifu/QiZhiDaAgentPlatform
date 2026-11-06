@@ -1,8 +1,9 @@
 /**
- * 技能管理 mock — 接管 /api/admin/skills。
+ * 测试专用的**内存后端** ✓ —— 只给单测用 ✓（演示环境退役后 ✓，
+ * 前端不再有任何「mock 接管 API」的运行时能力 ✓）。
  */
-import type { BulkPublishVars, CreateSkillVars, Skill, UpdateSkillVars } from './schema';
-import { mockAdminSkills } from './fixtures';
+import type { BulkPublishVars, CreateSkillVars, Skill, UpdateSkillVars } from '@/features/skills/schema';
+import { mockAdminSkills } from '@/features/skills/fixtures';
 
 const skills: Skill[] = [...mockAdminSkills];
 

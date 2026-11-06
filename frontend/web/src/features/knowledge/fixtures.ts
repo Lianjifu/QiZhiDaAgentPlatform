@@ -1,6 +1,6 @@
 /**
  * 管理侧「知识管理」fixtures — 与原 AdminKnowledge.tsx 内联 INITIAL_* 对应。
- * dev:demo 通过 admin-knowledge-mock-handler.ts 返回;测试通过 seedPageQueryData 注入。
+ * 测试通过 seedPageQueryData 注入（运行时不再有 mock 后端 ✓）。
  */
 import type { Kb, Doc, Source, Task, EvalCase } from './schema';
 

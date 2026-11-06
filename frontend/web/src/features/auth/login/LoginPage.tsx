@@ -10,13 +10,12 @@ import { toast } from '@qzdap/web-ui';
 import { BrandLogo } from '@/components/feedback/BrandLogo';
 import { useUiStore } from '@/stores/uiStore';
 import { useT } from '@/i18n';
-import { runtimeConfig } from '@/lib/api-mode';
 import { TrustStrip } from '@/features/auth/TrustStrip';
 import { useLogin } from './useLogin';
 import { LoginBrandPanel, type LoginHeroBullet, type LoginHeroStat } from './LoginBrandPanel';
 import { LoginCredentialsForm } from './LoginCredentialsForm';
 import { LoginMfaStep } from './LoginMfaStep';
-import type { LoginDemoRole } from './LoginDemoChips';
+import type { LoginQuickRole } from './LoginQuickChips';
 import { quickLoginAccounts } from './quickLoginAccounts';
 
 export default function LoginPage() {
@@ -68,10 +67,10 @@ export default function LoginPage() {
   // 一键登录的账号按运行模式取 —— 演示环境给演示角色, 开发环境给开发账号.
   // 演示账号不会出现在开发环境里.
   const quickAccounts = quickLoginAccounts();
-  const quickRoles: LoginDemoRole[] = quickAccounts.map((account) => ({
+  const quickRoles: LoginQuickRole[] = quickAccounts.map((account) => ({
     email: account.email,
-    label: t(account.role === 'admin' ? 'login.demoRoleAdmin' : 'login.demoRoleUser'),
-    sub: t(account.role === 'admin' ? 'login.demoRoleAdminSub' : 'login.demoRoleUserSub'),
+    label: t(account.role === 'admin' ? 'login.quickRoleAdmin' : 'login.quickRoleUser'),
+    sub: t(account.role === 'admin' ? 'login.quickRoleAdminSub' : 'login.quickRoleUserSub'),
     Icon: account.role === 'admin' ? Shield : UserRound,
   }));
 
@@ -168,8 +167,8 @@ export default function LoginPage() {
                   ssoLabel={t('login.sso')}
                   ssoTooltip={t('login.sso.tooltip')}
                   soonLabel={t('login.mfa.soon')}
-                  demoTitle={t(runtimeConfig().dataMode === 'demo' ? 'login.demoTitle' : 'login.quickLoginTitle')}
-                  demoRoles={quickRoles}
+                  quickTitle={t('login.quickLoginTitle')}
+                  quickRoles={quickRoles}
                   onChooseRole={chooseRole}
                   termsPrefix={t('login.termsPrefix')}
                   termsTos={t('login.terms.tos')}

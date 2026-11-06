@@ -1,6 +1,6 @@
 /**
  * 管理侧 fixtures — 与原 AdminSkills.tsx INITIAL_SKILLS 一一对应,
- * dev:demo 模式下由 mock handler 直接返回。
+ * 测试通过 seedPageQueryData 注入（运行时不再有 mock 后端 ✓）。
  */
 import type { Skill, TemplateSeed } from './schema';
 

@@ -9,17 +9,12 @@ import './styles/hljs.css';
 import { setApiClient, ApiClient } from '@qzdap/web-api';
 import { useAuthStore, isTokenExpired } from './features/auth';
 import { apiBaseURL } from './lib/api-mode';
-import { runtimeStorageKey } from './lib/environment';
+import { migrateLegacyStorageKeys, runtimeStorageKey } from './lib/environment';
 import { resolveWorkspaceHeader, ensureWorkspaceFromAuth } from './lib/workspace-header';
 
 function installApiClient() {
-  // 演示环境和开发环境**走同一套 API** —— 演示环境连的是 QZDAP_ENV=demo 的
-  // 那个后端实例 (独立的演示库), 前端代码不因此分叉.
-  //
-  // 以前这里给演示环境注入了一份内存 mock, 于是演示数据和真实 API 是两份
-  // 手写的数据, 必然越走越远 (实测: 后端 309 个端点, 演示数据只覆盖 4 个).
-  // 现在演示数据由后端 demo 库提供 —— 契约天然对齐.
-  // mock 只剩单测夹具的用途, 运行时不再注入.
+  // 只剩开发环境一个 ✓（演示环境已退役 ✓）—— 前端永远走后端 API ✓，
+  // 运行时**不注入任何 mock** ✓（mock 只剩单测夹具的用途 ✓）。
   setApiClient(
     new ApiClient(
       apiBaseURL(),
@@ -68,6 +63,11 @@ function installApiClient() {
     ),
   );
 }
+
+// ⚠️ **搬旧 key 必须在 auth store 读之前** ✓ —— 老 key 带环境段
+// (``qzdap:development:development-api:token`` ✓），新 key 少一层 ✓
+// —— 不搬的话用户会被登出 ✓。
+migrateLegacyStorageKeys();
 
 installApiClient();
 

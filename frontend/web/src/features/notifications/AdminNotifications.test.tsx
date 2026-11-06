@@ -7,7 +7,7 @@ import { ApiClient, setApiClient } from '@qzdap/web-api';
 import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
 import NotificationsPage from './NotificationsPage';
 import { mockChannels, mockGroups, mockWebhooks, mockEvents } from './fixtures';
-import { adminNotificationsMockHandler } from './mock-handler';
+import { adminNotificationsMockHandler } from '@/test-utils/notificationsBackend';
 import { qk } from '@/api/shared/query-keys';
 
 const navigateMock = vi.fn();

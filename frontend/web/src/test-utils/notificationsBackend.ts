@@ -1,7 +1,6 @@
 /**
- * 本地 mock handler — 在 demo 模式下接管 /api/admin/notifications 调用。
- * 其他路径走 `mockHandlerWithAdapters`(默认仓库内 mock)。
- * 装配见 `src/main.tsx → installApiClient`。
+ * 测试专用的**内存后端** ✓ —— 只给单测用 ✓（演示环境退役后 ✓，
+ * 前端不再有任何「mock 接管 API」的运行时能力 ✓）。
  */
 import type {
   NotificationChannel,
@@ -12,14 +11,14 @@ import type {
   UpdateChannelVars,
   CreateGroupVars,
   BatchStatusVars,
-} from './schema';
+} from '@/features/notifications/schema';
 import {
   mockChannels,
   mockWebhooks,
   mockGroups,
   mockEvents,
-} from './fixtures';
-import { defaultChannelConfig, defaultChannelTemplate } from './components/constants';
+} from '@/features/notifications/fixtures';
+import { defaultChannelConfig, defaultChannelTemplate } from '@/features/notifications/components/constants';
 
 interface MockState {
   channels: NotificationChannel[];
@@ -131,7 +130,7 @@ export async function adminNotificationsMockHandler(
   return undefined;
 }
 
-/** 在 demo 模式下包裹默认 mockHandler,先试本地 notifications handler,再 fallback */
+/** 包裹默认 handler:先试本地 notifications handler,再 fallback */
 export function wrapMockHandlerWithAdminNotifications(
   fallback: (path: string, opts: any) => Promise<unknown>,
 ) {

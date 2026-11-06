@@ -3,11 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import Copilot from './CopilotPage';
 
-// 附件现在**一律真上传** (演示环境也一样 —— 演示后端有真的附件端点).
+// 附件**一律真上传** ✓（只有一个开发环境 ✓）。
 // 没有会话时不能上传, 也不能再像以前那样把文件名塞进输入框假装成功.
 vi.mock('@/lib/api-mode', () => ({
-  runtimeConfig: () => ({ environment: 'demo', dataMode: 'demo' }),
-  isDemoApiMode: () => true,
+  runtimeConfig: () => ({ environment: 'development' }),
   apiBaseURL: () => '',
 }));
 

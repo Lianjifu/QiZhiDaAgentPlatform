@@ -4,7 +4,7 @@
 import { Eye, EyeOff } from 'lucide-react';
 import { Button, Input } from '@qzdap/web-ui';
 import { useState, type ComponentProps } from 'react';
-import { LoginDemoChips, type LoginDemoRole } from './LoginDemoChips';
+import { LoginQuickChips, type LoginQuickRole } from './LoginQuickChips';
 
 interface LoginCredentialsFormProps {
   email: string;
@@ -33,8 +33,8 @@ interface LoginCredentialsFormProps {
   ssoLabel: string;
   ssoTooltip: string;
   soonLabel: string;
-  demoTitle: string;
-  demoRoles: LoginDemoRole[];
+  quickTitle: string;
+  quickRoles: LoginQuickRole[];
   onChooseRole: (email: string) => void;
   termsPrefix: string;
   termsTos: string;
@@ -136,7 +136,7 @@ export function LoginCredentialsForm(props: LoginCredentialsFormProps) {
           <span className="login-kicker text-[10px] text-[var(--text-muted)]">{props.soonLabel}</span>
         </button>
 
-        <LoginDemoChips title={props.demoTitle} roles={props.demoRoles} onChoose={props.onChooseRole} />
+        <LoginQuickChips title={props.quickTitle} roles={props.quickRoles} onChoose={props.onChooseRole} />
       </form>
 
       <p className="mt-6 text-[11px] leading-relaxed text-[var(--text-muted)]">

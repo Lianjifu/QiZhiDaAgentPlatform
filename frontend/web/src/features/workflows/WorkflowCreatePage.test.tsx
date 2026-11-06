@@ -8,7 +8,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ApiClient, setApiClient } from '@qzdap/web-api';
 import WorkflowCreatePage from './WorkflowCreatePage';
 import WorkflowsPage from './index';
-import { wrapMockHandlerWithAdminWorkflows } from './mock-handler';
+import { wrapMockHandlerWithAdminWorkflows } from '@/test-utils/workflowsBackend';
 
 const navigateMock = vi.fn();
 
@@ -20,7 +20,7 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-// 「创建并进入编辑器」是真的调后端建工作流 —— 用 workflows 模块的 mock handler 当 ApiClient。
+// 「创建并进入编辑器」是真的调后端建工作流 —— 用测试专用的内存后端当 ApiClient。
 const workflowsMock = wrapMockHandlerWithAdminWorkflows(async () => undefined);
 
 beforeAll(() => {

@@ -1,7 +1,7 @@
 /**
  * AdminSkills 测试 — 概览页 + 新建向导 + 卡片操作。
  *
- * 写操作(新建 / 发布 / 删除)一律走后端, 所以这里注入 skills 模块的 mock handler
+ * 写操作(新建 / 发布 / 删除)一律走后端, 所以这里注入测试专用的内存后端
  * 作为 ApiClient, 页面跑的是真实的 useApiQuery / useApiMutation 链路 ——
  * 列表数据、乐观刷新都来自那个内存 store, 而不是测试里手搓的假状态。
  */
@@ -12,7 +12,7 @@ import { ApiClient, setApiClient } from '@qzdap/web-api';
 import { renderWithProviders } from '@/test-utils/seed';
 import AdminSkills from './SkillsPage';
 import SkillCreatePage from './SkillCreatePage';
-import { wrapMockHandlerWithAdminSkills } from './mock-handler';
+import { wrapMockHandlerWithAdminSkills } from '@/test-utils/skillsBackend';
 
 const skillsMock = wrapMockHandlerWithAdminSkills(async () => undefined);
 

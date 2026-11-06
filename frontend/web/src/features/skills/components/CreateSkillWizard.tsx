@@ -137,9 +137,9 @@ print(json.dumps({
 
   const probe = useApiMutation<{ tools: MCPToolInfo[] }, MCPConfig>('/api/admin/skills/mcp/probe');
 
-  // 演示环境和开发环境一样请求后端 —— 演示环境连的是 demo 后端实例,
-  // 它有真的 /api/admin/skills/mcp/probe. 以前这里在演示模式下**本地模拟**
-  // 一份假的 MCP 工具列表, 那正是"演示数据与真实 API 各写各的"的又一处.
+  // MCP 探活**一律请求后端** ✓（真的 /api/admin/skills/mcp/probe ✓）——
+  // 以前在演示模式下**本地模拟**一份假的 MCP 工具列表 ✓，
+  // 那正是「假数据与真实 API 各写各的」的又一处 ✓。
   const probeMcp = async () => {
     setProbing(true);
     setProbeError(null);

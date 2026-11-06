@@ -1,11 +1,10 @@
 /**
- * Sanity check — verify admin-notifications-mock-handler returns fixture data
- * for each endpoint; mutations round-trip through the in-memory state.
+ * Sanity check — 测试专用的内存后端返回夹具数据 ✓；写操作在内存里往返 ✓。
  */
 import { describe, expect, it } from 'vitest';
-import { wrapMockHandlerWithAdminNotifications } from './mock-handler';
+import { wrapMockHandlerWithAdminNotifications } from './notificationsBackend';
 
-describe('admin-notifications-mock-handler', () => {
+describe('notificationsBackend', () => {
   it('returns channel/webhook/group/event lists', async () => {
     const fallback = async () => undefined;
     const wrap = wrapMockHandlerWithAdminNotifications(fallback);

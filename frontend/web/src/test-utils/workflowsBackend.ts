@@ -1,9 +1,9 @@
 /**
- * AdminWorkflows mock handler — 仅当 VITE_USE_DEMO 注入。
- * 真实链路走全局 mock.ts ladder;此 wrap 仅兜底 admin/workflows 端点。
+ * 测试专用的**内存后端** ✓ —— 只给单测用 ✓（演示环境退役后 ✓，
+ * 前端不再有任何「mock 接管 API」的运行时能力 ✓）。
  */
-import type { Flow } from './schema';
-import { mockFlows } from './fixtures';
+import type { Flow } from '@/features/workflows/schema';
+import { mockFlows } from '@/features/workflows/fixtures';
 
 const workflows: Flow[] = mockFlows;
 

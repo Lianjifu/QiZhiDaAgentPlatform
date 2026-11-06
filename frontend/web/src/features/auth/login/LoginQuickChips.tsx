@@ -1,22 +1,22 @@
 /**
- * LoginDemoChips — 一键体验角色登录(开发环境)
+ * LoginQuickChips — 一键用开发账号登录
  */
 import type { ReactNode } from 'react';
 
-export interface LoginDemoRole {
+export interface LoginQuickRole {
   email: string;
   label: string;
   sub: string;
   Icon: (props: { className?: string }) => ReactNode;
 }
 
-interface LoginDemoChipsProps {
+interface LoginQuickChipsProps {
   title: string;
-  roles: LoginDemoRole[];
+  roles: LoginQuickRole[];
   onChoose: (email: string) => void;
 }
 
-export function LoginDemoChips({ title, roles, onChoose }: LoginDemoChipsProps) {
+export function LoginQuickChips({ title, roles, onChoose }: LoginQuickChipsProps) {
   return (
     <div>
       <p className="login-kicker mb-3 text-[var(--text-muted)]">{title}</p>

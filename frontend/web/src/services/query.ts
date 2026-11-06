@@ -12,7 +12,7 @@ import { runtimeStorageKey } from '@/lib/environment';
  * 形状固定为 `[...key, workspaceId, runtimeStorageKey('query')]`:
  *
  * * ``workspaceId``  当前工作区.
- * * ``runtimeStorageKey('query')``  按业务环境隔离 (演示/开发各一份缓存).
+ * * ``runtimeStorageKey('query')``  命名空间标记（只有一个环境 ✓）。
  *
  * **查询参数不进 key** —— 每个页面都是拿到整份列表再在客户端过滤
  * (后端那些 catalog 端点本来也不支持过滤参数), 所以按过滤条件切 key

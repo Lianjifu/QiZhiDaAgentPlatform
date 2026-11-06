@@ -1,16 +1,13 @@
-export type AppEnvironment = 'demo' | 'development';
-export type DataMode = 'demo' | 'development-api';
-
 /**
- * 运行时配置 —— demo 和 development 走**同一套前端代码 + 同一个 API 协议**,
- * 区别只在后端连的是哪个实例 (演示实例 / 开发实例) 和哪个库.
+ * 运行时配置 —— **只剩开发环境** ✓（演示 / 预发 / 生产环境已退役 ✓）。
  *
- * 所以这里没有 "要不要走 API" 的开关: 演示数据天然与真实 API 对齐,
- * 不需要 (也没有) 第二份手写的数据源.
+ * 所以这里没有「要不要走 API」的开关 ✓ —— 数据永远走后端 ✓，
+ * 也不需要第二套手写的数据源 ✓。
  */
+export type AppEnvironment = 'development';
+
 export interface RuntimeConfig {
   environment: AppEnvironment;
-  dataMode: DataMode;
 }
 
 type EnvInput = Record<string, string | undefined>;
@@ -23,26 +20,44 @@ function readEnv(input?: EnvInput): EnvInput {
 export function resolveRuntimeConfig(input?: EnvInput): RuntimeConfig {
   const env = readEnv(input);
   const rawEnvironment = (env.VITE_QZDAP_ENV ?? '').trim().toLowerCase();
-  if (rawEnvironment && rawEnvironment !== 'demo' && rawEnvironment !== 'development') {
-    throw new Error('企智搭仅支持 demo 或 development 环境');
+  if (rawEnvironment && rawEnvironment !== 'development') {
+    throw new Error('企智搭仅支持 development 环境');
   }
-
-  // 未显式配置时按 development 处理 —— 演示环境必须靠 VITE_QZDAP_ENV=demo
-  // 显式打开, 不能靠某个"顺手就生效"的旁路开关.
-  if (rawEnvironment === 'demo') {
-    return {
-      environment: 'demo',
-      dataMode: 'demo',
-    };
-  }
-
-  return {
-    environment: 'development',
-    dataMode: 'development-api',
-  };
+  return { environment: 'development' };
 }
 
-export function runtimeStorageKey(name: string, input?: EnvInput): string {
-  const config = resolveRuntimeConfig(input);
-  return `qzdap:${config.environment}:${config.dataMode}:${name}`;
+/**
+ * localStorage / react-query 的 key 前缀 —— 只剩一层 ✓。
+ *
+ * ⚠️ **老 key 带环境段** ✓（`qzdap:development:development-api:token` ✓）——
+ * 删掉环境段后前缀变了 ✓ → 用 :func:`migrateLegacyStorageKeys` 搬一次 ✓
+ * （否则用户会被登出 ✓）。
+ */
+export function runtimeStorageKey(name: string, _input?: EnvInput): string {
+  return `qzdap:${name}`;
+}
+
+/** 老前缀 —— 只剩 development 那一套需要搬 ✓（demo 的 key 直接丢弃 ✓）。 */
+const LEGACY_PREFIX = 'qzdap:development:development-api:';
+
+/**
+ * 把带环境段的旧 key 搬到新 key 下 ✓ —— 只搬 development 那套 ✓
+ * （demo 的 key 不搬 ✓ —— 演示环境退役了 ✓）。
+ *
+ * ⚠️ **必须在应用挂载前跑** ✓ —— 否则 auth store 会先读到空 token ✓。
+ */
+export function migrateLegacyStorageKeys(storage: Storage | undefined = globalThis.localStorage): void {
+  if (!storage) return;
+  const stale: string[] = [];
+  for (let i = 0; i < storage.length; i += 1) {
+    const key = storage.key(i);
+    if (!key || !key.startsWith(LEGACY_PREFIX)) continue;
+    const name = key.slice(LEGACY_PREFIX.length);
+    const next = `qzdap:${name}`;
+    if (storage.getItem(next) === null) {
+      storage.setItem(next, storage.getItem(key) ?? '');
+    }
+    stale.push(key);
+  }
+  stale.forEach((key) => storage.removeItem(key));
 }

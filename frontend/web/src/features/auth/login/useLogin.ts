@@ -230,8 +230,8 @@ export function useLogin(opts: UseLoginOpts = {}) {
   );
 
   const chooseRole = useCallback((nextEmail: string) => {
-    // 密码跟着当前模式的账号走 —— 演示环境是演示账号的密码, 开发环境是
-    // 开发账号的. 两套账号不共用密码, 所以不能写死.
+    // 密码跟着账号走 —— 一键登录给的是开发账号 ✓（管理员与成员口令
+    // 不共用 ✓ —— 所以不能写死 ✓）。
     const account = quickLoginAccounts().find((item) => item.email === nextEmail);
     const nextPassword = account?.password ?? '';
     setEmail(nextEmail);

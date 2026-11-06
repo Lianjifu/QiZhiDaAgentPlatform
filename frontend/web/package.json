@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:demo": "VITE_QZDAP_ENV=demo VITE_DATA_MODE=demo VITE_USE_DEMO=true vite",
     "build": "tsc -b --noEmit && vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
