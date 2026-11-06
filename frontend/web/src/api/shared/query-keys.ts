@@ -36,11 +36,6 @@ export const qk = {
       detail: (id: string) => ['user', 'automations', 'detail', id] as const,
       runs: ['user', 'automations', 'runs'] as const,
     },
-    team: {
-      root: ['user', 'team'] as const,
-      members: ['user', 'team', 'members'] as const,
-      shared: ['user', 'team', 'shared'] as const,
-    },
     copilot: {
       root: ['user', 'copilot'] as const,
       sessions: ['user', 'copilot', 'sessions'] as const,

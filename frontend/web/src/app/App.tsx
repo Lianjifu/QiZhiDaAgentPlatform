@@ -7,14 +7,10 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { WorkspaceShell } from '@/widgets/app-shell';
 import WorkspacePlaceholder from '@/pages/shared/WorkspacePlaceholder';
 import Home from '@/features/user/home';
-import Agents from '@/features/user/agents';
+import Library from '@/features/user/library/LibraryPage';
 import Copilot from '@/features/user/copilot';
 
 const Login = lazy(() => import('./pages/Login'));
-const MyKnowledge = lazy(() => import('@/features/user/knowledge'));
-const MyAutomations = lazy(() => import('@/features/user/automations'));
-const MyTeam = lazy(() => import('@/features/user/team'));
-const MySkills = lazy(() => import('@/features/user/skills'));
 const MyTasks = lazy(() => import('@/features/user/tasks'));
 const AccountSettings = lazy(() => import('@/features/user/account'));
 const AdminSettings = lazy(() => import('@/features/settings'));
@@ -113,20 +109,16 @@ export default function App() {
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route element={<WorkspaceShell />}>
             <Route path="/home" element={<Home />} />
-            <Route path="/agents" element={<Agents />} />
-            <Route path="/agents/new" element={<Navigate to="/agents" replace />} />
-            <Route path="/agents/templates" element={<Navigate to="/agents" replace />} />
-            <Route path="/agents/mine" element={<Navigate to="/agents" replace />} />
-            <Route path="/team/agents" element={<Agents />} />
+            {/* ⚠️ **资源库** ✓ —— 智能体 / 知识 / 技能 / 工作流合到一页 ✓
+                （旧路径重定向过去 ✓ —— 深链不丢 ✓）。 */}
+            <Route path="/library" element={<Library />} />
+            <Route path="/agents" element={<Navigate to="/library?tab=agents" replace />} />
+            <Route path="/knowledge" element={<Navigate to="/library?tab=knowledge" replace />} />
+            <Route path="/skills" element={<Navigate to="/library?tab=skills" replace />} />
+            <Route path="/automations" element={<Navigate to="/library?tab=automations" replace />} />
             <Route path="/copilot/*" element={<Copilot />} />
             <Route path="/tasks/*" element={<MyTasks />} />
-            <Route path="/knowledge/*" element={<MyKnowledge />} />
-            <Route path="/skills/*" element={<MySkills />} />
-            <Route path="/automations/*" element={<MyAutomations />} />
-            <Route path="/team/*" element={<MyTeam />} />
-            <Route path="/insights" element={<Navigate to="/home" replace />} />
             <Route path="/account" element={<AccountSettings />} />
-            <Route path="/help" element={<Navigate to="/account" replace />} />
             <Route path="/admin/help" element={<Navigate to="/admin/settings" replace />} />
             <Route path="/admin/settings" element={<AdminSettings />} />
             <Route path="/admin/overview" element={<AdminOverview />} />

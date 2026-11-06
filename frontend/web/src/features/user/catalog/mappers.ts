@@ -6,10 +6,10 @@ import type { AgentEntry } from '@/features/agents/schema';
 import type { Skill as AdminSkill } from '@/features/skills/schema';
 import type { Flow as AdminFlow, FlowNodeData } from '@/features/workflows/schema';
 import type { Kb, Doc } from '@/features/knowledge/schema';
-import type { Agent, AgentCategory } from '@/features/user/agents/schema';
-import type { Capability } from '@/features/user/skills/schema';
-import type { Flow as UserFlow } from '@/features/user/automations/schema';
-import type { KnowledgeKind, KnowledgeResource } from '@/features/user/knowledge/schema';
+import type { Agent, AgentCategory } from '@/features/user/library/kinds/agents';
+import type { Capability } from '@/features/user/library/kinds/skills';
+import type { Flow as UserFlow } from '@/features/user/library/kinds/automations';
+import type { KnowledgeKind, KnowledgeResource } from '@/features/user/library/kinds/knowledge';
 import type { Node } from 'reactflow';
 
 const OPEN_SCOPES = new Set(['公开', '部门']);

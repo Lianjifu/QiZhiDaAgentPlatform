@@ -1,16 +1,11 @@
 import { ArrowRight, CheckCircle2, Clock3, Plus, Sparkles } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 
+/**
+ * 管理端兜底占位页 —— 只挂在 `/admin/*` 上 ✓
+ * （用户侧每一页都有真页面 ✓ —— 这里只描述管理端还没实现的子页 ✓）。
+ */
 const pageCopy: Record<string, { title: string; description: string; actions: string[] }> = {
-  '/home': { title: '首页', description: '从今天要完成的工作开始，让智能体帮你更快得到结果。', actions: ['新建对话', '运行智能体', '发起工作流', '搜索知识'] },
-  '/agents': { title: '智能体', description: '查看管理员已开放的智能体，按需选用并进入对话。', actions: ['浏览可用智能体', '查看团队智能体', '开始对话'] },
-  '/copilot': { title: '对话', description: '发起一项工作，查看执行进度，并在需要时完成确认。', actions: ['新建对话', '查看历史会话', '查看产出物'] },
-  '/tasks': { title: '任务', description: '集中查看待处理、进行中、已完成和异常的执行任务。', actions: ['待我处理', '我发起的', '失败与异常'] },
-  '/knowledge': { title: '知识', description: '基于企业资料提问，查看答案来源和引用位置。', actions: ['开始问答', '上传资料', '查看知识库'] },
-  '/automations': { title: '工作流', description: '把重复工作配置成可追踪、可复用的工作流。', actions: ['工作流', '新建工作流', '执行记录'] },
-  '/team': { title: '协作', description: '共享智能体、知识和执行结果，让团队减少重复配置。', actions: ['协作空间', '共享智能体', '协作产出物'] },
-  '/insights': { title: '效果看板', description: '查看智能体任务完成情况和预计节省时长。', actions: ['我的使用小结', '任务完成率', '满意度与反馈'] },
-  '/account': { title: '个人中心', description: '管理个人资料、账号安全、通知和使用偏好。', actions: ['个人资料', '账号安全', '偏好设置'] },
   '/admin/overview': { title: '运营概览', description: '查看平台健康、异常事项和下一步建议动作。', actions: ['查看运营概览', '处理待办事项', '查看平台健康'] },
   '/admin/agents': { title: '智能体管理', description: '创建、评测和发布企业智能体与应用。', actions: ['智能体目录', '草稿与待发布', '版本与发布'] },
   '/admin/knowledge': { title: '知识管理', description: '管理企业知识库、文档资产、数据来源、加工状态和访问权限。', actions: ['知识库', '文档资产', '数据来源', '加工任务', '检索评测'] },
@@ -27,9 +22,17 @@ const pageCopy: Record<string, { title: string; description: string; actions: st
   '/admin/notifications': { title: '渠道配置', description: '对接飞书、企业微信、钉钉与 Web，让用户在熟悉的入口与智能体对话。', actions: ['飞书', '企业微信', '钉钉', 'Web'] },
 };
 
+const DEFAULT_COPY = {
+  title: '管理端功能',
+  description: '该模块正在建设中，你可以先从左侧导航进入其它管理功能。',
+  actions: ['查看运营概览', '处理待办事项'],
+};
+
 export default function WorkspacePlaceholder() {
   const { pathname } = useLocation();
-  const copy = pageCopy[Object.keys(pageCopy).find((key) => pathname === key || pathname.startsWith(`${key}/`)) ?? '/home'];
+  const copy =
+    pageCopy[Object.keys(pageCopy).find((key) => pathname === key || pathname.startsWith(`${key}/`)) ??
+      ''] ?? DEFAULT_COPY;
   return (
     <div className="mx-auto max-w-7xl p-5 sm:p-8">
       <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] shadow-[var(--shadow-sm)]">

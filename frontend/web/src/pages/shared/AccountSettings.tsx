@@ -1,7 +1,7 @@
 import { useServerAction } from '@/services/useServerAction';
 import { useApiQuery } from '@/services/query';
 import { useEffect } from 'react';
-import { Bell, Check, ChevronRight, KeyRound, LogOut, Monitor, Palette, Save, ShieldCheck, UserRound } from 'lucide-react';
+import { Bell, Check, ChevronRight, LogOut, Monitor, Palette, Save, ShieldCheck, UserRound } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
@@ -109,11 +109,6 @@ export default function AccountSettings() {
                   <label className="text-xs font-semibold">显示名称<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-sm font-normal outline-none focus:border-[var(--brand)]" /></label>
                   <label className="text-xs font-semibold">工作邮箱<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-3 text-sm font-normal outline-none focus:border-[var(--brand)]" /></label>
                 </div>
-                <div className="rounded-xl border border-[var(--border)] p-5">
-                  <p className="text-xs font-semibold">当前工作空间</p>
-                  <p className="mt-2 text-sm font-medium">默认工作空间</p>
-                  <p className="mt-1 text-xs text-[var(--text-muted)]">你的资料、对话和协作内容会显示在这里。</p>
-                </div>
               </div>
             )}
             {tab === '偏好设置' && (
@@ -159,14 +154,11 @@ export default function AccountSettings() {
                     <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-300/80">最近一次登录：刚刚 · 当前浏览器</p>
                   </div>
                 </div>
-                <button type="button" onClick={() => setNotice('密码修改入口将在连接账号服务后开放。')} className="flex w-full items-center gap-4 rounded-xl border border-[var(--border)] p-5 text-left hover:border-[var(--brand)]">
-                  <KeyRound className="h-5 w-5 text-[var(--brand)]" />
-                  <span className="flex-1"><span className="block text-sm font-semibold">修改密码</span><span className="mt-1 block text-xs text-[var(--text-muted)]">更新登录凭据和验证方式</span></span>
-                  <ChevronRight className="h-4 w-4 text-[var(--text-muted)]" />
-                </button>
                 <div className="rounded-xl border border-[var(--border)] p-5">
-                  <p className="text-sm font-semibold">最近访问</p>
-                  <p className="mt-2 text-xs text-[var(--text-muted)]">当前浏览器 · 当前工作空间 · 刚刚</p>
+                  <p className="text-sm font-semibold">当前登录</p>
+                  <p className="mt-2 text-xs text-[var(--text-muted)]">
+                    当前账号：{user?.email ?? '—'}。要换账号请退出后重新登录。
+                  </p>
                 </div>
               </div>
             )}

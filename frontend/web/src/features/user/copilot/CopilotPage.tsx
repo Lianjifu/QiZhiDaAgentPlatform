@@ -942,7 +942,7 @@ function CopilotInner() {
                 </p>
                 {!agentName ? (
                   <Link
-                    to="/agents"
+                    to="/library?tab=agents"
                     className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-[var(--brand)] bg-[var(--brand-light)] px-3 py-1.5 text-xs font-semibold text-[var(--brand)] transition hover:bg-[var(--brand)] hover:text-white"
                   >
                     去智能体库选一个智能体 →
@@ -984,7 +984,7 @@ function CopilotInner() {
                       当前智能体:{agentName}
                       {skillName ? ` · 能力:${skillName}` : ''}
                     </span>
-                    <Link to="/agents" className="font-medium text-[var(--text-secondary)] hover:text-[var(--brand)]">
+                    <Link to="/library?tab=agents" className="font-medium text-[var(--text-secondary)] hover:text-[var(--brand)]">
                       更换智能体
                     </Link>
                   </div>
@@ -1015,7 +1015,7 @@ function CopilotInner() {
                 {notices.length ? (
                   <button
                     type="button"
-                    onClick={() => navigate('/agents')}
+                    onClick={() => navigate('/library?tab=agents')}
                     className="mb-3 inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-900 transition hover:border-amber-500 hover:bg-amber-100"
                     title="去智能体库选一个智能体"
                   >
@@ -1030,7 +1030,7 @@ function CopilotInner() {
                       <Sparkles className="h-4 w-4" />
                       当前能力:{skillName}
                     </span>
-                    <Link to="/skills" className="font-medium text-[var(--text-secondary)] hover:text-[var(--brand)]">
+                    <Link to="/library?tab=skills" className="font-medium text-[var(--text-secondary)] hover:text-[var(--brand)]">
                       更换能力
                     </Link>
                   </div>
