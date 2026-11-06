@@ -1,6 +1,6 @@
 # 值班手册 · 会话架构重构期间 ✓
 
-> **什么时候用** ✓：告警响了 ✓（规则见 [`deploy/prometheus/alerts.yml`](../../deploy/prometheus/alerts.yml) ✓）—— **先看这里** ✓（别猜 ✓ —— H2 的验收 ✓）。
+> **什么时候用** ✓：告警响了 ✓ —— **先看这里** ✓（别猜 ✓ —— H2 的验收 ✓）。
 >
 > ⚠️ **每条告警都有回退步骤** ✓ —— 「出了事怎么办」写在下面 ✓（**不用翻代码** ✓）。
 >
@@ -11,7 +11,7 @@
 > | 1 | **关开关**（下表逐条列 ✓） | 秒级 ✓ | 有开关的 ✓ |
 > | 2 | **回滚到上一个镜像 / 版本** | 分钟级 ✓ | 通用 ✓ |
 > | 3 | **停后台任务**（间隔调大 ✓ —— `QZDAP_*_INTERVAL` ✓） | 秒级 ✓ | 淘汰 / 清扫 / 补写类 ✓ |
-> | 4 | **数据回滚**（`alembic downgrade` ✓ —— **只在 dev / 预发** ✓） | 高 ⚠️ | **生产不许** ✗✗（S-36 的 DROP 不可逆 ✓） |
+> | 4 | **数据回滚**（`alembic downgrade` ✓ —— **只在开发库** ✓） | 高 ⚠️ | **DROP 类迁移不可逆** ✗✗（S-36 的 DROP 不可逆 ✓） |
 
 ---
 
@@ -84,39 +84,40 @@
 
 ---
 
-## 两套栈：账号与入口（**先分清是哪一套** ✓）
+## 单环境：账号与入口（**只有一套** ✓）
 
-⚠️ **演示数据与开发数据严格分开** ✓ —— 不共用库 ✓ / 不共用租户 ✓ / 不共用账号 ✓ / 不共用密码 ✓（数据通道分离 ✓）。
+⚠️ **只有一个开发环境** ✓ —— 演示 / 预发 / 生产环境都已退役 ✓（数据通道分离 ✓）。
+**库里只有 dev 租户的内容** ✓ —— 不存在第二个库 ✓ / 第二个租户 ✓ / 第二套账号 ✓。
 
-| | **开发栈（dev）** | **演示栈（demo）** |
-|---|---|---|
-| 前端 | `http://127.0.0.1:9152` ✓ | `http://127.0.0.1:9162` ✓ |
-| 网关 | `http://127.0.0.1:9150` ✓ | 无 ✓（前端直连后端 ✓） |
-| 后端 | `http://127.0.0.1:9151` ✓ | `http://127.0.0.1:9161` ✓ |
-| 库 | `127.0.0.1:9153/qzdap_dev` ✓ | `127.0.0.1:9153/qzdap_demo` ✓ |
-| 租户 | slug `dev` ✓（id **随机** ✓ —— `uuid4()` ✓） | slug `demo` ✓（id 固定 `00000000-…-0001` ✓） |
-| 管理员 | `admin@dev.qzdap.dev` / `dev-admin-password-change-me` ✓ | `admin@acme.com` / `demo-password-change-me` ✓ |
-| 成员（**用户侧** ✓） | `user@dev.qzdap.dev` / `dev-user-password-change-me` ✓（口令与管理员**不共用** ✓） | `user@acme.com` / `demo-password-change-me` ✓ |
-| 其它账号 | 验收样本（**只在 dev 库** ✓）：`qa-a-admin@example.invalid` / `qa-a-user@example.invalid`（租户 `qa-tenant-a` ✓）· `qa-b-admin@example.invalid` / `qa-b-user@example.invalid`（租户 `qa-tenant-b` ✓）—— 口令一律 `qa-local-samples-only` ✓ | 无 ✓ |
-| 种子内容 | 验收样本 ✓（无演示内容 ✓） | 演示智能体 5 ✓ / 工作流 3 ✓ / 知识库 ✓ / 演示会话 ✓ / 记忆 ✓ / 管理台 30 个集合 ✓ |
-| LLM 供应商 | **未配** ✓ → 发一轮必然 `TURN_FAILED` ✓ | **未配** ✓ → 同左 ✓（不是回归 ✓ —— 配了才通 ✓） |
+| | **开发栈（dev）** |
+|---|---|
+| 前端 | `http://127.0.0.1:9152` ✓ |
+| 网关 | `http://127.0.0.1:9150` ✓ |
+| 后端 | `http://127.0.0.1:9151` ✓ |
+| 库 | `127.0.0.1:9153/qzdap_dev` ✓ |
+| 租户 | slug `dev` ✓（id **随机** ✓ —— `uuid4()` ✓） |
+| 管理员 | `admin@dev.qzdap.dev` / `dev-admin-password-change-me` ✓ |
+| 成员（**用户侧** ✓） | `user@dev.qzdap.dev` / `dev-user-password-change-me` ✓（口令与管理员**不共用** ✓） |
+| 其它账号 | 验收样本（**同一个 dev 库** ✓）：`qa-a-admin@example.invalid` / `qa-a-user@example.invalid`（租户 `qa-tenant-a` ✓）· `qa-b-admin@example.invalid` / `qa-b-user@example.invalid`（租户 `qa-tenant-b` ✓）—— 口令一律 `qa-local-samples-only` ✓ |
+| 种子内容 | 验收样本 ✓（**无内容数据** ✓ —— 目录页开箱是空态 ✓） |
+| LLM 供应商 | **未配** ✓ → 发一轮必然 `TURN_FAILED` ✓ |
 
-⚠️ **账号来源** ✓：`backend/composition/qzdap_app/src/qzdap/composition/settings.py` 的 `demo_*` / `dev_*` ✓ —— `backend/.env.local` 与栈脚本**都没覆盖** ✓ → 跑的就是这些默认值 ✓。
+⚠️ **账号来源** ✓：`backend/composition/qzdap_app/src/qzdap/composition/settings.py` 的 `dev_*` ✓ —— `backend/.env.local` 与栈脚本**都没覆盖** ✓ → 跑的就是这些默认值 ✓。
 
 ⚠️ **怎么确认自己连的是哪一套** ✓：
 ```bash
-# 租户 slug 就是答案：demo / dev / qa-tenant-a / qa-tenant-b
-curl -s -X POST http://127.0.0.1:9161/v1/identity/login \
+# 租户 slug 就是答案：dev / qa-tenant-a / qa-tenant-b
+curl -s -X POST http://127.0.0.1:9151/v1/identity/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"admin@acme.com","password":"demo-password-change-me"}' \
+  -d '{"email":"admin@dev.qzdap.dev","password":"dev-admin-password-change-me"}' \
   | python3 -c "import sys,json,base64;t=json.load(sys.stdin)['access_token'].split('.')[1];\
 print(json.loads(base64.urlsafe_b64decode(t+'='*(-len(t)%4)))['tid'])"
 ```
-⚠️ **demo 账号在 dev 栈上登录会 401** ✓（`INVALID_CREDENTIALS` ✓）—— 两套**彻底隔离** ✓。
+⚠️ **验收样本账号（`qa-*@example.invalid`）在登录页没有入口** ✓ —— 它们只在验收脚本里用 ✓。
 
-⚠️ **两种角色进的是**不同的**页面** ✓ —— **管理员只进管理台** ✓（`/admin/*` ✓），**成员进用户侧** ✓（工作台 / 对话 / 任务 / 知识库… ✓）→ 所以**两种角色都要有账号** ✓（只有管理员就看不到用户侧长什么样 ✗✗）→ 登录页的「一键登录」按运行模式给**两个**按钮 ✓。
+⚠️ **两种角色进的是**不同的**页面** ✓ —— **管理员只进管理台** ✓（`/admin/*` ✓），**成员进用户侧** ✓（工作台 / 对话 / 任务 / 知识库… ✓）→ 所以**两种角色都要有账号** ✓（只有管理员就看不到用户侧长什么样 ✗✗）→ 登录页的「一键登录」给**两个**按钮 ✓。
 
-⚠️ **起停** ✓：`bin/qzdap-stack/run-qzdap-stack.sh`（dev ✓）/ `run-qzdap-demo-stack.sh`（demo ✓）/ 对应的 `stop-*.sh` ✓ —— **改完代码要重启** ✓（否则跑的还是旧代码 ✓）。
+⚠️ **起停** ✓：`bin/qzdap-stack/run-qzdap-stack.sh`（dev ✓）/ 对应的 `stop-*.sh` ✓ —— **改完代码要重启** ✓（否则跑的还是旧代码 ✓）。
 
 ---
 
@@ -153,6 +154,5 @@ print(json.loads(base64.urlsafe_b64decode(t+'='*(-len(t)%4)))['tid'])"
 ## 相关文档
 
 - 指标定义：[`backend/libs/observability/src/qzdap_observability/metrics.py`](../../backend/libs/observability/src/qzdap_observability/metrics.py) ✓
-- 告警规则：[`deploy/prometheus/alerts.yml`](../../deploy/prometheus/alerts.yml) ✓
 - 台账（`entry` 编号的来源）：[`cleanup-ledger.md`](cleanup-ledger.md) ✓
 - 实施计划：[`cleanup-ledger.md`](./cleanup-ledger.md) ✓

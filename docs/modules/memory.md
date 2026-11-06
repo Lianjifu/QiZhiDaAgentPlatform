@@ -93,5 +93,5 @@ backend/modules/memory/src/qzdap/modules/memory/
 
 - ⚠️ **L3 已退役**，写团队级记忆会被直接拒绝（`admin_service.py:373`）
 - ⚠️ **策略没有自动执行器**：`/policies/{label}/publish` 只存策略，没有后台任务按策略实际淘汰
-- ⚠️ `NoOpEmbedding` 返回 1536 维**零向量**——只在 demo / test / ci 允许；生产环境被 `UnavailableEmbeddingAdapter` 拦截（503），不会静默用零向量做召回
+- ⚠️ `NoOpEmbedding` 返回 1536 维**零向量**——只在 test / ci 允许；开发环境被 `UnavailableEmbeddingAdapter` 拦截（503），不会静默用零向量做召回
 - ⚠️ 记忆策略的 `retentionDays` / `autoSummarize` 两个字段**运行时只消费 `enabled`**——字段形状保留是为了前端表单不坏，运行时不再读它们

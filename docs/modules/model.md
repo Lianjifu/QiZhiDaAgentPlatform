@@ -74,7 +74,7 @@ backend/modules/model/src/qzdap/modules/model/
 
 - **凭据加密落库**：`adapter/crypto/credential_cipher.py` 用 AES-GCM，支持三种主密钥来源（32 原始字节 / hex / passphrase + Argon2id）；`key_version` 字段为将来轮换预留
 - **AAD 绑定 `protocol|base_url`**：换个 base_url 密文就解不开——防止密文被搬到另一个地址
-- **主密钥来自环境**：`QZDAP_MODEL_MASTER_KEY`（32 字节 hex）。生产环境若主密钥仍是 dev 前缀，容器启动直接 `RuntimeError`（`container.py:79-93`）
+- **主密钥来自环境**：`QZDAP_MODEL_MASTER_KEY`（32 字节 hex）。**为空或非法时容器启动直接 `RuntimeError`**（`container.py:488-497`）—— 空主密钥会让凭据退化成明文，所以显式失败比静默降级好
 - **目录探测按协议分**：`HttpCatalogProber` 支持 openai / anthropic / google / qwen 四种协议；无标准 `/models` 的供应商抛 `CatalogDiscoveryUnsupported`（qwen 即如此）
 - **连通性测试防内网**：`PublicNetworkTransport` 阻断内网地址 + 响应体限流 + key 脱敏
 - **额度的硬闸门**：`QuotaService.check_and_consume` 在调用前检查并扣减，超额直接拒绝

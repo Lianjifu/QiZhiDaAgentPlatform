@@ -40,7 +40,7 @@
 |---|---|
 | [../architecture/copilot-chat.md](../architecture/copilot-chat.md) | 对话模块的**逐层链路梳理**（读代码的先后顺序） |
 | [../architecture/session-lifecycle.md](../architecture/session-lifecycle.md) | 会话完整生命周期的泳道与时序基线 |
-| [../architecture/data-separation.md](../architecture/data-separation.md) | 演示数据与 API 数据的分离现状 |
+| [../architecture/data-separation.md](../architecture/data-separation.md) | 单环境数据通道口径 + 验收样本 |
 | [../architecture/cleanup-ledger.md](../architecture/cleanup-ledger.md) | 旧实现清理台账（**CI 扫描规则的来源**） |
 | [../architecture/oncall-runbook.md](../architecture/oncall-runbook.md) | 值班手册：告警响了怎么办 |
 | [../planned/](../planned/) | **方案已写好、代码未实现**的待实施项 |

@@ -83,7 +83,7 @@ backend/modules/knowledge/src/qzdap/modules/knowledge/
 
 ## 已知边界
 
-- ⚠️ **没有嵌入供应商时，整条向量检索降级为关键词**：`EmbeddingPort` 未配置时装的是 `UnavailableEmbeddingAdapter`，调用直接 503（生产环境拦截），不会静默返回零向量
+- ⚠️ **没有嵌入供应商时，整条向量检索降级为关键词**：`EmbeddingPort` 未配置时装的是 `UnavailableEmbeddingAdapter`，调用直接 503（开发环境也拦），不会静默返回零向量
 - ⚠️ `admin_knowledge_tasks` / `admin_knowledge_eval_cases` **只有 list API，没有真正跑任务 / 跑评测的端点**——索引与评测的执行入口缺失
 - ⚠️ `/api/catalog/knowledge/__noop__/ask` 是给前端预留的隐藏别名，与主路径行为一致
 - ⚠️ 知识源同步的「拉取源内容」依赖各源类型的适配实现，未覆盖的源类型会失败而不是降级

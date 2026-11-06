@@ -16,7 +16,7 @@
 [![CI](https://img.shields.io/badge/CI_backend-10b981?style=flat-square)](#-验证与常见问题)
 [![Release](https://img.shields.io/badge/v0.1.0-eab308?style=flat-square)](#-验证与常见问题)
 
-[项目介绍](#-项目介绍) · [产品价值](#-产品价值) · [重点产品](#-重点产品讲解) · [快速开始](#-快速开始) · [控制台](#-控制台一览) · [功能模块](#-功能模块) · [技术架构](#-技术架构) · [本地部署](#-本地部署) · [文档索引](#-文档索引) · [贡献](#-贡献)
+[项目介绍](#-项目介绍) · [产品价值](#-产品价值) · [重点产品](#-重点产品讲解) · [快速开始](#-快速开始) · [功能模块](#-功能模块) · [技术架构](#-技术架构) · [本地部署](#-本地部署) · [文档索引](#-文档索引) · [贡献](#-贡献)
 
 </div>
 
@@ -31,9 +31,9 @@
 | <img src="docs/images/icons/x-circle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个聊天机器人 | <img src="docs/images/icons/check.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个**企业级智能体中台** |
 | <img src="docs/images/icons/x-circle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个 prompt playground | <img src="docs/images/icons/check.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个**可治理的能力目录 + 工作台** |
 | <img src="docs/images/icons/x-circle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个孤立的 Agent 框架 | <img src="docs/images/icons/check.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个**多智能体协同 + 工具编排 + 知识检索 + 记忆**的完整平台 |
-| <img src="docs/images/icons/x-circle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个 demo-only 项目 | <img src="docs/images/icons/check.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个**支持多租户 / 多工作区 / 审计 / 额度**的生产系统 |
+| <img src="docs/images/icons/x-circle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个只能演示的项目 | <img src="docs/images/icons/check.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> 一个**支持多租户 / 多工作区 / 审计 / 额度**的完整平台 |
 
-> <img src="docs/images/icons/sparkles.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> **冷启动办公开箱** — 部署当天就能给全员用。预置数字伙伴 (Copilot)、办公技能 (Skill)、企业知识 (Knowledge)、审批流 (Workflow),管理员只需按企业情况微调即可,不必从 0 搭建。
+> <img src="docs/images/icons/sparkles.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> **冷启动办公开箱** — 部署当天就能给全员用。平台自带数字伙伴 (Copilot)、办公技能 (Skill)、企业知识 (Knowledge)、审批流 (Workflow) 的**完整能力**,管理员只需按企业情况配置内容,不必从 0 搭建。
 
 后端 **Python 3.12 + FastAPI 模块化单体** (15 个能力域 + 11 个共享内核 + 3 个运行时,六边形分层 + import-linter 守护边界),前端 **React 18 + Vite** 双侧工作台 (用户侧 + 管理侧)。
 
@@ -46,7 +46,7 @@
 | <img src="docs/images/icons/shield.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> **安全零信任** | 默认所有调用都可疑,全程审计 | JWT + 多租户隔离 · gVisor 沙箱 · 网络出站白名单 · Vault 密钥 · 工具调用 100% 审计 |
 | <img src="docs/images/icons/zap.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> **先进生产力** | 每个员工配一个数字伙伴 | 17 种 SSE chunk 流式可见 · 多智能体协同 (嵌套深度 3) · 知识+记忆双引擎 · 渠道即插即用 |
 | <img src="docs/images/icons/dollar-sign.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> **成本新范式** | 按需购买,按量计费 | 工作区粒度额度 · 部门用量看板 · 告警阈值 · 成本可追溯到具体 turn |
-| <img src="docs/images/icons/puzzle.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> **单一事实源** | 一套实现,不许两份 | dev / demo 两套栈共用**同一套前端与同一套 API 契约**,只换后端实例与库 —— 没有第二份手写数据 |
+| <img src="docs/images/icons/puzzle.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> **单一事实源** | 一套实现,不许两份 | 前后端共用**同一套 API 契约**,数据只从后端来 —— 没有第二份手写数据 |
 
 ### 价值流转
 
@@ -84,13 +84,12 @@ graph LR
 
 ### 2. <img src="docs/images/icons/box.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> 办公开箱 (Out-of-the-Box)
 
-部署当天就能给全员用 —— 演示栈自带一套**真实可跑**的种子内容(不是前端 mock):
+部署当天就能给全员用 —— 开箱就有**账号可登**、**内置工具可用**,内容从管理台按企业情况自建:
 
-- **5 个预置智能体** — 销售线索洞察助手 / 客服应答助手 / 经营数据分析 / 营销文案创作 / 企智搭平台向导
-- **3 条预置工作流** — 每周经营周报 / 新线索自动分派 / 知识库周更
-- **企业知识库** — 差旅报销规范 / 客服话术 / 业务术语 / API 设计规范等
-- **办公技能** — 会议纪要归档 / 差旅报销核算 / 客户反馈聚类
-- 管理员只需按企业情况微调,不必从 0 搭建
+- **租户 / 工作区 / 账号** — 种子直接建好,登录页「一键登录」直接进 ✓
+- **30+ 内置工具** — `web_search` / `bash` / `read_file` / `csv_query` / `delegate_to_agent` 等,开箱即可被智能体调用
+- **内容由管理员建** — 智能体 / 技能 / 工作流 / 知识库**不预置**,目录页开箱是空态,管理员建完即发布
+- 管理员只需按企业情况配置,不必从 0 搭建
 
 ### 3. <img src="docs/images/icons/users.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> 专家协作 (Multi-Agent)
 
@@ -162,45 +161,33 @@ open http://127.0.0.1:9152
 | --- | --- | --- |
 | ① 用 `admin@dev.qzdap.dev` 登录 | 跳到 `/admin/*` 管理侧 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
 | ② 用 `user@dev.qzdap.dev` 登录 | 跳到 `/copilot/*` 用户侧 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
-| ③ 在用户侧发起一次对话 | 流式 SSE 输出,17 种 chunk 可见 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
-| ④ 调一个工具 (如 `web_search`) | 工具调用走审计 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
-| ⑤ 派给子智能体 (`delegate_to_agent`) | 子 agent 同步跑完,父 turn 继续 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
-| ⑥ 回到管理侧看调用链路 | 完整还原会话全过程 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
-| ⑦ 管理侧 `/admin/models` 配一个 LLM 供应商 | 未配时一轮对话以 `TURN_FAILED` 结束 —— 是环境没配模型,不是回归 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| ③ 管理侧建一个智能体并发布 | 资源库页出现该智能体 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| ④ 在用户侧发起一次对话 | 流式 SSE 输出,17 种 chunk 可见 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| ⑤ 调一个工具 (如 `web_search`) | 工具调用走审计 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| ⑥ 派给子智能体 (`delegate_to_agent`) | 子 agent 同步跑完,父 turn 继续 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| ⑦ 回到管理侧看调用链路 | 完整还原会话全过程 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
+| ⑧ 管理侧 `/admin/models` 配一个 LLM 供应商 | 未配时一轮对话以 `TURN_FAILED` 结束 —— 是环境没配模型,不是回归 | <img src="docs/images/icons/check.svg" width="16" style="vertical-align: middle; margin-right: 0.3em;" /> |
 
-### 两套栈:dev 与 demo 彻底分开
+> ⚠️ **开发环境不预置内容** ✓ —— 目录页开箱是空态 ✓，③ 之前要先在管理侧建内容 ✓。
 
-演示数据与开发数据**不共用库 / 租户 / 账号 / 密码** —— 演示账号在开发栈上登录会 401。
+### 单环境:只有开发栈
 
-| | 开发栈 (dev) | 演示栈 (demo) |
-| --- | --- | --- |
-| 前端 | `http://127.0.0.1:9152` | `http://127.0.0.1:9162` |
-| 后端 | `http://127.0.0.1:9151` | `http://127.0.0.1:9161` |
-| 库 | `127.0.0.1:9153/qzdap_dev` | `127.0.0.1:9153/qzdap_demo` |
-| 管理员 | `admin@dev.qzdap.dev` / `dev-admin-password-change-me` | `admin@acme.com` / `demo-password-change-me` |
-| 成员 | `user@dev.qzdap.dev` / `dev-user-password-change-me` | `user@acme.com` / `demo-password-change-me` |
-| 起停 | `make qzdap-up` / `make qzdap-down` | `bin/qzdap-stack/run-qzdap-demo-stack.sh` / `stop-qzdap-demo-stack.sh` |
+仓库**只保留开发环境** ✓ —— 演示 / 预发 / 生产环境连同相关能力都已退役 ✓。
 
-详见 [`docs/architecture/oncall-runbook.md`](docs/architecture/oncall-runbook.md) 的「两套栈:账号与入口」一节。
-
----
-
-## <img src="docs/images/icons/monitor.svg" width="20" style="vertical-align: middle; margin-right: 0.3em;" /> 控制台一览
-
-> 以下截图来自演示栈 (`bin/qzdap-stack/run-qzdap-demo-stack.sh`) —— 演示数据来自**独立的 demo 后端实例与 demo 库**,与开发栈的契约天然对齐,不是前端内存 mock。
-
-| | |
+| | 开发栈 (dev) |
 | --- | --- |
-| ![登录](docs/images/demo/login.png) | ![用户首页](docs/images/demo/user-home.png) |
-| **登录** — 管理员与成员从同一登录页进入,角色分流 | **用户首页** — 今日待办 / 通知 / 收藏 |
-| ![对话](docs/images/demo/user-copilot.png) | ![协作](docs/images/demo/user-team.png) |
-| **Copilot 对话** — 流式 SSE · 工具可视 · 多智能体协同 | **团队协作** — 工作区成员 / 团队目录 |
-| ![运营概览](docs/images/demo/admin-overview.png) | ![智能体管理](docs/images/demo/admin-agents.png) |
-| **运营总览** — 平台健康 / 调用量 / 告警 | **智能体管理** — 创建 / 配置 / 审核 / 发布 |
-| ![知识管理](docs/images/demo/admin-knowledge.png) | ![额度管理](docs/images/demo/admin-quotas.png) |
-| **知识管理** — 知识库 / 资料来源 / 访问权限 | **额度管理** — 预算 / 部门用量 / 告警阈值 |
-| ![评测中心](docs/images/demo/admin-evaluations.png) | ![调用链路](docs/images/demo/admin-operations.png) |
-| **评测中心** — 套件评测 / 回归追踪 | **调用链路** — 还原会话全过程 |
+| 前端 | `http://127.0.0.1:9152` |
+| 网关 | `http://127.0.0.1:9150` |
+| 后端 | `http://127.0.0.1:9151` |
+| 库 | `127.0.0.1:9153/qzdap_dev` |
+| 管理员 | `admin@dev.qzdap.dev` / `dev-admin-password-change-me` |
+| 成员 | `user@dev.qzdap.dev` / `dev-user-password-change-me` |
+| 起停 | `make qzdap-up` / `make qzdap-down` |
+
+⚠️ **库里只有 dev 租户的内容** ✓ —— 不存在第二个库 ✓、第二个租户 ✓、
+第二套账号 ✓。目录页开箱是空态 ✓。
+
+详见 [`docs/architecture/oncall-runbook.md`](docs/architecture/oncall-runbook.md) 的「单环境:账号与入口」一节。
 
 ---
 
@@ -338,7 +325,7 @@ graph TB
 
 - 完整还原会话中智能体 / 工具 / MCP / 知识召回 / 记忆写入的全过程
 - OpenTelemetry 兼容
-- Prometheus 指标 (`/metrics`) + 告警规则 (`deploy/prometheus/alerts.yml`)
+- Prometheus 指标 (`/metrics`)
 - 调用超时 / 失败重试 / 死信队列
 
 ---
@@ -355,25 +342,25 @@ graph TB
 
 ### 部署拓扑
 
-**本地开发栈** (`bin/qzdap-stack/`) 与 **生产部署** (`deploy/`) 的组件基本一致,差别只在网关实现与副本形态:
+**本地开发栈** (`bin/qzdap-stack/`) 是仓库唯一的运行形态 —— 只有一套组件,没有第二套:
 
 ```mermaid
 graph TB
     subgraph Entry [" 入口层"]
         direction LR
         Browser["浏览器<br/>(用户 / 管理员)"]
-        Vite["Vite 前端<br/>:9152 (dev) / :9162 (demo)<br/>React 18 SPA"]
-        Gateway["网关 :9150<br/>dev: Python 透传代理<br/>prod: nginx ingress :8080<br/>按 X-QZDAP-Ring 分 stable/canary"]
+        Vite["Vite 前端<br/>:9152<br/>React 18 SPA"]
+        Gateway["网关 :9150<br/>Python 透传代理"]
     end
 
     subgraph App [" 应用层"]
-        App["qzdap-app<br/>FastAPI :9151 (dev) / :9161 (demo)<br/>prod: :8102 stable + :8103 canary<br/>15 个能力域"]
+        App["qzdap-app<br/>FastAPI :9151<br/>15 个能力域"]
     end
 
     subgraph Data [" 数据层"]
         direction TB
-        PG["Postgres :9153<br/>pgvector 扩展<br/>dev 库 qzdap_dev / demo 库 qzdap_demo"]
-        Redis["Redis :9154<br/>事件总线 / 限流 / 会话状态<br/>dev db0 / demo db1"]
+        PG["Postgres :9153<br/>pgvector 扩展<br/>库 qzdap_dev"]
+        Redis["Redis :9154<br/>事件总线 / 限流 / 会话状态<br/>db 0"]
     end
 
     subgraph Sandbox [" 沙箱层"]
@@ -388,7 +375,7 @@ graph TB
         direction TB
         Vault["Vault / env / file / csi<br/>QZDAP_*_REF 启动期解析"]
         OTel["OpenTelemetry<br/>链路 / 指标 / 结构化日志"]
-        Prom["Prometheus 指标 + 告警规则<br/>(deploy/prometheus/alerts.yml)"]
+        Prom["Prometheus 指标<br/>(/metrics)"]
     end
 
     subgraph Channel [" 外部集成"]
@@ -451,8 +438,8 @@ sequenceDiagram
 | 沙箱 | gVisor (runsc) · Docker `NetworkDisabled` · 网络出站白名单 |
 | 鉴权 | JWT · `Authorization` / `X-Api-Key` / `X-Tenant-Id` / `X-Workspace-Id` / `X-Trace-Id` |
 | 密钥 | Vault (env / file / csi / hashicorp) · `QZDAP_*_REF` 启动期解析 |
-| 观测 | OpenTelemetry · Prometheus 指标 + 告警规则 |
-| 编排 | docker compose (stable / canary) + nginx ingress (见 [`deploy/`](./deploy/) · [`infra/`](./infra/)) |
+| 观测 | OpenTelemetry · Prometheus 指标 |
+| 编排 | docker compose (见 [`backend/docker-compose.yml`](./backend/docker-compose.yml)) |
 
 ### 仓库结构
 
@@ -464,15 +451,13 @@ sequenceDiagram
 │   ├── runtimes/                  agent_runtime · embedding_runtime · sandbox_runtime
 │   ├── composition/qzdap_app/     组合根 = 唯一部署产物
 │   ├── packs/office/              示例 pack (skills / knowledge / plans)
-│   ├── migrations/                Alembic (最新 0065)
+│   ├── migrations/                Alembic (最新 0066)
 │   └── scripts/                   种子 / 门禁扫描 / 备份恢复演练
 ├── frontend/                      pnpm workspace
 │   ├── web/                       工作台 SPA (用户侧 /copilot + 管理侧 /admin)
 │   └── packages/                  @qzdap/web-{api,ui,hooks,types,utils}
 ├── bin/qzdap-stack/               本机开发栈: Vite(:9152) + 网关(:9150) + qzdap-app(:9151) + Postgres(:9153) + Redis(:9154)
-├── deploy/                        生产 compose / staging 脚本 / 告警规则
-├── infra/                         Dockerfile + nginx ingress 配置
-├── docs/                          方案集 · 审查方法论 · 演示截图 · 品牌资产
+├── docs/                          方案集 · 审查方法论 · 品牌资产
 └── README.md
 ```
 
@@ -501,10 +486,8 @@ sequenceDiagram
 | `:9153` | Postgres (pgvector) | `cd backend && docker compose up -d postgres` |
 | `:9154` | Redis | `cd backend && docker compose up -d redis` |
 | `:9158` | sandbox_runtime (gVisor) | 独立 sidecar,默认 stub |
-| `:9161` | qzdap-app (demo) | `bin/qzdap-stack/run-qzdap-demo-stack.sh` |
-| `:9162` | Vite (前端, demo) | 同上 |
 
-> dev 栈与 demo 栈**共用同一个 Postgres / Redis 实例**,靠库名 (`qzdap_dev` / `qzdap_demo`) 与 Redis db (0 / 1) 分开。
+> 只有一个开发栈 ✓ —— **没有第二个库** ✓、**第二个端口** ✓、**第二套账号** ✓。
 
 ### Docker Compose
 
@@ -517,16 +500,16 @@ make run-app               # qzdap-app (:9151)
 
 ### 前端登录
 
-打开 [http://127.0.0.1:9152](http://127.0.0.1:9152),登录页有「一键登录」按钮(账号按运行模式取,dev 与 demo 不混用):
+打开 [http://127.0.0.1:9152](http://127.0.0.1:9152),登录页有「一键登录」按钮(账号只有 dev 这一套):
 
-| 栈 | 角色 | 邮箱 | 密码 |
-| --- | --- | --- | --- |
-| dev | 管理员 → `/admin/*` | `admin@dev.qzdap.dev` | `dev-admin-password-change-me` |
-| dev | 成员 → `/copilot/*` | `user@dev.qzdap.dev` | `dev-user-password-change-me` |
-| demo | 管理员 | `admin@acme.com` | `demo-password-change-me` |
-| demo | 成员 | `user@acme.com` | `demo-password-change-me` |
+| 角色 | 邮箱 | 密码 |
+| --- | --- | --- |
+| 管理员 → `/admin/*` | `admin@dev.qzdap.dev` | `dev-admin-password-change-me` |
+| 成员 → `/copilot/*` | `user@dev.qzdap.dev` | `dev-user-password-change-me` |
 
-> <img src="docs/images/icons/alert-triangle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> **生产环境务必换掉默认密码** —— 默认值在 `backend/composition/qzdap_app/src/qzdap/composition/settings.py` 的 `dev_*` / `demo_*` 字段里,生产用 `QZDAP_*_REF` 从 Vault 注入,不走这些默认值。
+> <img src="docs/images/icons/alert-triangle.svg" width="14" style="vertical-align: middle; margin-right: 0.3em;" /> **默认口令只适合开发** ✓ —— 默认值在 `backend/composition/qzdap_app/src/qzdap/composition/settings.py` 的 `dev_*` 字段里 ✓。要换凭据用 `QZDAP_*_REF` 从 Vault 注入 ✓,不走这些默认值 ✓。
+>
+> ⚠️ **不再有「生产环境启动闸门」** ✓ —— 原来的硬失败闸门已改成**健康检查** ✓（`Container._collect_runtime_health` ✓），结果挂在 `app.state.runtime_health` ✓，`/readyz` 响应里的 `runtime` 字段能看到 ✓（`degraded` / `issues` ✓）—— **启动不崩** ✓。
 
 ---
 
@@ -556,7 +539,9 @@ curl http://127.0.0.1:9151/metrics     # Prometheus 指标
 <details>
 <summary><b>Q: 登录提示 "token 过期" 但实际没过期?</b></summary>
 
-清浏览器 localStorage 里的 `qzdap:development:development-api:token`,刷新重登。
+清浏览器 localStorage 里的 `qzdap:token`,刷新重登。
+
+> 老版本的 key 带环境段（`qzdap:development:development-api:token`）—— 应用启动时 `migrateLegacyStorageKeys()` 会自动搬到新 key,搬完即删旧的。
 
 </details>
 
@@ -595,14 +580,12 @@ curl http://127.0.0.1:9151/metrics     # Prometheus 指标
 | **会话生命周期基线** | [`docs/architecture/session-lifecycle.md`](./docs/architecture/session-lifecycle.md) | 泳道划分与时序（Gateway / Router / Session / Context / Memory / Agent） |
 | **对话链路梳理** | [`docs/architecture/copilot-chat.md`](./docs/architecture/copilot-chat.md) | 一次对话从发送到渲染的逐层链路 + 读代码顺序 |
 | **清理台账** | [`docs/architecture/cleanup-ledger.md`](./docs/architecture/cleanup-ledger.md) | 旧实现收敛台账 —— **CI 扫描规则的唯一来源** |
-| **值班手册** | [`docs/architecture/oncall-runbook.md`](./docs/architecture/oncall-runbook.md) | 告警阈值 · 排查 · 回退步骤 · 两套栈入口 |
-| **演示 / 开发数据分离** | [`docs/architecture/data-separation.md`](./docs/architecture/data-separation.md) | 两条数据通道的现状 |
+| **值班手册** | [`docs/architecture/oncall-runbook.md`](./docs/architecture/oncall-runbook.md) | 告警阈值 · 排查 · 回退步骤 · 入口与账号 |
+| **数据通道** | [`docs/architecture/data-separation.md`](./docs/architecture/data-separation.md) | 单环境口径 · 验收样本 · 历史清理记录 |
 | **待实施项** | [`docs/planned/`](./docs/planned/) | 方案已写好、代码未实现的 ticket |
-| **部署说明** | [`deploy/README.md`](./deploy/README.md) · [`deploy/PRODUCTION.md`](./deploy/PRODUCTION.md) | 生产 compose · staging 沙箱 · 环境变量 |
 | **API 文档** | `http://127.0.0.1:9151/docs` (本地) | OpenAPI 自动生成 |
 | **品牌资产** | [`docs/images/brand/`](./docs/images/brand/) | Logo · 配色 · 字体 |
-| **演示截图** | [`docs/images/demo/`](./docs/images/demo/) | 控制台各页面截图 |
-| **种子脚本** | [`backend/scripts/`](./backend/scripts/) | `seed_demo_data.py` · `seed_dev_data.py` · `seed_acceptance_samples.py` |
+| **种子脚本** | [`backend/scripts/`](./backend/scripts/) | `seed_dev_data.py` · `seed_acceptance_samples.py` |
 
 ---
 

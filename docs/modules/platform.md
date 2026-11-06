@@ -76,7 +76,7 @@ backend/modules/platform/src/qzdap/modules/platform/
 
 ## 已知边界
 
-- ⚠️ **运营看板显示的是种子数据，不是真实运行数据**：`admin_ops_docs` 里 31 个 collection 由 `fixtures/ops_seed.json`（约 150 条固定记录）填充；`overview_summary`（`ops_service.py:772`）是**从这些文档算出来的**，不是从 `run_records` / `cost_records` 聚合。`seeds.py:1203` 的注释自认「种子数据没人调 seed_if_empty → 八个页面全空」，现在补上了，但代价是看板是演示数据
+- ⚠️ **运营看板没有种子数据**：⚠️ 演示内容随演示环境退役时一并删掉了 ✓（原来的 `seed_demo_ops_docs()` ✓ —— `seeds.py` 里已无此函数 ✓），`fixtures/ops_seed.json` 也**没人调** ✓（`seed_if_empty` 只剩仓储上的方法定义 ✓，无生产调用方 ✓）→ `admin_ops_docs` 是空的 ✓ → `overview_summary`（`ops_service.py:772`）算出来全是零值 ✓ —— 看板要等真实运行数据才有内容 ✓
 - ⚠️ **品牌与成员管理不在本模块**：全库无 brand 路由（前端 `--brand` 只是 CSS 变量）；成员管理在 [identity](./identity.md)
 - ⚠️ `run_collection` 在 runner 未接时抛 `NotImplementedError`（`ops_service.py:161`）
 - ⚠️ `import_docs` 只支持 json / jsonl / yaml / csv，且只有 5 个 collection 有专用 creator，其余走通用 create

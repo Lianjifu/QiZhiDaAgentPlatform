@@ -61,7 +61,7 @@ backend/modules/observability_module/src/qzdap/modules/observability_module/
 - **成本可归属到 turn**：`UsageChunk` 带 6 个归属维度（tenant / workspace / user / agent / agent_version / model_version），与本模块的记录口径一致
 - **错误码统一**：`ObservabilityPolicyDenied` 是权限异常，`RunRecordNotFound` / `CostRecordNotFound` / `QualityScoreNotFound` 是查找异常
 - **链路用 OpenTelemetry**：span 由 `libs/observability` 的 `get_tracer` 打出，本模块负责把关键事件**持久化**成可查询的记录
-- **Prometheus 指标**：`/metrics` 暴露指标，告警规则在 `deploy/prometheus/alerts.yml`
+- **Prometheus 指标**：`/metrics` 暴露指标
 
 ## 已知边界
 
