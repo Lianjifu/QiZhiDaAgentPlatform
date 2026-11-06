@@ -2,8 +2,10 @@
  * KbDetailPage 测试 — happy-path 渲染 + 反向引用 + 404。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { fireEvent, screen, waitFor, cleanup } from '@testing-library/react';
+import { Route, Routes } from 'react-router-dom';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
+import { qk } from '@/api/shared/query-keys';
 
 vi.mock('./useKnowledge', () => ({
   useKnowledgeBase: vi.fn(),
@@ -30,14 +32,52 @@ function mockMutations() {
   });
 }
 
+/** 智能体目录 —— 「被以下 Agent 引用」从这儿反查 ✓。 */
+const agents = [
+  {
+    id: 'a-office',
+    name: '办公智能体',
+    description: '办公协同助手',
+    category: '办公协同',
+    owner: '办公协同组',
+    tags: [],
+    tone: 'brand',
+    status: 'published',
+    version: 'v1.0',
+    lastUpdate: '刚刚',
+    createdAt: '2026-11-06',
+    calls: 0,
+    successRate: 0,
+    errorRate: 0,
+    avgLatencyMs: 0,
+    rating: 0,
+    tools: [],
+    starred: false,
+    visibleScope: ['部门'],
+    dataAccess: '',
+    versions: [],
+    evaluationPassRate: 0,
+    evaluationRuns: 0,
+    evaluationFailedCases: 0,
+    trend: [],
+    prompts: { prompt: '', soul: '', agents: '', user: '', tools: '' },
+    customPrompts: [],
+    knowledgeRefs: [{ id: 'kb-prod', name: '产品手册 v3', scope: '公开', enabled: true }],
+    memoryPolicy: { enabled: true, retentionDays: 30, scope: 'user', autoSummarize: true },
+    flowRefs: [],
+  },
+];
+
 function renderAt(id: string | null) {
-  return render(
-    <MemoryRouter initialEntries={[id ? `/admin/knowledge/kbs/${id}` : '/admin/knowledge']}>
-      <Routes>
-        <Route path="/admin/knowledge" element={<div>KnowledgePage</div>} />
-        <Route path="/admin/knowledge/kbs/:id" element={<KbDetailPage />} />
-      </Routes>
-    </MemoryRouter>,
+  return renderWithProviders(
+    <Routes>
+      <Route path="/admin/knowledge" element={<div>KnowledgePage</div>} />
+      <Route path="/admin/knowledge/kbs/:id" element={<KbDetailPage />} />
+    </Routes>,
+    {
+      initialEntries: [id ? `/admin/knowledge/kbs/${id}` : '/admin/knowledge'],
+      seeds: [{ key: pageQueryKey(qk.admin.agents.list), data: agents }],
+    },
   );
 }
 
@@ -163,6 +203,13 @@ describe('KbDetailPage', () => {
     renderAt('kb-prod');
     fireEvent.click(screen.getByRole('button', { name: /重建索引/ }));
     expect(screen.getByText(/已触发 产品手册 v3 重建索引/)).toBeTruthy();
+  });
+
+  it('lists the agents that reference this knowledge base', async () => {
+    // 「被以下 Agent 引用」从智能体目录反查 ✓ —— 不再是那个写死的空数组 ✓
+    renderAt('kb-prod');
+    expect(await screen.findByText(/被以下 Agent 引用 \(1\)/)).toBeTruthy();
+    expect(screen.getByText('办公智能体')).toBeTruthy();
   });
 
   it('renders not-found when kb is missing', () => {

@@ -88,6 +88,10 @@ class TurnLifecycle(TurnLifecyclePort):
             turn_id=turn_id, seq=seq, event_type=event_type, payload=payload
         )
 
+    async def next_event_seq(self, *, turn_id: UUID) -> int:
+        """这一轮的下一个事件序号 ✓（**号统一从库里取** ✓）。"""
+        return await self._journal.next_event_seq(turn_id=turn_id)
+
     async def finish_turn(
         self,
         *,

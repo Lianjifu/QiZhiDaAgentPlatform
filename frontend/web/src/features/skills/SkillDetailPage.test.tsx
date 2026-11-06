@@ -2,8 +2,10 @@
  * SkillDetailPage 测试 — 只读查看，并返回上一级。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { Route, Routes } from 'react-router-dom';
+import { renderWithProviders, pageQueryKey } from '@/test-utils/seed';
+import { qk } from '@/api/shared/query-keys';
 
 vi.mock('./useAdminSkills', () => ({
   useAdminSkill: vi.fn(),
@@ -40,14 +42,52 @@ const skill = {
   auditLog: [],
 };
 
+/** 智能体目录 —— 「关联智能体」面板从这儿反查 ✓。 */
+const agents = [
+  {
+    id: 'a-office',
+    name: '办公智能体',
+    description: '办公协同助手',
+    category: '办公协同',
+    owner: '办公协同组',
+    tags: [],
+    tone: 'brand',
+    status: 'published',
+    version: 'v1.0',
+    lastUpdate: '刚刚',
+    createdAt: '2026-11-06',
+    calls: 0,
+    successRate: 0,
+    errorRate: 0,
+    avgLatencyMs: 0,
+    rating: 0,
+    tools: [{ id: 'skill-summary', name: '订单摘要', type: 'Skill', enabled: true }],
+    starred: false,
+    visibleScope: ['部门'],
+    dataAccess: '',
+    versions: [],
+    evaluationPassRate: 0,
+    evaluationRuns: 0,
+    evaluationFailedCases: 0,
+    trend: [],
+    prompts: { prompt: '', soul: '', agents: '', user: '', tools: '' },
+    customPrompts: [],
+    knowledgeRefs: [],
+    memoryPolicy: { enabled: true, retentionDays: 30, scope: 'user', autoSummarize: true },
+    flowRefs: [],
+  },
+];
+
 function renderAt(id: string) {
-  return render(
-    <MemoryRouter initialEntries={[`/admin/tools/${id}`]}>
-      <Routes>
-        <Route path="/admin/tools" element={<div>技能列表</div>} />
-        <Route path="/admin/tools/:id" element={<SkillDetailPage />} />
-      </Routes>
-    </MemoryRouter>,
+  return renderWithProviders(
+    <Routes>
+      <Route path="/admin/tools" element={<div>技能列表</div>} />
+      <Route path="/admin/tools/:id" element={<SkillDetailPage />} />
+    </Routes>,
+    {
+      initialEntries: [`/admin/tools/${id}`],
+      seeds: [{ key: pageQueryKey(qk.admin.agents.list), data: agents }],
+    },
   );
 }
 
@@ -73,6 +113,13 @@ describe('SkillDetailPage', () => {
     expect(screen.getByRole('button', { name: '编辑' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '完成' })).toBeNull();
     expect(screen.queryByRole('button', { name: '删除' })).toBeNull();
+  });
+
+  it('lists the agents that use this skill', async () => {
+    // 「关联智能体」面板从智能体目录反查 ✓ —— 不再靠那个没人写的空列 ✓
+    renderAt('skill-summary');
+    fireEvent.click(screen.getByText('关联智能体'));
+    expect(await screen.findByText('办公智能体')).toBeTruthy();
   });
 
   it('renders not-found when skill is missing', () => {

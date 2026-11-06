@@ -179,6 +179,15 @@ class TurnLifecyclePort(Protocol):
         """把一个 chunk 落进事件流（**落库先于投递** ✓）。"""
         ...
 
+    async def next_event_seq(self, *, turn_id: UUID) -> int:
+        """这一轮的**下一个事件序号** ✓（库里已有事件的 max+1 ✓）。
+
+        ⚠️ **不能从 1 开始数** ✓ —— 事件表主键是 ``(turn_id, seq)`` ✓，
+        而**专家选择留痕**（``agent.expert.selected`` ✓）先落了一条 ✓——
+        runner 再从 1 数就撞唯一键 ✓ → 整轮 500 ✓。
+        """
+        ...
+
     async def finish_turn(
         self,
         *,
@@ -487,7 +496,6 @@ class TurnRunner:
         # （之前错误事件一过 ✓ → 轮次照样落 succeeded ✗✗ —— 排查时看到的
         # 是「成功」✓ 但用户看到的是报错 ✗✗）。
         seen_error_code: str | None = None
-        event_seq = 1
         emitted = False
         last_cancel_check = monotonic()
         # ⚠️ **整轮预算** ✓ —— 0 = 不限 ✓。
@@ -511,10 +519,7 @@ class TurnRunner:
                         }
                     )
                     seen_error_code = str(chunk.code or "")
-                stamped = await self._publish_chunk(
-                    turn_id=request.turn_id, chunk=chunk, seq=event_seq
-                )
-                event_seq += 1
+                stamped = await self._publish_chunk(turn_id=request.turn_id, chunk=chunk)
                 yield stamped
                 if getattr(stamped, "kind", None) == "message":
                     assistant_parts.append(getattr(stamped, "content", "") or "")
@@ -593,7 +598,6 @@ class TurnRunner:
                     message="本轮生成超时，请重试",
                     retriable=True,
                 ),
-                seq=event_seq,
             )
         except TurnCancelled as exc:
             await self._lifecycle.fail_turn(
@@ -608,7 +612,6 @@ class TurnRunner:
                     message="已停止生成",
                     retriable=True,
                 ),
-                seq=event_seq,
             )
         except (asyncio.CancelledError, GeneratorExit):
             # 客户端断开 / 请求被取消 (GeneratorExit = 响应体生成器被关闭):
@@ -648,7 +651,6 @@ class TurnRunner:
                     ),
                     retriable=False,
                 ),
-                seq=event_seq,
             )
 
     async def _chunks_with_deadline(
@@ -725,13 +727,18 @@ class TurnRunner:
             )
             raise
 
-    async def _publish_chunk(self, *, turn_id: UUID, chunk: Any, seq: int) -> Any:
+    async def _publish_chunk(self, *, turn_id: UUID, chunk: Any) -> Any:
         """把 chunk 落进事件流并重新编号 —— **落库先于投递**（Session §7）。
 
         ⚠️ **重新编号**：上游（graph runner）的 seq 有两套编号空间（chunk 序号
         与消息序号），还会出现重复 —— 直接拿它当事件主键会撞
         ``session_events`` 的 ``(turn_id, seq)``。
+
+        ⚠️ **号从库里取** ✓（不是本地从 1 数 ✓）—— **同一轮还有别人写
+        事件** ✓（专家选择留痕 ✓）—— 两边各自数数会撞唯一键 ✓ →
+        整轮 500 ✓（开发环境没配模型时必现 ✓）。
         """
+        seq = await self._lifecycle.next_event_seq(turn_id=turn_id)
         stamped = chunk.model_copy(update={"seq": seq})
         await self._lifecycle.append_event(
             turn_id=turn_id,

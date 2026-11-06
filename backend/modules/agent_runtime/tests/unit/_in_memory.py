@@ -337,6 +337,10 @@ class InMemorySessionJournal(SessionJournal):
             StoredEvent(seq=seq, event_type=event_type, payload=payload)
         )
 
+    async def next_event_seq(self, *, turn_id: UUID) -> int:
+        events = self.events.get(turn_id) or []
+        return max((event.seq for event in events), default=0) + 1
+
     async def mark_delivered(self, *, turn_id: UUID) -> None:
         return None
 

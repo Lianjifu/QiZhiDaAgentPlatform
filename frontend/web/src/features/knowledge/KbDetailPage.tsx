@@ -15,6 +15,7 @@ import {
   DetailNotFound, DetailSkeleton,
 } from '@/components/feedback/DetailLayout';
 import { normalizeError } from '@/api/shared/http-error';
+import { useAgentsUsingKnowledge } from '@/features/agents/usage';
 
 export default function KbDetailPage() {
   const { id = '' } = useParams<{ id: string }>();
@@ -29,7 +30,9 @@ export default function KbDetailPage() {
     return tasks.filter((t) => t.kbId === id).slice(-5).reverse();
   }, [tasks, id]);
 
-  const boundAgents: Array<{ id: string; name: string }> = [];
+  // ⚠️ **反查智能体目录** ✓ —— 知识库侧没有存「谁引用了我」✓，
+  // 事实是「哪些智能体的 knowledgeRefs 里带这个知识库 id」✓。
+  const boundAgents = useAgentsUsingKnowledge(id);
   const toggleKbStatus = useToggleKbStatus();
   const batchKb = useBatchKb();
 

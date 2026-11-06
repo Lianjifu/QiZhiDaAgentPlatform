@@ -192,6 +192,16 @@ class SessionJournal(ABC):
         ...
 
     @abstractmethod
+    async def next_event_seq(self, *, turn_id: UUID) -> int:
+        """这一轮的**下一个事件序号** ✓（已有事件的 max+1 ✓）。
+
+        ⚠️ **为什么要它** ✓ —— 事件表的主键是 ``(turn_id, seq)`` ✓，
+        而**写事件的不止一处** ✓（轮次 runner ✓ + 专家选择留痕 ✓）——
+        两边各自从 1 数数就会撞唯一键 ✓ → **号统一从库里取** ✓。
+        """
+        ...
+
+    @abstractmethod
     async def mark_delivered(self, *, turn_id: UUID) -> None:
         """把这一轮还挂着的 ``pending`` 事件标成 ``delivered``。"""
         ...

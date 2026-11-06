@@ -9,6 +9,8 @@ import type { SchemaField, Skill, SkillType } from '../schema';
 import { DEFAULT_SKILL_RUNTIME } from '../schema';
 import { RISK_BADGE, formatCalls } from './constants';
 import { Sparkline } from '@/components/feedback/Sparkline';
+import { useAgentsUsingSkill } from '@/features/agents/usage';
+import { Link } from 'react-router-dom';
 
 export function DrawerPanelBasic({ draft, onChange }: { draft: Skill; onChange: (patch: Partial<Skill>) => void }) {
   const update = (patch: Partial<Skill>) => onChange(patch);
@@ -319,7 +321,10 @@ export function DrawerPanelMonitor({ draft }: { draft: Skill }) {
 }
 
 export function DrawerPanelAgents({ draft }: { draft: Skill }) {
-  if (draft.usedByAgents.length === 0) {
+  // ⚠️ **反查智能体目录** ✓ —— `usedByAgents` 是没人写的空列 ✓，
+  // 真正的事实是「哪些智能体的 tools 里带这个技能 id」✓。
+  const agents = useAgentsUsingSkill(draft.id);
+  if (agents.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-[var(--border)] p-6 text-center">
         <Sparkles className="mx-auto h-6 w-6 text-[var(--text-muted)]" />
@@ -332,13 +337,16 @@ export function DrawerPanelAgents({ draft }: { draft: Skill }) {
     <div>
       <p className="text-xs text-[var(--text-muted)]">下列智能体已配置使用本技能,修改技能字段后,变更将随下次发布生效。</p>
       <ul className="mt-4 space-y-2">
-        {draft.usedByAgents.map((name) => (
-          <li key={name} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-3">
+        {agents.map((agent) => (
+          <li key={agent.id} className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-3">
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--brand-light)] text-[var(--brand)]">
               <Sparkles className="h-4 w-4" />
             </span>
-            <span className="flex-1 text-xs font-semibold">{name}</span>
+            <span className="flex-1 text-xs font-semibold">{agent.name}</span>
             <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]">已关联</span>
+            <Link to={`/admin/agents/${agent.id}`} className="text-[11px] font-medium text-[var(--brand)] hover:underline">
+              查看 →
+            </Link>
           </li>
         ))}
       </ul>
