@@ -450,7 +450,7 @@ def build_account_router():
         ]
         outcomes = [
             {
-                "title": turn.user_input[:120],
+                "title": (turn.user_input or "").strip()[:120] or "未命名会话",
                 "meta": turn.started_at.isoformat(),
                 "type": "agent_turn",
                 "status": turn.status,

@@ -376,6 +376,19 @@ async def test_insights_count_owner_workspace_real_turns_only(database_console):
                     tenant_id=db.tenant,
                     workspace_id=db.workspace,
                     session_id=db.runtime_session,
+                    idempotency_key="k5",
+                    key_strength="strong",
+                    user_input=None,
+                    status="failed",
+                    agent_version="v1",
+                    model_version="m",
+                    started_at=now - timedelta(minutes=30),
+                ),
+                SessionTurnORM(
+                    id=uuid4(),
+                    tenant_id=db.tenant,
+                    workspace_id=db.workspace,
+                    session_id=db.runtime_session,
                     idempotency_key="k4",
                     key_strength="strong",
                     user_input="old turn",
@@ -392,7 +405,11 @@ async def test_insights_count_owner_workspace_real_turns_only(database_console):
     assert response.status_code == 200, response.text
     data = response.json()
     assert sum(point["tasks"] for point in data["points"]) == 1
-    assert {row["title"] for row in data["outcomes"]} == {"actual success", "actual failure"}
+    assert {row["title"] for row in data["outcomes"]} == {
+        "actual success",
+        "actual failure",
+        "未命名会话",
+    }
     assert "savedHours" not in data
     empty = await db.client.get("/api/home/insights", headers=db.headers(scope=db.other_workspace))
     assert empty.json()["points"] == []
