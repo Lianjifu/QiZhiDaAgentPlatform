@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""确保目标数据库存在 —— 演示库与开发库是两个库, 不能互相污染.
+"""确保目标数据库存在 —— 建库前先查一下, 没有才建.
 
 Postgres 没有 ``CREATE DATABASE IF NOT EXISTS``, 所以先连到 maintenance
 库 (``postgres``) 查一下, 没有再建.
@@ -8,7 +8,7 @@ Postgres 没有 ``CREATE DATABASE IF NOT EXISTS``, 所以先连到 maintenance
 
     cd backend
     python scripts/ensure_database.py \\
-        --url postgresql+asyncpg://postgres:postgres@127.0.0.1:9153/qzdap_demo
+        --url postgresql+asyncpg://postgres:postgres@127.0.0.1:9153/qzdap_dev
 
 ``--url`` 给的是**目标**库的连接串; 脚本会把它换成同一个 server 上的
 ``postgres`` maintenance 库去建目标库.

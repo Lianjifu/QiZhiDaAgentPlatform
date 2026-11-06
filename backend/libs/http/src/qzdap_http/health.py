@@ -43,4 +43,10 @@ async def readyz(request: Request) -> dict:
         deps["redis"] = "down"
 
     all_ok = all(v in {"ok", "skipped"} for v in deps.values())
-    return {"status": "ready" if all_ok else "degraded", "deps": deps}
+    payload: dict[str, object] = {"status": "ready" if all_ok else "degraded", "deps": deps}
+    # ⚠️ **运行时健康报告** ✓ —— 由 composition 在启动时挂上来 ✓
+    # （降级了哪些能力 ✓ —— 只报名字 ✓，不报密钥值 ✓）。
+    runtime_health = getattr(request.app.state, "runtime_health", None)
+    if runtime_health:
+        payload["runtime"] = runtime_health
+    return payload

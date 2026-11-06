@@ -35,69 +35,36 @@ class Container:
         self.settings = settings
         self._services: dict[type, Any] = {}
         self._kv_resolver: HashicorpVaultSecretsResolver | None = None
-        # Fail-loud prod gate — same pattern as
-        # ``model_credential_cipher`` raising on missing
-        # ``QZDAP_MODEL_MASTER_KEY``.  Runs before any service is built so
-        # the boot never gets far with a misconfigured prod secret.
-        if settings.env == "production":
-            self._validate_production_secrets(settings)
+        # ⚠️ **健康检查，不是启动闸门** ✓ —— 只剩开发环境一个 ✓（不再有
+        # 生产环境 ✓），所以「上线前必须换掉默认密钥」这类硬闸门没有意义了
+        # ✓。改成**如实报告**当前配置里哪些能力是降级的 ✓（签名单关 ✓ /
+        # embedding 是 noop ✓ / 事件总线在进程内 ✓ …）—— 启动**不崩** ✓，
+        # 报告挂到 ``/readyz`` ✓（``app.state.runtime_health`` ✓）。
+        self.runtime_health = self._collect_runtime_health(settings)
 
     # ── infra ───────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _validate_production_secrets(settings: Settings) -> None:
-        """Boot-time fail-loud check for prod secrets that still hold the
-        development defaults.  Mirrors ``model_credential_cipher`` raising
-        on missing ``QZDAP_MODEL_MASTER_KEY`` — explicit fail beats silent
-        misconfig.  Only fires when ``settings.env == "production"``.
+    def _collect_runtime_health(settings: Settings) -> dict[str, list[str]]:
+        """如实报告当前配置里**降级的能力** —— 不抛异常 ✓。
 
-        Anything starting with ``dev-`` (case-insensitive) is treated as
-        a development sentinel.  Operators must set every secret to a
-        non-sentinel value before the prod pod starts.
+        以前这里是「生产环境启动闸门」✓（默认密钥 / 默认后端 → 拒绝启动 ✓），
+        但仓库现在**只有一个开发环境** ✓ → 那道闸门永远不触发 ✓，留着只是
+        误导 ✓。这里保留同样的检查项 ✓，改成**报告** ✓：
 
-        In addition to raw-secret sentinel detection, this gate refuses
-        to boot prod with any of the *default* dev/test backends:
-
-        - signing modes must not be ``"disabled"`` (skill / knowledge /
-          plan vetters fall through to NoOp variants)
-        - ``embedding_provider`` must not be ``"noop"`` (memory &
-          knowledge writes embed to a fake zero vector — semantic
-          recall silently breaks)
-        - ``vault_mode`` must be ``"csi"`` or ``"vault"`` (raw
-          ``os.environ`` reads bypass the secrets manager)
-        - ``event_bus`` must be ``"redis-stream"`` (cross-replica
-          publishes are silently dropped with ``inprocess``)
-        - ``model_master_key`` must be set + non-sentinel (model
-          credential cipher refuses otherwise; we surface it here so
-          the boot report is one consolidated failure)
+        - ``degraded`` —— 用了降级后端 ✓（签名单关 / embedding noop /
+          vault 直读环境变量 / 事件总线在进程内 ✓）—— 开发环境是**有意**
+          这样配的 ✓，报告出来是为了「别以为这些能力真的生效了」✓。
+        - ``issues`` —— 缺必需项 ✓（主密钥为空 ✓ / 沙箱地址为空 ✓）。
         """
-        sentinel_prefixes = ("dev-", "dev_")
-        checks: tuple[tuple[str, str], ...] = (
-            ("QZDAP_JWT_SECRET", settings.jwt_secret),
-            ("QZDAP_SANDBOX_RUNTIME_SECRET", settings.sandbox_runtime_secret),
-            ("QZDAP_DEV_ADMIN_PASSWORD", settings.dev_admin_password),
-            ("QZDAP_MODEL_MASTER_KEY", settings.model_master_key),
-        )
-        offenders: list[str] = []
-        for name, value in checks:
-            stripped = value.strip()
-            if not stripped or stripped.lower().startswith(sentinel_prefixes):
-                offenders.append(name)
-        if not settings.sandbox_runtime_url.strip():
-            offenders.append("QZDAP_SANDBOX_RUNTIME_URL")
-        if offenders:
-            joined = ", ".join(offenders)
-            raise RuntimeError(
-                f"production env refuses to boot with development secrets: {joined}. "
-                "Set QZDAP_JWT_SECRET / QZDAP_SANDBOX_RUNTIME_SECRET / QZDAP_DEV_ADMIN_PASSWORD "
-                "/ QZDAP_MODEL_MASTER_KEY to real values via the QZDAP_*_REF indirection "
-                "or your secrets manager."
-            )
+        degraded: list[str] = []
+        issues: list[str] = []
 
-        # ── default-backend refusal ────────────────────────────────────
-        # Each entry: (env var, current value, set of forbidden values).
-        # Forbidding the dev default stops the prod path from silently
-        # degrading to NoOp / NoOp-vetter / in-process bus.
+        if not settings.model_master_key.strip():
+            issues.append("QZDAP_MODEL_MASTER_KEY is empty")
+        if not settings.sandbox_runtime_url.strip():
+            issues.append("QZDAP_SANDBOX_RUNTIME_URL is empty")
+
         backend_checks: tuple[tuple[str, str, frozenset[str]], ...] = (
             ("QZDAP_SKILL_SIGNING_MODE", settings.skill_signing_mode, frozenset({"disabled"})),
             (
@@ -110,22 +77,11 @@ class Container:
             ("QZDAP_VAULT_MODE", settings.vault_mode, frozenset({"env", "noop"})),
             ("QZDAP_EVENT_BUS", settings.event_bus, frozenset({"inprocess"})),
         )
-        backend_offenders: list[str] = []
-        for name, value, forbidden in backend_checks:
-            if value in forbidden:
-                backend_offenders.append(
-                    f"{name}={value!r} (must not be any of {sorted(forbidden)})"
-                )
-        if backend_offenders:
-            joined = ", ".join(backend_offenders)
-            raise RuntimeError(
-                "production env refuses to boot with dev-default backends: "
-                f"{joined}. Set QZDAP_SKILL_SIGNING_MODE / QZDAP_KNOWLEDGE_SIGNING_MODE "
-                "/ QZDAP_PLAN_SIGNING_MODE to 'local' or 'vault'; "
-                "QZDAP_EMBEDDING_PROVIDER to 'openai' or 'http'; "
-                "QZDAP_VAULT_MODE to 'csi' or 'vault'; "
-                "QZDAP_EVENT_BUS to 'redis-stream'."
-            )
+        for name, value, degraded_values in backend_checks:
+            if value in degraded_values:
+                degraded.append(f"{name}={value}")
+
+        return {"degraded": degraded, "issues": issues}
 
     def engine(self):
         return create_engine(
@@ -449,7 +405,7 @@ class Container:
 
         * ``openai`` / ``http`` 必须显式配 api_key (不再从 ``QZDAP_LLM_*`` 读).
           key 为空时抛 ``ProviderUnavailable`` 让上层暴露给前端.
-        * ``test`` / ``ci`` / ``demo`` 仍允许 ``noop`` (用 NoOpEmbeddingAdapter).
+        * ``test`` / ``ci`` 仍允许 ``noop`` (用 NoOpEmbeddingAdapter).
         * 嵌入模型与维度使用与 OpenAI text-embedding-3-small 对齐的默认值
           (后续如果需要多 provider 维度, 再按 provider 查找).
 
@@ -497,7 +453,7 @@ class Container:
                 base_url=base_url,
                 api_key=api_key,
             )
-        if self.settings.env not in {"demo", "test", "ci"}:
+        if self.settings.env not in {"test", "ci"}:
             from qzdap.composition.unavailable_providers import (
                 UnavailableEmbeddingAdapter,
             )

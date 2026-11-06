@@ -41,7 +41,7 @@ def test_two_tenants_with_two_users_each() -> None:
 
 
 def test_the_demo_and_production_envs_are_refused() -> None:
-    """**demo / 生产不许种** ✓（demo 库要干净 ✓ —— 演示数据是另一套 ✓）。"""
+    """**demo / production 不许种** ✓（这两个 env 已退役 ✓ —— 留着当兜底 ✓）。"""
     assert {"demo", "production"} == FORBIDDEN_ENVS
     for env in FORBIDDEN_ENVS:
         with pytest.raises(ValueError):
@@ -49,8 +49,8 @@ def test_the_demo_and_production_envs_are_refused() -> None:
 
 
 def test_the_dev_envs_are_allowed() -> None:
-    """**dev / 预发可以种** ✓。"""
-    for env in ("development", "test", "staging"):
+    """**开发 / 测试可以种** ✓（只剩这三个 env ✓）。"""
+    for env in ("development", "test", "ci"):
         assert_seedable_env(env)
 
 

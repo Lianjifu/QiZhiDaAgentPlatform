@@ -1,8 +1,7 @@
 """**验收样本** ✓ —— 可复现的脱敏数据 ✓（H1 / P-09 ✓）。
 
-⚠️ **这不是演示数据** ✓ —— 演示数据在 **demo 库** ✓（`qzdap_demo` ✓）——
-这里的数据**只进 dev / 预发库** ✓（**租户名带 ``qa-``** ✓ —— 一眼认得出 ✓
-—— 不与 demo 混在一起 ✓）。
+⚠️ **这不是内容数据** ✓ —— 验收样本是**专门造出来的脱敏数据** ✓（**租户名
+带 ``qa-``** ✓ —— 一眼认得出 ✓ —— 不与管理员自己建的内容混在一起 ✓）。
 
 ⚠️ **脱敏** ✓ —— **全是造出来的** ✓（没有一行真实数据 ✓ —— 连邮箱都用
 ``.invalid`` 顶级域 ✓（RFC 2606 ✓ —— 保证不可投递 ✓）—— 口令是本地固定值 ✓）。
@@ -41,15 +40,16 @@ QA_PASSWORD = "qa-local-samples-only"  # noqa: S105 —— 样本的本地固定
 #: **长会话的轮数** ✓ —— 够长才能验压缩 ✓。
 LONG_SESSION_TURNS = 6
 
-#: **不许种样本的环境** ✓ —— demo 库要保持干净 ✓（演示数据是另一套 ✓ ——
-#: 混在一起就没法验隔离了 ✗✗）；生产库更不许 ✓（里面是真实租户 ✓）。
+#: **不许种样本的环境** ✓ —— demo / production 这两个 env 已经退役了 ✓
+#: （只剩 development / test / ci ✓），这里留着是**兜底** ✓ —— 万一以后
+#: 又加了别的环境，别让验收样本污染进去 ✓。
 FORBIDDEN_ENVS = frozenset({"demo", "production"})
 
 
 def assert_seedable_env(env: str) -> None:
     """**环境不许种样本** ✓ —— 明确失败 ✓（不静默跳过 ✓）。"""
     if str(env or "").lower() in FORBIDDEN_ENVS:
-        raise ValueError(f"不许在 env={env} 里种验收样本（demo 库要干净 ✓ / 生产库更不许 ✓）")
+        raise ValueError(f"不许在 env={env} 里种验收样本（demo / production 都不许 ✓）")
 
 
 def qa_id(name: str) -> UUID:
@@ -92,7 +92,7 @@ def acceptance_profiles() -> tuple[SeedProfile, ...]:
 async def seed_acceptance_samples(session: Any, hasher: Any) -> dict[str, Any]:
     """种**全套验收样本** ✓ —— 幂等 ✓。
 
-    ⚠️ **只往 dev / 预发库种** ✓ —— 生产环境跑这个脚本是不对的 ✓（脚本自己
+    ⚠️ **只往开发 / 测试库种** ✓ —— 生产环境跑这个脚本是不对的 ✓（脚本自己
     拦一道 ✓ —— 见 ``scripts/seed_acceptance_samples.py`` ✓）。
     """
     from sqlalchemy import select

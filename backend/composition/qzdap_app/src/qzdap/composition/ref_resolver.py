@@ -33,6 +33,7 @@ half-configured.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from typing import Final
 from uuid import UUID
@@ -47,6 +48,8 @@ from qzdap_vault.errors import (
 from qzdap_vault.resolver import VaultSecretsResolver
 
 __all__ = ["resolve_ref_env", "resolve_ref_env_sync"]
+
+_log = logging.getLogger(__name__)
 
 # Env var name pattern: ``QZDAP_<UPPER_SNAKE>_REF``.  Bare counterparts
 # drop the ``_REF`` suffix (``QZDAP_<UPPER_SNAKE>``).
@@ -129,21 +132,18 @@ async def resolve_ref_env() -> int:
 
         scheme, _, _ = ref.partition(":")
         if scheme not in resolvers:
-            # Unknown / unsupported scheme. In dev/test/ci we leave the
-            # var untouched — operators legitimately set
-            # ``QZDAP_*_REF`` to literal placeholders there. In
-            # production / staging we fail-loud: a misconfigured
-            # scheme means the resolved secret will never land, which
-            # downstream code would then read as an empty / sentinel
-            # value and silently degrade.
-            from os import getenv as _getenv
-
-            if _getenv("QZDAP_ENV", "development") in {"production", "staging"}:
-                raise RuntimeError(
-                    f"boot: unknown QZDAP_*_REF scheme {scheme!r} in "
-                    f"{ref_key}={ref!r}. Known schemes: "
-                    f"{sorted(resolvers)}"
-                )
+            # Unknown / unsupported scheme. Operators legitimately set
+            # ``QZDAP_*_REF`` to literal placeholders in development, so we
+            # leave the var untouched and report it. (The old
+            # production/staging fail-loud branch is gone with those
+            # environments — there is only the development env now.)
+            _log.warning(
+                "unknown QZDAP_*_REF scheme %r in %s=%r; known schemes: %s",
+                scheme,
+                ref_key,
+                ref,
+                sorted(resolvers),
+            )
             continue
         resolver = resolvers[scheme]
         try:

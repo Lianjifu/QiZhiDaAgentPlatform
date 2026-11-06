@@ -113,9 +113,9 @@ def test_clip_and_safe_path() -> None:
         safe_relpath("../etc/passwd")
 
 
-def test_production_refuses_stub() -> None:
-    settings = Settings(
-        sandbox_executor="stub", env="production", sandbox_runtime_secret="prod-secret"
-    )
-    with pytest.raises(RuntimeError, match="stub"):
-        create_app(settings=settings)
+def test_stub_executor_is_allowed_in_development() -> None:
+    """⚠️ **只有开发环境了** ✓ —— 以前「生产环境拒绝 stub 执行器」✓
+    现在没有生产环境 ✓ → stub 到处都能用 ✓（本地开发跑 Skill 靠它 ✓）。"""
+    settings = Settings(sandbox_executor="stub", sandbox_runtime_secret="dev-secret")
+    app = create_app(settings=settings)
+    assert app.state.executor.__class__.__name__ == "StubExecutor"

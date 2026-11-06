@@ -16,8 +16,6 @@ from qzdap.runtimes.sandbox_runtime.settings import Settings, get_settings
 
 def build_executor(settings: Settings) -> JobExecutor:
     if settings.sandbox_executor == "stub":
-        if settings.env == "production":
-            raise RuntimeError("production refuses QZDAP_SANDBOX_EXECUTOR=stub")
         return StubExecutor()
     return GvisorExecutor(settings)
 
@@ -28,8 +26,6 @@ def create_app(
     executor: JobExecutor | None = None,
 ) -> FastAPI:
     resolved = settings or get_settings()
-    if resolved.sandbox_executor == "stub" and resolved.env == "production":
-        raise RuntimeError("production refuses QZDAP_SANDBOX_EXECUTOR=stub")
     wired = executor or build_executor(resolved)
     app = FastAPI(title="qzdap-sandbox-runtime", version="0.1.0")
     app.state.settings = resolved

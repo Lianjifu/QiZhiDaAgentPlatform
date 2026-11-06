@@ -29,7 +29,9 @@ class Settings(BaseSettings):
     sandbox_max_output_bytes: int = 64 * 1024
     sandbox_max_file_bytes: int = 200 * 1024
     sandbox_max_timeout_ms: int = 120_000
-    env: Literal["development", "test", "ci", "staging", "production"] = "development"
+    # ⚠️ **只有开发环境** ✓ —— 预发 / 生产环境已退役 ✓（test / ci 是
+    # 跑测试用的取值 ✓）。
+    env: Literal["development", "test", "ci"] = "development"
 
     def image_whitelist(self) -> frozenset[str]:
         items = [item.strip() for item in self.sandbox_images.split(",") if item.strip()]

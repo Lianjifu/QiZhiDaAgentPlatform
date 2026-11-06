@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     )
 
     # core
-    env: Literal["development", "demo", "test", "ci", "staging", "production"] = "development"
+    # ⚠️ **只有一个开发环境** ✓ —— 演示 / 预发 / 生产环境都已退役 ✓
+    # （``test`` / ``ci`` 是跑测试用的取值 ✓ —— 不是部署环境 ✓）。
+    env: Literal["development", "test", "ci"] = "development"
     debug: bool = True
     log_level: str = "INFO"
     log_json: bool = True
@@ -65,18 +67,9 @@ class Settings(BaseSettings):
     api_key_hash_rounds: int = 12
 
     # ── multi-tenancy / 种子数据 ─────────────────────────────────────────
-    # 演示数据与开发测试数据**严格分开** —— 不共用租户、账号、密码、库:
-    #   demo_* : 演示环境 (QZDAP_ENV=demo), 跑在独立的 demo 库上
-    #   dev_*  : 开发环境 (QZDAP_ENV=development), 跑在 dev 库上
-    # 两边各自有独立的种子脚本 (backend/scripts/seed_demo_data.py /
-    # seed_dev_data.py), 后端启动时按 QZDAP_ENV 自动跑对应那一个。
-    demo_tenant_id: str = "00000000-0000-0000-0000-000000000001"
-    demo_tenant_slug: str = "demo"
-    demo_tenant_display_name: str = "Demo Tenant"
-    demo_admin_email: str = "admin@acme.com"
-    demo_user_email: str = "user@acme.com"
-    demo_password: str = "demo-password-change-me"  # noqa: S105 —— demo 栈的默认值 ✓
-
+    # ⚠️ **只剩开发环境这一套** ✓ —— 演示环境已退役 ✓（不再有 demo 租户 /
+    # 演示账号 / 独立演示库 ✓）。开发环境的租户、账号、口令全在下面
+    # ``dev_*`` 字段里 ✓（成员口令与管理员口令分开 ✓）。
     dev_tenant_slug: str = "dev"
     dev_tenant_display_name: str = "Dev Tenant"
     dev_admin_email: str = "admin@dev.qzdap.dev"

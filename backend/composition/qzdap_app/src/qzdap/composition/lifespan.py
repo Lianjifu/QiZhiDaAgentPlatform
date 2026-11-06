@@ -108,6 +108,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         default_image=container.settings.sandbox_default_image,
     )
 
+    # ── 运行时健康报告（不是闸门）──────────────────────────────────────
+    # ⚠️ **只有开发环境了** ✓ —— 以前这里是「生产环境拒绝启动」✓，
+    # 现在如实报告「哪些能力是降级的」✓（签名单关 / embedding noop /
+    # 事件总线在进程内 …）✓。挂到 ``app.state`` ✓ → ``/readyz`` 会带上
+    # 它 ✓（见 ``qzdap_http.health.readyz`` ✓）。
+    app.state.runtime_health = container.runtime_health
+    if container.runtime_health["degraded"] or container.runtime_health["issues"]:
+        _log.warning(
+            "runtime health: degraded=%s issues=%s",
+            container.runtime_health["degraded"],
+            container.runtime_health["issues"],
+        )
+
     # ── per-request agent_runtime factory ────────────────────────────────
     from qzdap.modules.agent_runtime.adapter.events import (
         AgentRuntimeEventPublisher,
@@ -119,22 +132,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     # P6: model_service may be None when QZDAP_MODEL_MASTER_KEY is unset
-    # in dev/test. In production this is a hard fail — the
-    # ``_validate_production_secrets`` gate in Container.__init__ will
-    # have already raised, so reaching this branch in prod means a
-    # later RuntimeError from ``model_credential_cipher``; surface it
-    # as a boot failure rather than silently degrading to a non-
-    # functional runtime.
+    # —— 只有开发环境了 ✓ → 降级成告警 ✓（以前生产环境这里是硬失败 ✓）。
     model_service = None
     try:
         model_service = container.model_service()
     except RuntimeError as exc:
-        if getattr(container.settings, "env", "development") == "production":
-            raise RuntimeError(
-                f"production boot requires model_service: {exc}. "
-                "Set QZDAP_MODEL_MASTER_KEY to a non-development value via "
-                "QZDAP_MODEL_MASTER_KEY_REF or your secrets manager."
-            ) from exc
+        # ⚠️ **只有开发环境了** ✓ —— 以前这里「生产环境直接拒绝启动」✓，
+        # 现在统一降级成告警 ✓（模型服务起不来 → 记忆/知识写入降级 ✓，
+        # 但对话/智能体目录那些不依赖它的功能照常 ✓）。
         _log.warning("model_service disabled: %s", exc)
 
     # Phase 1: 把 agent.model (upstream 名字符串) 解析成 ModelId (UUID).
@@ -738,12 +743,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         channel_service_obj = container.channel_service()
     except Exception as exc:
-        if getattr(container.settings, "env", "development") == "production":
-            raise RuntimeError(
-                f"production boot requires channel_service: {exc}. "
-                "channel outbound depends on QZDAP_MODEL_MASTER_KEY and the "
-                "channel credentials in your secrets manager."
-            ) from exc
+        # ⚠️ 同上 —— 只剩开发环境 ✓ → 统一降级成告警 ✓。
         _log.warning("channel_service disabled: %s", exc)
 
     app.state.channel_service = channel_service_obj
@@ -1959,27 +1959,22 @@ async def _seed_builtin_eval_datasets(app: FastAPI, container: Container) -> Non
 
 
 async def ensure_default_resources(container: Container) -> None:
-    """按 ``QZDAP_ENV`` 种对应那一套种子数据.
+    """种默认资源 —— **只有一个开发环境了** ✓。
 
-    * ``demo``        → demo 租户 + demo 账号（演示库）
-    * ``development`` → dev 租户 + dev 账号（开发库）
-    * ``test``        → 同 development, 但不种给 CI 用
-    * 其它 env        → 不种（staging / production 需要时显式跑
-      ``backend/scripts/seed_dev_data.py``）
+    * ``development`` / ``test`` → dev 租户 + dev 账号 + 内置工具 ✓
+    * ``ci``                   → 不种（CI 自己建隔离库 ✓）
 
-    关键约束: **开发环境不种 demo 数据**. 之前这里对 development 和 test
-    都种 ``Demo Tenant`` + ``admin@acme.com``, 而真正的 ``demo`` env 反而
-    什么都不种 —— 正好与需求相反. 现在两套数据各有各的租户和账号.
+    ⚠️ **不种任何内容数据** ✓ —— 原来的演示智能体 / 技能 / 工作流 / 知识库
+    （``seed_demo_content`` ✓）随演示环境一起退役了 ✓ → 目录页开箱是空态 ✓。
 
-    ``QZDAP_DEV_SEED_DEFAULT_RESOURCES=1`` 只影响 dev 那套, 不会把 demo
-    账号种进非演示环境.
+    ``QZDAP_DEV_SEED_DEFAULT_RESOURCES=1`` 显式要求在 ``ci`` 也种 dev 那套。
     """
     import os
 
     from qzdap.composition.seeds import (
+        dev_profile,
         profile_for_env,
         seed_builtin_tools,
-        seed_demo_content,
         seed_identity,
     )
 
@@ -1988,9 +1983,6 @@ async def ensure_default_resources(container: Container) -> None:
     if profile is None:
         if os.environ.get("QZDAP_DEV_SEED_DEFAULT_RESOURCES", "0") != "1":
             return
-        # 显式要求种 —— 但仍然只种 dev 那套, 演示数据不进非演示环境.
-        from qzdap.composition.seeds import dev_profile
-
         profile = dev_profile(settings)
 
     sf = container.session_factory()
@@ -1998,13 +1990,5 @@ async def ensure_default_resources(container: Container) -> None:
         async with sf.session() as session:
             result = await seed_identity(session, container.hasher(), profile)
             await seed_builtin_tools(session, result["tenant_id"], result["workspace_id"])
-            # 演示内容 (智能体/技能/工作流/知识库) —— 内部按 profile.label
-            # 判断, dev 那套直接跳过.
-            await seed_demo_content(
-                session,
-                profile,
-                tenant_id=result["tenant_id"],
-                workspace_id=result["workspace_id"],
-            )
     except Exception:
         _log.exception("ensure_default_resources failed; continuing boot")
