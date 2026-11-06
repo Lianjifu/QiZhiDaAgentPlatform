@@ -4,9 +4,11 @@ import { useServerAction } from '@/services/useServerAction';
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Plus, Search } from 'lucide-react';
+import { Download, Plus, Power, Search, Trash2 } from 'lucide-react';
 import { AdminListPagination, paginateItems } from '@/components/feedback/AdminListPagination';
 import { AdminListHeader, AdminListHeaderMetrics } from '@/components/feedback/AdminListRow';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { TimeRangeDropdown } from '@/components/TimeRangeDropdown';
 import {
@@ -18,11 +20,13 @@ import type {
 import { TIME_RANGES } from './components/constants';
 import { ModelCard } from './components/ModelCard';
 import { ExportMetricModal } from './components/ExportMetricModal';
-import { BatchToolbar } from './components/BatchToolbar';
+import { AdminBatchBar } from '@/components/feedback/AdminBatchBar';
 import { AvailabilityTab } from './components/tabs/AvailabilityTab';
 import { LatencyTab } from './components/tabs/LatencyTab';
 import { TokenTab } from './components/tabs/TokenTab';
 import { DashboardTab } from './components/tabs/DashboardTab';
+import { downloadBlob } from '@/lib/download';
+import { AdminEmptyState } from '@/components/feedback/AdminEmptyState';
 
 type ViewId = 'model' | 'availability' | 'latency' | 'token' | 'dashboard';
 
@@ -40,14 +44,6 @@ const EMPTY_RULES: ThresholdRule[] = [];
 const EMPTY_LATENCY: LatencyPoint[] = [];
 const EMPTY_BREAKDOWN: CostBreakdown[] = [];
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 export default function MetricsPage() {
   const navigate = useNavigate();
@@ -124,17 +120,14 @@ export default function MetricsPage() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.10),transparent_68%)]" />
-        </div>
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-700 dark:text-indigo-300">ADMIN / 运行指标</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">观测可用率、延迟和成本。</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{remoteModels.length} 个模型 · {remoteDashboards.length} 个看板 · {enabledRules} 条激活阈值。</p>
-        </div>
-      </section>
+    <AdminPage density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 运行指标"
+        title="观测可用率、延迟和成本。"
+        description={<>{remoteModels.length} 个模型 · {remoteDashboards.length} 个看板 · {enabledRules} 条激活阈值。</>}
+        tone="indigo"
+        headingLevel="h2"
+      />
 
       {notice && (
         <NoticeBanner tone="violet" onClose={() => setNotice('')}>
@@ -143,11 +136,14 @@ export default function MetricsPage() {
       )}
 
       {view === 'dashboard' && pickedDashboards.size > 0 && (
-        <BatchToolbar
+        <AdminBatchBar
           count={pickedDashboards.size}
-          onEnable={() => batch('enable')}
-          onDisable={() => batch('disable')}
-          onDelete={() => batch('delete')}
+          onClear={() => setPickedDashboards(new Set())}
+          actions={[
+            { id: 'enable', label: '启用', icon: Power, tone: 'brand', onClick: () => batch('enable') },
+            { id: 'disable', label: '停用', icon: Power, tone: 'neutral', onClick: () => batch('disable') },
+            { id: 'delete', label: '删除', icon: Trash2, tone: 'rose', onClick: () => batch('delete') },
+          ]}
         />
       )}
 
@@ -202,13 +198,7 @@ export default function MetricsPage() {
             pageEnd={paged.pageEnd}
             onPageChange={setPage}
           />
-          {visibleModels.length === 0 && (
-            <div className="px-5 pb-8 text-center">
-              <Search className="mx-auto h-6 w-6 text-[var(--text-muted)]" />
-              <p className="mt-3 text-sm font-semibold">没有匹配的模型</p>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">尝试其他关键词或清除筛选。</p>
-            </div>
-          )}
+          {visibleModels.length === 0 && <AdminEmptyState title="没有匹配的模型" />}
         </div>
       )}
 
@@ -281,6 +271,6 @@ export default function MetricsPage() {
       />
 
 
-    </div>
+    </AdminPage>
   );
 }

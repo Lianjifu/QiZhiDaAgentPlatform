@@ -15,6 +15,8 @@ import { TrendChart } from './components/TrendChart';
 import { AlertsPanel, ServicesPanel, TopAgentsPanel } from './components/Panels';
 import { AlertDetail } from './components/AlertDetail';
 import { SEVERITY_BADGE } from './components/Primitives';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 const RANGE_OPTIONS: { id: Range; label: string }[] = [
   { id: '1h', label: '1 小时' },
@@ -48,20 +50,15 @@ export default function OverviewPage() {
     : null;
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative z-20 rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,var(--brand-light),transparent_68%)]" />
-        </div>
-        <div className="relative flex flex-col justify-between gap-6 xl:flex-row xl:items-end">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--brand)]">ADMIN / 运营总览</p>
-            <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">看调用量、可用率和告警。</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">6 个核心指标 · 实时告警 · 服务健康与 Top 智能体。</p>
-          </div>
-          <TimeRangeDropdown value={range} onChange={setRange} options={RANGE_OPTIONS} />
-        </div>
-      </section>
+    <AdminPage density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 运营总览"
+        title="看调用量、可用率和告警。"
+        description={"6 个核心指标 · 实时告警 · 服务健康与 Top 智能体。"}
+        tone="brand"
+        headingLevel="h2"
+        aside={<TimeRangeDropdown value={range} onChange={setRange} options={RANGE_OPTIONS} />}
+      />
 
       <section aria-label="核心指标" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         {summaryQuery.isError
@@ -131,6 +128,6 @@ export default function OverviewPage() {
       </SideDrawer>
 
       <p className="text-center text-xs text-[var(--text-muted)]">数据来自 /api/admin/overview，随工作空间指标与告警更新。</p>
-    </div>
+    </AdminPage>
   );
 }

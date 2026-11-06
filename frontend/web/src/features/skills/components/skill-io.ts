@@ -2,6 +2,7 @@
  * 管理侧技能页 IO 工具 — JSON/YAML 序列化、解析、构建草稿、浏览器下载触发。
  * 全部为纯函数,保持与原 AdminSkills.tsx 同等行为。
  */
+import { downloadBlob } from '@/lib/download';
 import type {
   Skill, TemplateSeed, SchemaField, RiskLevel, SkillType, SkillProfile,
   SkillExportField, SkillExportFormat,
@@ -171,17 +172,6 @@ function validateImportRow(row: Record<string, unknown>, existing: Skill[], fall
   return { name, status: 'ok' };
 }
 
-export function downloadBlob(blob: Blob, filename: string) {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 export function triggerDownload(list: Skill[], format: SkillExportFormat, fields: Record<SkillExportField, boolean>, baseName: string) {
   const safeBase = baseName.replace(/\s+/g, '-').toLowerCase();

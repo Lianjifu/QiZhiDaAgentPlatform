@@ -10,6 +10,8 @@
  */
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { useWorkflows, useCreateWorkflow, useUpdateWorkflow } from './useWorkflows';
 import { normalizeError } from '@/api/shared/http-error';
@@ -89,17 +91,14 @@ export default function WorkflowsPage() {
   };
 
   return (
-    <div className="workflow-page mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-7 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(245,158,11,0.12),transparent_68%)]" />
-        </div>
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">ADMIN / 工作流管理</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">编排并发布可执行工作流。</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{flows.length} 条工作流 · {flows.filter((f) => f.status === 'published').length} 已发布。</p>
-        </div>
-      </section>
+    <AdminPage pageClass="workflow-page" density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 工作流管理"
+        title="编排并发布可执行工作流。"
+        description={<>{flows.length} 条工作流 · {flows.filter((f) => f.status === 'published').length} 已发布。</>}
+        tone="amber"
+        headingLevel="h2"
+      />
 
       {notice && (
         <NoticeBanner tone="amber" onClose={() => setNotice('')}>
@@ -131,6 +130,6 @@ export default function WorkflowsPage() {
         toolOutput={toolOutput} setToolOutput={setToolOutput}
         onSubmit={submitPublish}
       />
-    </div>
+    </AdminPage>
   );
 }

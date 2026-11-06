@@ -5,16 +5,18 @@ import { useServerAction } from '@/services/useServerAction';
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Globe, Plus, Search, Upload } from 'lucide-react';
+import { Globe, Plus, Power, Search, Send, Upload } from 'lucide-react';
 import { AdminListPagination, paginateItems } from '@/components/feedback/AdminListPagination';
 import { AdminListHeader, AdminListHeaderMetrics } from '@/components/feedback/AdminListRow';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import {
   useBatchChannelStatus, useCreateGroup, useDeleteChannel,
   useNotificationChannels, useNotificationGroups, useNotificationWebhooks, useUpdateChannel,
 } from './useNotifications';
 import type { NotificationChannel, NotificationGroup } from './schema';
-import { BatchToolbar } from './components/BatchToolbar';
+import { AdminBatchBar } from '@/components/feedback/AdminBatchBar';
 import { ChannelCard } from './components/ChannelCard';
 import { CreateGroupModal } from './components/CreateGroupModal';
 import { DeleteChannelModal } from './components/DeleteChannelModal';
@@ -23,21 +25,11 @@ import { GroupCard } from './components/GroupCard';
 import { ImportChannelModal } from './components/ImportChannelModal';
 import { WebhookCard } from './components/WebhookCard';
 import { KIND_META, type ExchangeFormat } from './components/constants';
+import { downloadBlob } from '@/lib/download';
 
 type ViewId = 'channel' | 'webhook' | 'group';
 type KindFilter = 'all' | 'feishu' | 'wecom' | 'dingtalk' | 'web';
 
-function downloadBlob(blob: Blob, filename: string) {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 export default function NotificationsPage() {
   const navigate = useNavigate();
@@ -159,17 +151,14 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="notifications-page mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(168,85,247,0.10),transparent_68%)]" />
-        </div>
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-700 dark:text-violet-300">ADMIN / 渠道配置</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">接入飞书、企微、钉钉和 Web。</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{stats.total} 个渠道 · {stats.active} 已接入 · 今日会话 {stats.sentToday}。</p>
-        </div>
-      </section>
+    <AdminPage pageClass="notifications-page" density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 渠道配置"
+        title="接入飞书、企微、钉钉和 Web。"
+        description={<>{stats.total} 个渠道 · {stats.active} 已接入 · 今日会话 {stats.sentToday}。</>}
+        tone="violet"
+        headingLevel="h2"
+      />
 
       {notice && (
         <NoticeBanner tone="violet" onClose={() => setNotice('')}>
@@ -178,12 +167,14 @@ export default function NotificationsPage() {
       )}
 
       {selectedIds.length > 0 && view === 'channel' && (
-        <BatchToolbar
+        <AdminBatchBar
           count={selectedIds.length}
           onClear={() => setSelectedIds([])}
-          onBatchEnable={handleBatchEnable}
-          onBatchPause={handleBatchPause}
-          onBatchExport={handleBatchExport}
+          actions={[
+            { id: 'enable', label: '批量启用', icon: Power, tone: 'brand', onClick: handleBatchEnable },
+            { id: 'pause', label: '批量暂停', icon: Power, tone: 'amber', onClick: handleBatchPause },
+            { id: 'export', label: '批量导出', icon: Send, tone: 'neutral', onClick: handleBatchExport },
+          ]}
         />
       )}
 
@@ -328,6 +319,6 @@ export default function NotificationsPage() {
         channel={deleteTarget}
         pending={deleteChannel.isPending}
       />
-    </div>
+    </AdminPage>
   );
 }

@@ -4,20 +4,7 @@
  */
 import { ArrowDown, ArrowUp, CircleAlert } from 'lucide-react';
 
-export function Sparkline({ data, stroke, height = 36 }: { data: number[]; stroke: string; height?: number }) {
-  const width = 120;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = Math.max(max - min, 0.01);
-  const x = (i: number) => (i * width) / Math.max(data.length - 1, 1);
-  const y = (v: number) => height - ((v - min) / range) * height;
-  const line = data.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(v)}`).join(' ');
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-9 w-32" preserveAspectRatio="none" aria-hidden="true">
-      <path d={line} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
+
 
 export function StepIndicator({ current, total, labels }: { current: number; total: number; labels: string[] }) {
   return (

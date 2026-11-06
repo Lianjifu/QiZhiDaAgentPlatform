@@ -3,16 +3,20 @@ import { useServerAction } from '@/services/useServerAction';
  * AdminEvaluations — 评测中心 orchestrator。
  * 对齐技能管理 / ModelsPage：无子模块 Tab，Hero 轻量，列表工具栏 + 视图筛选。
  */
-import { Plus, Search, Upload } from 'lucide-react';
+import { Plus, Play, Search, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminListPagination, paginateItems } from '@/components/feedback/AdminListPagination';
 import { AdminListHeader, AdminListHeaderMetrics } from '@/components/feedback/AdminListRow';
+import { AdminBatchBar } from '@/components/feedback/AdminBatchBar';
+import { AdminEmptyState } from '@/components/feedback/AdminEmptyState';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
+import { downloadBlob } from '@/lib/download';
 import { useEvalResults, useEvalSuites, useEvalSuiteStats } from './useEvaluations';
 import type { CaseTemplate, EvalResult, EvalSuite, EvalStatus, EvalSuiteType, ExchangeFormat } from './schema';
 import { useApiQuery } from '@/services/query';
-import { BatchToolbar } from './components/BatchToolbar';
 import { STATUS_FILTER, TYPE_FILTER, uid } from './components/constants';
 import { DeleteSuiteModal, ExportSuiteModal, ImportSuiteModal, RunConfirmModal } from './components/Modals';
 import { SuiteCard } from './components/SuiteCard';
@@ -91,17 +95,13 @@ export default function EvaluationsPage() {
   const handleAddTemplate = (template: CaseTemplate) => server.mutate({ path: '/api/admin/evaluations/suites', body: { name: `${template.name} 套件`, description: template.description, type: template.type, criteria: template.criteria, casesList: [{ name: template.name, input: template.inputExample, expected: template.expectedExample }] }, success: '已从模板创建套件', onSuccess: () => setView('suite') });
 
   return (
-    <div className="evaluations-page mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(20,184,166,0.10),transparent_68%)]" />
-        </div>
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-teal-700 dark:text-teal-300">ADMIN / 评测中心</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">用套件评测智能体质量。</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{suites.length} 个套件 · 本月通过 {stats.passed}。</p>
-        </div>
-      </section>
+    <AdminPage pageClass="evaluations-page">
+      <AdminHero
+        eyebrow="ADMIN / 评测中心"
+        title="用套件评测智能体质量。"
+        description={`${suites.length} 个套件 · 本月通过 ${stats.passed}。`}
+        tone="teal"
+      />
 
       {notice && (
         <NoticeBanner tone="violet" onClose={() => setNotice('')}>
@@ -110,11 +110,13 @@ export default function EvaluationsPage() {
       )}
 
       {selectedIds.length > 0 && view === 'suite' && (
-        <BatchToolbar
+        <AdminBatchBar
           count={selectedIds.length}
           onClear={() => setSelectedIds([])}
-          onBatchRun={handleBatchRun}
-          onBatchDelete={handleBatchDelete}
+          actions={[
+            { id: 'run', label: '批量运行', icon: Play, onClick: handleBatchRun },
+            { id: 'delete', label: '批量删除', icon: Trash2, tone: 'rose', onClick: handleBatchDelete },
+          ]}
         />
       )}
 
@@ -191,13 +193,7 @@ export default function EvaluationsPage() {
             pageEnd={paged.pageEnd}
             onPageChange={setPage}
           />
-          {visibleSuites.length === 0 && (
-            <div className="px-5 pb-8 text-center">
-              <Search className="mx-auto h-6 w-6 text-[var(--text-muted)]" />
-              <p className="mt-3 text-sm font-semibold">没有匹配的套件</p>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">尝试其他关键词或清除筛选。</p>
-            </div>
-          )}
+          {visibleSuites.length === 0 && <AdminEmptyState title="没有匹配的套件" />}
         </div>
       )}
 
@@ -256,18 +252,6 @@ export default function EvaluationsPage() {
         total={suites.length}
         selectedCount={selectedIds.length}
       />
-    </div>
+    </AdminPage>
   );
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }

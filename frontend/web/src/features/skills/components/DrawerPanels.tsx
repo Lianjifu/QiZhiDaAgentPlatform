@@ -8,7 +8,7 @@ import {
 import type { SchemaField, Skill, SkillType } from '../schema';
 import { DEFAULT_SKILL_RUNTIME } from '../schema';
 import { RISK_BADGE, formatCalls } from './constants';
-import { Sparkline } from './Sparkline';
+import { Sparkline } from '@/components/feedback/Sparkline';
 
 export function DrawerPanelBasic({ draft, onChange }: { draft: Skill; onChange: (patch: Partial<Skill>) => void }) {
   const update = (patch: Partial<Skill>) => onChange(patch);

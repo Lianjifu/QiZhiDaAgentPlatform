@@ -4,35 +4,26 @@ import { useServerAction } from '@/services/useServerAction';
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Plus, Search, ShieldQuestion } from 'lucide-react';
+import { Check, Download, Plus, Search, ShieldCheck, ShieldQuestion } from 'lucide-react';
 import { AdminListPagination, paginateItems } from '@/components/feedback/AdminListPagination';
 import { AdminListHeader, AdminListHeaderMetrics } from '@/components/feedback/AdminListRow';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import {
   useAuditEntries, useAuditRisks, useAuditRules, usePermissionScopes,
 } from './useAudit';
 import type { AuditEntry, AuditRule, RiskEvent } from './schema';
 import { AuditCard } from './components/AuditCard';
-import { BatchToolbar } from './components/BatchToolbar';
+import { AdminBatchBar } from '@/components/feedback/AdminBatchBar';
 import { ExportAuditModal, type ExportFormat } from './components/ExportAuditModal';
 import { RiskTab } from './components/tabs/RiskTab';
 import { PermissionTab } from './components/tabs/PermissionTab';
 import { RuleTab } from './components/tabs/RuleTab';
+import { downloadBlob } from '@/lib/download';
 
 type ViewId = 'record' | 'risk' | 'permission' | 'rule';
 
-function downloadBlob(blob: Blob, filename: string) {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  if (typeof URL.createObjectURL !== 'function') return;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 const VIEW_OPTIONS: { id: ViewId; label: string }[] = [
   { id: 'record', label: '调用记录' },
@@ -124,23 +115,14 @@ export default function AuditPage() {
   );
 
   return (
-    <div className="tool-audit-page mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(244,63,94,0.10),transparent_68%)]" />
-        </div>
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-rose-700 dark:text-rose-300">
-            ADMIN / 工具审计
-          </p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
-            审查工具调用与风险规则。
-          </h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">
-            {entries.length} 条审计 · {unresolvedRisks} 未处置风险。
-          </p>
-        </div>
-      </section>
+    <AdminPage pageClass="tool-audit-page" density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 工具审计"
+        title="审查工具调用与风险规则。"
+        description={<>{entries.length} 条审计 · {unresolvedRisks} 未处置风险。</>}
+        tone="rose"
+        headingLevel="h2"
+      />
 
       {notice && (
         <NoticeBanner tone="violet" onClose={() => setNotice('')}>
@@ -149,12 +131,14 @@ export default function AuditPage() {
       )}
 
       {selectedIds.length > 0 && view === 'record' && (
-        <BatchToolbar
+        <AdminBatchBar
           count={selectedIds.length}
           onClear={() => setSelectedIds([])}
-          onBatchExport={handleBatchExport}
-          onBatchResolve={handleBatchResolve}
-          onBatchMark={handleBatchMark}
+          actions={[
+            { id: 'mark', label: '标记已审', icon: ShieldCheck, tone: 'brand', onClick: handleBatchMark },
+            { id: 'resolve', label: '标记已解决', icon: Check, tone: 'brand', onClick: handleBatchResolve },
+            { id: 'export', label: '批量导出', icon: Download, tone: 'neutral', onClick: handleBatchExport },
+          ]}
         />
       )}
 
@@ -262,6 +246,6 @@ export default function AuditPage() {
         total={entries.length}
         selectedCount={selectedIds.length}
       />
-    </div>
+    </AdminPage>
   );
 }

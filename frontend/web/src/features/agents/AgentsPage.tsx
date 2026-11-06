@@ -19,6 +19,8 @@ import { BatchToolbar } from './components/DrawerSidebar';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { ExportDialog, ImportDialog } from './components/ImportExportModals';
 import { TABS, DEFAULT_EXPORT_FIELDS } from './components/constants';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 const PAGE_SIZE = 4;
 
@@ -170,16 +172,15 @@ export default function AgentsPage() {
   const countsForExport = { all: list.length, tab: filteredList.length, selected: selectedIds.length };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-6">
+    <AdminPage density="lg">
       {/* Hero */}
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,var(--brand-light),transparent_68%)]" />
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--brand)]">ADMIN / 智能体管理</p>
-          <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">配置、审核并发布智能体。</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{list.length} 个智能体 · {list.filter((a) => a.status === 'published').length} 已发布。</p>
-        </div>
-      </section>
+      <AdminHero
+        eyebrow="ADMIN / 智能体管理"
+        title="配置、审核并发布智能体。"
+        description={<>{list.length} 个智能体 · {list.filter((a) => a.status === 'published').length} 已发布。</>}
+        tone="brand"
+        headingLevel="h1"
+      />
 
       {/* Batch Toolbar */}
       {selectedIds.length > 0 && (
@@ -333,7 +334,7 @@ export default function AgentsPage() {
         onClose={() => setDeletePayload(null)}
         onConfirm={handleConfirmDelete}
       />
-    </div>
+    </AdminPage>
   );
 }
 

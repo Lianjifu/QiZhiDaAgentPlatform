@@ -4,9 +4,11 @@ import { useServerAction } from '@/services/useServerAction';
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Filter, RefreshCw, Search } from 'lucide-react';
+import { FileText, Filter, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { AdminListPagination, paginateItems } from '@/components/feedback/AdminListPagination';
 import { AdminListHeader, AdminListHeaderMetrics } from '@/components/feedback/AdminListRow';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import {
   useIncidents,
@@ -18,24 +20,15 @@ import type { ExchangeFormat, Incident, Session } from './schema';
 import { SessionCard } from './components/SessionCard';
 import { FilterModal, type FilterSelection } from './components/FilterModal';
 import { ExportTraceModal } from './components/ExportModal';
-import { BatchToolbar } from './components/BatchToolbar';
+import { AdminBatchBar } from '@/components/feedback/AdminBatchBar';
 import { TraceTab } from './components/tabs/TraceTab';
 import { KindTab } from './components/tabs/KindTab';
 import { IncidentTab } from './components/tabs/IncidentTab';
+import { downloadBlob } from '@/lib/download';
+import { AdminEmptyState } from '@/components/feedback/AdminEmptyState';
 
 type ViewId = 'session' | 'trace' | 'kind' | 'incident';
 
-function downloadBlob(blob: Blob, filename: string) {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 export default function OperationsPage() {
   const navigate = useNavigate();
@@ -133,23 +126,14 @@ export default function OperationsPage() {
   );
 
   return (
-    <div className="operations-page mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(14,165,233,0.10),transparent_68%)]" />
-        </div>
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-700 dark:text-sky-300">
-            ADMIN / 调用链路
-          </p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">
-            还原会话的完整调用过程。
-          </h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">
-            今日会话 {stats.total} · 异常率 {stats.errorRate}%。
-          </p>
-        </div>
-      </section>
+    <AdminPage pageClass="operations-page" density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 调用链路"
+        title="还原会话的完整调用过程。"
+        description={<>今日会话 {stats.total} · 异常率 {stats.errorRate}%。</>}
+        tone="sky"
+        headingLevel="h2"
+      />
 
       {notice && (
         <NoticeBanner tone="violet" onClose={() => setNotice('')}>
@@ -158,11 +142,13 @@ export default function OperationsPage() {
       )}
 
       {selectedIds.length > 0 && view === 'session' && (
-        <BatchToolbar
+        <AdminBatchBar
           count={selectedIds.length}
           onClear={() => setSelectedIds([])}
-          onBatchExport={handleBatchExport}
-          onBatchResolve={handleBatchResolve}
+          actions={[
+            { id: 'resolve', label: '批量标记已解决', icon: ShieldCheck, tone: 'brand', onClick: handleBatchResolve },
+            { id: 'export', label: '批量导出', icon: FileText, tone: 'neutral', onClick: handleBatchExport },
+          ]}
         />
       )}
 
@@ -230,13 +216,7 @@ export default function OperationsPage() {
             pageEnd={paged.pageEnd}
             onPageChange={setPage}
           />
-          {visibleSessions.length === 0 && (
-            <div className="px-5 pb-8 text-center">
-              <Search className="mx-auto h-6 w-6 text-[var(--text-muted)]" />
-              <p className="mt-3 text-sm font-semibold">没有匹配的会话</p>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">尝试其他关键词或清除筛选。</p>
-            </div>
-          )}
+          {visibleSessions.length === 0 && <AdminEmptyState title="没有匹配的会话" />}
         </div>
       )}
 
@@ -266,6 +246,6 @@ export default function OperationsPage() {
         total={sessions.length}
         selectedCount={selectedIds.length}
       />
-    </div>
+    </AdminPage>
   );
 }

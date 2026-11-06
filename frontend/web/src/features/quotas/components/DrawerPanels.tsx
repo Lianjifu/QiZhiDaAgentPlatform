@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { SideDrawer } from '@/components/feedback/SideDrawer';
 import type { DepartmentQuota, EnterpriseBudget, BudgetPeriod } from '../schema';
 import { BUDGET_BADGE, DRAWER_NAV_ITEMS, PERIOD_LABEL } from './constants';
-import { ProgressBar, Sparkline } from './Primitives';
+import { ProgressBar } from './Primitives';
+import { Sparkline } from '@/components/feedback/Sparkline';
 
 type DrawerPanel = 'detail' | 'trend' | 'allocation' | 'history';
 

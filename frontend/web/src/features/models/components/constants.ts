@@ -67,17 +67,6 @@ export const TIER_FILTER: Array<{ id: 'all' | ModelTier; label: string }> = [
 
 export const EXCHANGE_FORMATS: ExchangeFormat[] = ['json', 'yaml'];
 
-export function downloadBlob(blob: Blob, filename: string) {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 export function formatPrice(value: number, kind: 'in' | 'out'): string {
   const v = kind === 'in' ? value : value;

@@ -23,6 +23,8 @@ import { CreateMemoryEntryModal } from './components/CreateMemoryEntryModal';
 import { L1Tab } from './components/tabs/L1Tab';
 import { L2Tab } from './components/tabs/L2Tab';
 import { L3Tab } from './components/tabs/L3Tab';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 const EMPTY_L1: L1Session[] = [];
 const EMPTY_L2: L2Fact[] = [];
@@ -148,17 +150,14 @@ export default function MemoryPage() {
   const openL3 = (e: L3Entry) => navigate(`/admin/memory/l3/${encodeURIComponent(e.id)}`);
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-sm">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.08),transparent_68%)]" />
-        </div>
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--brand)]">ADMIN / 记忆管理</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">管理会话记忆和长期记忆。</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{l1.length} 条短期会话 · {l2.length} 条长期记忆 · {l3.length} 条团队知识。</p>
-        </div>
-      </section>
+    <AdminPage density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 记忆管理"
+        title="管理会话记忆和长期记忆。"
+        description={<>{l1.length} 条短期会话 · {l2.length} 条长期记忆 · {l3.length} 条团队知识。</>}
+        tone="blue"
+        headingLevel="h2"
+      />
       {notice && <p role="status" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">{notice}</p>}
       {(l1QueryRemote.isError || l2QueryRemote.isError || l3QueryRemote.isError) && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700">加载失败：{normalizeError(l1Error ?? l2Error ?? l3Error).message}</p>}
 
@@ -258,6 +257,6 @@ export default function MemoryPage() {
         onClose={() => setCreateOpen(false)}
         onConfirm={submitCreate}
       />
-    </div>
+    </AdminPage>
   );
 }

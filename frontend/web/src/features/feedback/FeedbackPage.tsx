@@ -4,11 +4,13 @@ import { useServerAction } from '@/services/useServerAction';
  * 对齐技能管理 / 模型配置：无子模块 Tab，Hero 轻量，列表工具栏承载筛选与导入/新建。
  * 详情页 + 新建工单 / 新建规则改为独立路由(/admin/feedback/:id · /admin/feedback/new · /admin/feedback/rules/new)。
  */
-import { Plus, Search, Upload } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminListPagination, paginateItems } from '@/components/feedback/AdminListPagination';
 import { AdminListHeader, AdminListHeaderMetrics } from '@/components/feedback/AdminListRow';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { useFeedbackList, useFeedbackRules, useFeedbackTickets, useFeedbackTopics } from './useFeedback';
 import type { ExchangeFormat, Feedback, FeedbackPriority, FeedbackSentiment, FeedbackStatus, RoutingRule, Ticket, TopicCluster } from './schema';
@@ -16,7 +18,9 @@ import { uid, PRIORITY_FILTER, SENTIMENT_FILTER, STATUS_FILTER } from './compone
 import { DeleteFeedbackModal, ExportFeedbackModal, ImportFeedbackModal } from './components/Modals';
 import { RuleTab, TicketTab, TopicTab } from './components/tabs/Tabs';
 import { FeedbackCard } from './components/FeedbackCard';
-import { BatchToolbar } from './components/BatchToolbar';
+import { AdminBatchBar } from '@/components/feedback/AdminBatchBar';
+import { downloadBlob } from '@/lib/download';
+import { AdminEmptyState } from '@/components/feedback/AdminEmptyState';
 
 type ViewId = 'list' | 'ticket' | 'topic' | 'rule';
 
@@ -125,17 +129,14 @@ export default function FeedbackPage() {
   );
 
   return (
-    <div className="feedback-page mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(245,158,11,0.10),transparent_68%)]" />
-        </div>
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">ADMIN / 用户反馈</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">收集、分诊并处理用户意见。</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{feedback.length} 条反馈 · {counts.newOnes} 条待分诊 · 正面率 {positivePct.toFixed(0)}%。</p>
-        </div>
-      </section>
+    <AdminPage pageClass="feedback-page" density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 用户反馈"
+        title="收集、分诊并处理用户意见。"
+        description={<>{feedback.length} 条反馈 · {counts.newOnes} 条待分诊 · 正面率 {positivePct.toFixed(0)}%。</>}
+        tone="amber"
+        headingLevel="h2"
+      />
 
       {notice && (
         <NoticeBanner tone="violet" onClose={() => setNotice('')}>
@@ -144,12 +145,14 @@ export default function FeedbackPage() {
       )}
 
       {selectedIds.length > 0 && view === 'list' && (
-        <BatchToolbar
+        <AdminBatchBar
           count={selectedIds.length}
           onClear={() => setSelectedIds([])}
-          onBatchTriage={handleBatchTriage}
-          onBatchResolve={handleBatchResolve}
-          onBatchDelete={handleBatchDelete}
+          actions={[
+            { id: 'triage', label: '批量分诊', icon: ArrowRight, tone: 'brand', onClick: handleBatchTriage },
+            { id: 'resolve', label: '批量标记已解决', icon: CheckCircle2, tone: 'emerald', onClick: handleBatchResolve },
+            { id: 'delete', label: '批量删除', icon: Trash2, tone: 'rose', onClick: handleBatchDelete },
+          ]}
         />
       )}
 
@@ -223,13 +226,7 @@ export default function FeedbackPage() {
             pageEnd={paged.pageEnd}
             onPageChange={setPage}
           />
-          {visibleFeedback.length === 0 && (
-            <div className="px-5 pb-8 text-center">
-              <Search className="mx-auto h-6 w-6 text-[var(--text-muted)]" />
-              <p className="mt-3 text-sm font-semibold">没有匹配的反馈</p>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">尝试其他关键词或清除筛选。</p>
-            </div>
-          )}
+          {visibleFeedback.length === 0 && <AdminEmptyState title="没有匹配的反馈" />}
         </div>
       )}
 
@@ -263,18 +260,7 @@ export default function FeedbackPage() {
       <DeleteFeedbackModal open={deleteTarget !== null} onClose={() => setDeleteTarget(null)} onConfirm={() => deleteTarget && handleDelete(deleteTarget)} fb={deleteTarget} />
       <ImportFeedbackModal open={importOpen} onClose={() => setImportOpen(false)} onImport={handleImport} />
       <ExportFeedbackModal open={exportOpen} onClose={() => setExportOpen(false)} onExport={handleExport} total={feedback.length} selectedCount={selectedIds.length} />
-    </div>
+    </AdminPage>
   );
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}

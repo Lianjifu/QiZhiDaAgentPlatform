@@ -30,6 +30,8 @@ import KbCard from './components/KbCard';
 import SourceCard from './components/SourceCard';
 import { TimeRangeDropdown } from './components/TimeRangeDropdown';
 import { normalizeError } from '@/api/shared/http-error';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 
 export default function KnowledgePage() {
   const [tab, setTab] = useState<TabId>('kb');
@@ -119,15 +121,14 @@ export default function KnowledgePage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,var(--brand-light),transparent_68%)]" />
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--brand)]">ADMIN / 知识管理</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">把企业知识资产管起来。</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{kbs.length} 个知识库 · {docCount.toLocaleString()} 篇文档 · {sources.length} 个数据源。</p>
-        </div>
-      </section>
+    <AdminPage density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 知识管理"
+        title="把企业知识资产管起来。"
+        description={<>{kbs.length} 个知识库 · {docCount.toLocaleString()} 篇文档 · {sources.length} 个数据源。</>}
+        tone="brand"
+        headingLevel="h2"
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)]">
         <nav aria-label="子模块导航" className="flex flex-wrap items-center gap-1">
@@ -258,7 +259,7 @@ export default function KnowledgePage() {
         </section>
       )}
 
-    </div>
+    </AdminPage>
   );
 }
 

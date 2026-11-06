@@ -10,17 +10,23 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminListPagination, paginateItems } from '@/components/feedback/AdminListPagination';
 import { AdminListHeader, AdminListHeaderMetrics } from '@/components/feedback/AdminListRow';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import {
   useQuotasAlerts, useQuotasBudgets, useQuotasDepartments, useQuotasUsage,
   useToggleAlert, useUpdateBudget,
 } from './useQuotas';
 import type { EnterpriseBudget, ExchangeFormat } from './schema';
-import { BatchToolbar } from './components/BatchToolbar';
+import { AdminBatchBar } from '@/components/feedback/AdminBatchBar';
+import { Download, Power } from 'lucide-react';
 import { BudgetCard } from './components/BudgetCard';
 import { ExportBudgetModal, ImportBudgetModal } from './components/ImportExportModals';
-import { CATEGORY_META, PERIOD_LABEL, SCOPE_LABEL, SEVERITY_BADGE, downloadBlob } from './components/constants';
-import { ProgressBar, Sparkline } from './components/Primitives';
+import { CATEGORY_META, PERIOD_LABEL, SCOPE_LABEL, SEVERITY_BADGE } from './components/constants';
+import { downloadBlob } from '@/lib/download';
+import { ProgressBar } from './components/Primitives';
+import { Sparkline } from '@/components/feedback/Sparkline';
+import { AdminEmptyState } from '@/components/feedback/AdminEmptyState';
 
 type ViewId = 'budget' | 'department' | 'usage' | 'alert';
 
@@ -101,17 +107,14 @@ export default function QuotasPage() {
   };
 
   return (
-    <div className="quotas-page mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(34,197,94,0.10),transparent_68%)]" />
-        </div>
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">ADMIN / 额度管理</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">控制预算、用量和告警。</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">总预算 ¥ {totals.cap.toLocaleString('zh-CN')} · 已用 ¥ {totals.used.toLocaleString('zh-CN')}。</p>
-        </div>
-      </section>
+    <AdminPage pageClass="quotas-page" density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 额度管理"
+        title="控制预算、用量和告警。"
+        description={<>总预算 ¥ {totals.cap.toLocaleString('zh-CN')} · 已用 ¥ {totals.used.toLocaleString('zh-CN')}。</>}
+        tone="emerald"
+        headingLevel="h2"
+      />
 
       {notice && (
         <NoticeBanner tone="violet" onClose={() => setNotice('')}>
@@ -120,11 +123,13 @@ export default function QuotasPage() {
       )}
 
       {selectedIds.length > 0 && view === 'budget' && (
-        <BatchToolbar
+        <AdminBatchBar
           count={selectedIds.length}
           onClear={() => setSelectedIds([])}
-          onBatchFreeze={handleBatchFreeze}
-          onBatchExport={handleBatchExport}
+          actions={[
+            { id: 'freeze', label: '批量冻结', icon: Power, tone: 'amber', onClick: handleBatchFreeze },
+            { id: 'export', label: '批量导出', icon: Download, tone: 'neutral', onClick: handleBatchExport },
+          ]}
         />
       )}
 
@@ -183,13 +188,7 @@ export default function QuotasPage() {
             pageEnd={paged.pageEnd}
             onPageChange={setPage}
           />
-          {visibleBudgets.length === 0 && (
-            <div className="px-5 pb-8 text-center">
-              <Search className="mx-auto h-6 w-6 text-[var(--text-muted)]" />
-              <p className="mt-3 text-sm font-semibold">没有匹配的预算</p>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">尝试其他关键词或清除筛选。</p>
-            </div>
-          )}
+          {visibleBudgets.length === 0 && <AdminEmptyState title="没有匹配的预算" />}
         </div>
       )}
 
@@ -314,6 +313,6 @@ export default function QuotasPage() {
 
       <ImportBudgetModal open={importOpen} onClose={() => setImportOpen(false)} onImport={handleImport} />
       <ExportBudgetModal open={exportOpen} onClose={() => setExportOpen(false)} onExport={handleExport} total={budgets.length} selectedCount={selectedIds.length} />
-    </div>
+    </AdminPage>
   );
 }

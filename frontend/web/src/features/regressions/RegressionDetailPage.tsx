@@ -13,7 +13,8 @@ import {
 import type { DrawerPanel, RegressionRisk, RegressionTrack } from './schema';
 import { useRegressionTracks } from './useRegressions';
 import { DRAWER_NAV_ITEMS, RISK_BADGE, STATUS_BADGE } from './components/constants';
-import { Delta, Sparkline } from './components/Primitives';
+import { Delta } from './components/Primitives';
+import { Sparkline } from '@/components/feedback/Sparkline';
 
 const navIconMap: Record<string, typeof History> = { History, LineChart, ListChecks, Settings };
 const riskIconMap: Record<string, typeof ShieldCheck> = { ShieldCheck, ShieldQuestion, AlertTriangle, ShieldAlert };

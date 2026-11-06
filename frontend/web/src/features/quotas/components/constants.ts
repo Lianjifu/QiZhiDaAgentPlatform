@@ -36,17 +36,6 @@ export const DRAWER_NAV_ITEMS: Array<{ id: 'detail' | 'trend' | 'allocation' | '
   { id: 'history', label: '变更记录', icon: ShieldCheck },
 ];
 
-export function downloadBlob(blob: Blob, filename: string) {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 export const SCOPE_LABEL: Record<'enterprise' | 'department' | 'channel', string> = {
   enterprise: '企业',

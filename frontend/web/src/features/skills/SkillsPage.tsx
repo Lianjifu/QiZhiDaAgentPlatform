@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import {
   useAdminSkills, useUpdateSkill, useDeleteSkill, useBulkPublish, useCreateSkill,
@@ -8,7 +10,8 @@ import { normalizeError } from '@/api/shared/http-error';
 import type {
   AdminSkillFilters, Skill, SkillExportField, SkillExportFormat, SkillType,
 } from './schema';
-import { BatchToolbar } from './components/BatchToolbar';
+import { AdminBatchBar } from '@/components/feedback/AdminBatchBar';
+import { CheckCircle2, Download, Trash2 } from 'lucide-react';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { ImportSkillModal, ExportSkillModal } from './components/ImportExportModals';
 import { OverviewPanel } from './components/OverviewPanel';
@@ -152,17 +155,14 @@ export default function SkillsPage() {
   };
 
   return (
-    <div className="skills-page mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(139,92,246,0.10),transparent_68%)]" />
-        </div>
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-700 dark:text-violet-300">ADMIN / 技能管理</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">维护智能体可调用的技能。</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{skills.length} 个技能 · 已发布 {counts.published}。</p>
-        </div>
-      </section>
+    <AdminPage pageClass="skills-page" density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 技能管理"
+        title="维护智能体可调用的技能。"
+        description={<>{skills.length} 个技能 · 已发布 {counts.published}。</>}
+        tone="purple"
+        headingLevel="h2"
+      />
 
       {notice && (
         <NoticeBanner tone="violet" onClose={() => setNotice('')}>
@@ -176,12 +176,14 @@ export default function SkillsPage() {
       )}
 
       {selectedIds.length > 0 && (
-        <BatchToolbar
+        <AdminBatchBar
           count={selectedIds.length}
           onClear={() => setSelectedIds([])}
-          onBatchPublish={handleBatchPublish}
-          onBatchDelete={handleBatchDelete}
-          onBatchExport={handleBatchExport}
+          actions={[
+            { id: 'publish', label: '批量发布', icon: CheckCircle2, tone: 'brand', onClick: handleBatchPublish },
+            { id: 'export', label: '批量导出', icon: Download, tone: 'neutral', onClick: handleBatchExport },
+            { id: 'delete', label: '批量删除', icon: Trash2, tone: 'rose', onClick: handleBatchDelete },
+          ]}
         />
       )}
       <OverviewPanel
@@ -223,6 +225,6 @@ export default function SkillsPage() {
         onConfirm={() => deleteTarget && handleDelete(deleteTarget)}
         skill={deleteTarget}
       />
-    </div>
+    </AdminPage>
   );
 }

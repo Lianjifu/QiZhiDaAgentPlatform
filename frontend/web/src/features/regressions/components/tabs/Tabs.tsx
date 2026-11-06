@@ -7,7 +7,6 @@ import { Mail, MessageSquare, Webhook } from 'lucide-react';
 import type { AlertChannel, AlertRule, RegressionRisk, RegressionTrack, TimelineEvent } from '../../schema';
 import { CHANNEL_META, RISK_BADGE, RISK_FILTER, STATUS_BADGE, STATUS_FILTER } from '../constants';
 import { Delta } from '../Primitives';
-import { BatchToolbar } from '../BatchToolbar';
 import { TrackCard } from '../TrackCard';
 
 const riskIconMap: Record<string, typeof ShieldCheck> = {
@@ -16,99 +15,6 @@ const riskIconMap: Record<string, typeof ShieldCheck> = {
 const channelIconMap: Record<string, typeof Mail> = {
   Mail, MessageSquare, Webhook,
 };
-
-interface OverviewTabProps {
-  visibleTracks: RegressionTrack[];
-  tracks: RegressionTrack[];
-  selectedIds: string[];
-  setSelectedIds: (ids: string[]) => void;
-  search: string;
-  setSearch: (s: string) => void;
-  statusFilter: 'all' | RegressionTrack['status'];
-  setStatusFilter: (s: 'all' | RegressionTrack['status']) => void;
-  riskFilter: 'all' | RegressionRisk;
-  setRiskFilter: (r: 'all' | RegressionRisk) => void;
-  onSelect: (track: RegressionTrack) => void;
-  onToggleStar: (id: string) => void;
-  onToggleSelect: (id: string) => void;
-  onDuplicate: (track: RegressionTrack) => void;
-  onRequestDelete: (track: RegressionTrack) => void;
-  onInvestigate: (track: RegressionTrack) => void;
-  onResolve: (track: RegressionTrack) => void;
-  onBatchInvestigate: () => void;
-  onBatchResolve: () => void;
-  onBatchDelete: () => void;
-}
-
-export function OverviewTab({
-  visibleTracks, tracks, selectedIds, setSelectedIds,
-  search, setSearch, statusFilter, setStatusFilter, riskFilter, setRiskFilter,
-  onSelect, onToggleStar, onToggleSelect, onDuplicate, onRequestDelete,
-  onInvestigate, onResolve,
-  onBatchInvestigate, onBatchResolve, onBatchDelete,
-}: OverviewTabProps) {
-  return (
-    <>
-      {selectedIds.length > 0 && (
-        <BatchToolbar
-          count={selectedIds.length}
-          onClear={() => setSelectedIds([])}
-          onBatchInvestigate={onBatchInvestigate}
-          onBatchResolve={onBatchResolve}
-          onBatchDelete={onBatchDelete}
-        />
-      )}
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-1)] p-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-700 dark:text-indigo-300">追踪总览</p>
-            <h3 className="mt-2 text-lg font-semibold">所有回归追踪</h3>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">{visibleTracks.length} 条结果 · 重点关注退化和排查中</p>
-          </div>
-          <div className="relative w-full xl:max-w-xs">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
-            <label className="sr-only" htmlFor="track-search">搜索追踪</label>
-            <input id="track-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索追踪 / 标签" className="h-10 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-1)] pl-10 pr-3 text-sm outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--brand)]" />
-          </div>
-        </div>
-        <div className="mt-5 flex flex-wrap items-center gap-2">
-          <label className="sr-only" htmlFor="track-status">按状态筛选</label>
-          <select id="track-status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | RegressionTrack['status'])} className="h-9 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] px-3 text-xs font-medium outline-none">
-            {STATUS_FILTER.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
-          <label className="sr-only" htmlFor="track-risk">按风险筛选</label>
-          <select id="track-risk" value={riskFilter} onChange={(e) => setRiskFilter(e.target.value as 'all' | RegressionRisk)} className="h-9 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] px-3 text-xs font-medium outline-none">
-            {RISK_FILTER.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
-        </div>
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {visibleTracks.map((track) => (
-            <TrackCard
-              key={track.id}
-              track={track}
-              selected={selectedIds.includes(track.id)}
-              onToggleSelect={onToggleSelect}
-              onSelect={onSelect}
-              onToggleStar={onToggleStar}
-              onDuplicate={onDuplicate}
-              onRequestDelete={onRequestDelete}
-              onInvestigate={onInvestigate}
-              onResolve={onResolve}
-            />
-          ))}
-        </div>
-        {visibleTracks.length === 0 && (
-          <div className="mt-5 rounded-2xl border border-dashed border-[var(--border-strong)] p-12 text-center">
-            <Search className="mx-auto h-6 w-6 text-[var(--text-muted)]" />
-            <p className="mt-3 text-sm font-semibold">没有匹配的追踪</p>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">尝试其他关键词或清除筛选。</p>
-          </div>
-        )}
-        <p className="mt-3 text-[10px] text-[var(--text-muted)]">{tracks.length} 个追踪 · 用于面板间数据共享</p>
-      </div>
-    </>
-  );
-}
 
 interface BaselineTabProps {
   tracks: RegressionTrack[];

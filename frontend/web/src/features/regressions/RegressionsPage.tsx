@@ -4,19 +4,22 @@ import { useServerAction } from '@/services/useServerAction';
  * 对齐技能管理：无子模块 Tab，Hero 轻量，列表工具栏承载导入/新建。
  * 追踪 / 告警 / 时间线 走 useApiQuery 拉取;写操作(CRUD/批量/导入导出/告警)走真实 API。
  */
-import { Plus, Search, Upload } from 'lucide-react';
+import { CheckCircle2, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AdminListPagination, paginateItems } from '@/components/feedback/AdminListPagination';
 import { AdminListHeader, AdminListHeaderMetrics } from '@/components/feedback/AdminListRow';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import { useRegressionAlerts, useRegressionTimeline, useRegressionTracks } from './useRegressions';
 import type { AlertRule, ExchangeFormat, RegressionRisk, RegressionTrack } from './schema';
 import { RISK_FILTER, STATUS_FILTER, uid } from './components/constants';
 import { AlertEditModal, DeleteTrackModal, ExportTrackModal, ImportTrackModal } from './components/Modals';
 import { AlertTab, BaselineTab, RiskTab, TimelineTab } from './components/tabs/Tabs';
-import { BatchToolbar } from './components/BatchToolbar';
+import { AdminBatchBar } from '@/components/feedback/AdminBatchBar';
 import { TrackCard } from './components/TrackCard';
+import { downloadBlob } from '@/lib/download';
 
 type ViewId = 'track' | 'baseline' | 'risk' | 'timeline' | 'alert';
 
@@ -118,17 +121,14 @@ export default function RegressionsPage() {
   );
 
   return (
-    <div className="regressions-page mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.10),transparent_68%)]" />
-        </div>
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-700 dark:text-indigo-300">ADMIN / 回归追踪</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">对比基线，发现版本退化。</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{counts.total} 个追踪 · {counts.regressed} 已退化 · {counts.investigating} 排查中。</p>
-        </div>
-      </section>
+    <AdminPage pageClass="regressions-page" density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 回归追踪"
+        title="对比基线，发现版本退化。"
+        description={<>{counts.total} 个追踪 · {counts.regressed} 已退化 · {counts.investigating} 排查中。</>}
+        tone="indigo"
+        headingLevel="h2"
+      />
 
       {notice && (
         <NoticeBanner tone="violet" onClose={() => setNotice('')}>
@@ -137,12 +137,14 @@ export default function RegressionsPage() {
       )}
 
       {selectedIds.length > 0 && view === 'track' && (
-        <BatchToolbar
+        <AdminBatchBar
           count={selectedIds.length}
           onClear={() => setSelectedIds([])}
-          onBatchInvestigate={handleBatchInvestigate}
-          onBatchResolve={handleBatchResolve}
-          onBatchDelete={handleBatchDelete}
+          actions={[
+            { id: 'investigate', label: '批量标记排查中', icon: Search, tone: 'brand', onClick: handleBatchInvestigate },
+            { id: 'resolve', label: '批量标记已解决', icon: CheckCircle2, tone: 'emerald', onClick: handleBatchResolve },
+            { id: 'delete', label: '批量删除', icon: Trash2, tone: 'rose', onClick: handleBatchDelete },
+          ]}
         />
       )}
 
@@ -243,18 +245,7 @@ export default function RegressionsPage() {
       <ImportTrackModal open={importOpen} onClose={() => setImportOpen(false)} onImport={handleImport} />
       <ExportTrackModal open={exportOpen} onClose={() => setExportOpen(false)} onExport={handleExport} total={tracks.length} selectedCount={selectedIds.length} />
       <AlertEditModal open={editingAlert !== null} onClose={() => setEditingAlert(null)} onSave={handleAlertSave} rule={editingAlert} />
-    </div>
+    </AdminPage>
   );
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}

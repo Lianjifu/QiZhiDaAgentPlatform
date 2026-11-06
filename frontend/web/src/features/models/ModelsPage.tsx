@@ -5,9 +5,11 @@ import { useServerAction } from '@/services/useServerAction';
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, CircleAlert, KeyRound, LineChart, Plus, RefreshCw, Search, ShieldCheck, Trash2, Upload } from 'lucide-react';
+import { AlertTriangle, CircleAlert, KeyRound, LineChart, Plus, Power, RefreshCw, Search, ShieldCheck, Trash2, Upload } from 'lucide-react';
 import { AdminListPagination, paginateItems } from '@/components/feedback/AdminListPagination';
 import { AdminListHeader, AdminListHeaderMetrics } from '@/components/feedback/AdminListRow';
+import { AdminHero } from '@/components/feedback/AdminHero';
+import { AdminPage } from '@/components/feedback/AdminPage';
 import { NoticeBanner } from '@/components/feedback/NoticeBanner';
 import {
   useModelsList, useProviders, useRouteRules, useHealthEvents,
@@ -15,10 +17,12 @@ import {
   useToggleRoute, useDeleteRoute, useBatchSetStatus,
 } from './useModels';
 import type { Model, ModelFilters, ExchangeFormat } from './schema';
-import { STATUS_FILTER, TIER_FILTER, PROVIDER_BADGE, STRATEGY_META, TASK_LABEL, downloadBlob } from './components/constants';
+import { STATUS_FILTER, TIER_FILTER, PROVIDER_BADGE, STRATEGY_META, TASK_LABEL } from './components/constants';
+import { downloadBlob } from '@/lib/download';
 import { ModelCard } from './components/ModelCard';
 import { ImportModelModal, ExportModelModal, DeleteModelModal } from './components/ImportExportModals';
-import { BatchToolbar } from './components/BatchToolbar';
+import { AdminBatchBar } from '@/components/feedback/AdminBatchBar';
+import { AdminEmptyState } from '@/components/feedback/AdminEmptyState';
 
 type ViewId = 'model' | 'provider' | 'route' | 'health';
 
@@ -139,17 +143,14 @@ export default function ModelsPage() {
   }, [models]);
 
   return (
-    <div className="models-page mx-auto w-full max-w-[1440px] space-y-6 p-5 pb-16 sm:p-8 xl:px-10">
-      <section className="relative overflow-hidden rounded-[28px] border border-[var(--border)] bg-[var(--surface-1)] px-6 py-8 shadow-[var(--shadow-sm)] sm:px-8">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]">
-          <div className="absolute right-0 top-0 h-full w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.10),transparent_68%)]" />
-        </div>
-        <div className="relative">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-700 dark:text-indigo-300">ADMIN / 模型配置</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl xl:text-4xl">接入模型并配置路由。</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-muted)]">{counts.total} 个模型 · {counts.active} 启用 · 本月调用 {counts.calls.toLocaleString('zh-CN')}。</p>
-        </div>
-      </section>
+    <AdminPage pageClass="models-page" density="lg">
+      <AdminHero
+        eyebrow="ADMIN / 模型配置"
+        title="接入模型并配置路由。"
+        description={<>{counts.total} 个模型 · {counts.active} 启用 · 本月调用 {counts.calls.toLocaleString('zh-CN')}。</>}
+        tone="indigo"
+        headingLevel="h2"
+      />
 
       {notice && (
         <NoticeBanner tone="violet" onClose={() => setNotice('')}>
@@ -158,12 +159,14 @@ export default function ModelsPage() {
       )}
 
       {selectedIds.length > 0 && view === 'model' && (
-        <BatchToolbar
+        <AdminBatchBar
           count={selectedIds.length}
           onClear={() => setSelectedIds([])}
-          onBatchEnable={handleBatchEnable}
-          onBatchDisable={handleBatchDisable}
-          onBatchExport={handleBatchExport}
+          actions={[
+            { id: 'enable', label: '批量启用', icon: Power, tone: 'brand', onClick: handleBatchEnable },
+            { id: 'disable', label: '批量下线', icon: Power, tone: 'amber', onClick: handleBatchDisable },
+            { id: 'export', label: '批量导出', icon: LineChart, tone: 'neutral', onClick: handleBatchExport },
+          ]}
         />
       )}
 
@@ -240,13 +243,7 @@ export default function ModelsPage() {
             pageEnd={paged.pageEnd}
             onPageChange={setPage}
           />
-          {visibleModels.length === 0 && (
-            <div className="px-5 pb-8 text-center">
-              <Search className="mx-auto h-6 w-6 text-[var(--text-muted)]" />
-              <p className="mt-3 text-sm font-semibold">没有匹配的模型</p>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">尝试其他关键词或清除筛选。</p>
-            </div>
-          )}
+          {visibleModels.length === 0 && <AdminEmptyState title="没有匹配的模型" />}
         </div>
       )}
 
@@ -397,6 +394,6 @@ export default function ModelsPage() {
         total={models.length}
         selectedCount={selectedIds.length}
       />
-    </div>
+    </AdminPage>
   );
 }

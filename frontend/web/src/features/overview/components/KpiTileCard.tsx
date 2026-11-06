@@ -2,7 +2,8 @@
  * KPI 单格 — 颜色块 + Sparkline + 标签 + 数值 + 较昨日 delta。
  */
 import { useNavigate } from 'react-router-dom';
-import { DeltaDownIcon, DeltaIcon, KPI_ICONS, Sparkline, TONE_CLASS, deltaClass, kpiStroke } from './Primitives';
+import { DeltaDownIcon, DeltaIcon, KPI_ICONS, TONE_CLASS, deltaClass, kpiStroke } from './Primitives';
+import { Sparkline } from '@/components/feedback/Sparkline';
 import type { KpiTile } from '../schema';
 
 export function KpiTileCard({ tile }: { tile: KpiTile }) {
